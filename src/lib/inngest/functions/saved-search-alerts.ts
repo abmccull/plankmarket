@@ -5,7 +5,17 @@ import { listings } from "@/server/db/schema/listings";
 import { users } from "@/server/db/schema/users";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { env } from "@/env";
 import type { SearchFilters } from "@/types";
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 export const savedSearchAlerts = inngest.createFunction(
   { id: "saved-search-alerts", name: "Send Saved Search Alerts" },
@@ -32,6 +42,8 @@ export const savedSearchAlerts = inngest.createFunction(
 
     const alertsSent = await step.run("process-alerts", async () => {
       let sentCount = 0;
+      // Capture query timestamp before iteration to prevent M22 timestamp gap
+      const queryTimestamp = new Date();
 
       for (const search of results) {
         try {
@@ -91,35 +103,35 @@ export const savedSearchAlerts = inngest.createFunction(
           if (matchingListings.length > 0) {
             // Send email notification
             await resend.emails.send({
-              from: "PlankMarket <noreply@plankmarket.com>",
+              from: env.EMAIL_FROM,
               to: search.userEmail,
-              subject: `${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} match "${search.name}"`,
+              subject: `${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} match "${escapeHtml(search.name)}"`,
               html: `
-                <p>Hi ${search.userName},</p>
-                <p>We found ${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} that match your saved search "${search.name}":</p>
+                <p>Hi ${escapeHtml(search.userName)},</p>
+                <p>We found ${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} that match your saved search "${escapeHtml(search.name)}":</p>
                 <ul>
                   ${matchingListings
                     .map(
                       (listing) => `
                     <li>
-                      <strong>${listing.title}</strong><br/>
+                      <strong>${escapeHtml(listing.title)}</strong><br/>
                       $${listing.askPricePerSqFt}/sq ft • ${listing.totalSqFt} sq ft<br/>
-                      ${listing.materialType} • ${listing.condition} • ${listing.locationState}
+                      ${escapeHtml(listing.materialType)} • ${escapeHtml(listing.condition)} • ${escapeHtml(listing.locationState ?? "")}
                       <br/>
-                      <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/listings/${listing.id}">View Listing</a>
+                      <a href="${env.NEXT_PUBLIC_APP_URL}/listings/${listing.id}">View Listing</a>
                     </li>
                   `
                     )
                     .join("")}
                 </ul>
-                <p><a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/listings?saved_search=${search.id}">View all matches</a></p>
+                <p><a href="${env.NEXT_PUBLIC_APP_URL}/listings?saved_search=${search.id}">View all matches</a></p>
               `,
             });
 
-            // Update last alert timestamp
+            // Update last alert timestamp (use pre-query timestamp to avoid M22 gap)
             await db
               .update(savedSearches)
-              .set({ lastAlertAt: new Date() })
+              .set({ lastAlertAt: queryTimestamp })
               .where(eq(savedSearches.id, search.id));
 
             sentCount++;

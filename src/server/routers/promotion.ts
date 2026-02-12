@@ -449,13 +449,17 @@ export const promotionRouter = createTRPCRouter({
       })
       .where(inArray(listings.id, listingIds));
 
+    // Batch-fetch listing data to avoid N+1 queries (L4)
+    const affectedListings = await ctx.db.query.listings.findMany({
+      where: inArray(listings.id, listingIds),
+      columns: { id: true, status: true, expiresAt: true },
+    });
+    const listingMap = new Map(affectedListings.map((l) => [l.id, l]));
+
     // Check if any listings also expired (90-day window) and issue pro-rata refunds
     let refundCount = 0;
     for (const promotion of stalePromotions) {
-      const listing = await ctx.db.query.listings.findFirst({
-        where: eq(listings.id, promotion.listingId),
-        columns: { status: true, expiresAt: true },
-      });
+      const listing = listingMap.get(promotion.listingId);
 
       if (
         listing &&

@@ -2,11 +2,11 @@ import {
   pgTable,
   uuid,
   text,
-  real,
   timestamp,
   index,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { money } from "../custom-types";
 import { users } from "./users";
 import { offers } from "./offers";
 
@@ -32,9 +32,9 @@ export const offerEvents = pgTable(
 
     // Event details
     eventType: offerEventTypeEnum("event_type").notNull(),
-    pricePerSqFt: real("price_per_sq_ft"),
-    quantitySqFt: real("quantity_sq_ft"),
-    totalPrice: real("total_price"),
+    pricePerSqFt: money("price_per_sq_ft"),
+    quantitySqFt: money("quantity_sq_ft"),
+    totalPrice: money("total_price"),
     message: text("message"),
 
     // Timestamp

@@ -3,6 +3,7 @@ import {
   publicProcedure,
   protectedProcedure,
   sellerProcedure,
+  rateLimitedPaymentProcedure,
 } from "../trpc";
 import { orders, users, notifications } from "../db/schema";
 import { eq, and, gt } from "drizzle-orm";
@@ -33,7 +34,7 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   // Create a payment intent for an order
-  createPaymentIntent: protectedProcedure
+  createPaymentIntent: rateLimitedPaymentProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
@@ -210,8 +211,19 @@ export const paymentRouter = createTRPCRouter({
         chargesEnabled: account.charges_enabled,
         payoutsEnabled: account.payouts_enabled,
       };
-    } catch {
-      return { connected: false, onboardingComplete: false };
+    } catch (err) {
+      // Only suppress "account not found" errors — rethrow others (L18)
+      if (
+        err instanceof Stripe.errors.StripeInvalidRequestError &&
+        err.code === "resource_missing"
+      ) {
+        return { connected: false, onboardingComplete: false };
+      }
+      console.error("Stripe Connect status check failed:", err);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to check Stripe account status",
+      });
     }
   }),
 

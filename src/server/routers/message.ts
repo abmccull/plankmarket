@@ -1,6 +1,7 @@
 import {
   createTRPCRouter,
   protectedProcedure,
+  rateLimitedMessageProcedure,
 } from "../trpc";
 import {
   sendMessageSchema,
@@ -21,7 +22,7 @@ export const messageRouter = createTRPCRouter({
         where: eq(listings.id, input.listingId),
       });
 
-      if (!listing) {
+      if (!listing || !listing.sellerId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Listing not found",
@@ -79,7 +80,7 @@ export const messageRouter = createTRPCRouter({
         .values({
           listingId: input.listingId,
           buyerId: ctx.user.id,
-          sellerId: listing.sellerId,
+          sellerId: listing.sellerId!,
         })
         .returning();
 
@@ -117,7 +118,7 @@ export const messageRouter = createTRPCRouter({
     }),
 
   // Send a message in a conversation
-  sendMessage: protectedProcedure
+  sendMessage: rateLimitedMessageProcedure
     .input(sendMessageSchema)
     .mutation(async ({ ctx, input }) => {
       // Verify user is participant in conversation

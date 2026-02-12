@@ -50,7 +50,8 @@ export const disputes = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("disputes_order_id_idx").on(table.orderId),

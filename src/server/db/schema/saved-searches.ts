@@ -26,7 +26,8 @@ export const savedSearches = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("saved_searches_user_id_idx").on(table.userId),

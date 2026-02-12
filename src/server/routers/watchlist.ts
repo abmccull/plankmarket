@@ -23,19 +23,22 @@ export const watchlistRouter = createTRPCRouter({
         return existing;
       }
 
-      const [item] = await ctx.db
-        .insert(watchlist)
-        .values({
-          userId: ctx.user.id,
-          listingId: input.listingId,
-        })
-        .returning();
+      const item = await ctx.db.transaction(async (tx) => {
+        const [inserted] = await tx
+          .insert(watchlist)
+          .values({
+            userId: ctx.user.id,
+            listingId: input.listingId,
+          })
+          .returning();
 
-      // Increment watchlist count on listing
-      await ctx.db
-        .update(listings)
-        .set({ watchlistCount: sql`${listings.watchlistCount} + 1` })
-        .where(eq(listings.id, input.listingId));
+        await tx
+          .update(listings)
+          .set({ watchlistCount: sql`${listings.watchlistCount} + 1` })
+          .where(eq(listings.id, input.listingId));
+
+        return inserted;
+      });
 
       return item;
     }),
@@ -44,22 +47,23 @@ export const watchlistRouter = createTRPCRouter({
   remove: protectedProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db
-        .delete(watchlist)
-        .where(
-          and(
-            eq(watchlist.userId, ctx.user.id),
-            eq(watchlist.listingId, input.listingId)
-          )
-        );
+      await ctx.db.transaction(async (tx) => {
+        await tx
+          .delete(watchlist)
+          .where(
+            and(
+              eq(watchlist.userId, ctx.user.id),
+              eq(watchlist.listingId, input.listingId)
+            )
+          );
 
-      // Decrement watchlist count on listing
-      await ctx.db
-        .update(listings)
-        .set({
-          watchlistCount: sql`greatest(${listings.watchlistCount} - 1, 0)`,
-        })
-        .where(eq(listings.id, input.listingId));
+        await tx
+          .update(listings)
+          .set({
+            watchlistCount: sql`greatest(${listings.watchlistCount} - 1, 0)`,
+          })
+          .where(eq(listings.id, input.listingId));
+      });
 
       return { success: true };
     }),

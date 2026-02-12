@@ -6,7 +6,9 @@ import {
   integer,
   timestamp,
   index,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 import { orders } from "./orders";
 
@@ -49,7 +51,8 @@ export const reviews = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("reviews_reviewer_id_idx").on(table.reviewerId),
@@ -57,6 +60,19 @@ export const reviews = pgTable(
     index("reviews_order_id_idx").on(table.orderId),
     index("reviews_rating_idx").on(table.rating),
     index("reviews_created_at_idx").on(table.createdAt),
+    check("rating_check", sql`${table.rating} >= 1 AND ${table.rating} <= 5`),
+    check(
+      "communication_rating_check",
+      sql`${table.communicationRating} IS NULL OR (${table.communicationRating} >= 1 AND ${table.communicationRating} <= 5)`
+    ),
+    check(
+      "accuracy_rating_check",
+      sql`${table.accuracyRating} IS NULL OR (${table.accuracyRating} >= 1 AND ${table.accuracyRating} <= 5)`
+    ),
+    check(
+      "shipping_rating_check",
+      sql`${table.shippingRating} IS NULL OR (${table.shippingRating} >= 1 AND ${table.shippingRating} <= 5)`
+    ),
   ]
 );
 

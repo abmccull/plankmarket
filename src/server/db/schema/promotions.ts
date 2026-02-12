@@ -18,6 +18,13 @@ export const promotionTierEnum = pgEnum("promotion_tier", [
   "premium",
 ]);
 
+export const promotionPaymentStatusEnum = pgEnum("promotion_payment_status", [
+  "pending",
+  "succeeded",
+  "failed",
+  "refunded",
+]);
+
 export const listingPromotions = pgTable(
   "listing_promotions",
   {
@@ -37,7 +44,7 @@ export const listingPromotions = pgTable(
     stripePaymentIntentId: varchar("stripe_payment_intent_id", {
       length: 255,
     }),
-    paymentStatus: varchar("payment_status", { length: 50 })
+    paymentStatus: promotionPaymentStatusEnum("payment_status")
       .default("pending")
       .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })

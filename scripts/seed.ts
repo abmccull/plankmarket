@@ -91,7 +91,7 @@ const USERS_DATA = [
     businessName: "PlankMarket",
     zip: "75201",
     verified: true,
-    verificationStatus: "verified",
+    verificationStatus: "verified" as const,
   },
   {
     email: "sarah@mitchellflooring.com",
@@ -100,7 +100,7 @@ const USERS_DATA = [
     businessName: "Mitchell Flooring Supply",
     zip: "78701",
     verified: true,
-    verificationStatus: "verified",
+    verificationStatus: "verified" as const,
     phone: "+15125551234",
   },
   {
@@ -110,7 +110,7 @@ const USERS_DATA = [
     businessName: "Chen Floors & More",
     zip: "77002",
     verified: true,
-    verificationStatus: "verified",
+    verificationStatus: "verified" as const,
     phone: "+17135552345",
   },
   {
@@ -120,7 +120,7 @@ const USERS_DATA = [
     businessName: "Garcia Hardwoods",
     zip: "78205",
     verified: false,
-    verificationStatus: "pending",
+    verificationStatus: "pending" as const,
     phone: "+12105553456",
   },
   {
@@ -130,7 +130,7 @@ const USERS_DATA = [
     businessName: "Thompson Lumber Co",
     zip: "76102",
     verified: false,
-    verificationStatus: "unverified",
+    verificationStatus: "unverified" as const,
     phone: "+18175554567",
   },
   {
@@ -140,7 +140,7 @@ const USERS_DATA = [
     businessName: "Davis Interior Design",
     zip: "75201",
     verified: false,
-    verificationStatus: "unverified",
+    verificationStatus: "unverified" as const,
     phone: "+12145555678",
   },
   {
@@ -150,7 +150,7 @@ const USERS_DATA = [
     businessName: "Brown Contracting LLC",
     zip: "75024",
     verified: false,
-    verificationStatus: "unverified",
+    verificationStatus: "unverified" as const,
     phone: "+19725556789",
   },
   {
@@ -160,7 +160,7 @@ const USERS_DATA = [
     businessName: "Wilson Renovations",
     zip: "75034",
     verified: false,
-    verificationStatus: "unverified",
+    verificationStatus: "unverified" as const,
     phone: "+14695557890",
   },
 ];
@@ -661,6 +661,22 @@ const LISTINGS_BY_SELLER: Record<string, ListingSeed[]> = {
 async function seed() {
   console.log("Starting PlankMarket database seed...\n");
 
+  // SAFETY: Prevent running against production databases
+  if (DATABASE_URL!.includes("pooler.supabase.com") && !DATABASE_URL!.includes("localhost")) {
+    const isProduction = !DATABASE_URL!.includes("staging") && !DATABASE_URL!.includes("dev") && !DATABASE_URL!.includes("test");
+    if (isProduction) {
+      console.error("ERROR: This appears to be a production database URL.");
+      console.error("Seed script is only intended for development/staging environments.");
+      console.error("Set SEED_ALLOW_PRODUCTION=true to override this check.");
+      if (!process.env.SEED_ALLOW_PRODUCTION) {
+        process.exit(1);
+      }
+    }
+  }
+
+  console.log("WARNING: This will delete ALL existing data. Proceeding in 3 seconds...");
+  await new Promise(resolve => setTimeout(resolve, 3000));
+
   // -----------------------------------------------------------------------
   // 1. Clear existing data (reverse FK dependency order)
   // -----------------------------------------------------------------------
@@ -878,8 +894,8 @@ async function seed() {
       qty: 500,
       price: 4.50,
       status: "delivered" as const,
-      paymentStatus: "paid",
-      escrowStatus: "released",
+      paymentStatus: "succeeded" as const,
+      escrowStatus: "released" as const,
       shippingName: "Emily Davis",
       shippingAddress: "1200 Main St, Suite 400",
       shippingCity: "Dallas",
@@ -900,8 +916,8 @@ async function seed() {
       qty: 1000,
       price: 1.75,
       status: "delivered" as const,
-      paymentStatus: "paid",
-      escrowStatus: "released",
+      paymentStatus: "succeeded" as const,
+      escrowStatus: "released" as const,
       shippingName: "Michael Brown",
       shippingAddress: "5600 Legacy Dr",
       shippingCity: "Plano",
@@ -922,8 +938,8 @@ async function seed() {
       qty: 2000,
       price: 3.25,
       status: "shipped" as const,
-      paymentStatus: "paid",
-      escrowStatus: "held",
+      paymentStatus: "succeeded" as const,
+      escrowStatus: "held" as const,
       shippingName: "Emily Davis",
       shippingAddress: "1200 Main St, Suite 400",
       shippingCity: "Dallas",
@@ -944,8 +960,8 @@ async function seed() {
       qty: 800,
       price: 2.50,
       status: "confirmed" as const,
-      paymentStatus: "paid",
-      escrowStatus: "held",
+      paymentStatus: "succeeded" as const,
+      escrowStatus: "held" as const,
       shippingName: "Lisa Wilson",
       shippingAddress: "9100 Warren Pkwy",
       shippingCity: "Frisco",
@@ -1245,7 +1261,7 @@ async function seed() {
       pricePaid: 599,
       daysActive: 8, // started 8 days ago, 22 days remaining
       isActive: true,
-      paymentStatus: "succeeded",
+      paymentStatus: "succeeded" as const,
     },
     {
       // Featured — James's Commercial LVP (large lot, commercial appeal)
@@ -1256,7 +1272,7 @@ async function seed() {
       pricePaid: 139,
       daysActive: 5, // started 5 days ago, 9 days remaining
       isActive: true,
-      paymentStatus: "succeeded",
+      paymentStatus: "succeeded" as const,
     },
     {
       // Spotlight — Sarah's Hickory Hardwood
@@ -1267,7 +1283,7 @@ async function seed() {
       pricePaid: 49,
       daysActive: 10, // started 10 days ago, 4 days remaining
       isActive: true,
-      paymentStatus: "succeeded",
+      paymentStatus: "succeeded" as const,
     },
     {
       // Featured — James's Black Walnut (premium product)
@@ -1278,7 +1294,7 @@ async function seed() {
       pricePaid: 79,
       daysActive: 3, // started 3 days ago, 4 days remaining
       isActive: true,
-      paymentStatus: "succeeded",
+      paymentStatus: "succeeded" as const,
     },
     {
       // Expired — Sarah's Engineered Maple (was spotlight, expired 2 days ago)
@@ -1289,7 +1305,7 @@ async function seed() {
       pricePaid: 29,
       daysActive: 9, // started 9 days ago (7-day duration = expired 2 days ago)
       isActive: false,
-      paymentStatus: "succeeded",
+      paymentStatus: "succeeded" as const,
     },
   ];
 

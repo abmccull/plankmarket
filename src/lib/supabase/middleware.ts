@@ -51,6 +51,27 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Role-based path protection (H13 + H14):
+  // Enforce that users can only access dashboard paths matching their role
+  if (isProtected && user) {
+    const role = user.user_metadata?.role as string | undefined;
+    const rolePaths: Record<string, string> = {
+      buyer: "/buyer",
+      seller: "/seller",
+      admin: "/admin",
+    };
+
+    // Admin can access all paths
+    if (role !== "admin") {
+      const allowedPath = rolePaths[role ?? ""];
+      if (allowedPath && !pathname.startsWith(allowedPath)) {
+        const url = request.nextUrl.clone();
+        url.pathname = allowedPath;
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
   // Redirect authenticated users away from auth pages (use role-aware path)
   if (isAuthPage && user) {
     const url = request.nextUrl.clone();

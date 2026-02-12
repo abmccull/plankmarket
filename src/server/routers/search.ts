@@ -34,11 +34,12 @@ export const searchRouter = createTRPCRouter({
       return search;
     }),
 
-  // Get saved searches
+  // Get saved searches (L3: add pagination limit)
   getMySavedSearches: protectedProcedure.query(async ({ ctx }) => {
     const searches = await ctx.db.query.savedSearches.findMany({
       where: eq(savedSearches.userId, ctx.user.id),
       orderBy: desc(savedSearches.createdAt),
+      limit: 50,
     });
 
     return searches;

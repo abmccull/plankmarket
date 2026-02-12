@@ -58,7 +58,11 @@ function LoginForm() {
       if (session.isAuthenticated && session.user) {
         useAuthStore.getState().setUser(session.user);
         toast.success("Signed in successfully");
-        router.push(redirect || getDashboardPath(session.user.role));
+        // Validate redirect is a relative path to prevent open redirect attacks
+        const safeRedirect = redirect && redirect.startsWith("/") && !redirect.startsWith("//")
+          ? redirect
+          : getDashboardPath(session.user.role);
+        router.push(safeRedirect);
         router.refresh();
       } else {
         toast.error("Account not found. Please register first.");

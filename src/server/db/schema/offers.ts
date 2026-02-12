@@ -2,12 +2,12 @@ import {
   pgTable,
   uuid,
   text,
-  real,
   timestamp,
   index,
   pgEnum,
   integer,
 } from "drizzle-orm/pg-core";
+import { money } from "../custom-types";
 import { users } from "./users";
 import { listings } from "./listings";
 
@@ -35,12 +35,12 @@ export const offers = pgTable(
       .notNull(),
 
     // Offer details
-    offerPricePerSqFt: real("offer_price_per_sq_ft").notNull(),
-    quantitySqFt: real("quantity_sq_ft").notNull(),
-    totalPrice: real("total_price").notNull(),
+    offerPricePerSqFt: money("offer_price_per_sq_ft").notNull(),
+    quantitySqFt: money("quantity_sq_ft").notNull(),
+    totalPrice: money("total_price").notNull(),
 
     // Counter offer
-    counterPricePerSqFt: real("counter_price_per_sq_ft"),
+    counterPricePerSqFt: money("counter_price_per_sq_ft"),
 
     // Negotiation tracking
     currentRound: integer("current_round").default(1).notNull(),
@@ -64,7 +64,8 @@ export const offers = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("offers_listing_id_idx").on(table.listingId),

@@ -1,8 +1,8 @@
 import {
   createTRPCRouter,
   publicProcedure,
-  protectedProcedure,
   sellerProcedure,
+  verifiedSellerProcedure,
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema } from "@/lib/validators/listing";
 import { listings, media } from "../db/schema";
@@ -12,8 +12,8 @@ import { z } from "zod";
 import zipcodes from "zipcodes";
 
 export const listingRouter = createTRPCRouter({
-  // Create a new listing
-  create: sellerProcedure
+  // Create a new listing (H5: requires verified seller)
+  create: verifiedSellerProcedure
     .input(listingFormSchema)
     .mutation(async ({ ctx, input }) => {
       const { mediaIds, ...listingData } = input;
@@ -77,7 +77,24 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
+      // Only allow edits on active or draft listings
+      if (existing.status !== "active" && existing.status !== "draft") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cannot edit a listing with status "${existing.status}"`,
+        });
+      }
+
       const { mediaIds, ...updateData } = input.data;
+
+      // Re-derive geo coordinates if locationZip changed
+      if (updateData.locationZip) {
+        const zipInfo = zipcodes.lookup(updateData.locationZip);
+        if (zipInfo) {
+          (updateData as Record<string, unknown>).locationLat = zipInfo.latitude;
+          (updateData as Record<string, unknown>).locationLng = zipInfo.longitude;
+        }
+      }
 
       const [updated] = await ctx.db
         .update(listings)

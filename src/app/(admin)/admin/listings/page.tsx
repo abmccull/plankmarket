@@ -15,7 +15,7 @@ interface Listing {
   seller: {
     name: string;
     businessName: string | null;
-  };
+  } | null;
   askPricePerSqFt: number;
   status: ListingStatus;
   createdAt: Date | string;
@@ -39,7 +39,7 @@ export default function AdminListingsPage() {
       accessorKey: "seller",
       header: "Seller",
       cell: ({ row }) =>
-        row.original.seller.businessName || row.original.seller.name,
+        row.original.seller?.businessName || row.original.seller?.name || "N/A",
     },
     {
       accessorKey: "pricePerSqFt",

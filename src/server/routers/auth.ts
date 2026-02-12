@@ -1,4 +1,4 @@
-import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure, rateLimitedAuthProcedure } from "../trpc";
 import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -7,8 +7,8 @@ import { env } from "@/env";
 import zipcodes from "zipcodes";
 
 export const authRouter = createTRPCRouter({
-  // Register a new user (creates DB record after Supabase auth signup)
-  register: publicProcedure
+  // Register a new user (creates DB record after Supabase auth signup) — rate limited (H3)
+  register: rateLimitedAuthProcedure
     .input(registerSchema)
     .mutation(async ({ ctx, input }) => {
       // Sign up with Supabase Auth
@@ -68,14 +68,37 @@ export const authRouter = createTRPCRouter({
         .returning();
 
       return {
-        user: newUser,
+        user: {
+          id: newUser!.id,
+          email: newUser!.email,
+          name: newUser!.name,
+          role: newUser!.role,
+          businessName: newUser!.businessName,
+        },
         requiresVerification: !authData.user.email_confirmed_at,
       };
     }),
 
   // Get current user profile
   getProfile: protectedProcedure.query(async ({ ctx }) => {
-    return ctx.user;
+    return {
+      id: ctx.user.id,
+      email: ctx.user.email,
+      name: ctx.user.name,
+      role: ctx.user.role,
+      phone: ctx.user.phone,
+      businessName: ctx.user.businessName,
+      businessAddress: ctx.user.businessAddress,
+      businessCity: ctx.user.businessCity,
+      businessState: ctx.user.businessState,
+      businessZip: ctx.user.businessZip,
+      avatarUrl: ctx.user.avatarUrl,
+      verified: ctx.user.verified,
+      verificationStatus: ctx.user.verificationStatus,
+      stripeOnboardingComplete: ctx.user.stripeOnboardingComplete,
+      zipCode: ctx.user.zipCode,
+      createdAt: ctx.user.createdAt,
+    };
   }),
 
   // Update user profile
@@ -85,7 +108,15 @@ export const authRouter = createTRPCRouter({
       const [updated] = await ctx.db
         .update(users)
         .set({
-          ...input,
+          name: input.name,
+          phone: input.phone,
+          businessName: input.businessName,
+          businessAddress: input.businessAddress,
+          businessCity: input.businessCity,
+          businessState: input.businessState,
+          businessZip: input.businessZip,
+          avatarUrl: input.avatarUrl,
+          zipCode: input.zipCode,
           updatedAt: new Date(),
         })
         .where(eq(users.id, ctx.user.id))

@@ -12,6 +12,20 @@ import { money } from "../custom-types";
 import { users } from "./users";
 import { listings } from "./listings";
 
+export const paymentStatusEnum = pgEnum("payment_status", [
+  "pending",
+  "succeeded",
+  "failed",
+  "refunded",
+]);
+
+export const escrowStatusEnum = pgEnum("escrow_status", [
+  "none",
+  "held",
+  "released",
+  "refunded",
+]);
+
 export const orderStatusEnum = pgEnum("order_status", [
   "pending",
   "confirmed",
@@ -51,7 +65,7 @@ export const orders = pgTable(
       length: 255,
     }),
     stripeTransferId: varchar("stripe_transfer_id", { length: 255 }),
-    paymentStatus: varchar("payment_status", { length: 50 }).default("pending"),
+    paymentStatus: paymentStatusEnum("payment_status").default("pending"),
 
     // Shipping
     shippingName: varchar("shipping_name", { length: 255 }),
@@ -65,9 +79,9 @@ export const orders = pgTable(
 
     // Status
     status: orderStatusEnum("status").notNull().default("pending"),
-    escrowStatus: varchar("escrow_status", { length: 20 })
+    escrowStatus: escrowStatusEnum("escrow_status")
       .default("none")
-      .notNull(), // 'none', 'held', 'released', 'refunded'
+      .notNull(),
     notes: text("notes"),
 
     // Timestamps
@@ -76,7 +90,8 @@ export const orders = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),

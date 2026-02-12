@@ -15,7 +15,7 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
 export async function GET(req: NextRequest) {
   // Verify cron secret to prevent unauthorized access
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${env.INNGEST_EVENT_KEY}`) {
+  if (authHeader !== `Bearer ${env.CRON_SECRET ?? env.INNGEST_EVENT_KEY}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -42,15 +42,27 @@ export async function GET(req: NextRequest) {
     .set({ isActive: false })
     .where(inArray(listingPromotions.id, staleIds));
 
-  // Clear denormalized fields on affected listings
-  await db
-    .update(listings)
-    .set({
-      promotionTier: null,
-      promotionExpiresAt: null,
-      updatedAt: now,
-    })
-    .where(inArray(listings.id, listingIds));
+  // Only clear denormalized fields on listings that have NO remaining active promotions
+  for (const listingId of listingIds) {
+    const remainingActive = await db.query.listingPromotions.findFirst({
+      where: and(
+        eq(listingPromotions.listingId, listingId),
+        eq(listingPromotions.isActive, true),
+        sql`${listingPromotions.expiresAt} > ${now}`
+      ),
+    });
+
+    if (!remainingActive) {
+      await db
+        .update(listings)
+        .set({
+          promotionTier: null,
+          promotionExpiresAt: null,
+          updatedAt: now,
+        })
+        .where(eq(listings.id, listingId));
+    }
+  }
 
   // Check if any listings also expired and issue pro-rata refunds
   let refundCount = 0;

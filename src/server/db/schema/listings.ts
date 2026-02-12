@@ -89,8 +89,7 @@ export const listings = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     sellerId: uuid("seller_id")
-      .references(() => users.id, { onDelete: "cascade" })
-      .notNull(),
+      .references(() => users.id, { onDelete: "set null" }),
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),
     status: listingStatusEnum("status").notNull().default("draft"),
@@ -150,7 +149,8 @@ export const listings = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
-      .notNull(),
+      .notNull()
+      .$onUpdate(() => new Date()),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     soldAt: timestamp("sold_at", { withTimezone: true }),
   },

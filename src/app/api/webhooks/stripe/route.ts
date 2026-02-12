@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/server/db";
 import { orders, users, listings, listingPromotions } from "@/server/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { env } from "@/env";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
@@ -42,11 +42,20 @@ export async function POST(req: NextRequest) {
         if (paymentIntent.metadata.type === "promotion") {
           // Promotion payment succeeded — activate the promotion
           const { listingId, tier, durationDays } = paymentIntent.metadata;
+          if (!listingId || !tier || !durationDays) {
+            console.error("Missing promotion metadata on PaymentIntent", paymentIntent.id);
+            break;
+          }
+          const parsedDuration = parseInt(durationDays, 10);
+          if (isNaN(parsedDuration) || parsedDuration <= 0) {
+            console.error("Invalid durationDays in promotion metadata", durationDays);
+            break;
+          }
           if (listingId) {
             const now = new Date();
             const expiresAt = new Date(
               now.getTime() +
-                parseInt(durationDays, 10) * 24 * 60 * 60 * 1000
+                parsedDuration * 24 * 60 * 60 * 1000
             );
 
             await db
@@ -58,11 +67,9 @@ export async function POST(req: NextRequest) {
                 expiresAt,
               })
               .where(
-                and(
-                  eq(
-                    listingPromotions.stripePaymentIntentId,
-                    paymentIntent.id
-                  )
+                eq(
+                  listingPromotions.stripePaymentIntentId,
+                  paymentIntent.id
                 )
               );
 

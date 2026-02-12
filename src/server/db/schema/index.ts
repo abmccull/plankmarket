@@ -1,5 +1,5 @@
 // Schema barrel exports
-export { users, userRoleEnum } from "./users";
+export { users, userRoleEnum, verificationStatusEnum } from "./users";
 export type { User, NewUser } from "./users";
 
 export {
@@ -16,7 +16,12 @@ export type { Listing, NewListing } from "./listings";
 export { media } from "./media";
 export type { Media, NewMedia } from "./media";
 
-export { orders, orderStatusEnum } from "./orders";
+export {
+  orders,
+  orderStatusEnum,
+  paymentStatusEnum,
+  escrowStatusEnum,
+} from "./orders";
 export type { Order, NewOrder } from "./orders";
 
 export { watchlist } from "./watchlist";
@@ -28,7 +33,11 @@ export type { SavedSearch, NewSavedSearch } from "./saved-searches";
 export { notifications, notificationTypeEnum } from "./notifications";
 export type { Notification, NewNotification } from "./notifications";
 
-export { listingPromotions, promotionTierEnum } from "./promotions";
+export {
+  listingPromotions,
+  promotionTierEnum,
+  promotionPaymentStatusEnum,
+} from "./promotions";
 export type { ListingPromotion, NewListingPromotion } from "./promotions";
 
 export { reviews } from "./reviews";
@@ -52,7 +61,7 @@ export type {
   NewDisputeMessage,
 } from "./disputes";
 
-export { feedback } from "./feedback";
+export { feedback, feedbackTypeEnum } from "./feedback";
 export type { Feedback, NewFeedback } from "./feedback";
 
 export { conversations, messages } from "./conversations";

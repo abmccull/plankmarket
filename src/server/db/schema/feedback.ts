@@ -6,8 +6,15 @@ import {
   integer,
   timestamp,
   index,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
+
+export const feedbackTypeEnum = pgEnum("feedback_type", [
+  "bug",
+  "feature",
+  "general",
+]);
 
 export const feedback = pgTable(
   "feedback",
@@ -19,7 +26,7 @@ export const feedback = pgTable(
 
     // Feedback details
     page: varchar("page", { length: 255 }),
-    type: varchar("type", { length: 50 }).notNull(), // 'bug', 'feature', 'general'
+    type: feedbackTypeEnum("type").notNull(),
     message: text("message").notNull(),
     rating: integer("rating"), // Optional 1-5 rating
 

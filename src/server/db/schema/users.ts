@@ -11,6 +11,13 @@ import {
 
 export const userRoleEnum = pgEnum("user_role", ["buyer", "seller", "admin"]);
 
+export const verificationStatusEnum = pgEnum("verification_status", [
+  "unverified",
+  "pending",
+  "verified",
+  "rejected",
+]);
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   authId: text("auth_id").unique().notNull(), // Supabase Auth UID
@@ -32,9 +39,9 @@ export const users = pgTable("users", {
   active: boolean("active").default(true).notNull(),
 
   // Seller verification fields
-  verificationStatus: varchar("verification_status", { length: 20 })
+  verificationStatus: verificationStatusEnum("verification_status")
     .default("unverified")
-    .notNull(), // 'unverified', 'pending', 'verified', 'rejected'
+    .notNull(),
   verificationDocUrl: text("verification_doc_url"),
   verificationRequestedAt: timestamp("verification_requested_at", {
     withTimezone: true,
@@ -51,7 +58,8 @@ export const users = pgTable("users", {
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
-    .notNull(),
+    .notNull()
+    .$onUpdate(() => new Date()),
 });
 
 export type User = typeof users.$inferSelect;

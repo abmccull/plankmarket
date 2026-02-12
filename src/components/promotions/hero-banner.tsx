@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -49,16 +50,18 @@ export function PremiumHeroBanner() {
       <div className="container mx-auto px-4 py-12 md:py-16">
         <div className="flex flex-col md:flex-row items-center gap-8">
           {/* Image */}
-          <div className="w-full md:w-1/2 aspect-[16/9] rounded-lg overflow-hidden bg-black/20">
+          <div className="w-full md:w-1/2 aspect-[16/9] rounded-lg overflow-hidden bg-black/20 relative">
             {imageUrl ? (
-              <img
+              <Image
                 src={imageUrl}
                 alt={listing.title}
-                className="h-full w-full object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center">
-                <Package className="h-16 w-16 opacity-50" />
+                <Package className="h-16 w-16 opacity-50" aria-hidden="true" />
               </div>
             )}
           </div>
@@ -89,7 +92,7 @@ export function PremiumHeroBanner() {
                 className="bg-white text-primary hover:bg-white/90"
               >
                 View Listing
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
               </Button>
             </Link>
           </div>
@@ -103,8 +106,9 @@ export function PremiumHeroBanner() {
               size="icon"
               className="text-white/70 hover:text-white hover:bg-white/10 h-8 w-8"
               onClick={goPrev}
+              aria-label="Previous listing"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
             <div className="flex gap-1.5">
               {premiumListings.map((_, idx) => (
@@ -117,6 +121,7 @@ export function PremiumHeroBanner() {
                       : "w-2 bg-white/40 hover:bg-white/60"
                   )}
                   onClick={() => setActiveIndex(idx)}
+                  aria-label={`Go to listing ${idx + 1}`}
                 />
               ))}
             </div>
@@ -125,8 +130,9 @@ export function PremiumHeroBanner() {
               size="icon"
               className="text-white/70 hover:text-white hover:bg-white/10 h-8 w-8"
               onClick={goNext}
+              aria-label="Next listing"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         )}

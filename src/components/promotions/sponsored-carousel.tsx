@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -53,16 +54,18 @@ export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
             size="icon"
             className="h-7 w-7"
             onClick={() => scroll("left")}
+            aria-label="Scroll sponsored listings left"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
             className="h-7 w-7"
             onClick={() => scroll("right")}
+            aria-label="Scroll sponsored listings right"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </div>
@@ -80,14 +83,16 @@ export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
             <Card className="overflow-hidden hover:shadow-md transition-shadow border-primary/20">
               <div className="aspect-[4/3] bg-muted relative overflow-hidden">
                 {listing.media?.[0] ? (
-                  <img
+                  <Image
                     src={listing.media[0].url}
                     alt={listing.title}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="220px"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center">
-                    <Package className="h-8 w-8 text-muted-foreground/50" />
+                    <Package className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
                   </div>
                 )}
                 <div className="absolute top-1.5 left-1.5">

@@ -1,7 +1,6 @@
 import {
   createTRPCRouter,
   protectedProcedure,
-  sellerProcedure,
 } from "../trpc";
 import {
   createOfferSchema,
@@ -112,7 +111,7 @@ export const offerRouter = createTRPCRouter({
         ),
       });
 
-      if (!listing) {
+      if (!listing || !listing.sellerId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Listing not found or no longer available",
@@ -146,19 +145,11 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check if user has a pending or countered offer
-      const existingOffer = await ctx.db.query.offers.findFirst({
-        where: and(
-          eq(offers.listingId, input.listingId),
-          eq(offers.buyerId, ctx.user.id),
-          or(eq(offers.status, "pending"), eq(offers.status, "countered"))
-        ),
-      });
-
-      if (existingOffer) {
+      // Validate quantity against available inventory
+      if (input.quantitySqFt > listing.totalSqFt) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "You already have an active offer on this listing",
+          message: `Maximum available quantity is ${listing.totalSqFt} sq ft`,
         });
       }
 
@@ -172,13 +163,29 @@ export const offerRouter = createTRPCRouter({
 
       // Use transaction to create offer + event atomically
       const result = await ctx.db.transaction(async (tx) => {
+        // Check if user has a pending or countered offer (inside transaction for atomicity)
+        const existingOffer = await tx.query.offers.findFirst({
+          where: and(
+            eq(offers.listingId, input.listingId),
+            eq(offers.buyerId, ctx.user.id),
+            or(eq(offers.status, "pending"), eq(offers.status, "countered"))
+          ),
+        });
+
+        if (existingOffer) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "You already have an active offer on this listing",
+          });
+        }
+
         // Create the offer
         const [offer] = await tx
           .insert(offers)
           .values({
             listingId: input.listingId,
             buyerId: ctx.user.id,
-            sellerId: listing.sellerId,
+            sellerId: listing.sellerId!,
             offerPricePerSqFt: input.offerPricePerSqFt,
             quantitySqFt: input.quantitySqFt,
             totalPrice,
@@ -214,7 +221,7 @@ export const offerRouter = createTRPCRouter({
 
       // Create notification for seller
       await createOfferNotification(ctx.db, {
-        recipientId: listing.sellerId,
+        recipientId: listing.sellerId!,
         title: "New Offer Received",
         message: `You received a new offer of $${input.offerPricePerSqFt}/sq ft on "${listing.title}"`,
         data: {
@@ -407,7 +414,7 @@ export const offerRouter = createTRPCRouter({
       validateTurn(offer, ctx.user.id);
 
       // Determine the accepted price (counter price if available, else offer price)
-      const acceptedPrice = offer.counterPricePerSqFt || offer.offerPricePerSqFt;
+      const acceptedPrice = offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
       const totalPrice =
         Math.round(acceptedPrice * offer.quantitySqFt * 100) / 100;
 
@@ -739,10 +746,11 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Get all events
+      // Get all events (L3: add reasonable limit)
       const events = await ctx.db.query.offerEvents.findMany({
         where: eq(offerEvents.offerId, input.offerId),
         orderBy: [desc(offerEvents.createdAt)],
+        limit: 100,
         with: {
           actor: {
             columns: {
@@ -880,6 +888,7 @@ export const offerRouter = createTRPCRouter({
       const offersList = await ctx.db.query.offers.findMany({
         where: whereClause,
         orderBy: [desc(offers.updatedAt)],
+        limit: 100,
         with: {
           buyer: {
             columns: {
@@ -901,132 +910,5 @@ export const offerRouter = createTRPCRouter({
       });
 
       return offersList;
-    }),
-
-  /**
-   * Legacy endpoint: seller responds to an offer.
-   * @deprecated Use counterOffer, acceptOffer, or rejectOffer instead.
-   */
-  respond: sellerProcedure
-    .input(
-      z.object({
-        offerId: z.string().uuid(),
-        action: z.enum(["accept", "reject", "counter"]),
-        counterPricePerSqFt: z
-          .number()
-          .positive()
-          .max(1000)
-          .optional(),
-        counterMessage: z.string().max(500).optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const offer = await ctx.db.query.offers.findFirst({
-        where: eq(offers.id, input.offerId),
-        with: {
-          listing: true,
-        },
-      });
-
-      if (!offer) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Offer not found",
-        });
-      }
-
-      if (offer.sellerId !== ctx.user.id) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You can only respond to offers on your listings",
-        });
-      }
-
-      if (offer.status !== "pending") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This offer has already been responded to",
-        });
-      }
-
-      if (new Date() > offer.expiresAt) {
-        await ctx.db
-          .update(offers)
-          .set({ status: "expired" })
-          .where(eq(offers.id, input.offerId));
-
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This offer has expired",
-        });
-      }
-
-      const statusMap = {
-        accept: "accepted",
-        reject: "rejected",
-        counter: "countered",
-      } as const;
-      const newStatus = statusMap[input.action];
-      const updateData: Record<string, unknown> = {
-        status: newStatus,
-        updatedAt: new Date(),
-      };
-
-      if (input.action === "counter") {
-        updateData.counterPricePerSqFt = input.counterPricePerSqFt;
-        updateData.counterMessage = input.counterMessage;
-      }
-
-      const [updatedOffer] = await ctx.db
-        .update(offers)
-        .set(updateData)
-        .where(eq(offers.id, input.offerId))
-        .returning();
-
-      return updatedOffer;
-    }),
-
-  /**
-   * Legacy endpoint: buyer withdraws their offer.
-   * @deprecated Use withdrawOffer instead.
-   */
-  withdraw: protectedProcedure
-    .input(z.object({ offerId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const offer = await ctx.db.query.offers.findFirst({
-        where: eq(offers.id, input.offerId),
-      });
-
-      if (!offer) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Offer not found",
-        });
-      }
-
-      if (offer.buyerId !== ctx.user.id) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You can only withdraw your own offers",
-        });
-      }
-
-      if (offer.status !== "pending") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You can only withdraw pending offers",
-        });
-      }
-
-      const [updatedOffer] = await ctx.db
-        .update(offers)
-        .set({
-          status: "withdrawn",
-          updatedAt: new Date(),
-        })
-        .where(eq(offers.id, input.offerId))
-        .returning();
-
-      return updatedOffer;
     }),
 });

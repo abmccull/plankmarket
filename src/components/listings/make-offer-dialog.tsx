@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -61,7 +61,7 @@ export function MakeOfferDialog({
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     reset,
     formState: { errors },
   } = useForm<MakeOfferFormData>({
@@ -71,9 +71,8 @@ export function MakeOfferDialog({
     },
   });
 
-  const watchedValues = watch();
-  const offerPricePerSqFt = watchedValues.offerPricePerSqFt || 0;
-  const quantitySqFt = watchedValues.quantitySqFt || 0;
+  const offerPricePerSqFt = useWatch({ control, name: "offerPricePerSqFt" }) || 0;
+  const quantitySqFt = useWatch({ control, name: "quantitySqFt" }) || 0;
 
   const subtotal = offerPricePerSqFt * quantitySqFt;
   const buyerFee = subtotal * BUYER_FEE_PERCENTAGE;

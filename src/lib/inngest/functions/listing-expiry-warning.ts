@@ -4,6 +4,16 @@ import { listings } from "@/server/db/schema/listings";
 import { users } from "@/server/db/schema/users";
 import { eq, and, lte, gte } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { env } from "@/env";
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 export const listingExpiryWarning = inngest.createFunction(
   { id: "listing-expiry-warning", name: "Send Listing Expiry Warnings" },
@@ -46,16 +56,16 @@ export const listingExpiryWarning = inngest.createFunction(
       for (const listing of results) {
         try {
           await resend.emails.send({
-            from: "PlankMarket <noreply@plankmarket.com>",
+            from: env.EMAIL_FROM,
             to: listing.sellerEmail,
-            subject: `Your listing "${listing.listingTitle}" expires in 7 days`,
+            subject: `Your listing "${escapeHtml(listing.listingTitle)}" expires in 7 days`,
             html: `
-              <p>Hi ${listing.sellerName},</p>
-              <p>Your listing "<strong>${listing.listingTitle}</strong>" will expire in 7 days on ${listing.expiresAt ? new Date(listing.expiresAt).toLocaleDateString() : "soon"}.</p>
+              <p>Hi ${escapeHtml(listing.sellerName)},</p>
+              <p>Your listing "<strong>${escapeHtml(listing.listingTitle)}</strong>" will expire in 7 days on ${listing.expiresAt ? new Date(listing.expiresAt).toLocaleDateString() : "soon"}.</p>
               <p>To keep your listing active:</p>
               <ul>
-                <li><a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/seller/listings/${listing.listingId}/edit">Edit and republish your listing</a></li>
-                <li>Or <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/seller/listings">manage your listings</a></li>
+                <li><a href="${env.NEXT_PUBLIC_APP_URL}/seller/listings/${listing.listingId}/edit">Edit and republish your listing</a></li>
+                <li>Or <a href="${env.NEXT_PUBLIC_APP_URL}/seller/listings">manage your listings</a></li>
               </ul>
               <p>If you've already sold this inventory, you can mark the listing as sold.</p>
             `,

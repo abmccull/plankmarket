@@ -292,7 +292,7 @@ function TransactionsTab() {
       statusFilter !== "all"
         ? (statusFilter as "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded")
         : undefined,
-    escrowStatus: escrowFilter !== "all" ? escrowFilter : undefined,
+    escrowStatus: escrowFilter !== "all" ? escrowFilter as "none" | "held" | "released" | "refunded" : undefined,
     page,
     limit: 50,
   };

@@ -3,7 +3,7 @@ import {
   sellerProcedure,
 } from "../trpc";
 import { media, listings } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -25,6 +25,24 @@ export const uploadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Verify ownership if listingId is provided
+      if (input.listingId) {
+        const listing = await ctx.db.query.listings.findFirst({
+          where: and(
+            eq(listings.id, input.listingId),
+            eq(listings.sellerId, ctx.user.id)
+          ),
+          columns: { id: true },
+        });
+
+        if (!listing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Listing not found or you do not have permission",
+          });
+        }
+      }
+
       const records = await ctx.db
         .insert(media)
         .values(
@@ -43,7 +61,7 @@ export const uploadRouter = createTRPCRouter({
       return records;
     }),
 
-  // Reorder media — batched into a single query using CASE expression
+  // Reorder media — using parameterized queries (no sql.raw)
   reorderMedia: sellerProcedure
     .input(
       z.object({
@@ -59,14 +77,35 @@ export const uploadRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       if (input.mediaOrder.length === 0) return { success: true };
 
-      // Build a single UPDATE with CASE expression instead of N separate queries
-      const ids = input.mediaOrder.map((m) => m.id);
-      const caseFragments = input.mediaOrder
-        .map((m) => `WHEN '${m.id}' THEN ${m.sortOrder}`)
-        .join(" ");
+      // Verify ownership of the listing
+      const listing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.listingId),
+          eq(listings.sellerId, ctx.user.id)
+        ),
+        columns: { id: true },
+      });
 
-      await ctx.db.execute(
-        sql`UPDATE media SET sort_order = CASE id::text ${sql.raw(caseFragments)} END WHERE listing_id = ${input.listingId} AND id = ANY(${ids})`
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found or you do not have permission",
+        });
+      }
+
+      // Use parameterized queries instead of sql.raw() to prevent SQL injection
+      await Promise.all(
+        input.mediaOrder.map(({ id, sortOrder }) =>
+          ctx.db
+            .update(media)
+            .set({ sortOrder })
+            .where(
+              and(
+                eq(media.id, id),
+                eq(media.listingId, input.listingId)
+              )
+            )
+        )
       );
 
       return { success: true };
@@ -97,10 +136,26 @@ export const uploadRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  // Get media for a listing
+  // Get media for a listing (verify ownership)
   getListingMedia: sellerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Verify ownership
+      const listing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.listingId),
+          eq(listings.sellerId, ctx.user.id)
+        ),
+        columns: { id: true },
+      });
+
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found or you do not have permission",
+        });
+      }
+
       const items = await ctx.db.query.media.findMany({
         where: eq(media.listingId, input.listingId),
         orderBy: (media, { asc }) => [asc(media.sortOrder)],

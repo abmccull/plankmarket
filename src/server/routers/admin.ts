@@ -4,6 +4,10 @@ import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+function escapeLike(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export const adminRouter = createTRPCRouter({
   // Get dashboard statistics
   getStats: adminProcedure.query(async ({ ctx }) => {
@@ -84,9 +88,9 @@ export const adminRouter = createTRPCRouter({
       if (input.query) {
         conditions.push(
           or(
-            like(users.name, `%${input.query}%`),
-            like(users.email, `%${input.query}%`),
-            like(users.businessName, `%${input.query}%`)
+            like(users.name, `%${escapeLike(input.query)}%`),
+            like(users.email, `%${escapeLike(input.query)}%`),
+            like(users.businessName, `%${escapeLike(input.query)}%`)
           )
         );
       }
@@ -147,7 +151,7 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.query) {
-        conditions.push(like(listings.title, `%${input.query}%`));
+        conditions.push(like(listings.title, `%${escapeLike(input.query)}%`));
       }
 
       if (input.status) {
@@ -221,7 +225,7 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.orderNumber) {
-        conditions.push(like(orders.orderNumber, `%${input.orderNumber}%`));
+        conditions.push(like(orders.orderNumber, `%${escapeLike(input.orderNumber)}%`));
       }
 
       if (input.status) {
@@ -289,6 +293,7 @@ export const adminRouter = createTRPCRouter({
     const pendingUsers = await ctx.db.query.users.findMany({
       where: eq(users.verificationStatus, "pending"),
       orderBy: [desc(users.verificationRequestedAt)],
+      limit: 100,
     });
 
     return pendingUsers;
@@ -503,7 +508,7 @@ export const adminRouter = createTRPCRouter({
             "refunded",
           ])
           .optional(),
-        escrowStatus: z.string().optional(),
+        escrowStatus: z.enum(["none", "held", "released", "refunded"]).optional(),
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(50),
       })
@@ -514,7 +519,7 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.search) {
-        conditions.push(like(orders.orderNumber, `%${input.search}%`));
+        conditions.push(like(orders.orderNumber, `%${escapeLike(input.search)}%`));
       }
 
       if (input.status) {

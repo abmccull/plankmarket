@@ -37,7 +37,7 @@ export default function CheckoutPage() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
 
-  const { data: listing, isLoading } = trpc.listing.getById.useQuery({
+  const { data: listing, isLoading, isError, error } = trpc.listing.getById.useQuery({
     id: listingId,
   });
 
@@ -108,6 +108,17 @@ export default function CheckoutPage() {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="container mx-auto px-4 py-20 text-center">
+        <h1 className="text-2xl font-bold">Error Loading Listing</h1>
+        <p className="text-muted-foreground mt-2">
+          {error?.message || "An unexpected error occurred. Please try again."}
+        </p>
       </div>
     );
   }

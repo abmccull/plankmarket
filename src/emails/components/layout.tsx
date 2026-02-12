@@ -4,6 +4,7 @@ import {
   Head,
   Html,
   Img,
+  Link,
   Section,
   Text,
   Hr,
@@ -40,7 +41,11 @@ export function EmailLayout({ children, previewText }: EmailLayoutProps) {
             </Text>
             <Text style={footerText}>
               You are receiving this email because you have an account on
-              PlankMarket.
+              PlankMarket. To manage your email preferences, visit your{" "}
+              <Link href={`${process.env.NEXT_PUBLIC_APP_URL ?? "https://plankmarket.com"}/settings/notifications`} style={footerLink}>
+                notification settings
+              </Link>
+              .
             </Text>
           </Section>
         </Container>
@@ -100,4 +105,9 @@ const footerText = {
   fontSize: "12px",
   lineHeight: "16px",
   margin: "4px 0",
+};
+
+const footerLink = {
+  color: "#5C4033",
+  textDecoration: "underline" as const,
 };

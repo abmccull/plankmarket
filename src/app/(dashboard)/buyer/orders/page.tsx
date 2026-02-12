@@ -9,7 +9,7 @@ import { Loader2, Package } from "lucide-react";
 import type { OrderStatus } from "@/types";
 
 export default function BuyerOrdersPage() {
-  const { data, isLoading } = trpc.order.getMyOrders.useQuery({
+  const { data, isLoading, isError, error } = trpc.order.getMyOrders.useQuery({
     page: 1,
     limit: 50,
   });
@@ -26,6 +26,13 @@ export default function BuyerOrdersPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : isError ? (
+        <div className="text-center py-12 border rounded-lg bg-destructive/5">
+          <h3 className="text-lg font-semibold">Failed to load orders</h3>
+          <p className="text-muted-foreground mt-1">
+            {error?.message || "An unexpected error occurred. Please try again."}
+          </p>
         </div>
       ) : data?.items.length === 0 ? (
         <div className="text-center py-12 border rounded-lg bg-muted/20">

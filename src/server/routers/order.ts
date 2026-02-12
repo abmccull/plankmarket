@@ -9,7 +9,7 @@ import {
   updateOrderStatusSchema,
 } from "@/lib/validators/order";
 import { orders, listings } from "../db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, or, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { calculateBuyerFee, calculateSellerFee } from "@/lib/utils";
@@ -49,7 +49,7 @@ export const orderRouter = createTRPCRouter({
           )
           .for("update");
 
-        if (!listing) {
+        if (!listing || !listing.sellerId) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Listing not found or no longer available",
@@ -97,7 +97,7 @@ export const orderRouter = createTRPCRouter({
           .values({
             orderNumber: generateOrderNumber(),
             buyerId: ctx.user.id,
-            sellerId: listing.sellerId,
+            sellerId: listing.sellerId!,
             listingId: listing.id,
             quantitySqFt: input.quantitySqFt,
             pricePerSqFt,
@@ -166,12 +166,13 @@ export const orderRouter = createTRPCRouter({
       const order = await ctx.db.query.orders.findFirst({
         where: and(
           eq(orders.id, input.id),
-          // Users can only see their own orders
+          // Users can see orders where they are either the buyer or the seller
           ctx.user.role === "admin"
             ? undefined
-            : ctx.user.role === "seller"
-              ? eq(orders.sellerId, ctx.user.id)
-              : eq(orders.buyerId, ctx.user.id)
+            : or(
+                eq(orders.buyerId, ctx.user.id),
+                eq(orders.sellerId, ctx.user.id)
+              )
         ),
         with: {
           listing: {
@@ -367,65 +368,73 @@ export const orderRouter = createTRPCRouter({
   updateStatus: sellerProcedure
     .input(updateOrderStatusSchema)
     .mutation(async ({ ctx, input }) => {
-      const order = await ctx.db.query.orders.findFirst({
-        where: and(
-          eq(orders.id, input.orderId),
-          eq(orders.sellerId, ctx.user.id)
-        ),
+      const updated = await ctx.db.transaction(async (tx) => {
+        // Lock the order row to prevent concurrent status changes
+        const [order] = await tx
+          .select()
+          .from(orders)
+          .where(
+            and(
+              eq(orders.id, input.orderId),
+              eq(orders.sellerId, ctx.user.id)
+            )
+          )
+          .for("update");
+
+        if (!order) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Order not found",
+          });
+        }
+
+        // Validate status transition
+        const allowedTransitions = VALID_STATUS_TRANSITIONS[order.status];
+        if (!allowedTransitions || !allowedTransitions.includes(input.status)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot transition order from "${order.status}" to "${input.status}"`,
+          });
+        }
+
+        const updateData: Record<string, unknown> = {
+          status: input.status,
+          updatedAt: new Date(),
+        };
+
+        if (input.trackingNumber) {
+          updateData.trackingNumber = input.trackingNumber;
+        }
+        if (input.carrier) {
+          updateData.carrier = input.carrier;
+        }
+        if (input.notes) {
+          updateData.notes = input.notes;
+        }
+
+        switch (input.status) {
+          case "confirmed":
+            updateData.confirmedAt = new Date();
+            break;
+          case "shipped":
+            updateData.shippedAt = new Date();
+            break;
+          case "delivered":
+            updateData.deliveredAt = new Date();
+            break;
+          case "cancelled":
+            updateData.cancelledAt = new Date();
+            break;
+        }
+
+        const [updatedOrder] = await tx
+          .update(orders)
+          .set(updateData)
+          .where(eq(orders.id, input.orderId))
+          .returning();
+
+        return updatedOrder;
       });
-
-      if (!order) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Order not found",
-        });
-      }
-
-      // Validate status transition
-      const allowedTransitions = VALID_STATUS_TRANSITIONS[order.status];
-      if (!allowedTransitions || !allowedTransitions.includes(input.status)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Cannot transition order from "${order.status}" to "${input.status}"`,
-        });
-      }
-
-      const updateData: Record<string, unknown> = {
-        status: input.status,
-        updatedAt: new Date(),
-      };
-
-      if (input.trackingNumber) {
-        updateData.trackingNumber = input.trackingNumber;
-      }
-      if (input.carrier) {
-        updateData.carrier = input.carrier;
-      }
-      if (input.notes) {
-        updateData.notes = input.notes;
-      }
-
-      // Set timestamp based on status
-      switch (input.status) {
-        case "confirmed":
-          updateData.confirmedAt = new Date();
-          break;
-        case "shipped":
-          updateData.shippedAt = new Date();
-          break;
-        case "delivered":
-          updateData.deliveredAt = new Date();
-          break;
-        case "cancelled":
-          updateData.cancelledAt = new Date();
-          break;
-      }
-
-      const [updated] = await ctx.db
-        .update(orders)
-        .set(updateData)
-        .where(eq(orders.id, input.orderId))
-        .returning();
 
       return updated;
     }),

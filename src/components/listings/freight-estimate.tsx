@@ -48,13 +48,11 @@ export function FreightEstimate({
     const minEstimate = baseRate + estimatedMiles * perMileRate + weightFactor;
     const maxEstimate = minEstimate * 1.4;
 
-    setTimeout(() => {
-      setEstimate({
-        min: Math.round(minEstimate),
-        max: Math.round(maxEstimate),
-      });
-      setIsCalculating(false);
-    }, 500);
+    setEstimate({
+      min: Math.round(minEstimate),
+      max: Math.round(maxEstimate),
+    });
+    setIsCalculating(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {

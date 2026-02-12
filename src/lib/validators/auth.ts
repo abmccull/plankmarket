@@ -6,7 +6,14 @@ export const registerSchema = z.object({
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
-    .max(72, "Password must be at most 72 characters"),
+    .max(72, "Password must be at most 72 characters")
+    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .regex(/[0-9]/, "Password must contain at least one digit")
+    .regex(
+      /[^a-zA-Z0-9]/,
+      "Password must contain at least one special character"
+    ),
   name: z.string().min(2, "Name must be at least 2 characters").max(255),
   role: z.enum(["buyer", "seller"]),
   businessName: z.string().min(2, "Business name is required").max(255),
@@ -42,6 +49,7 @@ export const updateProfileSchema = z.object({
   businessState: z.string().length(2).optional().nullable(),
   businessZip: z.string().max(10).optional().nullable(),
   avatarUrl: z.string().url().optional().nullable(),
+  zipCode: z.string().length(5).regex(/^\d{5}$/).optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

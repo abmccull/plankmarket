@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   listingFormSchema,
@@ -129,14 +129,14 @@ export default function CreateListingPage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm<ListingFormInput>({
     resolver: zodResolver(listingFormSchema) as never,
     defaultValues: formData as Partial<ListingFormInput>,
   });
 
-  const watchedValues = watch();
+  const watchedValues = useWatch({ control }) as ListingFormInput;
 
   const handleNext = async () => {
     // Update form data before validation

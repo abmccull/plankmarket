@@ -26,7 +26,7 @@ export default function SellerListingsPage() {
     title: string;
   } | null>(null);
 
-  const { data, isLoading } = trpc.listing.getMyListings.useQuery({
+  const { data, isLoading, isError, error } = trpc.listing.getMyListings.useQuery({
     status: activeTab,
     page: 1,
     limit: 50,
@@ -67,6 +67,13 @@ export default function SellerListingsPage() {
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : isError ? (
+            <div className="text-center py-12 border rounded-lg bg-destructive/5">
+              <h3 className="text-lg font-semibold">Failed to load listings</h3>
+              <p className="text-muted-foreground mt-1">
+                {error?.message || "An unexpected error occurred. Please try again."}
+              </p>
             </div>
           ) : data?.items.length === 0 ? (
             <div className="text-center py-12 border rounded-lg bg-muted/20">

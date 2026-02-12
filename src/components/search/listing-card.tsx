@@ -90,7 +90,7 @@ export function ListingCard({ listing }: ListingCardProps) {
             </>
           ) : (
             <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-muted to-muted/50">
-              <Package className="h-12 w-12 text-muted-foreground/30 mb-2" />
+              <Package className="h-12 w-12 text-muted-foreground/30 mb-2" aria-hidden="true" />
               <span className="text-xs text-muted-foreground/50">No image</span>
             </div>
           )}
@@ -143,7 +143,7 @@ export function ListingCard({ listing }: ListingCardProps) {
             <div className="flex items-center gap-3">
               {listing.locationState && (
                 <span className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
+                  <MapPin className="h-3 w-3" aria-hidden="true" />
                   {listing.locationCity
                     ? `${listing.locationCity}, ${listing.locationState}`
                     : listing.locationState}
@@ -152,11 +152,11 @@ export function ListingCard({ listing }: ListingCardProps) {
             </div>
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
-                <Eye className="h-3 w-3" />
+                <Eye className="h-3 w-3" aria-hidden="true" />
                 {listing.viewsCount}
               </span>
               <span className="flex items-center gap-1">
-                <Heart className="h-3 w-3" />
+                <Heart className="h-3 w-3" aria-hidden="true" />
                 {listing.watchlistCount}
               </span>
             </div>
@@ -170,6 +170,7 @@ export function ListingCard({ listing }: ListingCardProps) {
                   className="h-3 w-3 text-secondary"
                   viewBox="0 0 20 20"
                   fill="currentColor"
+                  aria-hidden="true"
                 >
                   <path
                     fillRule="evenodd"
