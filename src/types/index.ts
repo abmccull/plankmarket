@@ -141,7 +141,11 @@ export interface SearchFilters {
   colorFamily?: ColorFamily[];
   finishType?: FinishType[];
   width?: number[];
+  widthMin?: number;
+  widthMax?: number;
   thickness?: number[];
+  thicknessMin?: number;
+  thicknessMax?: number;
   wearLayer?: number[];
   priceMin?: number;
   priceMax?: number;
