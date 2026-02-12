@@ -23,31 +23,18 @@ function LogoIcon({ size = 32 }: { size?: number }) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      {/* Stacked planks */}
-      <rect x="4" y="6" width="40" height="8" rx="2" fill="oklch(0.40 0.10 55)" />
-      <rect x="4" y="18" width="40" height="8" rx="2" fill="oklch(0.45 0.08 55)" />
-      <rect x="4" y="30" width="40" height="8" rx="2" fill="oklch(0.50 0.07 55)" />
-      {/* B2B arrows */}
-      <path
-        d="M16 14 L24 10 L32 14"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <path
-        d="M32 34 L24 38 L16 34"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      {/* Subtle wood grain lines */}
-      <line x1="10" y1="10" x2="38" y2="10" stroke="oklch(0.50 0.08 55)" strokeWidth="0.5" opacity="0.3" />
-      <line x1="10" y1="22" x2="38" y2="22" stroke="oklch(0.55 0.06 55)" strokeWidth="0.5" opacity="0.3" />
-      <line x1="10" y1="34" x2="38" y2="34" stroke="oklch(0.60 0.05 55)" strokeWidth="0.5" opacity="0.3" />
+      {/* Top plank (left-aligned) */}
+      <rect x="2" y="2" width="34" height="10" rx="1.5" fill="#6B3A2A" />
+      {/* Left-pointing arrow */}
+      <polygon points="2,14.5 10,10 10,19" fill="white" />
+      <rect x="10" y="12.5" width="22" height="4" rx="0.5" fill="white" />
+      {/* Middle plank (shifted right) */}
+      <rect x="12" y="18" width="34" height="10" rx="1.5" fill="#6B3A2A" />
+      {/* Right-pointing arrow */}
+      <rect x="16" y="30.5" width="22" height="4" rx="0.5" fill="white" />
+      <polygon points="46,32.5 38,28 38,37" fill="white" />
+      {/* Bottom plank (slightly shifted) */}
+      <rect x="6" y="36" width="38" height="10" rx="1.5" fill="#6B3A2A" />
     </svg>
   );
 }
