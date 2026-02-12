@@ -3,6 +3,7 @@ import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { env } from "@/env";
 import zipcodes from "zipcodes";
 
 export const authRouter = createTRPCRouter({
@@ -16,6 +17,7 @@ export const authRouter = createTRPCRouter({
           email: input.email,
           password: input.password,
           options: {
+            emailRedirectTo: `${env.NEXT_PUBLIC_APP_URL}/auth/callback`,
             data: {
               name: input.name,
               role: input.role,
