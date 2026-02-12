@@ -16,6 +16,13 @@ import { BoostModal } from "@/components/promotions/boost-modal";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import type { ListingStatus, PromotionTier } from "@/types";
 
+/**
+ * Renders the Seller "My Listings" management page with listing filters, create/edit/view actions, and a boost flow.
+ *
+ * Displays tabs for listing statuses (All, Active, Draft, Sold, Expired), a paginated list of the user's listings, and contextual actions for each listing including Edit, View, and a Boost action that opens a boost modal for eligible active listings. When no listings exist a placeholder and a Create Listing action are shown; while listings are loading a centered spinner is displayed.
+ *
+ * @returns The React element for the seller listings management page.
+ */
 export default function SellerListingsPage() {
   const [activeTab, setActiveTab] = useState<ListingStatus | undefined>(
     undefined

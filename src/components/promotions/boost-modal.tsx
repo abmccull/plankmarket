@@ -69,6 +69,15 @@ const TIER_INFO: Record<
 
 const DURATIONS = [7, 14, 30] as const;
 
+/**
+ * Render a modal that lets users choose a promotion tier and duration and purchase a boost for a listing.
+ *
+ * @param listingId - The ID of the listing to be promoted
+ * @param listingTitle - The listing title shown in the modal description
+ * @param open - Whether the modal is currently open
+ * @param onOpenChange - Callback invoked when the modal open state should change
+ * @returns The rendered modal as a `JSX.Element`
+ */
 export function BoostModal({
   listingId,
   listingTitle,

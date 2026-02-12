@@ -37,6 +37,15 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "popularity", label: "Most Popular" },
 ];
 
+/**
+ * Render the listings page UI with search, filters, sponsored promotions, listing results, and pagination.
+ *
+ * Displays a search input with a 300ms debounced update to the search store, controls for sorting and view mode,
+ * an optional filter sidebar, a sponsored carousel when featured promotions exist, and the main listings area
+ * that presents loading, empty, and populated states plus pagination.
+ *
+ * @returns The listings page React element
+ */
 export default function ListingsPage() {
   const {
     filters,

@@ -27,6 +27,17 @@ interface SponsoredCarouselProps {
   listings: SponsoredListing[];
 }
 
+/**
+ * Render a horizontally scrollable carousel of sponsored listing cards with navigation controls.
+ *
+ * Each card links to its listing page and shows an image (or placeholder), a promotion badge, title,
+ * price per square foot, and total square footage. The carousel provides left/right buttons that
+ * scroll the list by a fixed amount for navigation.
+ *
+ * @param listings - Array of sponsored listings to display; each item should include id, title,
+ *   pricing and sizing fields, and optional media, promotion tier, and seller info.
+ * @returns A React element containing the carousel, or `null` if `listings` is empty.
+ */
 export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 

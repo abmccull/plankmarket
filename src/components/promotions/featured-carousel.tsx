@@ -6,6 +6,13 @@ import { ListingCard } from "@/components/search/listing-card";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Renders a "Featured Inventory" section showing promoted listing cards.
+ *
+ * Displays a centered loading spinner while featured listings are being fetched and returns `null` when no featured listings are available.
+ *
+ * @returns The featured listings section as a JSX element, or `null` when there are no featured listings.
+ */
 export function FeaturedCarousel() {
   const { data: featuredListings, isLoading } =
     trpc.promotion.getFeatured.useQuery({ limit: 6 });

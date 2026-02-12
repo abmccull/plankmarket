@@ -20,6 +20,11 @@ import {
 import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
 import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
 
+/**
+ * Primary marketing homepage for PlankMarket that composes the hero, promotional banners, featured inventory, product workflow, buyer/seller value propositions, stats, and call-to-action sections.
+ *
+ * @returns The rendered homepage React element containing the assembled marketing sections and promotional components.
+ */
 export default function HomePage() {
   return (
     <>

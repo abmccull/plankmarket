@@ -11,6 +11,17 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
 
 const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
 
+/**
+ * Handle incoming Stripe webhook requests, verify the signature, and apply side effects in the database.
+ *
+ * Processes the following Stripe events: `payment_intent.succeeded`, `payment_intent.payment_failed`, and `account.updated`.
+ * - For promotion payments: activates or marks promotions as failed and denormalizes promotion data onto listings.
+ * - For order payments: updates order payment status and confirmation.
+ * - For account updates: updates user onboarding completion based on account capabilities.
+ *
+ * @param req - The incoming Stripe webhook HTTP request
+ * @returns A JSON NextResponse acknowledging receipt (`{ received: true }`) on success, or a JSON error object with an appropriate HTTP status code on failure
+ */
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("stripe-signature");

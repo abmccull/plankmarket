@@ -10,7 +10,14 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
 });
 
 // Vercel Cron: runs every hour
-// Add to vercel.json: { "crons": [{ "path": "/api/cron/expire-promotions", "schedule": "0 * * * *" }] }
+/**
+ * Expires stale promotions, clears related listing promotion fields, and issues pro‑rata refunds when eligible.
+ *
+ * Verifies the cron secret from the `Authorization` header before running. Deactivates promotions whose `expiresAt` is before now, clears denormalized promotion fields on affected listings, and for listings that expired or were sold before the promotion end, computes a pro‑rata refund and attempts a Stripe refund; successfully refunded promotions are marked `paymentStatus: "refunded"`.
+ *
+ * @param req - The incoming NextRequest. Must include an `Authorization: Bearer <INNGEST_EVENT_KEY>` header.
+ * @returns An object with `expired`: the number of promotions deactivated, and `refunded`: the number of promotions successfully refunded.
+ */
 
 export async function GET(req: NextRequest) {
   // Verify cron secret to prevent unauthorized access

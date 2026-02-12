@@ -59,6 +59,17 @@ const conditionLabels: Record<string, string> = {
   other: "Other",
 };
 
+/**
+ * Render a compact listing card that displays a listing's image, pricing, badges, location, stats, and seller info.
+ *
+ * The card links to /listings/{id} and visually highlights promotion tiers, buy-now availability, material, condition,
+ * species, and seller verification when present.
+ *
+ * @param listing - The listing object to display (expects fields such as id, title, media, askPricePerSqFt, totalSqFt,
+ *   buyNowPrice, materialType, condition, species, locationCity, locationState, viewsCount, watchlistCount,
+ *   seller, promotionTier, and isPromoted).
+ * @returns The JSX element for the listing card.
+ */
 export function ListingCard({ listing }: ListingCardProps) {
   const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
 

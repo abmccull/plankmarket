@@ -9,6 +9,13 @@ import { formatCurrency, formatSqFt } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { ArrowRight, ChevronLeft, ChevronRight, Package } from "lucide-react";
 
+/**
+ * Displays a rotating hero banner that highlights premium listings with image, key details, a "View Listing" CTA, and navigation controls.
+ *
+ * The banner auto-rotates through available premium listings every 5 seconds when there is more than one listing and provides previous/next buttons and dot indicators for manual navigation.
+ *
+ * @returns A JSX element containing the premium listings hero banner, or `null` when no premium listings are available.
+ */
 export function PremiumHeroBanner() {
   const { data: premiumListings } = trpc.promotion.getPremiumHero.useQuery();
   const [activeIndex, setActiveIndex] = useState(0);

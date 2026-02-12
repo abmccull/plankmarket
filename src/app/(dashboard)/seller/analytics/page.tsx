@@ -12,6 +12,17 @@ import { formatCurrency, formatNumber, formatRelativeTime } from "@/lib/utils";
 import { BarChart3, Eye, Package, DollarSign, Loader2, Rocket, Clock, XCircle } from "lucide-react";
 import type { PromotionTier } from "@/types";
 
+/**
+ * Render the seller analytics dashboard showing listings, orders, revenue, and promotions.
+ *
+ * Fetches seller listing, order, and promotions data, presents summary stat cards, breakdowns
+ * by status, and an active promotions list with controls to cancel promotions. Displays a
+ * centered loading spinner while primary data is loading and handles empty states for each section.
+ *
+ * Cancelling a promotion triggers a mutation that invalidates the promotions cache so the UI reflects updates.
+ *
+ * @returns The page's React element containing stat cards, listings-by-status, revenue-by-status, and the promotions section with actions.
+ */
 export default function SellerAnalyticsPage() {
   const { data: listingStats, isLoading: listingsLoading } =
     trpc.listing.getSellerStats.useQuery();

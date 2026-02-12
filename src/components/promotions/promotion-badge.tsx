@@ -26,6 +26,13 @@ const TIER_STYLES: Record<string, { label: string; className: string }> = {
   },
 };
 
+/**
+ * Render a styled promotion badge for a given promotion tier.
+ *
+ * @param tier - The promotion tier to display; when `null`, `undefined`, or not recognized, no badge is rendered.
+ * @param className - Additional CSS classes to apply to the badge container.
+ * @returns The rendered Badge element showing the tier label when `tier` is valid, `null` otherwise.
+ */
 export function PromotionBadge({ tier, className }: PromotionBadgeProps) {
   if (!tier) return null;
 
