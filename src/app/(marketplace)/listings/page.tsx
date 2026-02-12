@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useSearchStore } from "@/lib/stores/search-store";
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
@@ -58,14 +58,12 @@ export default function ListingsPage() {
 
   // Debounced search input — local state updates immediately, store updates after 300ms
   const [searchInput, setSearchInput] = useState(filters.query ?? "");
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const debounceRef = useCallback(
-    (() => {
-      let timeout: ReturnType<typeof setTimeout>;
-      return (value: string) => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setQuery(value), 300);
-      };
-    })(),
+    (value: string) => {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setQuery(value), 300);
+    },
     [setQuery]
   );
 
@@ -75,10 +73,11 @@ export default function ListingsPage() {
     condition: filters.condition,
     priceMin: filters.priceMin,
     priceMax: filters.priceMax,
-    thicknessMin: filters.thicknessMin,
-    thicknessMax: filters.thicknessMax,
-    widthMin: filters.widthMin,
-    widthMax: filters.widthMax,
+    width: filters.width,
+    thickness: filters.thickness,
+    wearLayer: filters.wearLayer,
+    maxDistance: filters.maxDistance,
+    buyerZip: filters.buyerZip,
     minLotSize: filters.minLotSize,
     maxLotSize: filters.maxLotSize,
     species: filters.species,

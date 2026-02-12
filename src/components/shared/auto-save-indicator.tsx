@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Loader2, AlertCircle } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface AutoSaveIndicatorProps {
@@ -13,29 +12,10 @@ export function AutoSaveIndicator({
   status,
   className,
 }: AutoSaveIndicatorProps) {
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    if (status === "saved") {
-      // Fade out after 3 seconds
-      const timer = setTimeout(() => {
-        setVisible(false);
-      }, 3000);
-      return () => clearTimeout(timer);
-    } else {
-      setVisible(true);
-    }
-  }, [status]);
-
-  if (!visible && status === "saved") {
-    return null;
-  }
-
   return (
     <div
       className={cn(
         "flex items-center gap-2 text-sm transition-opacity duration-300",
-        status === "saved" && !visible && "opacity-0",
         className
       )}
       role="status"

@@ -204,7 +204,7 @@ export default function PrivacyPolicyPage() {
           <li>Backup and disaster recovery purposes</li>
         </ul>
 
-        <h2>8. Children's Privacy</h2>
+        <h2>8. Children&apos;s Privacy</h2>
         <p>
           PlankMarket is not intended for users under the age of 18. We do not
           knowingly collect personal information from children. If we become
@@ -224,7 +224,7 @@ export default function PrivacyPolicyPage() {
         <p>
           We may update this Privacy Policy from time to time. We will notify you
           of any material changes by posting the new policy on this page and
-          updating the "Last Updated" date. Your continued use of PlankMarket
+          updating the &quot;Last Updated&quot; date. Your continued use of PlankMarket
           after changes are posted constitutes acceptance of the updated policy.
         </p>
 

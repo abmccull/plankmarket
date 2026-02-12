@@ -206,7 +206,7 @@ export const offerRouter = createTRPCRouter({
         counter: "countered",
       } as const;
       const newStatus = statusMap[input.action];
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         status: newStatus,
         updatedAt: new Date(),
       };

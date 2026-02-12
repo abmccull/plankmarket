@@ -1,8 +1,11 @@
 "use client";
 
 import { Elements } from "@stripe/react-stripe-js";
-import { loadStripe, type Stripe } from "@stripe/stripe-js";
-import { useEffect, useState } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
 
 interface StripeProviderProps {
   clientSecret: string | null;
@@ -10,19 +13,6 @@ interface StripeProviderProps {
 }
 
 export function StripeProvider({ clientSecret, children }: StripeProviderProps) {
-  const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
-
-  useEffect(() => {
-    const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-
-    if (!publishableKey) {
-      console.error("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not defined");
-      return;
-    }
-
-    setStripePromise(loadStripe(publishableKey));
-  }, []);
-
   if (!stripePromise || !clientSecret) {
     return null;
   }

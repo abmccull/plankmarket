@@ -116,7 +116,7 @@ export default function TermsOfServicePage() {
 
         <h2>9. Limitation of Liability</h2>
         <p>
-          PlankMarket provides the platform on an "as is" and "as available"
+          PlankMarket provides the platform on an &quot;as is&quot; and &quot;as available&quot;
           basis. We make no warranties, express or implied, regarding the
           quality, accuracy, or availability of products listed on our platform.
           To the fullest extent permitted by law, PlankMarket shall not be
