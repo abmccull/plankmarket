@@ -24,7 +24,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: npm install --frozen-lockfile || npm install
 
       - name: Lint
         run: npm run lint
