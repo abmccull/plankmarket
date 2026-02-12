@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -23,7 +22,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 type VerificationStatus = "unverified" | "pending" | "verified" | "rejected";
 
@@ -39,7 +37,6 @@ interface VerificationData {
 }
 
 export default function SellerVerificationPage() {
-  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 

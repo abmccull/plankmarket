@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -15,7 +14,6 @@ import {
   Shield,
   TrendingDown,
   Truck,
-  Users,
 } from "lucide-react";
 import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
 import { FeaturedCarousel } from "@/components/promotions/featured-carousel";

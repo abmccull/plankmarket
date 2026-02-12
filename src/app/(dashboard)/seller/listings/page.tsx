@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -91,9 +92,11 @@ export default function SellerListingsPage() {
                   {/* Thumbnail */}
                   <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
                     {listing.media?.[0] ? (
-                      <img
+                      <Image
                         src={listing.media[0].url}
                         alt={listing.title}
+                        width={64}
+                        height={64}
                         className="h-full w-full object-cover"
                       />
                     ) : (

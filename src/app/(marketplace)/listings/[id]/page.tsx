@@ -17,7 +17,6 @@ import {
   calculateBuyerFee,
 } from "@/lib/utils";
 import {
-  ArrowLeft,
   Heart,
   Share2,
   MapPin,
@@ -68,7 +67,7 @@ const finishLabels: Record<string, string> = {
 export default function ListingDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, isAuthenticated } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
   const listingId = params.id as string;
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({

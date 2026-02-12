@@ -17,12 +17,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import {
   formatCurrency,
   formatSqFt,
   calculateBuyerFee,
-  calculateTotalWithFees,
 } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, ShieldCheck, Package } from "lucide-react";
