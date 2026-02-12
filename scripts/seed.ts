@@ -12,6 +12,7 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 
 import { drizzle } from "drizzle-orm/postgres-js";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import zipcodes from "zipcodes";
@@ -1212,6 +1213,114 @@ async function seed() {
   });
 
   console.log("  + 2 saved searches\n");
+
+  // -----------------------------------------------------------------------
+  // 9. Create listing promotions
+  // -----------------------------------------------------------------------
+  console.log("Creating promotions...");
+
+  // Listing indices reference (from listingIds array):
+  // 0: Sarah - White Oak Hardwood       5: James - Black Walnut
+  // 1: Sarah - Engineered Maple         6: James - Acacia
+  // 2: Sarah - LVP                      7: James - Commercial LVP
+  // 3: Sarah - Hickory                  8: James - Red Oak
+  // 4: Sarah - Bamboo                   9: James - Laminate
+  // 10: Maria - Brazilian Cherry        13: Robert - Hickory Eng
+  // 11: Maria - White Oak Unfinished    14: Robert - Oak Laminate
+  // 12: Maria - Vinyl Grey              15: Robert - Walnut Character
+
+  const now = new Date();
+
+  const promotionsData = [
+    {
+      // Premium — Sarah's White Oak (her best listing, high-visibility)
+      listingIdx: 0,
+      sellerEmail: "sarah@mitchellflooring.com",
+      tier: "premium" as const,
+      durationDays: 30,
+      pricePaid: 599,
+      daysActive: 8, // started 8 days ago, 22 days remaining
+      isActive: true,
+      paymentStatus: "succeeded",
+    },
+    {
+      // Featured — James's Commercial LVP (large lot, commercial appeal)
+      listingIdx: 7,
+      sellerEmail: "james@chenfloors.com",
+      tier: "featured" as const,
+      durationDays: 14,
+      pricePaid: 139,
+      daysActive: 5, // started 5 days ago, 9 days remaining
+      isActive: true,
+      paymentStatus: "succeeded",
+    },
+    {
+      // Spotlight — Sarah's Hickory Hardwood
+      listingIdx: 3,
+      sellerEmail: "sarah@mitchellflooring.com",
+      tier: "spotlight" as const,
+      durationDays: 14,
+      pricePaid: 49,
+      daysActive: 10, // started 10 days ago, 4 days remaining
+      isActive: true,
+      paymentStatus: "succeeded",
+    },
+    {
+      // Featured — James's Black Walnut (premium product)
+      listingIdx: 5,
+      sellerEmail: "james@chenfloors.com",
+      tier: "featured" as const,
+      durationDays: 7,
+      pricePaid: 79,
+      daysActive: 3, // started 3 days ago, 4 days remaining
+      isActive: true,
+      paymentStatus: "succeeded",
+    },
+    {
+      // Expired — Sarah's Engineered Maple (was spotlight, expired 2 days ago)
+      listingIdx: 1,
+      sellerEmail: "sarah@mitchellflooring.com",
+      tier: "spotlight" as const,
+      durationDays: 7,
+      pricePaid: 29,
+      daysActive: 9, // started 9 days ago (7-day duration = expired 2 days ago)
+      isActive: false,
+      paymentStatus: "succeeded",
+    },
+  ];
+
+  for (const p of promotionsData) {
+    const startsAt = new Date(now.getTime() - p.daysActive * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(startsAt.getTime() + p.durationDays * 24 * 60 * 60 * 1000);
+
+    await db.insert(listingPromotions).values({
+      listingId: listingIds[p.listingIdx]!,
+      sellerId: userMap[p.sellerEmail]!,
+      tier: p.tier,
+      durationDays: p.durationDays,
+      pricePaid: p.pricePaid,
+      startsAt,
+      expiresAt,
+      isActive: p.isActive,
+      stripePaymentIntentId: `pi_seed_promo_${p.listingIdx}_${p.tier}`,
+      paymentStatus: p.paymentStatus,
+    });
+
+    // Update denormalized fields on the listing for active promotions
+    if (p.isActive) {
+      await db
+        .update(listings)
+        .set({
+          promotionTier: p.tier,
+          promotionExpiresAt: expiresAt,
+        })
+        .where(eq(listings.id, listingIds[p.listingIdx]!));
+    }
+
+    const status = p.isActive ? `active (${p.durationDays - p.daysActive}d left)` : "expired";
+    console.log(`  + [${p.tier}] listing #${p.listingIdx} — ${status}`);
+  }
+  console.log();
 
   // -----------------------------------------------------------------------
   // Done — close connection
