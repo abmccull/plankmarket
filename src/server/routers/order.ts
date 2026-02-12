@@ -14,110 +14,147 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { calculateBuyerFee, calculateSellerFee } from "@/lib/utils";
 import { nanoid } from "nanoid";
+import { sendOrderConfirmationEmail } from "@/lib/email/send";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
 }
 
+/** Valid order status transitions (state machine) */
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["processing", "cancelled"],
+  processing: ["shipped", "cancelled"],
+  shipped: ["delivered"],
+  delivered: ["refunded"],
+  cancelled: [],
+  refunded: [],
+};
+
 export const orderRouter = createTRPCRouter({
-  // Create a new order (Buy Now)
+  // Create a new order (Buy Now) — wrapped in a transaction with row locking
   create: buyerProcedure
     .input(createOrderSchema)
     .mutation(async ({ ctx, input }) => {
-      // Get the listing
-      const listing = await ctx.db.query.listings.findFirst({
-        where: and(
-          eq(listings.id, input.listingId),
-          eq(listings.status, "active")
-        ),
+      const order = await ctx.db.transaction(async (tx) => {
+        // Lock the listing row to prevent concurrent purchases (SELECT ... FOR UPDATE)
+        const [listing] = await tx
+          .select()
+          .from(listings)
+          .where(
+            and(
+              eq(listings.id, input.listingId),
+              eq(listings.status, "active")
+            )
+          )
+          .for("update");
+
+        if (!listing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Listing not found or no longer available",
+          });
+        }
+
+        // Validate quantity
+        if (listing.moq && input.quantitySqFt < listing.moq) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Minimum order quantity is ${listing.moq} sq ft`,
+          });
+        }
+
+        if (input.quantitySqFt > listing.totalSqFt) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Maximum available quantity is ${listing.totalSqFt} sq ft`,
+          });
+        }
+
+        // Prevent self-purchase
+        if (listing.sellerId === ctx.user.id) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "You cannot purchase your own listing",
+          });
+        }
+
+        // Calculate pricing using originalTotalSqFt for stable buyNowPrice calculation
+        const originalSqFt = listing.originalTotalSqFt ?? listing.totalSqFt;
+        const pricePerSqFt = listing.buyNowPrice
+          ? listing.buyNowPrice / originalSqFt
+          : listing.askPricePerSqFt;
+        const subtotal =
+          Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
+        const buyerFee = calculateBuyerFee(subtotal);
+        const sellerFee = calculateSellerFee(subtotal);
+        const totalPrice = Math.round((subtotal + buyerFee) * 100) / 100;
+        const sellerPayout = Math.round((subtotal - sellerFee) * 100) / 100;
+
+        // Create the order within the transaction
+        const [newOrder] = await tx
+          .insert(orders)
+          .values({
+            orderNumber: generateOrderNumber(),
+            buyerId: ctx.user.id,
+            sellerId: listing.sellerId,
+            listingId: listing.id,
+            quantitySqFt: input.quantitySqFt,
+            pricePerSqFt,
+            subtotal,
+            buyerFee,
+            sellerFee,
+            totalPrice,
+            sellerPayout,
+            shippingName: input.shippingName,
+            shippingAddress: input.shippingAddress,
+            shippingCity: input.shippingCity,
+            shippingState: input.shippingState,
+            shippingZip: input.shippingZip,
+            shippingPhone: input.shippingPhone,
+            status: "pending",
+          })
+          .returning();
+
+        // Update listing within the same transaction
+        if (input.quantitySqFt >= listing.totalSqFt) {
+          await tx
+            .update(listings)
+            .set({
+              status: "sold",
+              soldAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(listings.id, listing.id));
+        } else {
+          await tx
+            .update(listings)
+            .set({
+              totalSqFt: listing.totalSqFt - input.quantitySqFt,
+              updatedAt: new Date(),
+            })
+            .where(eq(listings.id, listing.id));
+        }
+
+        return newOrder;
       });
 
-      if (!listing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Listing not found or no longer available",
-        });
-      }
-
-      // Validate quantity
-      if (listing.moq && input.quantitySqFt < listing.moq) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Minimum order quantity is ${listing.moq} sq ft`,
-        });
-      }
-
-      if (input.quantitySqFt > listing.totalSqFt) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Maximum available quantity is ${listing.totalSqFt} sq ft`,
-        });
-      }
-
-      // Prevent self-purchase
-      if (listing.sellerId === ctx.user.id) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "You cannot purchase your own listing",
-        });
-      }
-
-      // Calculate pricing
-      const pricePerSqFt = listing.buyNowPrice
-        ? listing.buyNowPrice / listing.totalSqFt
-        : listing.askPricePerSqFt;
-      const subtotal =
-        Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
-      const buyerFee = calculateBuyerFee(subtotal);
-      const sellerFee = calculateSellerFee(subtotal);
-      const totalPrice = Math.round((subtotal + buyerFee) * 100) / 100;
-      const sellerPayout = Math.round((subtotal - sellerFee) * 100) / 100;
-
-      // Create the order
-      const [order] = await ctx.db
-        .insert(orders)
-        .values({
-          orderNumber: generateOrderNumber(),
-          buyerId: ctx.user.id,
-          sellerId: listing.sellerId,
-          listingId: listing.id,
-          quantitySqFt: input.quantitySqFt,
-          pricePerSqFt,
-          subtotal,
-          buyerFee,
-          sellerFee,
-          totalPrice,
-          sellerPayout,
-          shippingName: input.shippingName,
-          shippingAddress: input.shippingAddress,
-          shippingCity: input.shippingCity,
-          shippingState: input.shippingState,
-          shippingZip: input.shippingZip,
-          shippingPhone: input.shippingPhone,
-          status: "pending",
-        })
-        .returning();
-
-      // If full lot purchased, mark listing as sold
-      if (input.quantitySqFt >= listing.totalSqFt) {
-        await ctx.db
-          .update(listings)
-          .set({
-            status: "sold",
-            soldAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(listings.id, listing.id));
-      } else {
-        // Reduce available quantity
-        await ctx.db
-          .update(listings)
-          .set({
-            totalSqFt: listing.totalSqFt - input.quantitySqFt,
-            updatedAt: new Date(),
-          })
-          .where(eq(listings.id, listing.id));
-      }
+      // Send order confirmation email (fire-and-forget, outside transaction)
+      sendOrderConfirmationEmail({
+        to: ctx.user.email,
+        buyerName: ctx.user.name,
+        orderNumber: order.orderNumber,
+        listingTitle: "Order",
+        quantity: `${order.quantitySqFt}`,
+        pricePerSqFt: `${order.pricePerSqFt}`,
+        subtotal: `${order.subtotal}`,
+        buyerFee: `${order.buyerFee}`,
+        total: `${order.totalPrice}`,
+        sellerName: "",
+        orderId: order.id,
+      }).catch((err) => {
+        console.error("Failed to send order confirmation email:", err);
+      });
 
       return order;
     }),
@@ -326,7 +363,7 @@ export const orderRouter = createTRPCRouter({
       };
     }),
 
-  // Update order status (seller action)
+  // Update order status (seller action) — with status transition validation
   updateStatus: sellerProcedure
     .input(updateOrderStatusSchema)
     .mutation(async ({ ctx, input }) => {
@@ -341,6 +378,15 @@ export const orderRouter = createTRPCRouter({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Order not found",
+        });
+      }
+
+      // Validate status transition
+      const allowedTransitions = VALID_STATUS_TRANSITIONS[order.status];
+      if (!allowedTransitions || !allowedTransitions.includes(input.status)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cannot transition order from "${order.status}" to "${input.status}"`,
         });
       }
 

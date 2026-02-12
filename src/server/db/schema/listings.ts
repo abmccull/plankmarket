@@ -11,6 +11,7 @@ import {
   index,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { money } from "../custom-types";
 import { users } from "./users";
 
 export const listingStatusEnum = pgEnum("listing_status", [
@@ -110,17 +111,18 @@ export const listings = pgTable(
     sqFtPerBox: real("sq_ft_per_box"),
     boxesPerPallet: integer("boxes_per_pallet"),
     totalSqFt: real("total_sq_ft").notNull(),
+    originalTotalSqFt: real("original_total_sq_ft"),
     totalPallets: integer("total_pallets"),
     moq: real("moq"),
     locationCity: varchar("location_city", { length: 100 }),
     locationState: varchar("location_state", { length: 2 }),
     locationZip: varchar("location_zip", { length: 10 }),
 
-    // Pricing
-    askPricePerSqFt: real("ask_price_per_sq_ft").notNull(),
-    buyNowPrice: real("buy_now_price"),
+    // Pricing (using exact numeric type to avoid floating-point errors)
+    askPricePerSqFt: money("ask_price_per_sq_ft").notNull(),
+    buyNowPrice: money("buy_now_price"),
     allowOffers: boolean("allow_offers").default(true).notNull(),
-    floorPrice: real("floor_price"),
+    floorPrice: money("floor_price"),
 
     // Condition & certifications
     condition: conditionTypeEnum("condition").notNull(),

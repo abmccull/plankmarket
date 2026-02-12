@@ -8,7 +8,7 @@ import {
   index,
   pgEnum,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { money } from "../custom-types";
 import { users } from "./users";
 import { listings } from "./listings";
 
@@ -37,14 +37,14 @@ export const orders = pgTable(
       .references(() => listings.id, { onDelete: "restrict" })
       .notNull(),
 
-    // Quantity & pricing
+    // Quantity & pricing (using exact numeric type to avoid floating-point errors)
     quantitySqFt: real("quantity_sq_ft").notNull(),
-    pricePerSqFt: real("price_per_sq_ft").notNull(),
-    subtotal: real("subtotal").notNull(), // quantitySqFt * pricePerSqFt
-    buyerFee: real("buyer_fee").notNull(), // 3%
-    sellerFee: real("seller_fee").notNull(), // 2%
-    totalPrice: real("total_price").notNull(), // subtotal + buyerFee
-    sellerPayout: real("seller_payout").notNull(), // subtotal - sellerFee
+    pricePerSqFt: money("price_per_sq_ft").notNull(),
+    subtotal: money("subtotal").notNull(), // quantitySqFt * pricePerSqFt
+    buyerFee: money("buyer_fee").notNull(), // 3%
+    sellerFee: money("seller_fee").notNull(), // 2%
+    totalPrice: money("total_price").notNull(), // subtotal + buyerFee
+    sellerPayout: money("seller_payout").notNull(), // subtotal - sellerFee
 
     // Payment
     stripePaymentIntentId: varchar("stripe_payment_intent_id", {
@@ -89,22 +89,6 @@ export const orders = pgTable(
   ]
 );
 
-export const ordersRelations = relations(orders, ({ one }) => ({
-  buyer: one(users, {
-    fields: [orders.buyerId],
-    references: [users.id],
-    relationName: "buyerOrders",
-  }),
-  seller: one(users, {
-    fields: [orders.sellerId],
-    references: [users.id],
-    relationName: "sellerOrders",
-  }),
-  listing: one(listings, {
-    fields: [orders.listingId],
-    references: [listings.id],
-  }),
-}));
-
+// Note: ordersRelations is defined in schema/index.ts to avoid duplicate definitions
 export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;

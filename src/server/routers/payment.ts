@@ -8,8 +8,9 @@ import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import Stripe from "stripe";
+import { env } from "@/env";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-01-28.clover" as const,
 });
 
@@ -119,8 +120,8 @@ export const paymentRouter = createTRPCRouter({
       // Return existing onboarding link
       const accountLink = await stripe.accountLinks.create({
         account: ctx.user.stripeAccountId,
-        refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?refresh=true`,
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?success=true`,
+        refresh_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?refresh=true`,
+        return_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?success=true`,
         type: "account_onboarding",
       });
 
@@ -153,8 +154,8 @@ export const paymentRouter = createTRPCRouter({
     // Create onboarding link
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?refresh=true`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?success=true`,
+      refresh_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?refresh=true`,
+      return_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?success=true`,
       type: "account_onboarding",
     });
 

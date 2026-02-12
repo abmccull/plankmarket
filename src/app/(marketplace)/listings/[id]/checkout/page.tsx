@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -43,14 +43,22 @@ export default function CheckoutPage() {
     register,
     handleSubmit,
     watch,
+    reset,
     formState: { errors },
   } = useForm<CreateOrderInput>({
     resolver: zodResolver(createOrderSchema),
     defaultValues: {
       listingId,
-      quantitySqFt: listing?.totalSqFt ?? 0,
+      quantitySqFt: 0,
     },
   });
+
+  // Reset form defaults when listing data loads (avoids stale default of 0)
+  useEffect(() => {
+    if (listing) {
+      reset({ listingId, quantitySqFt: listing.totalSqFt });
+    }
+  }, [listing, listingId, reset]);
 
   const quantitySqFt = watch("quantitySqFt") || listing?.totalSqFt || 0;
 
@@ -85,8 +93,9 @@ export default function CheckoutPage() {
     );
   }
 
+  const originalSqFt = listing.originalTotalSqFt ?? listing.totalSqFt;
   const pricePerSqFt = listing.buyNowPrice
-    ? listing.buyNowPrice / listing.totalSqFt
+    ? listing.buyNowPrice / originalSqFt
     : listing.askPricePerSqFt;
   const subtotal = Math.round(quantitySqFt * pricePerSqFt * 100) / 100;
   const buyerFee = calculateBuyerFee(subtotal);

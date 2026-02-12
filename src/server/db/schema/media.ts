@@ -14,8 +14,7 @@ export const media = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     listingId: uuid("listing_id")
-      .references(() => listings.id, { onDelete: "cascade" })
-      .notNull(),
+      .references(() => listings.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
     key: varchar("key", { length: 500 }),
     fileName: varchar("file_name", { length: 255 }),

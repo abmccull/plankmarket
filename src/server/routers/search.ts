@@ -3,11 +3,12 @@ import {
   publicProcedure,
   protectedProcedure,
 } from "../trpc";
-import { savedSearches } from "../db/schema";
-import { eq, desc } from "drizzle-orm";
+import { savedSearches, listings } from "../db/schema";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { listingFilterSchema } from "@/lib/validators/listing";
+import type { SearchFilters } from "@/types";
 
 export const searchRouter = createTRPCRouter({
   // Save a search
@@ -25,7 +26,7 @@ export const searchRouter = createTRPCRouter({
         .values({
           userId: ctx.user.id,
           name: input.name,
-          filters: input.filters as never,
+          filters: input.filters as unknown as Record<string, unknown>,
           alertEnabled: input.alertEnabled,
         })
         .returning();
@@ -78,13 +79,18 @@ export const searchRouter = createTRPCRouter({
       return updated;
     }),
 
-  // Delete saved search
+  // Delete saved search — with ownership check
   deleteSavedSearch: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
         .delete(savedSearches)
-        .where(eq(savedSearches.id, input.id));
+        .where(
+          and(
+            eq(savedSearches.id, input.id),
+            eq(savedSearches.userId, ctx.user.id)
+          )
+        );
 
       return { success: true };
     }),
@@ -92,8 +98,6 @@ export const searchRouter = createTRPCRouter({
   // Get search facet counts (for filter sidebar)
   getFacets: publicProcedure.query(async ({ ctx }) => {
     const { db } = ctx;
-    const { listings } = await import("../db/schema");
-    const { eq, sql } = await import("drizzle-orm");
 
     const [materialCounts, conditionCounts, stateCounts] = await Promise.all([
       db
