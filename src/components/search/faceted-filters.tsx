@@ -1,13 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { useSearchStore } from "@/lib/stores/search-store";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { X, SlidersHorizontal } from "lucide-react";
 import type { MaterialType, ConditionType, Species, ColorFamily, FinishType, Certification } from "@/types";
+import { WIDTH_OPTIONS, THICKNESS_OPTIONS, DISTANCE_OPTIONS, getWearLayerOptions } from "@/lib/constants/flooring";
 
 const MATERIAL_OPTIONS: { value: MaterialType; label: string }[] = [
   { value: "hardwood", label: "Hardwood" },
@@ -74,8 +83,17 @@ const US_STATES = [
   "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ];
 
+const badgeClass = (isActive: boolean | undefined) =>
+  `inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
+    isActive
+      ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+      : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+  }`;
+
 export function FacetedFilters() {
   const { filters, setFilters, clearFilters } = useSearchStore();
+  const user = useAuthStore((s) => s.user);
+  const [localZip, setLocalZip] = useState(filters.buyerZip || user?.zipCode || "");
 
   const toggleMaterial = (value: MaterialType) => {
     const current = filters.materialType || [];
@@ -133,6 +151,32 @@ export function FacetedFilters() {
     setFilters({ certifications: updated.length > 0 ? updated : undefined });
   };
 
+  const toggleWidth = (value: number) => {
+    const current = filters.width || [];
+    const updated = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value];
+    setFilters({ width: updated.length > 0 ? updated : undefined });
+  };
+
+  const toggleThickness = (value: number) => {
+    const current = filters.thickness || [];
+    const updated = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value];
+    setFilters({ thickness: updated.length > 0 ? updated : undefined });
+  };
+
+  const toggleWearLayer = (value: number) => {
+    const current = filters.wearLayer || [];
+    const updated = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value];
+    setFilters({ wearLayer: updated.length > 0 ? updated : undefined });
+  };
+
+  const wearLayerOptions = getWearLayerOptions(filters.materialType);
+
   const hasActiveFilters =
     (filters.materialType && filters.materialType.length > 0) ||
     (filters.condition && filters.condition.length > 0) ||
@@ -141,11 +185,13 @@ export function FacetedFilters() {
     (filters.finishType && filters.finishType.length > 0) ||
     (filters.state && filters.state.length > 0) ||
     (filters.certifications && filters.certifications.length > 0) ||
+    (filters.width && filters.width.length > 0) ||
+    (filters.thickness && filters.thickness.length > 0) ||
+    (filters.wearLayer && filters.wearLayer.length > 0) ||
     filters.priceMin !== undefined ||
     filters.priceMax !== undefined ||
     filters.minLotSize !== undefined ||
-    filters.thicknessMin !== undefined ||
-    filters.widthMin !== undefined;
+    filters.maxDistance !== undefined;
 
   return (
     <div className="space-y-6">
@@ -188,11 +234,7 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleMaterial(opt.value)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {opt.label}
               </button>
@@ -224,11 +266,7 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleCondition(opt.value)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {opt.label}
               </button>
@@ -315,6 +353,107 @@ export function FacetedFilters() {
 
       <Separator />
 
+      {/* Width - Badge Toggles */}
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+          Width
+        </Label>
+        <div
+          className="flex flex-wrap gap-1.5"
+          role="listbox"
+          aria-multiselectable="true"
+          aria-label="Width filters"
+        >
+          {WIDTH_OPTIONS.map((opt) => {
+            const isActive = filters.width?.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                aria-pressed={isActive}
+                onClick={() => toggleWidth(opt.value)}
+                className={badgeClass(isActive)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Thickness - Badge Toggles */}
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+          Thickness
+        </Label>
+        <div
+          className="flex flex-wrap gap-1.5"
+          role="listbox"
+          aria-multiselectable="true"
+          aria-label="Thickness filters"
+        >
+          {THICKNESS_OPTIONS.map((opt) => {
+            const isActive = filters.thickness?.includes(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                aria-pressed={isActive}
+                onClick={() => toggleThickness(opt.value)}
+                className={badgeClass(isActive)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Wear Layer - Badge Toggles (conditional on material type) */}
+      {wearLayerOptions.length > 0 && (
+        <>
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+              Wear Layer
+            </Label>
+            <div
+              className="flex flex-wrap gap-1.5"
+              role="listbox"
+              aria-multiselectable="true"
+              aria-label="Wear layer filters"
+            >
+              {wearLayerOptions.map((opt) => {
+                const isActive = filters.wearLayer?.includes(opt.value);
+                return (
+                  <button
+                    key={`${opt.group}-${opt.value}`}
+                    type="button"
+                    role="option"
+                    aria-selected={isActive}
+                    aria-pressed={isActive}
+                    onClick={() => toggleWearLayer(opt.value)}
+                    className={badgeClass(isActive)}
+                    title={opt.group}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Separator />
+        </>
+      )}
+
       {/* Species */}
       <div>
         <Label className="text-xs font-medium text-muted-foreground mb-2 block">
@@ -336,11 +475,7 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleSpecies(opt.value)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {opt.label}
               </button>
@@ -372,11 +507,7 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleColorFamily(opt.value)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {opt.label}
               </button>
@@ -408,11 +539,7 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleFinish(opt.value)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {opt.label}
               </button>
@@ -423,10 +550,60 @@ export function FacetedFilters() {
 
       <Separator />
 
+      {/* Distance Filter */}
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+          Distance
+        </Label>
+        <div className="space-y-2">
+          <Input
+            type="text"
+            placeholder="Your ZIP code"
+            maxLength={5}
+            value={localZip}
+            onChange={(e) => {
+              const val = e.target.value.replace(/\D/g, "").slice(0, 5);
+              setLocalZip(val);
+              if (val.length === 5) {
+                setFilters({ buyerZip: val });
+              } else if (val.length === 0) {
+                setFilters({ buyerZip: undefined, maxDistance: undefined });
+              }
+            }}
+            className="h-8 text-xs"
+            aria-label="Buyer ZIP code"
+          />
+          <Select
+            value={filters.maxDistance !== undefined ? String(filters.maxDistance) : ""}
+            onValueChange={(v) => {
+              const dist = parseInt(v);
+              if (dist === 0) {
+                setFilters({ maxDistance: undefined });
+              } else {
+                setFilters({ maxDistance: dist, buyerZip: localZip || undefined });
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Select distance" />
+            </SelectTrigger>
+            <SelectContent>
+              {DISTANCE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={String(opt.value)}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Separator />
+
       {/* Location (State) */}
       <div>
         <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-          Location (State)
+          State
         </Label>
         <div
           className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto"
@@ -444,11 +621,7 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleState(state)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {state}
               </button>
@@ -480,96 +653,12 @@ export function FacetedFilters() {
                 aria-selected={isActive}
                 aria-pressed={isActive}
                 onClick={() => toggleCertification(opt.value)}
-                className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer min-h-9 ${
-                  isActive
-                    ? "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-                    : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
-                }`}
+                className={badgeClass(isActive)}
               >
                 {opt.label}
               </button>
             );
           })}
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Width Range */}
-      <div>
-        <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-          Width (inches)
-        </Label>
-        <div className="grid grid-cols-2 gap-2">
-          <Input
-            type="number"
-            placeholder="Min"
-            step="0.01"
-            value={filters.widthMin ?? ""}
-            onChange={(e) =>
-              setFilters({
-                widthMin: e.target.value
-                  ? parseFloat(e.target.value)
-                  : undefined,
-              })
-            }
-            className="h-8 text-xs"
-            aria-label="Minimum width"
-          />
-          <Input
-            type="number"
-            placeholder="Max"
-            step="0.01"
-            value={filters.widthMax ?? ""}
-            onChange={(e) =>
-              setFilters({
-                widthMax: e.target.value
-                  ? parseFloat(e.target.value)
-                  : undefined,
-              })
-            }
-            className="h-8 text-xs"
-            aria-label="Maximum width"
-          />
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Thickness */}
-      <div>
-        <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-          Thickness (inches)
-        </Label>
-        <div className="grid grid-cols-2 gap-2">
-          <Input
-            type="number"
-            placeholder="Min"
-            step="0.01"
-            value={filters.thicknessMin ?? ""}
-            onChange={(e) =>
-              setFilters({
-                thicknessMin: e.target.value
-                  ? parseFloat(e.target.value)
-                  : undefined,
-              })
-            }
-            className="h-8 text-xs"
-          />
-          <Input
-            type="number"
-            placeholder="Max"
-            step="0.01"
-            value={filters.thicknessMax ?? ""}
-            onChange={(e) =>
-              setFilters({
-                thicknessMax: e.target.value
-                  ? parseFloat(e.target.value)
-                  : undefined,
-              })
-            }
-            className="h-8 text-xs"
-          />
         </div>
       </div>
     </div>

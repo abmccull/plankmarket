@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PhotoUpload } from "@/components/listings/photo-upload";
+import { WIDTH_OPTIONS, THICKNESS_OPTIONS, getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
 
 const STEPS = [
   { id: 1, title: "Product Details", description: "Material and specs" },
@@ -379,24 +380,40 @@ export default function CreateListingPage() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="thickness">Thickness (in)</Label>
-                  <Input
-                    id="thickness"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.75"
-                    {...register("thickness", { valueAsNumber: true })}
-                  />
+                  <Label>Thickness</Label>
+                  <Select
+                    value={watchedValues.thickness ? String(watchedValues.thickness) : ""}
+                    onValueChange={(v) => setValue("thickness", parseFloat(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select thickness" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {THICKNESS_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="width">Width (in)</Label>
-                  <Input
-                    id="width"
-                    type="number"
-                    step="0.01"
-                    placeholder="5.0"
-                    {...register("width", { valueAsNumber: true })}
-                  />
+                  <Label>Width</Label>
+                  <Select
+                    value={watchedValues.width ? String(watchedValues.width) : ""}
+                    onValueChange={(v) => setValue("width", parseFloat(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select width" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WIDTH_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="length">Length (in)</Label>
@@ -409,6 +426,28 @@ export default function CreateListingPage() {
                   />
                 </div>
               </div>
+
+              {/* Wear Layer - shown for vinyl, engineered, laminate */}
+              {getWearLayerOptionsForSingle(watchedValues.materialType).length > 0 && (
+                <div className="space-y-2">
+                  <Label>Wear Layer</Label>
+                  <Select
+                    value={watchedValues.wearLayer ? String(watchedValues.wearLayer) : ""}
+                    onValueChange={(v) => setValue("wearLayer", parseFloat(v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select wear layer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getWearLayerOptionsForSingle(watchedValues.materialType).map((opt) => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -524,12 +563,18 @@ export default function CreateListingPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="locationZip">ZIP Code</Label>
+                  <Label htmlFor="locationZip">ZIP Code *</Label>
                   <Input
                     id="locationZip"
                     placeholder="75001"
+                    maxLength={10}
                     {...register("locationZip")}
                   />
+                  {errors.locationZip && (
+                    <p className="text-sm text-destructive">
+                      {errors.locationZip.message}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>

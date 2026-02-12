@@ -192,6 +192,28 @@ function RegisterForm() {
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="zipCode">ZIP Code</Label>
+            <Input
+              id="zipCode"
+              placeholder="75001"
+              maxLength={5}
+              {...register("zipCode")}
+              aria-describedby={errors.zipCode ? "zipCode-error" : "zipCode-hint"}
+              aria-invalid={!!errors.zipCode}
+            />
+            {!errors.zipCode && (
+              <p id="zipCode-hint" className="text-sm text-muted-foreground">
+                Used to show inventory near you
+              </p>
+            )}
+            {errors.zipCode && (
+              <p id="zipCode-error" className="text-sm text-destructive">
+                {errors.zipCode.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
