@@ -6,7 +6,7 @@ import {
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema } from "@/lib/validators/listing";
 import { listings, media } from "../db/schema";
-import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or } from "drizzle-orm";
+import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, gt, isNull, isNotNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import zipcodes from "zipcodes";
@@ -316,25 +316,61 @@ export const listingRouter = createTRPCRouter({
       const where = and(...conditions);
       const offset = (input.page - 1) * input.limit;
 
-      const [items, countResult] = await Promise.all([
-        ctx.db.query.listings.findMany({
-          where,
-          with: {
-            media: {
-              orderBy: (media, { asc }) => [asc(media.sortOrder)],
-              limit: 1, // Only first image for list view
-            },
-            seller: {
-              columns: {
-                id: true,
-                businessName: true,
-                verified: true,
-              },
-            },
+      // Max 20% of results can be promoted (e.g. 5 of 24)
+      const maxPromoted = Math.ceil(input.limit * 0.2);
+      const now = new Date();
+
+      // Promoted listings matching all active filters
+      const promotedConditions = [
+        ...conditions,
+        isNotNull(listings.promotionTier),
+        gt(listings.promotionExpiresAt, now),
+      ];
+
+      // Organic listings: no active promotion
+      const organicConditions = [
+        ...conditions,
+        or(
+          isNull(listings.promotionTier),
+          sql`${listings.promotionExpiresAt} <= ${now}`,
+          isNull(listings.promotionExpiresAt)
+        )!,
+      ];
+
+      const withClause = {
+        media: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          orderBy: (media: any, { asc }: any) => [asc(media.sortOrder)],
+          limit: 1,
+        },
+        seller: {
+          columns: {
+            id: true as const,
+            businessName: true as const,
+            verified: true as const,
           },
+        },
+      };
+
+      const [promotedItems, organicItems, countResult] = await Promise.all([
+        ctx.db.query.listings.findMany({
+          where: and(...promotedConditions),
+          with: withClause,
+          orderBy: [
+            desc(
+              sql`CASE ${listings.promotionTier} WHEN 'premium' THEN 3 WHEN 'featured' THEN 2 ELSE 1 END`
+            ),
+            desc(listings.createdAt),
+          ],
+          limit: maxPromoted,
+          // No offset for promoted — always show the top promoted for this page
+        }),
+        ctx.db.query.listings.findMany({
+          where: and(...organicConditions),
+          with: withClause,
           orderBy: orderByClause,
-          limit: input.limit,
-          offset,
+          limit: input.limit - maxPromoted,
+          offset: Math.max(0, offset - maxPromoted), // Adjust offset for organic
         }),
         ctx.db
           .select({ count: sql<number>`count(*)::int` })
@@ -342,15 +378,40 @@ export const listingRouter = createTRPCRouter({
           .where(where),
       ]);
 
+      // Interleave: promoted at positions 0, 5, 10, 15
+      const interleaved: (typeof organicItems[number] & { isPromoted?: boolean })[] = [];
+      let pIdx = 0;
+      let oIdx = 0;
+      const promotedPositions = [0, 5, 10, 15];
+
+      for (let pos = 0; pos < input.limit; pos++) {
+        if (
+          promotedPositions.includes(pos) &&
+          pIdx < promotedItems.length
+        ) {
+          interleaved.push({
+            ...promotedItems[pIdx],
+            isPromoted: true,
+          });
+          pIdx++;
+        } else if (oIdx < organicItems.length) {
+          interleaved.push({
+            ...organicItems[oIdx],
+            isPromoted: false,
+          });
+          oIdx++;
+        }
+      }
+
       const total = countResult[0]?.count ?? 0;
 
       return {
-        items,
+        items: interleaved,
         total,
         page: input.page,
         limit: input.limit,
         totalPages: Math.ceil(total / input.limit),
-        hasMore: offset + items.length < total,
+        hasMore: offset + interleaved.length < total,
       };
     }),
 

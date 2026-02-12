@@ -4,12 +4,14 @@ import Link from "next/link";
 import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import {
   formatCurrency,
   formatSqFt,
-  formatRelativeTime,
 } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { MapPin, Eye, Heart, Package } from "lucide-react";
+import type { PromotionTier } from "@/types";
 
 interface ListingCardProps {
   listing: {
@@ -26,6 +28,8 @@ interface ListingCardProps {
     viewsCount: number;
     watchlistCount: number;
     createdAt: Date | string;
+    promotionTier?: PromotionTier | null;
+    isPromoted?: boolean;
     media?: { url: string }[];
     seller?: {
       businessName: string | null;
@@ -58,9 +62,18 @@ const conditionLabels: Record<string, string> = {
 export function ListingCard({ listing }: ListingCardProps) {
   const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
 
+  const isPromoted = listing.isPromoted || !!listing.promotionTier;
+  const tier = listing.promotionTier;
+
   return (
     <Link href={`/listings/${listing.id}`}>
-      <Card className="group overflow-hidden card-hover-lift hover:shadow-lg transition-shadow duration-200">
+      <Card
+        className={cn(
+          "group overflow-hidden card-hover-lift hover:shadow-lg transition-shadow duration-200",
+          tier === "premium" && "border-purple-300 dark:border-purple-700",
+          tier === "featured" && "border-amber-300 dark:border-amber-700"
+        )}
+      >
         {/* Image */}
         <div className="aspect-[4/3] bg-muted relative overflow-hidden">
           {listing.media?.[0] ? (
@@ -85,6 +98,7 @@ export function ListingCard({ listing }: ListingCardProps) {
             <Badge variant="secondary" className="text-xs">
               {materialLabels[listing.materialType] || listing.materialType}
             </Badge>
+            {isPromoted && <PromotionBadge tier={tier} />}
           </div>
           {listing.buyNowPrice && (
             <Badge className="absolute top-2 right-2 text-xs bg-secondary text-secondary-foreground">

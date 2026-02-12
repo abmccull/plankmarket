@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/server/db";
-import { orders, users } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { orders, users, listings, listingPromotions } from "@/server/db/schema";
+import { eq, and } from "drizzle-orm";
 import { env } from "@/env";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
@@ -38,34 +38,88 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        const orderId = paymentIntent.metadata.orderId;
 
-        if (orderId) {
-          await db
-            .update(orders)
-            .set({
-              paymentStatus: "succeeded",
-              status: "confirmed",
-              confirmedAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(orders.id, orderId));
+        if (paymentIntent.metadata.type === "promotion") {
+          // Promotion payment succeeded — activate the promotion
+          const { listingId, tier, durationDays } = paymentIntent.metadata;
+          if (listingId) {
+            const now = new Date();
+            const expiresAt = new Date(
+              now.getTime() +
+                parseInt(durationDays, 10) * 24 * 60 * 60 * 1000
+            );
+
+            await db
+              .update(listingPromotions)
+              .set({
+                paymentStatus: "succeeded",
+                isActive: true,
+                startsAt: now,
+                expiresAt,
+              })
+              .where(
+                and(
+                  eq(
+                    listingPromotions.stripePaymentIntentId,
+                    paymentIntent.id
+                  )
+                )
+              );
+
+            // Denormalize onto listings row
+            await db
+              .update(listings)
+              .set({
+                promotionTier: tier as "spotlight" | "featured" | "premium",
+                promotionExpiresAt: expiresAt,
+                updatedAt: now,
+              })
+              .where(eq(listings.id, listingId));
+          }
+        } else {
+          // Order payment succeeded
+          const orderId = paymentIntent.metadata.orderId;
+          if (orderId) {
+            await db
+              .update(orders)
+              .set({
+                paymentStatus: "succeeded",
+                status: "confirmed",
+                confirmedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, orderId));
+          }
         }
         break;
       }
 
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        const orderId = paymentIntent.metadata.orderId;
 
-        if (orderId) {
+        if (paymentIntent.metadata.type === "promotion") {
+          // Promotion payment failed
           await db
-            .update(orders)
-            .set({
-              paymentStatus: "failed",
-              updatedAt: new Date(),
-            })
-            .where(eq(orders.id, orderId));
+            .update(listingPromotions)
+            .set({ paymentStatus: "failed" })
+            .where(
+              eq(
+                listingPromotions.stripePaymentIntentId,
+                paymentIntent.id
+              )
+            );
+        } else {
+          // Order payment failed
+          const orderId = paymentIntent.metadata.orderId;
+          if (orderId) {
+            await db
+              .update(orders)
+              .set({
+                paymentStatus: "failed",
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, orderId));
+          }
         }
         break;
       }

@@ -6,6 +6,7 @@ import { watchlistRouter } from "./watchlist";
 import { searchRouter } from "./search";
 import { paymentRouter } from "./payment";
 import { uploadRouter } from "./upload";
+import { promotionRouter } from "./promotion";
 import { reviewRouter } from "./review";
 import { offerRouter } from "./offer";
 import { disputeRouter } from "./dispute";
@@ -20,6 +21,7 @@ export const appRouter = createTRPCRouter({
   search: searchRouter,
   payment: paymentRouter,
   upload: uploadRouter,
+  promotion: promotionRouter,
   review: reviewRouter,
   offer: offerRouter,
   dispute: disputeRouter,

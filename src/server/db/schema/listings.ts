@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { money } from "../custom-types";
 import { users } from "./users";
+import { promotionTierEnum } from "./promotions";
 
 export const listingStatusEnum = pgEnum("listing_status", [
   "draft",
@@ -136,6 +137,12 @@ export const listings = pgTable(
     viewsCount: integer("views_count").default(0).notNull(),
     watchlistCount: integer("watchlist_count").default(0).notNull(),
     offerCount: integer("offer_count").default(0).notNull(),
+
+    // Promotion (denormalized for fast query sorting)
+    promotionTier: promotionTierEnum("promotion_tier"),
+    promotionExpiresAt: timestamp("promotion_expires_at", {
+      withTimezone: true,
+    }),
 
     // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })

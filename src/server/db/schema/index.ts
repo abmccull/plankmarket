@@ -28,6 +28,9 @@ export type { SavedSearch, NewSavedSearch } from "./saved-searches";
 export { notifications, notificationTypeEnum } from "./notifications";
 export type { Notification, NewNotification } from "./notifications";
 
+export { listingPromotions, promotionTierEnum } from "./promotions";
+export type { ListingPromotion, NewListingPromotion } from "./promotions";
+
 export { reviews } from "./reviews";
 export type { Review, NewReview } from "./reviews";
 
@@ -58,6 +61,7 @@ import { orders } from "./orders";
 import { watchlist } from "./watchlist";
 import { savedSearches } from "./saved-searches";
 import { notifications } from "./notifications";
+import { listingPromotions } from "./promotions";
 import { reviews } from "./reviews";
 import { offers } from "./offers";
 import { disputes, disputeMessages } from "./disputes";
@@ -70,6 +74,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   watchlistItems: many(watchlist),
   savedSearches: many(savedSearches),
   notifications: many(notifications),
+  promotions: many(listingPromotions),
   reviewsGiven: many(reviews, { relationName: "reviewerReviews" }),
   reviewsReceived: many(reviews, { relationName: "sellerReviews" }),
   buyerOffers: many(offers, { relationName: "buyerOffers" }),
@@ -87,6 +92,7 @@ export const listingsRelations = relations(listings, ({ one, many }) => ({
   media: many(media),
   orders: many(orders),
   watchlistItems: many(watchlist),
+  promotions: many(listingPromotions),
   offers: many(offers),
 }));
 
@@ -146,6 +152,20 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const listingPromotionsRelations = relations(
+  listingPromotions,
+  ({ one }) => ({
+    listing: one(listings, {
+      fields: [listingPromotions.listingId],
+      references: [listings.id],
+    }),
+    seller: one(users, {
+      fields: [listingPromotions.sellerId],
+      references: [users.id],
+    }),
+  })
+);
 
 export const reviewsRelations = relations(reviews, ({ one }) => ({
   reviewer: one(users, {

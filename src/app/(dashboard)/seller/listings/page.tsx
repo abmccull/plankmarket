@@ -11,13 +11,19 @@ import {
   formatSqFt,
   formatRelativeTime,
 } from "@/lib/utils";
-import { Plus, Loader2, Eye, Heart, ExternalLink } from "lucide-react";
-import type { ListingStatus } from "@/types";
+import { Plus, Loader2, Eye, Heart, ExternalLink, Rocket } from "lucide-react";
+import { BoostModal } from "@/components/promotions/boost-modal";
+import { PromotionBadge } from "@/components/promotions/promotion-badge";
+import type { ListingStatus, PromotionTier } from "@/types";
 
 export default function SellerListingsPage() {
   const [activeTab, setActiveTab] = useState<ListingStatus | undefined>(
     undefined
   );
+  const [boostListing, setBoostListing] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const { data, isLoading } = trpc.listing.getMyListings.useQuery({
     status: activeTab,
@@ -102,6 +108,9 @@ export default function SellerListingsPage() {
                         {listing.title}
                       </h3>
                       <ListingStatusBadge status={listing.status as ListingStatus} />
+                      {listing.promotionTier && (
+                        <PromotionBadge tier={listing.promotionTier as PromotionTier} />
+                      )}
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                       <span>{formatSqFt(listing.totalSqFt)}</span>
@@ -124,6 +133,23 @@ export default function SellerListingsPage() {
                     <span className="text-xs text-muted-foreground">
                       {formatRelativeTime(listing.createdAt)}
                     </span>
+                    {listing.status === "active" && !listing.promotionTier && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setBoostListing({
+                            id: listing.id,
+                            title: listing.title,
+                          });
+                        }}
+                        className="text-primary"
+                      >
+                        <Rocket className="mr-1 h-3 w-3" />
+                        Boost
+                      </Button>
+                    )}
                     <Link href={`/seller/listings/${listing.id}/edit`}>
                       <Button variant="outline" size="sm">
                         Edit
@@ -141,6 +167,17 @@ export default function SellerListingsPage() {
           )}
         </TabsContent>
       </Tabs>
+
+      {boostListing && (
+        <BoostModal
+          listingId={boostListing.id}
+          listingTitle={boostListing.title}
+          open={!!boostListing}
+          onOpenChange={(open) => {
+            if (!open) setBoostListing(null);
+          }}
+        />
+      )}
     </div>
   );
 }

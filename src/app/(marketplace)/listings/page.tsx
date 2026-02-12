@@ -30,6 +30,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SponsoredCarousel } from "@/components/promotions/sponsored-carousel";
 import type { SortOption } from "@/types";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -66,6 +67,10 @@ export default function ListingsPage() {
     },
     [setQuery]
   );
+
+  const { data: sponsoredListings } = trpc.promotion.getFeatured.useQuery({
+    limit: 5,
+  });
 
   const { data, isLoading } = trpc.listing.list.useQuery({
     query: filters.query,
@@ -219,6 +224,11 @@ export default function ListingsPage() {
 
         {/* Listings Grid */}
         <div className="flex-1">
+          {/* Sponsored Carousel */}
+          {sponsoredListings && sponsoredListings.length > 0 && (
+            <SponsoredCarousel listings={sponsoredListings} />
+          )}
+
           {isLoading ? (
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
