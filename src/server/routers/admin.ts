@@ -486,4 +486,92 @@ export const adminRouter = createTRPCRouter({
       recentOrders,
     };
   }),
+
+  // Get paginated finance transactions with filters
+  getFinanceTransactions: adminProcedure
+    .input(
+      z.object({
+        search: z.string().optional(),
+        status: z
+          .enum([
+            "pending",
+            "confirmed",
+            "processing",
+            "shipped",
+            "delivered",
+            "cancelled",
+            "refunded",
+          ])
+          .optional(),
+        escrowStatus: z.string().optional(),
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const offset = (input.page - 1) * input.limit;
+
+      const conditions = [];
+
+      if (input.search) {
+        conditions.push(like(orders.orderNumber, `%${input.search}%`));
+      }
+
+      if (input.status) {
+        conditions.push(eq(orders.status, input.status));
+      }
+
+      if (input.escrowStatus) {
+        conditions.push(eq(orders.escrowStatus, input.escrowStatus));
+      }
+
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+
+      const transactionsList = await ctx.db.query.orders.findMany({
+        where: whereClause,
+        orderBy: [desc(orders.createdAt)],
+        limit: input.limit,
+        offset,
+        columns: {
+          id: true,
+          orderNumber: true,
+          quantitySqFt: true,
+          pricePerSqFt: true,
+          subtotal: true,
+          buyerFee: true,
+          sellerFee: true,
+          totalPrice: true,
+          sellerPayout: true,
+          status: true,
+          escrowStatus: true,
+          paymentStatus: true,
+          createdAt: true,
+        },
+        with: {
+          buyer: {
+            columns: { name: true, businessName: true },
+          },
+          seller: {
+            columns: { name: true, businessName: true },
+          },
+          listing: {
+            columns: { id: true, title: true },
+          },
+        },
+      });
+
+      const [{ count }] = await ctx.db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(orders)
+        .where(whereClause);
+
+      return {
+        transactions: transactionsList,
+        total: count,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(count / input.limit),
+      };
+    }),
 });
