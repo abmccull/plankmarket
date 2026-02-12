@@ -26,13 +26,13 @@ function LogoIcon({ size = 32 }: { size?: number }) {
       {/* Top plank (left-aligned) */}
       <rect x="2" y="2" width="34" height="10" rx="1.5" fill="#6B3A2A" />
       {/* Left-pointing arrow */}
-      <polygon points="2,14.5 10,10 10,19" fill="white" />
-      <rect x="10" y="12.5" width="22" height="4" rx="0.5" fill="white" />
+      <polygon points="2,14.5 10,10 10,19" fill="#2D7A4F" />
+      <rect x="10" y="12.5" width="22" height="4" rx="0.5" fill="#2D7A4F" />
       {/* Middle plank (shifted right) */}
       <rect x="12" y="18" width="34" height="10" rx="1.5" fill="#6B3A2A" />
       {/* Right-pointing arrow */}
-      <rect x="16" y="30.5" width="22" height="4" rx="0.5" fill="white" />
-      <polygon points="46,32.5 38,28 38,37" fill="white" />
+      <rect x="16" y="30.5" width="22" height="4" rx="0.5" fill="#2D7A4F" />
+      <polygon points="46,32.5 38,28 38,37" fill="#2D7A4F" />
       {/* Bottom plank (slightly shifted) */}
       <rect x="6" y="36" width="38" height="10" rx="1.5" fill="#6B3A2A" />
     </svg>
