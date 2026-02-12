@@ -10,6 +10,7 @@ interface AuthUser {
   avatarUrl: string | null;
   verified: boolean;
   stripeOnboardingComplete: boolean;
+  zipCode: string | null;
 }
 
 interface AuthState {

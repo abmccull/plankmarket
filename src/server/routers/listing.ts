@@ -9,6 +9,7 @@ import { listings, media } from "../db/schema";
 import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, gt, isNull, isNotNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import zipcodes from "zipcodes";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
@@ -17,6 +18,17 @@ export const listingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { mediaIds, ...listingData } = input;
 
+      // Geo-lookup from ZIP code
+      let locationLat: number | undefined;
+      let locationLng: number | undefined;
+      if (listingData.locationZip) {
+        const zipInfo = zipcodes.lookup(listingData.locationZip);
+        if (zipInfo) {
+          locationLat = zipInfo.latitude;
+          locationLng = zipInfo.longitude;
+        }
+      }
+
       const [listing] = await ctx.db
         .insert(listings)
         .values({
@@ -24,6 +36,8 @@ export const listingRouter = createTRPCRouter({
           sellerId: ctx.user.id,
           status: "active",
           originalTotalSqFt: listingData.totalSqFt,
+          locationLat,
+          locationLng,
           expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
         })
         .returning();
@@ -187,20 +201,28 @@ export const listingRouter = createTRPCRouter({
         conditions.push(inArray(listings.finish, input.finishType));
       }
 
-      // Thickness range
-      if (input.thicknessMin !== undefined) {
-        conditions.push(gte(listings.thickness, input.thicknessMin));
-      }
-      if (input.thicknessMax !== undefined) {
-        conditions.push(lte(listings.thickness, input.thicknessMax));
+      // Width multi-select (match within ±0.1" tolerance)
+      if (input.width && input.width.length > 0) {
+        const widthConditions = input.width.map((w) =>
+          and(gte(listings.width, w - 0.1), lte(listings.width, w + 0.1))
+        );
+        conditions.push(or(...widthConditions)!);
       }
 
-      // Width range
-      if (input.widthMin !== undefined) {
-        conditions.push(gte(listings.width, input.widthMin));
+      // Thickness multi-select (match within ±0.1" tolerance)
+      if (input.thickness && input.thickness.length > 0) {
+        const thicknessConditions = input.thickness.map((t) =>
+          and(gte(listings.thickness, t - 0.1), lte(listings.thickness, t + 0.1))
+        );
+        conditions.push(or(...thicknessConditions)!);
       }
-      if (input.widthMax !== undefined) {
-        conditions.push(lte(listings.width, input.widthMax));
+
+      // Wear layer multi-select (match within ±0.02mm tolerance)
+      if (input.wearLayer && input.wearLayer.length > 0) {
+        const wearConditions = input.wearLayer.map((w) =>
+          and(gte(listings.wearLayer, w - 0.02), lte(listings.wearLayer, w + 0.02))
+        );
+        conditions.push(or(...wearConditions)!);
       }
 
       // Price range
@@ -229,6 +251,25 @@ export const listingRouter = createTRPCRouter({
         conditions.push(lte(listings.totalSqFt, input.maxLotSize));
       }
 
+      // Distance filter (Haversine)
+      let buyerLat: number | undefined;
+      let buyerLng: number | undefined;
+      if (input.buyerZip && input.maxDistance && input.maxDistance > 0) {
+        const zipInfo = zipcodes.lookup(input.buyerZip);
+        if (zipInfo) {
+          buyerLat = zipInfo.latitude;
+          buyerLng = zipInfo.longitude;
+          conditions.push(
+            sql`(
+              3959 * acos(
+                cos(radians(${buyerLat})) * cos(radians(${listings.locationLat})) * cos(radians(${listings.locationLng}) - radians(${buyerLng}))
+                + sin(radians(${buyerLat})) * sin(radians(${listings.locationLat}))
+              )
+            ) <= ${input.maxDistance}`
+          );
+        }
+      }
+
       // Sort
       let orderByClause;
       switch (input.sort) {
@@ -253,6 +294,18 @@ export const listingRouter = createTRPCRouter({
           break;
         case "popularity":
           orderByClause = desc(listings.viewsCount);
+          break;
+        case "proximity":
+          if (buyerLat !== undefined && buyerLng !== undefined) {
+            orderByClause = asc(
+              sql`3959 * acos(
+                cos(radians(${buyerLat})) * cos(radians(${listings.locationLat})) * cos(radians(${listings.locationLng}) - radians(${buyerLng}))
+                + sin(radians(${buyerLat})) * sin(radians(${listings.locationLat}))
+              )`
+            );
+          } else {
+            orderByClause = desc(listings.createdAt);
+          }
           break;
         case "date_newest":
         default:

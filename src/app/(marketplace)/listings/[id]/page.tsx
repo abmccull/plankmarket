@@ -2,6 +2,7 @@
 
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 
 const materialLabels: Record<string, string> = {
   hardwood: "Hardwood",
@@ -103,6 +105,23 @@ export default function ListingDetailPage() {
     }
   };
 
+  const handleShare = async () => {
+    const url = window.location.href;
+    const title = listing?.title || "PlankMarket Listing";
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied to clipboard");
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        toast.error("Failed to share listing");
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -130,24 +149,28 @@ export default function ListingDetailPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-6">
-        <Button variant="ghost" size="sm" onClick={() => router.back()}>
-          <ArrowLeft className="mr-1 h-4 w-4" />
-          Back
-        </Button>
-      </div>
+      {/* Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: "Home", href: "/" },
+          { label: "Listings", href: "/listings" },
+          { label: listing.title },
+        ]}
+      />
 
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Main Content - 2 columns */}
         <div className="lg:col-span-2 space-y-6">
           {/* Image Gallery */}
-          <div className="aspect-[16/9] bg-muted rounded-xl overflow-hidden">
+          <div className="aspect-[16/9] bg-muted rounded-xl overflow-hidden relative">
             {listing.media?.[0] ? (
-              <img
+              <Image
                 src={listing.media[0].url}
                 alt={listing.title}
-                className="h-full w-full object-cover"
+                fill
+                sizes="(max-width: 1024px) 100vw, 66vw"
+                className="object-cover"
+                priority
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center">
@@ -162,12 +185,15 @@ export default function ListingDetailPage() {
               {listing.media.map((img, i) => (
                 <div
                   key={img.id}
-                  className="h-20 w-20 rounded-md bg-muted overflow-hidden shrink-0"
+                  className="h-20 w-20 rounded-md bg-muted overflow-hidden shrink-0 relative"
                 >
-                  <img
+                  <Image
                     src={img.url}
                     alt={`${listing.title} ${i + 1}`}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                    loading="lazy"
                   />
                 </div>
               ))}
@@ -177,12 +203,14 @@ export default function ListingDetailPage() {
           {/* Title and badges */}
           <div>
             <div className="flex items-start justify-between gap-4">
-              <h1 className="text-2xl font-bold">{listing.title}</h1>
+              <h1 className="text-3xl font-bold">{listing.title}</h1>
               <div className="flex items-center gap-2 shrink-0">
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={handleWatchlist}
+                  aria-label={watchlistStatus?.isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+                  aria-pressed={watchlistStatus?.isWatchlisted}
                 >
                   <Heart
                     className={`h-4 w-4 ${
@@ -192,7 +220,7 @@ export default function ListingDetailPage() {
                     }`}
                   />
                 </Button>
-                <Button variant="outline" size="icon">
+                <Button variant="outline" size="icon" onClick={handleShare} aria-label="Share listing">
                   <Share2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -215,8 +243,8 @@ export default function ListingDetailPage() {
           {/* Description */}
           {listing.description && (
             <div>
-              <h2 className="font-semibold mb-2">Description</h2>
-              <p className="text-muted-foreground whitespace-pre-wrap">
+              <h2 className="text-xl font-semibold mb-2">Description</h2>
+              <p className="text-muted-foreground whitespace-pre-wrap max-w-prose leading-relaxed">
                 {listing.description}
               </p>
             </div>
@@ -225,7 +253,7 @@ export default function ListingDetailPage() {
           {/* Product Specifications */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Product Specifications</CardTitle>
+              <CardTitle className="text-xl">Product Specifications</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -273,7 +301,7 @@ export default function ListingDetailPage() {
           {/* Lot Details */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Lot Details</CardTitle>
+              <CardTitle className="text-xl">Lot Details</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -320,7 +348,7 @@ export default function ListingDetailPage() {
             (listing.certifications as string[]).length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Certifications</CardTitle>
+                  <CardTitle className="text-xl">Certifications</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
@@ -338,14 +366,15 @@ export default function ListingDetailPage() {
 
         {/* Sidebar - Purchase */}
         <div className="space-y-4">
-          <Card className="sticky top-20">
+          <Card className="sticky top-20 overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-primary to-secondary" />
             <CardContent className="p-6 space-y-4">
               {/* Price */}
               <div>
-                <div className="text-3xl font-bold text-primary">
+                <div className="text-3xl font-display font-bold text-primary tabular-nums">
                   {formatPricePerSqFt(listing.askPricePerSqFt)}
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground tabular-nums">
                   Lot value: {formatCurrency(lotValue)}
                 </p>
               </div>
@@ -356,26 +385,26 @@ export default function ListingDetailPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Available</span>
-                  <span className="font-medium">
+                  <span className="font-medium tabular-nums">
                     {formatSqFt(listing.totalSqFt)}
                   </span>
                 </div>
                 {listing.moq && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Min Order</span>
-                    <span className="font-medium">
+                    <span className="font-medium tabular-nums">
                       {formatSqFt(listing.moq)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Buyer Fee (3%)</span>
-                  <span className="font-medium">
+                  <span className="font-medium tabular-nums">
                     {formatCurrency(buyerFee)}
                   </span>
                 </div>
                 <Separator />
-                <div className="flex justify-between font-semibold">
+                <div className="flex justify-between font-semibold tabular-nums">
                   <span>Total (full lot)</span>
                   <span>{formatCurrency(lotValue + buyerFee)}</span>
                 </div>
@@ -392,7 +421,7 @@ export default function ListingDetailPage() {
                     }
                     className="block"
                   >
-                    <Button className="w-full" size="lg">
+                    <Button variant="secondary" className="w-full tabular-nums" size="lg">
                       Buy Now - {formatCurrency(listing.buyNowPrice)}
                     </Button>
                   </Link>
@@ -465,7 +494,7 @@ export default function ListingDetailPage() {
                       <div className="text-sm font-medium flex items-center gap-1">
                         {listing.seller.businessName || listing.seller.name}
                         {listing.seller.verified && (
-                          <Shield className="h-3 w-3 text-primary" />
+                          <Shield className="h-3 w-3 text-secondary" />
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground">
@@ -486,7 +515,7 @@ export default function ListingDetailPage() {
 
 function SpecItem({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="border-l-4 border-l-primary/20 pl-3">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="text-sm font-medium mt-0.5">{value}</dd>
     </div>

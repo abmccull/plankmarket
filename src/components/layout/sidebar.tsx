@@ -45,18 +45,26 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuthStore();
 
-  const items = user?.role === "seller" ? sellerItems : buyerItems;
+  const isSeller = pathname.startsWith("/seller");
+  const items = isSeller ? sellerItems : buyerItems;
 
   return (
     <aside className="hidden lg:flex w-64 flex-col border-r bg-sidebar min-h-[calc(100vh-4rem)]">
       <div className="flex flex-col gap-1 p-4">
-        <div className="mb-4 px-3">
-          <h2 className="text-lg font-semibold text-sidebar-foreground">
-            {user?.role === "seller" ? "Seller Dashboard" : "Buyer Dashboard"}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            {user?.businessName || user?.name}
-          </p>
+        <div className="mb-4 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 p-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-white">
+              <LayoutDashboard className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                {isSeller ? "Seller Dashboard" : "Buyer Dashboard"}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {user?.businessName || user?.name}
+              </p>
+            </div>
+          </div>
         </div>
         {items.map((item) => {
           const isActive =

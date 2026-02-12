@@ -55,6 +55,7 @@ export const listingFormSchema = z.object({
   thickness: z.number().positive("Thickness must be positive").optional(),
   width: z.number().positive("Width must be positive").optional(),
   length: z.number().positive("Length must be positive").optional(),
+  wearLayer: z.number().positive("Wear layer must be positive").optional(),
   brand: z.string().max(255).optional(),
   modelNumber: z.string().max(255).optional(),
 
@@ -155,10 +156,9 @@ export const listingFilterSchema = z.object({
       ])
     )
     .optional(),
-  thicknessMin: z.number().optional(),
-  thicknessMax: z.number().optional(),
-  widthMin: z.number().optional(),
-  widthMax: z.number().optional(),
+  width: z.array(z.number()).optional(),
+  thickness: z.array(z.number()).optional(),
+  wearLayer: z.array(z.number()).optional(),
   priceMin: z.number().optional(),
   priceMax: z.number().optional(),
   condition: z
@@ -179,6 +179,8 @@ export const listingFilterSchema = z.object({
   certifications: z.array(z.string()).optional(),
   minLotSize: z.number().optional(),
   maxLotSize: z.number().optional(),
+  maxDistance: z.number().optional(),
+  buyerZip: z.string().length(5).regex(/^\d{5}$/).optional(),
   sort: z
     .enum([
       "price_asc",
@@ -188,6 +190,7 @@ export const listingFilterSchema = z.object({
       "lot_value_desc",
       "lot_value_asc",
       "popularity",
+      "proximity",
     ])
     .default("date_newest"),
   page: z.number().int().positive().default(1),

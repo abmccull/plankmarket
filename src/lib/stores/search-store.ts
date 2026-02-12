@@ -10,6 +10,7 @@ interface SearchState {
   setSort: (sort: SortOption) => void;
   setPage: (page: number) => void;
   setQuery: (query: string) => void;
+  setLimit: (limit: number) => void;
   toggleFilterPanel: () => void;
   setViewMode: (mode: "grid" | "list") => void;
 }
@@ -48,6 +49,11 @@ export const useSearchStore = create<SearchState>((set) => ({
   setQuery: (query) =>
     set((state) => ({
       filters: { ...state.filters, query, page: 1 },
+    })),
+
+  setLimit: (limit) =>
+    set((state) => ({
+      filters: { ...state.filters, limit, page: 1 },
     })),
 
   toggleFilterPanel: () =>

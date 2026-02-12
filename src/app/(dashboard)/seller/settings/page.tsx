@@ -78,9 +78,14 @@ export default function SellerSettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Full Name</Label>
-                <Input id="name" {...register("name")} />
+                <Input
+                  id="name"
+                  {...register("name")}
+                  aria-describedby={errors.name ? "name-error" : undefined}
+                  aria-invalid={!!errors.name}
+                />
                 {errors.name && (
-                  <p className="text-sm text-destructive">
+                  <p id="name-error" className="text-sm text-destructive">
                     {errors.name.message}
                   </p>
                 )}

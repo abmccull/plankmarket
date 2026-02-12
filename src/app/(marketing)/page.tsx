@@ -25,44 +25,72 @@ export default function HomePage() {
     <>
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20 md:py-32">
-        <div className="container mx-auto px-4">
+        {/* Wood grain texture overlay */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `
+              repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                oklch(0.40 0.10 55) 2px,
+                oklch(0.40 0.10 55) 4px
+              ),
+              repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 1px,
+                oklch(0.42 0.09 155) 1px,
+                oklch(0.42 0.09 155) 2px
+              )
+            `,
+          }}
+        />
+
+        {/* Decorative blur circles */}
+        <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
+
+        <div className="container mx-auto px-4 relative z-10">
           <div className="mx-auto max-w-3xl text-center">
-            <Badge variant="secondary" className="mb-4">
+            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               B2B Flooring Marketplace
             </Badge>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-              Liquidation Flooring
+            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+              Buy and Sell Surplus Flooring
               <br />
-              <span className="text-primary">At Wholesale Prices</span>
+              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                Direct, B2B, No Middlemen
+              </span>
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Connect with verified manufacturers and distributors to buy and
-              sell overstock, discontinued, and closeout flooring inventory.
-              Save up to 70% on premium flooring materials.
+              A dedicated marketplace connecting flooring manufacturers, distributors, and retailers.
+              Trade overstock, discontinued, and closeout inventory directly with verified professionals.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/listings">
-                <Button size="xl">
-                  Browse Listings
+              <Link href="/register?role=buyer">
+                <Button variant="default" size="xl">
+                  Start Buying
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/register?role=seller">
-                <Button variant="outline" size="xl">
+                <Button variant="secondary" size="xl">
                   Start Selling
                 </Button>
               </Link>
             </div>
-            <div className="mt-8 flex items-center justify-center gap-8 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1 bg-white/50 backdrop-blur-sm rounded-full px-6 py-3 shadow-elevation-sm">
                 <Shield className="h-4 w-4" />
                 <span>Verified Sellers</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 bg-white/50 backdrop-blur-sm rounded-full px-6 py-3 shadow-elevation-sm">
                 <TrendingDown className="h-4 w-4" />
-                <span>Up to 70% Off</span>
+                <span>Wholesale Pricing</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 bg-white/50 backdrop-blur-sm rounded-full px-6 py-3 shadow-elevation-sm">
                 <Truck className="h-4 w-4" />
                 <span>Freight Logistics</span>
               </div>
@@ -81,31 +109,31 @@ export default function HomePage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold">How PlankMarket Works</h2>
+            <h2 className="font-display text-3xl font-bold">How PlankMarket Works</h2>
             <p className="mt-3 text-muted-foreground">
               Simple, transparent, and efficient for both buyers and sellers.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <Card>
+            <Card className="card-hover-lift">
               <CardHeader>
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
+                <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
                   <Search className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Discover</CardTitle>
+                <CardTitle className="font-display">Discover</CardTitle>
                 <CardDescription>
-                  Browse thousands of liquidation lots with detailed specs,
+                  Browse liquidation lots with detailed specs,
                   photos, and pricing. Filter by material, species, size,
                   condition, and location.
                 </CardDescription>
               </CardHeader>
             </Card>
-            <Card>
+            <Card className="card-hover-lift">
               <CardHeader>
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
+                <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
                   <Package className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Purchase</CardTitle>
+                <CardTitle className="font-display">Purchase</CardTitle>
                 <CardDescription>
                   Buy now at listed prices or make offers. Secure checkout with
                   Stripe, transparent fees (3% buyer, 2% seller), and order
@@ -113,12 +141,12 @@ export default function HomePage() {
                 </CardDescription>
               </CardHeader>
             </Card>
-            <Card>
+            <Card className="card-hover-lift">
               <CardHeader>
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-2">
+                <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
                   <Truck className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>Receive</CardTitle>
+                <CardTitle className="font-display">Receive</CardTitle>
                 <CardDescription>
                   Coordinated freight shipping from warehouse to your door.
                   Full tracking, insurance options, and delivery confirmation.
@@ -137,21 +165,21 @@ export default function HomePage() {
               <Badge variant="outline" className="mb-4">
                 For Buyers
               </Badge>
-              <h2 className="text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl font-bold mb-4">
                 Source Premium Flooring Below Cost
               </h2>
               <ul className="space-y-3">
                 <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mt-0.5 shrink-0">
                     <span className="text-xs font-bold text-primary">1</span>
                   </div>
                   <span className="text-muted-foreground">
-                    Access overstock and closeout inventory from top
-                    manufacturers at 30-70% below retail
+                    Access overstock and closeout inventory directly from
+                    manufacturers and distributors at wholesale prices
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mt-0.5 shrink-0">
                     <span className="text-xs font-bold text-primary">2</span>
                   </div>
                   <span className="text-muted-foreground">
@@ -160,7 +188,7 @@ export default function HomePage() {
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mt-0.5 shrink-0">
                     <span className="text-xs font-bold text-primary">3</span>
                   </div>
                   <span className="text-muted-foreground">
@@ -181,12 +209,12 @@ export default function HomePage() {
               <Badge variant="outline" className="mb-4">
                 For Sellers
               </Badge>
-              <h2 className="text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl font-bold mb-4">
                 Move Inventory Fast
               </h2>
               <ul className="space-y-3">
                 <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mt-0.5 shrink-0">
                     <span className="text-xs font-bold text-primary">1</span>
                   </div>
                   <span className="text-muted-foreground">
@@ -195,16 +223,16 @@ export default function HomePage() {
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mt-0.5 shrink-0">
                     <span className="text-xs font-bold text-primary">2</span>
                   </div>
                   <span className="text-muted-foreground">
-                    Reach thousands of verified retail buyers actively looking
-                    for deals
+                    Reach verified retail buyers and flooring professionals
+                    actively looking for inventory
                   </span>
                 </li>
                 <li className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5 shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mt-0.5 shrink-0">
                     <span className="text-xs font-bold text-primary">3</span>
                   </div>
                   <span className="text-muted-foreground">
@@ -215,7 +243,7 @@ export default function HomePage() {
               </ul>
               <div className="mt-6">
                 <Link href="/register?role=seller">
-                  <Button variant="outline">
+                  <Button variant="secondary">
                     Start Selling <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
@@ -226,26 +254,52 @@ export default function HomePage() {
       </section>
 
       {/* Stats */}
-      <section className="py-16 bg-primary text-primary-foreground">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <div className="text-3xl font-bold">10K+</div>
-              <div className="text-sm opacity-80 mt-1">Active Listings</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold">2,500+</div>
-              <div className="text-sm opacity-80 mt-1">Verified Sellers</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold">$50M+</div>
-              <div className="text-sm opacity-80 mt-1">
-                Inventory Available
+      <section className="relative py-16 bg-gradient-to-br from-primary to-secondary text-primary-foreground overflow-hidden">
+        {/* Wood grain texture overlay with lower opacity */}
+        <div
+          className="absolute inset-0 opacity-[0.02]"
+          style={{
+            backgroundImage: `
+              repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 2px,
+                white 2px,
+                white 4px
+              ),
+              repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 1px,
+                white 1px,
+                white 2px
+              )
+            `,
+          }}
+        />
+
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
+              <div className="font-display text-3xl font-bold">6</div>
+              <div className="text-sm opacity-80 mt-1">Material Categories</div>
+              <div className="text-xs opacity-70 mt-1">
+                Hardwood, Engineered, Laminate, Vinyl, Bamboo, Tile
               </div>
             </div>
-            <div>
-              <div className="text-3xl font-bold">50+</div>
-              <div className="text-sm opacity-80 mt-1">States Covered</div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
+              <div className="font-display text-3xl font-bold">All 50 US States</div>
+              <div className="text-sm opacity-80 mt-1">Coast-to-Coast Coverage</div>
+              <div className="text-xs opacity-70 mt-1">
+                Nationwide marketplace for flooring professionals
+              </div>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
+              <div className="font-display text-3xl font-bold">3% + 2%</div>
+              <div className="text-sm opacity-80 mt-1">Transparent Fees</div>
+              <div className="text-xs opacity-70 mt-1">
+                Buyer fee + seller fee, no hidden costs
+              </div>
             </div>
           </div>
         </div>
@@ -253,20 +307,30 @@ export default function HomePage() {
 
       {/* CTA */}
       <section className="py-20">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-4">
-            Ready to Transform Your Flooring Business?
-          </h2>
-          <p className="text-muted-foreground mb-8 max-w-xl mx-auto">
-            Join thousands of flooring professionals already saving time and
-            money on PlankMarket.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/register">
-              <Button size="xl">
-                Create Free Account <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+        <div className="container mx-auto px-4">
+          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
+            {/* Decorative blur circle */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
+
+            <div className="text-center relative z-10">
+              <h2 className="font-display text-3xl font-bold mb-4">
+                Ready to Transform Your Flooring Business?
+              </h2>
+              <p className="text-white/80 mb-8 max-w-xl mx-auto">
+                Join PlankMarket and connect directly with flooring professionals
+                across the United States.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link href="/register">
+                  <Button
+                    size="xl"
+                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                  >
+                    Create Free Account <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </section>

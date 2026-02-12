@@ -31,6 +31,27 @@ export type { Notification, NewNotification } from "./notifications";
 export { listingPromotions, promotionTierEnum } from "./promotions";
 export type { ListingPromotion, NewListingPromotion } from "./promotions";
 
+export { reviews } from "./reviews";
+export type { Review, NewReview } from "./reviews";
+
+export { offers, offerStatusEnum } from "./offers";
+export type { Offer, NewOffer } from "./offers";
+
+export {
+  disputes,
+  disputeMessages,
+  disputeStatusEnum,
+} from "./disputes";
+export type {
+  Dispute,
+  NewDispute,
+  DisputeMessage,
+  NewDisputeMessage,
+} from "./disputes";
+
+export { feedback } from "./feedback";
+export type { Feedback, NewFeedback } from "./feedback";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -41,6 +62,10 @@ import { watchlist } from "./watchlist";
 import { savedSearches } from "./saved-searches";
 import { notifications } from "./notifications";
 import { listingPromotions } from "./promotions";
+import { reviews } from "./reviews";
+import { offers } from "./offers";
+import { disputes, disputeMessages } from "./disputes";
+import { feedback } from "./feedback";
 
 export const usersRelations = relations(users, ({ many }) => ({
   listings: many(listings),
@@ -50,6 +75,13 @@ export const usersRelations = relations(users, ({ many }) => ({
   savedSearches: many(savedSearches),
   notifications: many(notifications),
   promotions: many(listingPromotions),
+  reviewsGiven: many(reviews, { relationName: "reviewerReviews" }),
+  reviewsReceived: many(reviews, { relationName: "sellerReviews" }),
+  buyerOffers: many(offers, { relationName: "buyerOffers" }),
+  sellerOffers: many(offers, { relationName: "sellerOffers" }),
+  initiatedDisputes: many(disputes),
+  disputeMessages: many(disputeMessages),
+  feedback: many(feedback),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -61,6 +93,7 @@ export const listingsRelations = relations(listings, ({ one, many }) => ({
   orders: many(orders),
   watchlistItems: many(watchlist),
   promotions: many(listingPromotions),
+  offers: many(offers),
 }));
 
 export const mediaRelations = relations(media, ({ one }) => ({
@@ -84,6 +117,14 @@ export const ordersRelations = relations(orders, ({ one }) => ({
   listing: one(listings, {
     fields: [orders.listingId],
     references: [listings.id],
+  }),
+  review: one(reviews, {
+    fields: [orders.id],
+    references: [reviews.orderId],
+  }),
+  dispute: one(disputes, {
+    fields: [orders.id],
+    references: [disputes.orderId],
   }),
 }));
 
@@ -125,3 +166,74 @@ export const listingPromotionsRelations = relations(
     }),
   })
 );
+
+export const reviewsRelations = relations(reviews, ({ one }) => ({
+  reviewer: one(users, {
+    fields: [reviews.reviewerId],
+    references: [users.id],
+    relationName: "reviewerReviews",
+  }),
+  seller: one(users, {
+    fields: [reviews.sellerId],
+    references: [users.id],
+    relationName: "sellerReviews",
+  }),
+  order: one(orders, {
+    fields: [reviews.orderId],
+    references: [orders.id],
+  }),
+}));
+
+export const offersRelations = relations(offers, ({ one }) => ({
+  listing: one(listings, {
+    fields: [offers.listingId],
+    references: [listings.id],
+  }),
+  buyer: one(users, {
+    fields: [offers.buyerId],
+    references: [users.id],
+    relationName: "buyerOffers",
+  }),
+  seller: one(users, {
+    fields: [offers.sellerId],
+    references: [users.id],
+    relationName: "sellerOffers",
+  }),
+}));
+
+export const disputesRelations = relations(disputes, ({ one, many }) => ({
+  order: one(orders, {
+    fields: [disputes.orderId],
+    references: [orders.id],
+  }),
+  initiator: one(users, {
+    fields: [disputes.initiatorId],
+    references: [users.id],
+  }),
+  resolver: one(users, {
+    fields: [disputes.resolvedBy],
+    references: [users.id],
+  }),
+  messages: many(disputeMessages),
+}));
+
+export const disputeMessagesRelations = relations(
+  disputeMessages,
+  ({ one }) => ({
+    dispute: one(disputes, {
+      fields: [disputeMessages.disputeId],
+      references: [disputes.id],
+    }),
+    sender: one(users, {
+      fields: [disputeMessages.senderId],
+      references: [users.id],
+    }),
+  })
+);
+
+export const feedbackRelations = relations(feedback, ({ one }) => ({
+  user: one(users, {
+    fields: [feedback.userId],
+    references: [users.id],
+  }),
+}));

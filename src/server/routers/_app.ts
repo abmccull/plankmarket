@@ -7,6 +7,11 @@ import { searchRouter } from "./search";
 import { paymentRouter } from "./payment";
 import { uploadRouter } from "./upload";
 import { promotionRouter } from "./promotion";
+import { reviewRouter } from "./review";
+import { offerRouter } from "./offer";
+import { disputeRouter } from "./dispute";
+import { feedbackRouter } from "./feedback";
+import { adminRouter } from "./admin";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -17,6 +22,11 @@ export const appRouter = createTRPCRouter({
   payment: paymentRouter,
   upload: uploadRouter,
   promotion: promotionRouter,
+  review: reviewRouter,
+  offer: offerRouter,
+  dispute: disputeRouter,
+  feedback: feedbackRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

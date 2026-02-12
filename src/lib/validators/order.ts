@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const createOrderSchema = z.object({
   listingId: z.string().uuid(),
@@ -10,7 +11,9 @@ export const createOrderSchema = z.object({
   shippingZip: z.string().min(5, "ZIP code is required"),
   shippingPhone: z
     .string()
-    .regex(/^\+?[\d\s\-()]{10,20}$/, "Please enter a valid phone number")
+    .refine((val) => !val || isValidPhoneNumber(val, "US"), {
+      message: "Please enter a valid phone number",
+    })
     .optional(),
 });
 

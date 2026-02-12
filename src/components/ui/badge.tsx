@@ -18,6 +18,20 @@ const badgeVariants = cva(
           "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
         warning:
           "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+        info:
+          "border-transparent bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+        gold:
+          "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+        verified:
+          "border-transparent bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+        hardwood:
+          "border-transparent bg-amber-800/10 text-amber-800 dark:bg-amber-400/10 dark:text-amber-400",
+        engineered:
+          "border-transparent bg-orange-700/10 text-orange-700 dark:bg-orange-400/10 dark:text-orange-400",
+        laminate:
+          "border-transparent bg-slate-600/10 text-slate-600 dark:bg-slate-400/10 dark:text-slate-400",
+        vinyl:
+          "border-transparent bg-indigo-600/10 text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-400",
       },
     },
     defaultVariants: {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useSearchStore } from "@/lib/stores/search-store";
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
@@ -14,6 +14,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Search,
   SlidersHorizontal,
@@ -45,20 +51,20 @@ export default function ListingsPage() {
     setQuery,
     setSort,
     setPage,
+    setLimit,
     toggleFilterPanel,
     setViewMode,
+    clearFilters,
   } = useSearchStore();
 
   // Debounced search input — local state updates immediately, store updates after 300ms
   const [searchInput, setSearchInput] = useState(filters.query ?? "");
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const debounceRef = useCallback(
-    (() => {
-      let timeout: ReturnType<typeof setTimeout>;
-      return (value: string) => {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => setQuery(value), 300);
-      };
-    })(),
+    (value: string) => {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setQuery(value), 300);
+    },
     [setQuery]
   );
 
@@ -72,10 +78,11 @@ export default function ListingsPage() {
     condition: filters.condition,
     priceMin: filters.priceMin,
     priceMax: filters.priceMax,
-    thicknessMin: filters.thicknessMin,
-    thicknessMax: filters.thicknessMax,
-    widthMin: filters.widthMin,
-    widthMax: filters.widthMax,
+    width: filters.width,
+    thickness: filters.thickness,
+    wearLayer: filters.wearLayer,
+    maxDistance: filters.maxDistance,
+    buyerZip: filters.buyerZip,
     minLotSize: filters.minLotSize,
     maxLotSize: filters.maxLotSize,
     species: filters.species,
@@ -102,18 +109,40 @@ export default function ListingsPage() {
             }}
           />
         </div>
+        {/* Desktop Filter Toggle */}
         <Button
           variant="outline"
           size="icon"
           onClick={toggleFilterPanel}
-          className={cn(isFilterPanelOpen && "bg-accent")}
+          className={cn("hidden md:flex", isFilterPanelOpen && "bg-accent")}
+          aria-label="Toggle filters"
+          aria-expanded={isFilterPanelOpen}
         >
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
+        {/* Mobile Filter Sheet */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="md:hidden"
+              aria-label="Open filters"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left">
+            <SheetTitle>Filters</SheetTitle>
+            <div className="mt-4 overflow-y-auto">
+              <FacetedFilters />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="text-sm text-muted-foreground">
           {data ? (
             <>
@@ -124,7 +153,20 @@ export default function ListingsPage() {
             "Searching..."
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Select
+            value={String(filters.limit ?? 24)}
+            onValueChange={(v) => setLimit(parseInt(v))}
+          >
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="12">Show 12</SelectItem>
+              <SelectItem value="24">Show 24</SelectItem>
+              <SelectItem value="48">Show 48</SelectItem>
+            </SelectContent>
+          </Select>
           <Select
             value={filters.sort}
             onValueChange={(v) => setSort(v as SortOption)}
@@ -149,6 +191,8 @@ export default function ListingsPage() {
                 viewMode === "grid" && "bg-accent"
               )}
               onClick={() => setViewMode("grid")}
+              aria-label="Grid view"
+              aria-pressed={viewMode === "grid"}
             >
               <Grid3X3 className="h-4 w-4" />
             </Button>
@@ -160,6 +204,8 @@ export default function ListingsPage() {
                 viewMode === "list" && "bg-accent"
               )}
               onClick={() => setViewMode("list")}
+              aria-label="List view"
+              aria-pressed={viewMode === "list"}
             >
               <List className="h-4 w-4" />
             </Button>
@@ -189,17 +235,49 @@ export default function ListingsPage() {
             </div>
           ) : data?.items.length === 0 ? (
             <div className="text-center py-20">
-              <Search className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
-              <h3 className="text-lg font-semibold">No listings found</h3>
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50 mb-4">
+                <Search className="h-10 w-10 text-muted-foreground/30" />
+              </div>
+              <h3 className="text-lg font-display font-semibold">
+                {(filters.materialType && filters.materialType.length > 0) ||
+                (filters.condition && filters.condition.length > 0) ||
+                filters.priceMin !== undefined ||
+                filters.priceMax !== undefined ||
+                filters.minLotSize !== undefined ||
+                filters.query
+                  ? "No listings match your filters"
+                  : "No listings yet"}
+              </h3>
               <p className="text-muted-foreground mt-1">
-                Try adjusting your filters or search terms
+                {(filters.materialType && filters.materialType.length > 0) ||
+                (filters.condition && filters.condition.length > 0) ||
+                filters.priceMin !== undefined ||
+                filters.priceMax !== undefined ||
+                filters.minLotSize !== undefined ||
+                filters.query
+                  ? "Try adjusting your filters or search terms"
+                  : "Check back soon for new listings"}
               </p>
+              {((filters.materialType && filters.materialType.length > 0) ||
+                (filters.condition && filters.condition.length > 0) ||
+                filters.priceMin !== undefined ||
+                filters.priceMax !== undefined ||
+                filters.minLotSize !== undefined ||
+                filters.query) && (
+                <Button
+                  className="mt-4"
+                  variant="secondary"
+                  onClick={clearFilters}
+                >
+                  Clear all filters
+                </Button>
+              )}
             </div>
           ) : (
             <>
               <div
                 className={cn(
-                  "grid gap-4",
+                  "grid gap-4 stagger-grid",
                   viewMode === "grid"
                     ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
                     : "grid-cols-1"

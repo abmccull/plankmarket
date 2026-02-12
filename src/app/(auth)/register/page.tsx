@@ -131,9 +131,11 @@ function RegisterForm() {
               id="name"
               placeholder="John Doe"
               {...register("name")}
+              aria-describedby={errors.name ? "name-error" : undefined}
+              aria-invalid={!!errors.name}
             />
             {errors.name && (
-              <p className="text-sm text-destructive">
+              <p id="name-error" className="text-sm text-destructive">
                 {errors.name.message}
               </p>
             )}
@@ -145,9 +147,11 @@ function RegisterForm() {
               id="businessName"
               placeholder="Acme Flooring Co."
               {...register("businessName")}
+              aria-describedby={errors.businessName ? "businessName-error" : undefined}
+              aria-invalid={!!errors.businessName}
             />
             {errors.businessName && (
-              <p className="text-sm text-destructive">
+              <p id="businessName-error" className="text-sm text-destructive">
                 {errors.businessName.message}
               </p>
             )}
@@ -160,9 +164,11 @@ function RegisterForm() {
               type="email"
               placeholder="you@company.com"
               {...register("email")}
+              aria-describedby={errors.email ? "email-error" : undefined}
+              aria-invalid={!!errors.email}
             />
             {errors.email && (
-              <p className="text-sm text-destructive">
+              <p id="email-error" className="text-sm text-destructive">
                 {errors.email.message}
               </p>
             )}
@@ -175,10 +181,34 @@ function RegisterForm() {
               type="tel"
               placeholder="(555) 123-4567"
               {...register("phone")}
+              aria-describedby={errors.phone ? "phone-error" : undefined}
+              aria-invalid={!!errors.phone}
             />
             {errors.phone && (
-              <p className="text-sm text-destructive">
+              <p id="phone-error" className="text-sm text-destructive">
                 {errors.phone.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="zipCode">ZIP Code</Label>
+            <Input
+              id="zipCode"
+              placeholder="75001"
+              maxLength={5}
+              {...register("zipCode")}
+              aria-describedby={errors.zipCode ? "zipCode-error" : "zipCode-hint"}
+              aria-invalid={!!errors.zipCode}
+            />
+            {!errors.zipCode && (
+              <p id="zipCode-hint" className="text-sm text-muted-foreground">
+                Used to show inventory near you
+              </p>
+            )}
+            {errors.zipCode && (
+              <p id="zipCode-error" className="text-sm text-destructive">
+                {errors.zipCode.message}
               </p>
             )}
           </div>
@@ -188,11 +218,17 @@ function RegisterForm() {
             <Input
               id="password"
               type="password"
-              placeholder="At least 8 characters"
               {...register("password")}
+              aria-describedby={errors.password ? "password-error" : "password-hint"}
+              aria-invalid={!!errors.password}
             />
+            {!errors.password && (
+              <p id="password-hint" className="text-sm text-muted-foreground">
+                Minimum 8 characters
+              </p>
+            )}
             {errors.password && (
-              <p className="text-sm text-destructive">
+              <p id="password-error" className="text-sm text-destructive">
                 {errors.password.message}
               </p>
             )}
@@ -205,11 +241,11 @@ function RegisterForm() {
           </Button>
           <p className="text-xs text-center text-muted-foreground">
             By creating an account, you agree to our{" "}
-            <Link href="#" className="text-primary hover:underline">
+            <Link href="/terms" className="text-primary hover:underline">
               Terms of Service
             </Link>{" "}
             and{" "}
-            <Link href="#" className="text-primary hover:underline">
+            <Link href="/privacy" className="text-primary hover:underline">
               Privacy Policy
             </Link>
           </p>

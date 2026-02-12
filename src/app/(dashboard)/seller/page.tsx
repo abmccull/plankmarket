@@ -39,7 +39,7 @@ export default function SellerDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold">Seller Dashboard</h1>
+        <h1 className="text-3xl font-bold font-display">Seller Dashboard</h1>
         <p className="text-muted-foreground mt-1">
           Overview of your listings, orders, and performance
         </p>
@@ -50,21 +50,25 @@ export default function SellerDashboardPage() {
           title="Active Listings"
           value={formatNumber(activeListings)}
           icon={Package}
+          accentColor="primary"
         />
         <StatsCard
           title="Total Views"
           value={formatNumber(totalViews)}
           icon={Eye}
+          accentColor="accent"
         />
         <StatsCard
           title="Total Revenue"
           value={formatCurrency(totalRevenue)}
           icon={DollarSign}
+          accentColor="secondary"
         />
         <StatsCard
           title="Pending Orders"
           value={formatNumber(pendingOrders)}
           icon={ShoppingCart}
+          accentColor="warning"
         />
       </div>
 

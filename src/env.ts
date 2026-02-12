@@ -8,7 +8,7 @@ export const env = createEnv({
     STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
     STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
     UPLOADTHING_TOKEN: z.string().min(1),
-    RESEND_API_KEY: z.string().startsWith("re_"),
+    RESEND_API_KEY: z.string().startsWith("re_").optional(),
     EMAIL_FROM: z.string().min(1).default("PlankMarket <noreply@plankmarket.com>"),
     UPSTASH_REDIS_REST_URL: z.string().url(),
     UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
