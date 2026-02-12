@@ -8,7 +8,6 @@ import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import {
   formatCurrency,
   formatSqFt,
-  formatRelativeTime,
 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { MapPin, Eye, Heart, Package } from "lucide-react";

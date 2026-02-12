@@ -339,6 +339,7 @@ export const listingRouter = createTRPCRouter({
 
       const withClause = {
         media: {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           orderBy: (media: any, { asc }: any) => [asc(media.sortOrder)],
           limit: 1,
         },
