@@ -1,0 +1,366 @@
+import {
+  createTRPCRouter,
+  publicProcedure,
+  protectedProcedure,
+  sellerProcedure,
+} from "../trpc";
+import { listingFormSchema, listingFilterSchema } from "@/lib/validators/listing";
+import { listings, media } from "../db/schema";
+import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+
+export const listingRouter = createTRPCRouter({
+  // Create a new listing
+  create: sellerProcedure
+    .input(listingFormSchema)
+    .mutation(async ({ ctx, input }) => {
+      const { mediaIds, ...listingData } = input;
+
+      const [listing] = await ctx.db
+        .insert(listings)
+        .values({
+          ...listingData,
+          sellerId: ctx.user.id,
+          status: "active",
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+        })
+        .returning();
+
+      // Link uploaded media to the listing
+      if (mediaIds && mediaIds.length > 0) {
+        await ctx.db
+          .update(media)
+          .set({ listingId: listing.id })
+          .where(inArray(media.id, mediaIds));
+      }
+
+      return listing;
+    }),
+
+  // Update an existing listing
+  update: sellerProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        data: listingFormSchema.partial(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership
+      const existing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.id),
+          eq(listings.sellerId, ctx.user.id)
+        ),
+      });
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found or you do not have permission to edit it",
+        });
+      }
+
+      const { mediaIds, ...updateData } = input.data;
+
+      const [updated] = await ctx.db
+        .update(listings)
+        .set({
+          ...updateData,
+          updatedAt: new Date(),
+        })
+        .where(eq(listings.id, input.id))
+        .returning();
+
+      return updated;
+    }),
+
+  // Delete (archive) a listing
+  delete: sellerProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.id),
+          eq(listings.sellerId, ctx.user.id)
+        ),
+      });
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      const [archived] = await ctx.db
+        .update(listings)
+        .set({ status: "archived", updatedAt: new Date() })
+        .where(eq(listings.id, input.id))
+        .returning();
+
+      return archived;
+    }),
+
+  // Get a single listing by ID (public)
+  getById: publicProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.id, input.id),
+        with: {
+          seller: {
+            columns: {
+              id: true,
+              name: true,
+              businessName: true,
+              avatarUrl: true,
+              verified: true,
+              createdAt: true,
+            },
+          },
+          media: {
+            orderBy: (media, { asc }) => [asc(media.sortOrder)],
+          },
+        },
+      });
+
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      // Increment view count (fire-and-forget)
+      ctx.db
+        .update(listings)
+        .set({ viewsCount: sql`${listings.viewsCount} + 1` })
+        .where(eq(listings.id, input.id))
+        .execute()
+        .catch(() => {});
+
+      return listing;
+    }),
+
+  // Search and filter listings (public)
+  list: publicProcedure
+    .input(listingFilterSchema)
+    .query(async ({ ctx, input }) => {
+      const conditions = [eq(listings.status, "active")];
+
+      // Text search
+      if (input.query) {
+        conditions.push(
+          or(
+            ilike(listings.title, `%${input.query}%`),
+            ilike(listings.description, `%${input.query}%`),
+            ilike(listings.brand, `%${input.query}%`),
+            ilike(listings.species, `%${input.query}%`)
+          )!
+        );
+      }
+
+      // Material type filter
+      if (input.materialType && input.materialType.length > 0) {
+        conditions.push(inArray(listings.materialType, input.materialType));
+      }
+
+      // Species filter
+      if (input.species && input.species.length > 0) {
+        conditions.push(inArray(listings.species, input.species));
+      }
+
+      // Color family filter
+      if (input.colorFamily && input.colorFamily.length > 0) {
+        conditions.push(inArray(listings.colorFamily, input.colorFamily));
+      }
+
+      // Finish type filter
+      if (input.finishType && input.finishType.length > 0) {
+        conditions.push(inArray(listings.finish, input.finishType));
+      }
+
+      // Thickness range
+      if (input.thicknessMin !== undefined) {
+        conditions.push(gte(listings.thickness, input.thicknessMin));
+      }
+      if (input.thicknessMax !== undefined) {
+        conditions.push(lte(listings.thickness, input.thicknessMax));
+      }
+
+      // Width range
+      if (input.widthMin !== undefined) {
+        conditions.push(gte(listings.width, input.widthMin));
+      }
+      if (input.widthMax !== undefined) {
+        conditions.push(lte(listings.width, input.widthMax));
+      }
+
+      // Price range
+      if (input.priceMin !== undefined) {
+        conditions.push(gte(listings.askPricePerSqFt, input.priceMin));
+      }
+      if (input.priceMax !== undefined) {
+        conditions.push(lte(listings.askPricePerSqFt, input.priceMax));
+      }
+
+      // Condition filter
+      if (input.condition && input.condition.length > 0) {
+        conditions.push(inArray(listings.condition, input.condition));
+      }
+
+      // State filter
+      if (input.state && input.state.length > 0) {
+        conditions.push(inArray(listings.locationState, input.state));
+      }
+
+      // Lot size range
+      if (input.minLotSize !== undefined) {
+        conditions.push(gte(listings.totalSqFt, input.minLotSize));
+      }
+      if (input.maxLotSize !== undefined) {
+        conditions.push(lte(listings.totalSqFt, input.maxLotSize));
+      }
+
+      // Sort
+      let orderByClause;
+      switch (input.sort) {
+        case "price_asc":
+          orderByClause = asc(listings.askPricePerSqFt);
+          break;
+        case "price_desc":
+          orderByClause = desc(listings.askPricePerSqFt);
+          break;
+        case "date_oldest":
+          orderByClause = asc(listings.createdAt);
+          break;
+        case "lot_value_desc":
+          orderByClause = desc(
+            sql`${listings.askPricePerSqFt} * ${listings.totalSqFt}`
+          );
+          break;
+        case "lot_value_asc":
+          orderByClause = asc(
+            sql`${listings.askPricePerSqFt} * ${listings.totalSqFt}`
+          );
+          break;
+        case "popularity":
+          orderByClause = desc(listings.viewsCount);
+          break;
+        case "date_newest":
+        default:
+          orderByClause = desc(listings.createdAt);
+          break;
+      }
+
+      const where = and(...conditions);
+      const offset = (input.page - 1) * input.limit;
+
+      const [items, countResult] = await Promise.all([
+        ctx.db.query.listings.findMany({
+          where,
+          with: {
+            media: {
+              orderBy: (media, { asc }) => [asc(media.sortOrder)],
+              limit: 1, // Only first image for list view
+            },
+            seller: {
+              columns: {
+                id: true,
+                businessName: true,
+                verified: true,
+              },
+            },
+          },
+          orderBy: orderByClause,
+          limit: input.limit,
+          offset,
+        }),
+        ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(listings)
+          .where(where),
+      ]);
+
+      const total = countResult[0]?.count ?? 0;
+
+      return {
+        items,
+        total,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(total / input.limit),
+        hasMore: offset + items.length < total,
+      };
+    }),
+
+  // Get seller's own listings
+  getMyListings: sellerProcedure
+    .input(
+      z.object({
+        status: z
+          .enum(["draft", "active", "sold", "expired", "archived"])
+          .optional(),
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const conditions = [eq(listings.sellerId, ctx.user.id)];
+
+      if (input.status) {
+        conditions.push(eq(listings.status, input.status));
+      }
+
+      const where = and(...conditions);
+      const offset = (input.page - 1) * input.limit;
+
+      const [items, countResult] = await Promise.all([
+        ctx.db.query.listings.findMany({
+          where,
+          with: {
+            media: {
+              orderBy: (media, { asc }) => [asc(media.sortOrder)],
+              limit: 1,
+            },
+          },
+          orderBy: desc(listings.createdAt),
+          limit: input.limit,
+          offset,
+        }),
+        ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(listings)
+          .where(where),
+      ]);
+
+      const total = countResult[0]?.count ?? 0;
+
+      return {
+        items,
+        total,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(total / input.limit),
+        hasMore: offset + items.length < total,
+      };
+    }),
+
+  // Get seller stats
+  getSellerStats: sellerProcedure.query(async ({ ctx }) => {
+    const stats = await ctx.db
+      .select({
+        status: listings.status,
+        count: sql<number>`count(*)::int`,
+        totalViews: sql<number>`coalesce(sum(${listings.viewsCount}), 0)::int`,
+        totalSqFt: sql<number>`coalesce(sum(${listings.totalSqFt}), 0)::float`,
+      })
+      .from(listings)
+      .where(eq(listings.sellerId, ctx.user.id))
+      .groupBy(listings.status);
+
+    return stats;
+  }),
+});

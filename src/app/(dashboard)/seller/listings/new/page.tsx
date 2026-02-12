@@ -1,0 +1,860 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  listingFormSchema,
+  type ListingFormInput,
+} from "@/lib/validators/listing";
+import { useListingFormStore } from "@/lib/stores/listing-form-store";
+import { trpc } from "@/lib/trpc/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const STEPS = [
+  { id: 1, title: "Product Details", description: "Material and specs" },
+  { id: 2, title: "Lot Details", description: "Quantities and location" },
+  { id: 3, title: "Pricing", description: "Set your prices" },
+  { id: 4, title: "Condition", description: "Condition and certs" },
+  { id: 5, title: "Photos", description: "Upload images" },
+  { id: 6, title: "Review", description: "Review and publish" },
+];
+
+const MATERIAL_TYPES = [
+  { value: "hardwood", label: "Hardwood" },
+  { value: "engineered", label: "Engineered Hardwood" },
+  { value: "laminate", label: "Laminate" },
+  { value: "vinyl_lvp", label: "Vinyl / LVP" },
+  { value: "bamboo", label: "Bamboo" },
+  { value: "tile", label: "Tile" },
+  { value: "other", label: "Other" },
+];
+
+const FINISH_TYPES = [
+  { value: "matte", label: "Matte" },
+  { value: "semi_gloss", label: "Semi-Gloss" },
+  { value: "gloss", label: "Gloss" },
+  { value: "wire_brushed", label: "Wire Brushed" },
+  { value: "hand_scraped", label: "Hand Scraped" },
+  { value: "distressed", label: "Distressed" },
+  { value: "smooth", label: "Smooth" },
+  { value: "textured", label: "Textured" },
+  { value: "oiled", label: "Oiled" },
+  { value: "unfinished", label: "Unfinished" },
+  { value: "other", label: "Other" },
+];
+
+const GRADE_TYPES = [
+  { value: "select", label: "Select" },
+  { value: "1_common", label: "#1 Common" },
+  { value: "2_common", label: "#2 Common" },
+  { value: "3_common", label: "#3 Common" },
+  { value: "cabin", label: "Cabin" },
+  { value: "character", label: "Character" },
+  { value: "rustic", label: "Rustic" },
+  { value: "premium", label: "Premium" },
+  { value: "standard", label: "Standard" },
+  { value: "economy", label: "Economy" },
+  { value: "other", label: "Other" },
+];
+
+const CONDITION_TYPES = [
+  { value: "new_overstock", label: "New Overstock" },
+  { value: "discontinued", label: "Discontinued" },
+  { value: "slight_damage", label: "Slight Damage" },
+  { value: "returns", label: "Returns" },
+  { value: "seconds", label: "Seconds" },
+  { value: "remnants", label: "Remnants" },
+  { value: "closeout", label: "Closeout" },
+  { value: "other", label: "Other" },
+];
+
+const REASON_CODES = [
+  { value: "overproduction", label: "Overproduction" },
+  { value: "color_change", label: "Color Change" },
+  { value: "line_discontinuation", label: "Line Discontinuation" },
+  { value: "warehouse_clearance", label: "Warehouse Clearance" },
+  { value: "customer_return", label: "Customer Return" },
+  { value: "slight_defect", label: "Slight Defect" },
+  { value: "packaging_damage", label: "Packaging Damage" },
+  { value: "end_of_season", label: "End of Season" },
+  { value: "other", label: "Other" },
+];
+
+const CERTIFICATIONS = [
+  { value: "fsc", label: "FSC Certified" },
+  { value: "floorscore", label: "FloorScore" },
+  { value: "greenguard", label: "GreenGuard" },
+  { value: "greenguard_gold", label: "GreenGuard Gold" },
+  { value: "carb2", label: "CARB2 Compliant" },
+  { value: "leed", label: "LEED" },
+  { value: "nauf", label: "NAUF" },
+];
+
+export default function CreateListingPage() {
+  const router = useRouter();
+  const { currentStep, formData, setStep, nextStep, prevStep, updateFormData, reset } =
+    useListingFormStore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const createMutation = trpc.listing.create.useMutation();
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<ListingFormInput>({
+    resolver: zodResolver(listingFormSchema) as never,
+    defaultValues: formData as Partial<ListingFormInput>,
+  });
+
+  const watchedValues = watch();
+
+  const handleNext = async () => {
+    // Simple step validation - validate the fields for the current step
+    updateFormData(watchedValues);
+    nextStep();
+  };
+
+  const handleBack = () => {
+    updateFormData(watchedValues);
+    prevStep();
+  };
+
+  const onSubmit = async (data: ListingFormInput) => {
+    setIsSubmitting(true);
+    try {
+      const listing = await createMutation.mutateAsync(data);
+      toast.success("Listing created successfully!");
+      reset();
+      router.push(`/listings/${listing.id}`);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : "Failed to create listing";
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold">Create New Listing</h1>
+        <p className="text-muted-foreground mt-1">
+          List your flooring inventory for buyers to discover
+        </p>
+      </div>
+
+      {/* Progress Steps */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        {STEPS.map((step, index) => (
+          <button
+            key={step.id}
+            onClick={() => {
+              updateFormData(watchedValues);
+              setStep(step.id);
+            }}
+            className="flex items-center gap-2 shrink-0"
+          >
+            <div
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors",
+                currentStep === step.id
+                  ? "bg-primary text-primary-foreground"
+                  : currentStep > step.id
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted text-muted-foreground"
+              )}
+            >
+              {currentStep > step.id ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                step.id
+              )}
+            </div>
+            <div className="hidden md:block text-left">
+              <div className="text-xs font-medium">{step.title}</div>
+              <div className="text-xs text-muted-foreground">
+                {step.description}
+              </div>
+            </div>
+            {index < STEPS.length - 1 && (
+              <div
+                className={cn(
+                  "hidden md:block h-px w-8",
+                  currentStep > step.id ? "bg-primary" : "bg-border"
+                )}
+              />
+            )}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={handleSubmit(onSubmit)}>
+        {/* Step 1: Product Details */}
+        {currentStep === 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Product Details</CardTitle>
+              <CardDescription>
+                Describe the flooring product you are listing
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Listing Title *</Label>
+                <Input
+                  id="title"
+                  placeholder='e.g., "Premium White Oak Hardwood - 2,500 sq ft Overstock"'
+                  {...register("title")}
+                />
+                {errors.title && (
+                  <p className="text-sm text-destructive">
+                    {errors.title.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Describe the product, its history, and any relevant details..."
+                  rows={4}
+                  {...register("description")}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Material Type *</Label>
+                  <Select
+                    value={watchedValues.materialType}
+                    onValueChange={(v) =>
+                      setValue("materialType", v as ListingFormInput["materialType"])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select material" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MATERIAL_TYPES.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="species">Species</Label>
+                  <Input
+                    id="species"
+                    placeholder="e.g., White Oak, Maple"
+                    {...register("species")}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Finish</Label>
+                  <Select
+                    value={watchedValues.finish || ""}
+                    onValueChange={(v) =>
+                      setValue("finish", v as ListingFormInput["finish"])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select finish" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FINISH_TYPES.map((f) => (
+                        <SelectItem key={f.value} value={f.value}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Grade</Label>
+                  <Select
+                    value={watchedValues.grade || ""}
+                    onValueChange={(v) =>
+                      setValue("grade", v as ListingFormInput["grade"])
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select grade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GRADE_TYPES.map((g) => (
+                        <SelectItem key={g.value} value={g.value}>
+                          {g.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="thickness">Thickness (in)</Label>
+                  <Input
+                    id="thickness"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.75"
+                    {...register("thickness", { valueAsNumber: true })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="width">Width (in)</Label>
+                  <Input
+                    id="width"
+                    type="number"
+                    step="0.01"
+                    placeholder="5.0"
+                    {...register("width", { valueAsNumber: true })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="length">Length (in)</Label>
+                  <Input
+                    id="length"
+                    type="number"
+                    step="0.01"
+                    placeholder="48.0"
+                    {...register("length", { valueAsNumber: true })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="color">Color</Label>
+                  <Input
+                    id="color"
+                    placeholder="e.g., Natural, Espresso"
+                    {...register("color")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="brand">Brand</Label>
+                  <Input
+                    id="brand"
+                    placeholder="e.g., Shaw, Mohawk"
+                    {...register("brand")}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 2: Lot Details */}
+        {currentStep === 2 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Lot Details</CardTitle>
+              <CardDescription>
+                Specify quantities, packaging, and warehouse location
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="totalSqFt">Total Square Footage *</Label>
+                  <Input
+                    id="totalSqFt"
+                    type="number"
+                    step="0.01"
+                    placeholder="2500"
+                    {...register("totalSqFt", { valueAsNumber: true })}
+                  />
+                  {errors.totalSqFt && (
+                    <p className="text-sm text-destructive">
+                      {errors.totalSqFt.message}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="totalPallets">Total Pallets</Label>
+                  <Input
+                    id="totalPallets"
+                    type="number"
+                    placeholder="5"
+                    {...register("totalPallets", { valueAsNumber: true })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sqFtPerBox">Sq Ft Per Box</Label>
+                  <Input
+                    id="sqFtPerBox"
+                    type="number"
+                    step="0.01"
+                    placeholder="20.0"
+                    {...register("sqFtPerBox", { valueAsNumber: true })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="boxesPerPallet">Boxes Per Pallet</Label>
+                  <Input
+                    id="boxesPerPallet"
+                    type="number"
+                    placeholder="50"
+                    {...register("boxesPerPallet", { valueAsNumber: true })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="moq">Minimum Order Quantity (sq ft)</Label>
+                <Input
+                  id="moq"
+                  type="number"
+                  step="0.01"
+                  placeholder="500"
+                  {...register("moq", { valueAsNumber: true })}
+                />
+              </div>
+
+              <Separator className="my-4" />
+
+              <h3 className="font-medium">Warehouse Location</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="locationCity">City</Label>
+                  <Input
+                    id="locationCity"
+                    placeholder="Dallas"
+                    {...register("locationCity")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="locationState">State</Label>
+                  <Input
+                    id="locationState"
+                    placeholder="TX"
+                    maxLength={2}
+                    {...register("locationState")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="locationZip">ZIP Code</Label>
+                  <Input
+                    id="locationZip"
+                    placeholder="75001"
+                    {...register("locationZip")}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 3: Pricing */}
+        {currentStep === 3 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pricing</CardTitle>
+              <CardDescription>
+                Set your asking price and purchase options
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="askPricePerSqFt">
+                  Ask Price per Sq Ft ($) *
+                </Label>
+                <Input
+                  id="askPricePerSqFt"
+                  type="number"
+                  step="0.01"
+                  placeholder="2.50"
+                  {...register("askPricePerSqFt", { valueAsNumber: true })}
+                />
+                {errors.askPricePerSqFt && (
+                  <p className="text-sm text-destructive">
+                    {errors.askPricePerSqFt.message}
+                  </p>
+                )}
+                {watchedValues.askPricePerSqFt > 0 &&
+                  watchedValues.totalSqFt > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Total lot value: $
+                      {(
+                        watchedValues.askPricePerSqFt * watchedValues.totalSqFt
+                      ).toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </p>
+                  )}
+              </div>
+
+              <Separator className="my-4" />
+
+              <div className="space-y-2">
+                <Label htmlFor="buyNowPrice">
+                  Buy Now Price ($, optional)
+                </Label>
+                <Input
+                  id="buyNowPrice"
+                  type="number"
+                  step="0.01"
+                  placeholder="6000.00"
+                  {...register("buyNowPrice", { valueAsNumber: true })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Set a fixed price for immediate purchase of the entire lot
+                </p>
+              </div>
+
+              <Separator className="my-4" />
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300"
+                    {...register("allowOffers")}
+                  />
+                  <span className="text-sm font-medium">Accept Offers</span>
+                </label>
+              </div>
+
+              {watchedValues.allowOffers && (
+                <div className="space-y-2">
+                  <Label htmlFor="floorPrice">
+                    Floor Price per Sq Ft ($)
+                  </Label>
+                  <Input
+                    id="floorPrice"
+                    type="number"
+                    step="0.01"
+                    placeholder="2.00"
+                    {...register("floorPrice", { valueAsNumber: true })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum price you will accept. Not visible to buyers.
+                  </p>
+                </div>
+              )}
+
+              <div className="rounded-lg bg-muted/50 p-4 mt-4">
+                <h4 className="text-sm font-medium mb-2">Fee Breakdown</h4>
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  <p>Seller fee: 2% of transaction value</p>
+                  <p>Buyer fee: 3% (paid by buyer)</p>
+                  <p>Blended rate: ~5% total transaction cost</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 4: Condition */}
+        {currentStep === 4 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Condition & Certifications</CardTitle>
+              <CardDescription>
+                Describe the product condition and any certifications
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Condition *</Label>
+                <Select
+                  value={watchedValues.condition}
+                  onValueChange={(v) =>
+                    setValue("condition", v as ListingFormInput["condition"])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select condition" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CONDITION_TYPES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.condition && (
+                  <p className="text-sm text-destructive">
+                    {errors.condition.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Reason Code</Label>
+                <Select
+                  value={watchedValues.reasonCode || ""}
+                  onValueChange={(v) =>
+                    setValue("reasonCode", v as ListingFormInput["reasonCode"])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Why is this being sold?" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REASON_CODES.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Certifications</Label>
+                <div className="flex flex-wrap gap-2">
+                  {CERTIFICATIONS.map((cert) => {
+                    const isSelected =
+                      watchedValues.certifications?.includes(cert.value) ??
+                      false;
+                    return (
+                      <Badge
+                        key={cert.value}
+                        variant={isSelected ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          const current =
+                            watchedValues.certifications ?? [];
+                          const updated = isSelected
+                            ? current.filter((c) => c !== cert.value)
+                            : [...current, cert.value];
+                          setValue("certifications", updated);
+                        }}
+                      >
+                        {cert.label}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 5: Photos */}
+        {currentStep === 5 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Photos</CardTitle>
+              <CardDescription>
+                Upload up to 20 photos of your flooring product (coming soon -
+                photos can be added after listing is created)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border-2 border-dashed rounded-lg p-12 text-center">
+                <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <svg
+                    className="h-6 w-6 text-muted-foreground"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Photo upload functionality will be connected via Uploadthing.
+                  <br />
+                  For now, you can create the listing and add photos later.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 6: Review */}
+        {currentStep === 6 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Review Your Listing</CardTitle>
+              <CardDescription>
+                Review all details before publishing
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                  Title
+                </h3>
+                <p className="font-semibold">{watchedValues.title || "---"}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                    Material
+                  </h3>
+                  <p>
+                    {MATERIAL_TYPES.find(
+                      (m) => m.value === watchedValues.materialType
+                    )?.label || "---"}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                    Species
+                  </h3>
+                  <p>{watchedValues.species || "---"}</p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                    Total Sq Ft
+                  </h3>
+                  <p>{watchedValues.totalSqFt?.toLocaleString() || "---"}</p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                    Price per Sq Ft
+                  </h3>
+                  <p>
+                    $
+                    {watchedValues.askPricePerSqFt?.toFixed(2) || "---"}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                    Condition
+                  </h3>
+                  <p>
+                    {CONDITION_TYPES.find(
+                      (c) => c.value === watchedValues.condition
+                    )?.label || "---"}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-muted-foreground mb-1">
+                    Location
+                  </h3>
+                  <p>
+                    {watchedValues.locationCity &&
+                    watchedValues.locationState
+                      ? `${watchedValues.locationCity}, ${watchedValues.locationState}`
+                      : "---"}
+                  </p>
+                </div>
+              </div>
+
+              {watchedValues.askPricePerSqFt > 0 &&
+                watchedValues.totalSqFt > 0 && (
+                  <div className="rounded-lg bg-primary/5 p-4">
+                    <h3 className="font-semibold mb-2">Listing Summary</h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <span>Total lot value:</span>
+                      <span className="font-medium text-right">
+                        $
+                        {(
+                          watchedValues.askPricePerSqFt *
+                          watchedValues.totalSqFt
+                        ).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                      <span>Seller fee (2%):</span>
+                      <span className="text-right">
+                        -$
+                        {(
+                          watchedValues.askPricePerSqFt *
+                          watchedValues.totalSqFt *
+                          0.02
+                        ).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                      <span className="font-medium">Your payout:</span>
+                      <span className="font-medium text-right text-primary">
+                        $
+                        {(
+                          watchedValues.askPricePerSqFt *
+                          watchedValues.totalSqFt *
+                          0.98
+                        ).toLocaleString("en-US", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-6">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleBack}
+            disabled={currentStep === 1}
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
+
+          {currentStep < 6 ? (
+            <Button type="button" onClick={handleNext}>
+              Next
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Publish Listing
+            </Button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}

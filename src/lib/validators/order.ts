@@ -1,0 +1,32 @@
+import { z } from "zod";
+
+export const createOrderSchema = z.object({
+  listingId: z.string().uuid(),
+  quantitySqFt: z.number().positive("Quantity must be positive"),
+  shippingName: z.string().min(2, "Shipping name is required"),
+  shippingAddress: z.string().min(5, "Shipping address is required"),
+  shippingCity: z.string().min(2, "City is required"),
+  shippingState: z.string().length(2, "State must be 2 characters"),
+  shippingZip: z.string().min(5, "ZIP code is required"),
+  shippingPhone: z
+    .string()
+    .regex(/^\+?[\d\s\-()]{10,20}$/, "Please enter a valid phone number")
+    .optional(),
+});
+
+export const updateOrderStatusSchema = z.object({
+  orderId: z.string().uuid(),
+  status: z.enum([
+    "confirmed",
+    "processing",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ]),
+  trackingNumber: z.string().optional(),
+  carrier: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
