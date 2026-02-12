@@ -27,6 +27,7 @@ export default function SellerAnalyticsPage() {
     },
   });
 
+  const now = Date.now();
   const isLoading = listingsLoading || ordersLoading;
 
   if (isLoading) {
@@ -212,7 +213,7 @@ export default function SellerAnalyticsPage() {
                   promo.isActive &&
                   new Date(promo.expiresAt) > new Date();
                 const remainingMs =
-                  new Date(promo.expiresAt).getTime() - Date.now();
+                  new Date(promo.expiresAt).getTime() - now;
                 const remainingDays = Math.max(
                   0,
                   Math.ceil(remainingMs / (1000 * 60 * 60 * 24))
