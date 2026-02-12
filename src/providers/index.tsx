@@ -7,6 +7,8 @@ import { trpc } from "@/lib/trpc/client";
 import superjson from "superjson";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
+import { PostHogAnalyticsProvider } from "@/lib/analytics/provider";
+import { AuthProvider } from "@/components/auth/auth-provider";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -47,18 +49,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-          <Toaster position="top-right" richColors closeButton />
-        </ThemeProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <PostHogAnalyticsProvider>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+            <Toaster position="top-right" richColors closeButton />
+          </ThemeProvider>
+        </QueryClientProvider>
+      </trpc.Provider>
+    </PostHogAnalyticsProvider>
   );
 }

@@ -131,7 +131,8 @@ export type SortOption =
   | "date_oldest"
   | "lot_value_desc"
   | "lot_value_asc"
-  | "popularity";
+  | "popularity"
+  | "proximity";
 
 export interface SearchFilters {
   query?: string;
@@ -139,10 +140,9 @@ export interface SearchFilters {
   species?: Species[];
   colorFamily?: ColorFamily[];
   finishType?: FinishType[];
-  thicknessMin?: number;
-  thicknessMax?: number;
-  widthMin?: number;
-  widthMax?: number;
+  width?: number[];
+  thickness?: number[];
+  wearLayer?: number[];
   priceMin?: number;
   priceMax?: number;
   condition?: ConditionType[];
@@ -150,6 +150,8 @@ export interface SearchFilters {
   certifications?: Certification[];
   minLotSize?: number;
   maxLotSize?: number;
+  maxDistance?: number;
+  buyerZip?: string;
   sort?: SortOption;
   page?: number;
   limit?: number;

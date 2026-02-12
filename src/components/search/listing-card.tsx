@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -59,18 +60,25 @@ export function ListingCard({ listing }: ListingCardProps) {
 
   return (
     <Link href={`/listings/${listing.id}`}>
-      <Card className="group overflow-hidden hover:shadow-lg transition-shadow duration-200">
+      <Card className="group overflow-hidden card-hover-lift hover:shadow-lg transition-shadow duration-200">
         {/* Image */}
         <div className="aspect-[4/3] bg-muted relative overflow-hidden">
           {listing.media?.[0] ? (
-            <img
-              src={listing.media[0].url}
-              alt={listing.title}
-              className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-200"
-            />
+            <>
+              <Image
+                src={listing.media[0].url}
+                alt={listing.title}
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                className="object-cover group-hover:scale-105 transition-transform duration-200"
+                loading="lazy"
+              />
+              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/20 to-transparent" />
+            </>
           ) : (
-            <div className="h-full w-full flex items-center justify-center">
-              <Package className="h-12 w-12 text-muted-foreground/50" />
+            <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+              <Package className="h-12 w-12 text-muted-foreground/30 mb-2" />
+              <span className="text-xs text-muted-foreground/50">No image</span>
             </div>
           )}
           <div className="absolute top-2 left-2 flex gap-1">
@@ -79,7 +87,7 @@ export function ListingCard({ listing }: ListingCardProps) {
             </Badge>
           </div>
           {listing.buyNowPrice && (
-            <Badge className="absolute top-2 right-2 text-xs bg-primary">
+            <Badge className="absolute top-2 right-2 text-xs bg-secondary text-secondary-foreground">
               Buy Now
             </Badge>
           )}
@@ -91,33 +99,33 @@ export function ListingCard({ listing }: ListingCardProps) {
           </h3>
 
           <div className="flex items-center justify-between mb-2">
-            <span className="text-lg font-bold text-primary">
+            <span className="text-xl font-mono font-bold text-primary tabular-nums">
               {formatCurrency(listing.askPricePerSqFt)}
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className="text-sm font-normal text-muted-foreground">
                 /sq ft
               </span>
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               {formatSqFt(listing.totalSqFt)}
             </span>
           </div>
 
-          <div className="text-xs text-muted-foreground mb-2">
+          <div className="text-sm text-muted-foreground mb-2 tabular-nums">
             Lot value: {formatCurrency(lotValue)}
           </div>
 
           <div className="flex items-center gap-2 flex-wrap mb-3">
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="text-sm">
               {conditionLabels[listing.condition] || listing.condition}
             </Badge>
             {listing.species && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-sm">
                 {listing.species}
               </Badge>
             )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div className="flex items-center gap-3">
               {listing.locationState && (
                 <span className="flex items-center gap-1">
@@ -141,11 +149,11 @@ export function ListingCard({ listing }: ListingCardProps) {
           </div>
 
           {listing.seller?.businessName && (
-            <div className="mt-2 pt-2 border-t flex items-center gap-1 text-xs text-muted-foreground">
+            <div className="mt-2 pt-2 border-t flex items-center gap-1 text-sm text-muted-foreground">
               <span>{listing.seller.businessName}</span>
               {listing.seller.verified && (
                 <svg
-                  className="h-3 w-3 text-primary"
+                  className="h-3 w-3 text-secondary"
                   viewBox="0 0 20 20"
                   fill="currentColor"
                 >

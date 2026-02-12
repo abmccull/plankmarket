@@ -8,8 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginInput } from "@/lib/validators/auth";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { trpc } from "@/lib/trpc/client";
 import { getDashboardPath } from "@/lib/auth/roles";
-import type { UserRole } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect");
+  const utils = trpc.useUtils();
 
   const {
     register,
@@ -52,11 +53,16 @@ function LoginForm() {
         return;
       }
 
-      toast.success("Signed in successfully");
-      const role = authData.user?.user_metadata?.role as UserRole | undefined;
-      const defaultPath = getDashboardPath(role ?? "buyer");
-      router.push(redirect || defaultPath);
-      router.refresh();
+      // Fetch user session to get role and populate auth store
+      const session = await utils.auth.getSession.fetch();
+      if (session.isAuthenticated && session.user) {
+        useAuthStore.getState().setUser(session.user);
+        toast.success("Signed in successfully");
+        router.push(redirect || getDashboardPath(session.user.role));
+        router.refresh();
+      } else {
+        toast.error("Account not found. Please register first.");
+      }
     } catch {
       toast.error("An unexpected error occurred");
     } finally {
@@ -81,9 +87,11 @@ function LoginForm() {
               type="email"
               placeholder="you@company.com"
               {...register("email")}
+              aria-describedby={errors.email ? "email-error" : undefined}
+              aria-invalid={!!errors.email}
             />
             {errors.email && (
-              <p className="text-sm text-destructive">
+              <p id="email-error" className="text-sm text-destructive">
                 {errors.email.message}
               </p>
             )}
@@ -92,7 +100,7 @@ function LoginForm() {
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
               <Link
-                href="#"
+                href="/forgot-password"
                 className="text-sm text-primary hover:underline"
               >
                 Forgot password?
@@ -103,9 +111,11 @@ function LoginForm() {
               type="password"
               placeholder="Enter your password"
               {...register("password")}
+              aria-describedby={errors.password ? "password-error" : undefined}
+              aria-invalid={!!errors.password}
             />
             {errors.password && (
-              <p className="text-sm text-destructive">
+              <p id="password-error" className="text-sm text-destructive">
                 {errors.password.message}
               </p>
             )}

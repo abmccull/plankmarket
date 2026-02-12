@@ -5,6 +5,7 @@ import {
   varchar,
   boolean,
   timestamp,
+  real,
   pgEnum,
 } from "drizzle-orm/pg-core";
 
@@ -29,6 +30,22 @@ export const users = pgTable("users", {
     .notNull(),
   verified: boolean("verified").default(false).notNull(),
   active: boolean("active").default(true).notNull(),
+
+  // Seller verification fields
+  verificationStatus: varchar("verification_status", { length: 20 })
+    .default("unverified")
+    .notNull(), // 'unverified', 'pending', 'verified', 'rejected'
+  verificationDocUrl: text("verification_doc_url"),
+  verificationRequestedAt: timestamp("verification_requested_at", {
+    withTimezone: true,
+  }),
+  verificationNotes: text("verification_notes"),
+
+  // Geo fields for distance filtering
+  zipCode: varchar("zip_code", { length: 5 }),
+  lat: real("lat"),
+  lng: real("lng"),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

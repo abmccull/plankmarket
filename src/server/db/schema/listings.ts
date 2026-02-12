@@ -104,6 +104,7 @@ export const listings = pgTable(
     thickness: real("thickness"),
     width: real("width"),
     length: real("length"),
+    wearLayer: real("wear_layer"),
     brand: varchar("brand", { length: 255 }),
     modelNumber: varchar("model_number", { length: 255 }),
 
@@ -117,6 +118,8 @@ export const listings = pgTable(
     locationCity: varchar("location_city", { length: 100 }),
     locationState: varchar("location_state", { length: 2 }),
     locationZip: varchar("location_zip", { length: 10 }),
+    locationLat: real("location_lat"),
+    locationLng: real("location_lng"),
 
     // Pricing (using exact numeric type to avoid floating-point errors)
     askPricePerSqFt: money("ask_price_per_sq_ft").notNull(),
@@ -153,6 +156,7 @@ export const listings = pgTable(
     index("listings_ask_price_idx").on(table.askPricePerSqFt),
     index("listings_created_at_idx").on(table.createdAt),
     index("listings_total_sq_ft_idx").on(table.totalSqFt),
+    index("listings_location_lat_lng_idx").on(table.locationLat, table.locationLng),
   ]
 );
 

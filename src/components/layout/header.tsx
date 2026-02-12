@@ -12,6 +12,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { MobileNav } from "@/components/layout/mobile-nav";
+import {
   Search,
   User,
   LogOut,
@@ -19,7 +26,9 @@ import {
   Settings,
   Heart,
   Package,
+  Menu,
 } from "lucide-react";
+import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { getDashboardPath } from "@/lib/auth/roles";
@@ -37,30 +46,43 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl shadow-elevation-xs border-border/50">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        {/* Mobile Menu Button */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="h-6 w-6" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left">
+            <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+            <MobileNav />
+          </SheetContent>
+        </Sheet>
+
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <span className="text-sm font-bold text-primary-foreground">
-              PM
-            </span>
-          </div>
-          <span className="text-xl font-bold text-foreground">PlankMarket</span>
+        <Link href="/">
+          <Logo variant="full" size="md" />
         </Link>
 
         {/* Navigation */}
         <nav className="hidden md:flex items-center gap-6">
           <Link
             href="/listings"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Browse Listings
           </Link>
           {isAuthenticated && user?.role === "seller" && (
             <Link
               href="/seller/listings/new"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Create Listing
             </Link>
@@ -70,7 +92,7 @@ export function Header() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           <Link href="/listings">
-            <Button variant="ghost" size="icon" className="hidden md:flex">
+            <Button variant="ghost" size="icon" className="hidden md:flex" aria-label="Search listings">
               <Search className="h-4 w-4" />
             </Button>
           </Link>
@@ -78,7 +100,7 @@ export function Header() {
           {isAuthenticated && user ? (
             <>
               <Link href="/buyer/watchlist">
-                <Button variant="ghost" size="icon">
+                <Button variant="ghost" size="icon" aria-label="Wishlist">
                   <Heart className="h-4 w-4" />
                 </Button>
               </Link>
@@ -88,6 +110,7 @@ export function Header() {
                   <Button
                     variant="ghost"
                     className="flex items-center gap-2"
+                    aria-label="Open user menu"
                   >
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
                       <User className="h-4 w-4 text-primary" />
@@ -149,7 +172,7 @@ export function Header() {
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm">Get Started</Button>
+                <Button variant="secondary" size="sm">Get Started</Button>
               </Link>
             </div>
           )}

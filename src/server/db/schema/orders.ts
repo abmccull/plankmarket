@@ -65,6 +65,9 @@ export const orders = pgTable(
 
     // Status
     status: orderStatusEnum("status").notNull().default("pending"),
+    escrowStatus: varchar("escrow_status", { length: 20 })
+      .default("none")
+      .notNull(), // 'none', 'held', 'released', 'refunded'
     notes: text("notes"),
 
     // Timestamps

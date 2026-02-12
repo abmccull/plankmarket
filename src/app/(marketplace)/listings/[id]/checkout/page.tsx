@@ -26,18 +26,25 @@ import {
 } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, ShieldCheck, Package } from "lucide-react";
+import { StripeProvider } from "@/components/checkout/stripe-provider";
+import { StripePaymentForm } from "@/components/checkout/stripe-payment-form";
+import Image from "next/image";
 
 export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
   const listingId = params.id as string;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<"form" | "payment">("form");
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
     id: listingId,
   });
 
   const createOrder = trpc.order.create.useMutation();
+  const createPaymentIntent = trpc.payment.createPaymentIntent.useMutation();
 
   const {
     register,
@@ -65,12 +72,26 @@ export default function CheckoutPage() {
   const onSubmit = async (data: CreateOrderInput) => {
     setIsSubmitting(true);
     try {
+      // Step 1: Create the order
       const order = await createOrder.mutateAsync(data);
-      toast.success("Order placed successfully!");
-      router.push(`/buyer/orders/${order.id}`);
+      setOrderId(order.id);
+
+      // Step 2: Create payment intent
+      const paymentIntentData = await createPaymentIntent.mutateAsync({
+        orderId: order.id,
+      });
+
+      if (!paymentIntentData.clientSecret) {
+        throw new Error("Failed to create payment intent");
+      }
+
+      setClientSecret(paymentIntentData.clientSecret);
+      setPaymentStep("payment");
+
+      toast.success("Order created! Please complete payment.");
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : "Failed to place order";
+        error instanceof Error ? error.message : "Failed to create order";
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -137,9 +158,11 @@ export default function CheckoutPage() {
                     max={listing.totalSqFt}
                     defaultValue={listing.totalSqFt}
                     {...register("quantitySqFt", { valueAsNumber: true })}
+                    aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : undefined}
+                    aria-invalid={!!errors.quantitySqFt}
                   />
                   {errors.quantitySqFt && (
-                    <p className="text-sm text-destructive">
+                    <p id="quantitySqFt-error" className="text-sm text-destructive">
                       {errors.quantitySqFt.message}
                     </p>
                   )}
@@ -166,9 +189,11 @@ export default function CheckoutPage() {
                     id="shippingName"
                     placeholder="Acme Flooring Co."
                     {...register("shippingName")}
+                    aria-describedby={errors.shippingName ? "shippingName-error" : undefined}
+                    aria-invalid={!!errors.shippingName}
                   />
                   {errors.shippingName && (
-                    <p className="text-sm text-destructive">
+                    <p id="shippingName-error" className="text-sm text-destructive">
                       {errors.shippingName.message}
                     </p>
                   )}
@@ -180,9 +205,11 @@ export default function CheckoutPage() {
                     id="shippingAddress"
                     placeholder="123 Main St, Suite 100"
                     {...register("shippingAddress")}
+                    aria-describedby={errors.shippingAddress ? "shippingAddress-error" : undefined}
+                    aria-invalid={!!errors.shippingAddress}
                   />
                   {errors.shippingAddress && (
-                    <p className="text-sm text-destructive">
+                    <p id="shippingAddress-error" className="text-sm text-destructive">
                       {errors.shippingAddress.message}
                     </p>
                   )}
@@ -195,9 +222,11 @@ export default function CheckoutPage() {
                       id="shippingCity"
                       placeholder="Dallas"
                       {...register("shippingCity")}
+                      aria-describedby={errors.shippingCity ? "shippingCity-error" : undefined}
+                      aria-invalid={!!errors.shippingCity}
                     />
                     {errors.shippingCity && (
-                      <p className="text-sm text-destructive">
+                      <p id="shippingCity-error" className="text-sm text-destructive">
                         {errors.shippingCity.message}
                       </p>
                     )}
@@ -209,9 +238,11 @@ export default function CheckoutPage() {
                       placeholder="TX"
                       maxLength={2}
                       {...register("shippingState")}
+                      aria-describedby={errors.shippingState ? "shippingState-error" : undefined}
+                      aria-invalid={!!errors.shippingState}
                     />
                     {errors.shippingState && (
-                      <p className="text-sm text-destructive">
+                      <p id="shippingState-error" className="text-sm text-destructive">
                         {errors.shippingState.message}
                       </p>
                     )}
@@ -222,9 +253,11 @@ export default function CheckoutPage() {
                       id="shippingZip"
                       placeholder="75001"
                       {...register("shippingZip")}
+                      aria-describedby={errors.shippingZip ? "shippingZip-error" : undefined}
+                      aria-invalid={!!errors.shippingZip}
                     />
                     {errors.shippingZip && (
-                      <p className="text-sm text-destructive">
+                      <p id="shippingZip-error" className="text-sm text-destructive">
                         {errors.shippingZip.message}
                       </p>
                     )}
@@ -243,27 +276,30 @@ export default function CheckoutPage() {
               </CardContent>
             </Card>
 
-            {/* Payment - placeholder */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Payment</CardTitle>
-                <CardDescription>
-                  Secure payment processed by Stripe
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg border-2 border-dashed p-6 text-center text-sm text-muted-foreground">
-                  <ShieldCheck className="mx-auto h-8 w-8 mb-2 text-primary" />
-                  <p>
-                    Stripe payment integration will be activated once you
-                    connect your Stripe API keys.
-                  </p>
-                  <p className="mt-1 text-xs">
-                    For now, orders are created without payment processing.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Payment */}
+            {paymentStep === "payment" && clientSecret ? (
+              <StripeProvider clientSecret={clientSecret}>
+                <StripePaymentForm listingId={listingId} orderId={orderId!} />
+              </StripeProvider>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Payment</CardTitle>
+                  <CardDescription>
+                    Complete the form above to proceed to payment
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-lg border-2 border-dashed p-6 text-center text-sm text-muted-foreground">
+                    <ShieldCheck className="mx-auto h-8 w-8 mb-2 text-primary" aria-hidden="true" />
+                    <p>
+                      After you fill in your shipping details and click Place Order,
+                      you will be able to complete payment securely with Stripe.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Right - Order Summary */}
@@ -275,15 +311,17 @@ export default function CheckoutPage() {
               <CardContent className="space-y-4">
                 {/* Product */}
                 <div className="flex gap-3">
-                  <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                  <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0 relative">
                     {listing.media?.[0] ? (
-                      <img
+                      <Image
                         src={listing.media[0].url}
                         alt={listing.title}
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="64px"
+                        className="object-cover"
                       />
                     ) : (
-                      <Package className="h-6 w-6 text-muted-foreground" />
+                      <Package className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
                     )}
                   </div>
                   <div className="min-w-0">
@@ -326,12 +364,12 @@ export default function CheckoutPage() {
                   type="submit"
                   className="w-full"
                   size="lg"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || paymentStep === "payment"}
                 >
                   {isSubmitting && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
                   )}
-                  Place Order
+                  {paymentStep === "payment" ? "Proceed to payment below" : "Place Order"}
                 </Button>
 
                 <p className="text-xs text-center text-muted-foreground">

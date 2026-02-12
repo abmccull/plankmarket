@@ -8,6 +8,7 @@ import {
   listingFormSchema,
   type ListingFormInput,
 } from "@/lib/validators/listing";
+import { validateStep } from "@/lib/validators/listing-steps";
 import { useListingFormStore } from "@/lib/stores/listing-form-store";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PhotoUpload } from "@/components/listings/photo-upload";
 
 const STEPS = [
   { id: 1, title: "Product Details", description: "Material and specs" },
@@ -116,7 +118,7 @@ const CERTIFICATIONS = [
 
 export default function CreateListingPage() {
   const router = useRouter();
-  const { currentStep, formData, setStep, nextStep, prevStep, updateFormData, reset } =
+  const { currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
     useListingFormStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -136,8 +138,51 @@ export default function CreateListingPage() {
   const watchedValues = watch();
 
   const handleNext = async () => {
-    // Simple step validation - validate the fields for the current step
+    // Update form data before validation
     updateFormData(watchedValues);
+
+    // Prepare data for step validation
+    let stepData: Record<string, unknown> = {};
+
+    if (currentStep === 1) {
+      stepData = {
+        title: watchedValues.title,
+        materialType: watchedValues.materialType,
+      };
+    } else if (currentStep === 2) {
+      stepData = {
+        totalSqFt: watchedValues.totalSqFt,
+        widthInches: watchedValues.width,
+        lengthInches: watchedValues.length,
+      };
+    } else if (currentStep === 3) {
+      stepData = {
+        askPricePerSqFt: watchedValues.askPricePerSqFt,
+        minimumOrderSqFt: watchedValues.moq,
+      };
+    } else if (currentStep === 4) {
+      stepData = {
+        condition: watchedValues.condition,
+        grade: watchedValues.grade,
+      };
+    } else if (currentStep === 5) {
+      stepData = {
+        photos: uploadedMediaIds,
+      };
+    }
+
+    // Validate the current step
+    const validation = validateStep(currentStep, stepData);
+
+    if (!validation.success && validation.errors) {
+      // Show error toasts for validation failures
+      Object.values(validation.errors).forEach((error) => {
+        toast.error(error);
+      });
+      return;
+    }
+
+    // If validation passes, move to next step
     nextStep();
   };
 
@@ -149,7 +194,12 @@ export default function CreateListingPage() {
   const onSubmit = async (data: ListingFormInput) => {
     setIsSubmitting(true);
     try {
-      const listing = await createMutation.mutateAsync(data);
+      // Include uploaded media IDs in the submission
+      const listingData = {
+        ...data,
+        mediaIds: uploadedMediaIds,
+      };
+      const listing = await createMutation.mutateAsync(listingData);
       toast.success("Listing created successfully!");
       reset();
       router.push(`/listings/${listing.id}`);
@@ -680,34 +730,14 @@ export default function CreateListingPage() {
             <CardHeader>
               <CardTitle>Photos</CardTitle>
               <CardDescription>
-                Upload up to 20 photos of your flooring product (coming soon -
-                photos can be added after listing is created)
+                Upload up to 20 photos of your flooring product. The first image will be the cover photo.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="border-2 border-dashed rounded-lg p-12 text-center">
-                <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                  <svg
-                    className="h-6 w-6 text-muted-foreground"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Photo upload functionality will be connected via Uploadthing.
-                  <br />
-                  For now, you can create the listing and add photos later.
-                </p>
-              </div>
+              <PhotoUpload
+                onImagesChange={setMediaIds}
+                initialMediaIds={uploadedMediaIds}
+              />
             </CardContent>
           </Card>
         )}
