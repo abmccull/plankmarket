@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { StatsCard } from "@/components/dashboard/stats-card";
+import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
-import { BoostModal } from "@/components/promotions/boost-modal";
-import { formatCurrency, formatNumber, formatRelativeTime } from "@/lib/utils";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 import { BarChart3, Eye, Package, DollarSign, Loader2, Rocket, Clock, XCircle } from "lucide-react";
 import type { PromotionTier } from "@/types";
 
@@ -228,9 +226,11 @@ export default function SellerAnalyticsPage() {
                     {/* Thumbnail */}
                     <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
                       {promo.listing.media?.[0] ? (
-                        <img
+                        <Image
                           src={promo.listing.media[0].url}
                           alt={promo.listing.title}
+                          width={48}
+                          height={48}
                           className="h-full w-full object-cover"
                         />
                       ) : (

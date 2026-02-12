@@ -29,7 +29,7 @@ export default function BuyerSettingsPage() {
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { },
   } = useForm<UpdateProfileInput>({
     resolver: zodResolver(updateProfileSchema),
     values: profile

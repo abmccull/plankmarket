@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Search, Trash2, Bell, BellOff, ExternalLink } from "lucide-react";
+import { Loader2, Search, Trash2, Bell, BellOff } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 

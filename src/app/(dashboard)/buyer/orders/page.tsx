@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
@@ -44,9 +45,11 @@ export default function BuyerOrdersPage() {
             >
               <div className="h-14 w-14 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
                 {order.listing.media?.[0] ? (
-                  <img
+                  <Image
                     src={order.listing.media[0].url}
                     alt={order.listing.title}
+                    width={56}
+                    height={56}
                     className="h-full w-full object-cover"
                   />
                 ) : (
