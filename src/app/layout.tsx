@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { DM_Serif_Display } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "@/providers";
 import "./globals.css";
 
@@ -53,6 +54,7 @@ export default function RootLayout({
           Skip to main content
         </a>
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   );
