@@ -23,6 +23,7 @@ export const listingRouter = createTRPCRouter({
           ...listingData,
           sellerId: ctx.user.id,
           status: "active",
+          originalTotalSqFt: listingData.totalSqFt,
           expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
         })
         .returning();
@@ -150,14 +151,18 @@ export const listingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const conditions = [eq(listings.status, "active")];
 
-      // Text search
+      // Text search (escape LIKE special characters to prevent wildcard injection)
       if (input.query) {
+        const escapedQuery = input.query
+          .replace(/\\/g, "\\\\")
+          .replace(/%/g, "\\%")
+          .replace(/_/g, "\\_");
         conditions.push(
           or(
-            ilike(listings.title, `%${input.query}%`),
-            ilike(listings.description, `%${input.query}%`),
-            ilike(listings.brand, `%${input.query}%`),
-            ilike(listings.species, `%${input.query}%`)
+            ilike(listings.title, `%${escapedQuery}%`),
+            ilike(listings.description, `%${escapedQuery}%`),
+            ilike(listings.brand, `%${escapedQuery}%`),
+            ilike(listings.species, `%${escapedQuery}%`)
           )!
         );
       }

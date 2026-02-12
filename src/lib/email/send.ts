@@ -2,15 +2,16 @@ import { resend } from "./client";
 import WelcomeEmail from "@/emails/welcome";
 import OrderConfirmationEmail from "@/emails/order-confirmation";
 import React from "react";
+import { env } from "@/env";
 
-const FROM = process.env.EMAIL_FROM || "PlankMarket <noreply@plankmarket.com>";
+const FROM = env.EMAIL_FROM;
 
 export async function sendWelcomeEmail(params: {
   to: string;
   name: string;
   role: "buyer" | "seller";
 }) {
-  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/${params.role}`;
+  const dashboardUrl = `${env.NEXT_PUBLIC_APP_URL}/${params.role}`;
 
   return resend.emails.send({
     from: FROM,
@@ -37,7 +38,7 @@ export async function sendOrderConfirmationEmail(params: {
   sellerName: string;
   orderId: string;
 }) {
-  const orderUrl = `${process.env.NEXT_PUBLIC_APP_URL}/buyer/orders/${params.orderId}`;
+  const orderUrl = `${env.NEXT_PUBLIC_APP_URL}/buyer/orders/${params.orderId}`;
 
   return resend.emails.send({
     from: FROM,

@@ -131,8 +131,7 @@ export type SortOption =
   | "date_oldest"
   | "lot_value_desc"
   | "lot_value_asc"
-  | "popularity"
-  | "proximity";
+  | "popularity";
 
 export interface SearchFilters {
   query?: string;

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { env } from "@/env";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -7,8 +8,8 @@ export async function updateSession(request: NextRequest) {
   });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {
@@ -50,10 +51,16 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from auth pages
+  // Redirect authenticated users away from auth pages (use role-aware path)
   if (isAuthPage && user) {
     const url = request.nextUrl.clone();
-    url.pathname = "/seller"; // Default redirect, will be refined by role
+    const role = user.user_metadata?.role as string | undefined;
+    const dashboardPaths: Record<string, string> = {
+      buyer: "/buyer",
+      seller: "/seller",
+      admin: "/admin",
+    };
+    url.pathname = dashboardPaths[role ?? ""] ?? "/buyer";
     return NextResponse.redirect(url);
   }
 

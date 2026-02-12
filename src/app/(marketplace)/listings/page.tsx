@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { useSearchStore } from "@/lib/stores/search-store";
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
@@ -47,6 +48,19 @@ export default function ListingsPage() {
     setViewMode,
   } = useSearchStore();
 
+  // Debounced search input — local state updates immediately, store updates after 300ms
+  const [searchInput, setSearchInput] = useState(filters.query ?? "");
+  const debounceRef = useCallback(
+    (() => {
+      let timeout: ReturnType<typeof setTimeout>;
+      return (value: string) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => setQuery(value), 300);
+      };
+    })(),
+    [setQuery]
+  );
+
   const { data, isLoading } = trpc.listing.list.useQuery({
     query: filters.query,
     materialType: filters.materialType,
@@ -62,7 +76,7 @@ export default function ListingsPage() {
     species: filters.species,
     colorFamily: filters.colorFamily,
     state: filters.state,
-    sort: filters.sort === "proximity" ? "date_newest" : filters.sort,
+    sort: filters.sort,
     page: filters.page,
     limit: filters.limit,
   });
@@ -76,8 +90,11 @@ export default function ListingsPage() {
           <Input
             placeholder="Search flooring by material, species, brand..."
             className="pl-10"
-            value={filters.query ?? ""}
-            onChange={(e) => setQuery(e.target.value)}
+            value={searchInput}
+            onChange={(e) => {
+              setSearchInput(e.target.value);
+              debounceRef(e.target.value);
+            }}
           />
         </div>
         <Button

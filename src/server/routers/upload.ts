@@ -2,8 +2,9 @@ import {
   createTRPCRouter,
   sellerProcedure,
 } from "../trpc";
-import { media } from "../db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { media, listings } from "../db/schema";
+import { eq, and, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 export const uploadRouter = createTRPCRouter({
@@ -28,7 +29,7 @@ export const uploadRouter = createTRPCRouter({
         .insert(media)
         .values(
           input.files.map((file, index) => ({
-            listingId: input.listingId || "00000000-0000-0000-0000-000000000000", // temp placeholder
+            listingId: input.listingId ?? null,
             url: file.url,
             key: file.key,
             fileName: file.fileName,
@@ -42,7 +43,7 @@ export const uploadRouter = createTRPCRouter({
       return records;
     }),
 
-  // Reorder media
+  // Reorder media — batched into a single query using CASE expression
   reorderMedia: sellerProcedure
     .input(
       z.object({
@@ -56,24 +57,42 @@ export const uploadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await Promise.all(
-        input.mediaOrder.map(({ id, sortOrder }) =>
-          ctx.db
-            .update(media)
-            .set({ sortOrder })
-            .where(
-              and(eq(media.id, id), eq(media.listingId, input.listingId))
-            )
-        )
+      if (input.mediaOrder.length === 0) return { success: true };
+
+      // Build a single UPDATE with CASE expression instead of N separate queries
+      const ids = input.mediaOrder.map((m) => m.id);
+      const caseFragments = input.mediaOrder
+        .map((m) => `WHEN '${m.id}' THEN ${m.sortOrder}`)
+        .join(" ");
+
+      await ctx.db.execute(
+        sql`UPDATE media SET sort_order = CASE id::text ${sql.raw(caseFragments)} END WHERE listing_id = ${input.listingId} AND id = ANY(${ids})`
       );
 
       return { success: true };
     }),
 
-  // Delete media
+  // Delete media — with ownership check
   deleteMedia: sellerProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // Verify the media belongs to a listing owned by this seller
+      const mediaRecord = await ctx.db.query.media.findFirst({
+        where: eq(media.id, input.id),
+        with: {
+          listing: {
+            columns: { sellerId: true },
+          },
+        },
+      });
+
+      if (!mediaRecord || mediaRecord.listing?.sellerId !== ctx.user.id) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Media not found",
+        });
+      }
+
       await ctx.db.delete(media).where(eq(media.id, input.id));
       return { success: true };
     }),

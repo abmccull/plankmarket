@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -8,6 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginInput } from "@/lib/validators/auth";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { getDashboardPath } from "@/lib/auth/roles";
+import type { UserRole } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +24,7 @@ import {
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
-export default function LoginPage() {
+function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -40,7 +42,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
@@ -51,7 +53,9 @@ export default function LoginPage() {
       }
 
       toast.success("Signed in successfully");
-      router.push(redirect || "/seller");
+      const role = authData.user?.user_metadata?.role as UserRole | undefined;
+      const defaultPath = getDashboardPath(role ?? "buyer");
+      router.push(redirect || defaultPath);
       router.refresh();
     } catch {
       toast.error("An unexpected error occurred");
@@ -121,5 +125,13 @@ export default function LoginPage() {
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}>
+      <LoginForm />
+    </Suspense>
   );
 }

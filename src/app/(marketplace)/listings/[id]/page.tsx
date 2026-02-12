@@ -78,6 +78,7 @@ export default function ListingDetailPage() {
     { enabled: isAuthenticated }
   );
 
+  const utils = trpc.useUtils();
   const addToWatchlist = trpc.watchlist.add.useMutation();
   const removeFromWatchlist = trpc.watchlist.remove.useMutation();
 
@@ -95,6 +96,8 @@ export default function ListingDetailPage() {
         await addToWatchlist.mutateAsync({ listingId });
         toast.success("Added to watchlist");
       }
+      // Invalidate watchlist query so UI updates immediately
+      utils.watchlist.isWatchlisted.invalidate({ listingId });
     } catch {
       toast.error("Failed to update watchlist");
     }
