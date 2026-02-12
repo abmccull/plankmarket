@@ -1,16 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency, formatNumber } from "@/lib/utils";
-import { BarChart3, Eye, Package, DollarSign, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { PromotionBadge } from "@/components/promotions/promotion-badge";
+import { BoostModal } from "@/components/promotions/boost-modal";
+import { formatCurrency, formatNumber, formatRelativeTime } from "@/lib/utils";
+import { BarChart3, Eye, Package, DollarSign, Loader2, Rocket, Clock, XCircle } from "lucide-react";
+import type { PromotionTier } from "@/types";
 
 export default function SellerAnalyticsPage() {
   const { data: listingStats, isLoading: listingsLoading } =
     trpc.listing.getSellerStats.useQuery();
   const { data: orderStats, isLoading: ordersLoading } =
     trpc.order.getSellerOrderStats.useQuery();
+  const { data: promotions, isLoading: promotionsLoading } =
+    trpc.promotion.getMyPromotions.useQuery({ page: 1, limit: 10 });
+
+  const utils = trpc.useUtils();
+  const cancelMutation = trpc.promotion.cancel.useMutation({
+    onSuccess: () => {
+      utils.promotion.getMyPromotions.invalidate();
+    },
+  });
 
   const isLoading = listingsLoading || ordersLoading;
 
@@ -157,6 +172,131 @@ export default function SellerAnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Promotions Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Rocket className="h-5 w-5" />
+              Active Promotions
+            </CardTitle>
+            {promotions && (
+              <span className="text-sm text-muted-foreground">
+                {promotions.items.filter(
+                  (p) =>
+                    p.isActive && new Date(p.expiresAt) > new Date()
+                ).length}{" "}
+                active
+              </span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {promotionsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !promotions || promotions.items.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Rocket className="mx-auto h-8 w-8 mb-2 opacity-50" />
+              <p className="text-sm">No promotions yet</p>
+              <p className="text-xs mt-1">
+                Boost your active listings to get more views
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {promotions.items.map((promo) => {
+                const isActive =
+                  promo.isActive &&
+                  new Date(promo.expiresAt) > new Date();
+                const remainingMs =
+                  new Date(promo.expiresAt).getTime() - Date.now();
+                const remainingDays = Math.max(
+                  0,
+                  Math.ceil(remainingMs / (1000 * 60 * 60 * 24))
+                );
+
+                return (
+                  <div
+                    key={promo.id}
+                    className="flex items-center gap-4 rounded-lg border p-3"
+                  >
+                    {/* Thumbnail */}
+                    <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                      {promo.listing.media?.[0] ? (
+                        <img
+                          src={promo.listing.media[0].url}
+                          alt={promo.listing.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Package className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">
+                          {promo.listing.title}
+                        </span>
+                        <PromotionBadge
+                          tier={promo.tier as PromotionTier}
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                        <span>{formatCurrency(promo.pricePaid)} paid</span>
+                        <span>
+                          {promo.durationDays} day
+                          {promo.durationDays !== 1 ? "s" : ""}
+                        </span>
+                        {isActive && (
+                          <span className="flex items-center gap-1 text-emerald-600">
+                            <Clock className="h-3 w-3" />
+                            {remainingDays}d remaining
+                          </span>
+                        )}
+                        {!isActive && promo.cancelledAt && (
+                          <span className="text-red-500">Cancelled</span>
+                        )}
+                        {!isActive && !promo.cancelledAt && (
+                          <span className="text-muted-foreground">
+                            Expired
+                          </span>
+                        )}
+                        <span>
+                          <Eye className="inline h-3 w-3 mr-0.5" />
+                          {promo.listing.viewsCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    {isActive && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive shrink-0"
+                        onClick={() =>
+                          cancelMutation.mutate({
+                            promotionId: promo.id,
+                          })
+                        }
+                        disabled={cancelMutation.isPending}
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

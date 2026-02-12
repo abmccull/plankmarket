@@ -17,6 +17,8 @@ import {
   Truck,
   Users,
 } from "lucide-react";
+import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
+import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
 
 export default function HomePage() {
   return (
@@ -68,6 +70,12 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Premium Listings Hero */}
+      <PremiumHeroBanner />
+
+      {/* Featured Inventory Grid */}
+      <FeaturedCarousel />
 
       {/* How It Works */}
       <section className="py-20 bg-muted/30">

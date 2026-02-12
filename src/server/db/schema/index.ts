@@ -28,6 +28,9 @@ export type { SavedSearch, NewSavedSearch } from "./saved-searches";
 export { notifications, notificationTypeEnum } from "./notifications";
 export type { Notification, NewNotification } from "./notifications";
 
+export { listingPromotions, promotionTierEnum } from "./promotions";
+export type { ListingPromotion, NewListingPromotion } from "./promotions";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -37,6 +40,7 @@ import { orders } from "./orders";
 import { watchlist } from "./watchlist";
 import { savedSearches } from "./saved-searches";
 import { notifications } from "./notifications";
+import { listingPromotions } from "./promotions";
 
 export const usersRelations = relations(users, ({ many }) => ({
   listings: many(listings),
@@ -45,6 +49,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   watchlistItems: many(watchlist),
   savedSearches: many(savedSearches),
   notifications: many(notifications),
+  promotions: many(listingPromotions),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -55,6 +60,7 @@ export const listingsRelations = relations(listings, ({ one, many }) => ({
   media: many(media),
   orders: many(orders),
   watchlistItems: many(watchlist),
+  promotions: many(listingPromotions),
 }));
 
 export const mediaRelations = relations(media, ({ one }) => ({
@@ -105,3 +111,17 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export const listingPromotionsRelations = relations(
+  listingPromotions,
+  ({ one }) => ({
+    listing: one(listings, {
+      fields: [listingPromotions.listingId],
+      references: [listings.id],
+    }),
+    seller: one(users, {
+      fields: [listingPromotions.sellerId],
+      references: [users.id],
+    }),
+  })
+);

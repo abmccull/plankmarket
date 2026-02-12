@@ -4,6 +4,8 @@
 
 export type UserRole = "buyer" | "seller" | "admin";
 
+export type PromotionTier = "spotlight" | "featured" | "premium";
+
 export type ListingStatus = "draft" | "active" | "sold" | "expired" | "archived";
 
 export type OrderStatus =
