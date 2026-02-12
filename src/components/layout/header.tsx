@@ -46,7 +46,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-xl shadow-elevation-xs border-border/50">
+    <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-elevation-xs border-primary/80">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Mobile Menu Button */}
         <Sheet>
@@ -54,7 +54,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className="lg:hidden text-primary-foreground hover:bg-white/10"
               aria-label="Open navigation menu"
             >
               <Menu className="h-6 w-6" />
@@ -68,21 +68,21 @@ export function Header() {
 
         {/* Logo */}
         <Link href="/">
-          <Logo variant="full" size="md" />
+          <Logo variant="full" size="md" theme="dark" />
         </Link>
 
         {/* Navigation */}
         <nav className="hidden md:flex items-center gap-6">
           <Link
             href="/listings"
-            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="link-animated text-sm font-medium text-primary-foreground/70 hover:text-primary-foreground transition-colors"
           >
             Browse Listings
           </Link>
           {isAuthenticated && user?.role === "seller" && (
             <Link
               href="/seller/listings/new"
-              className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="link-animated text-sm font-medium text-primary-foreground/70 hover:text-primary-foreground transition-colors"
             >
               Create Listing
             </Link>
@@ -92,7 +92,7 @@ export function Header() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           <Link href="/listings">
-            <Button variant="ghost" size="icon" className="hidden md:flex" aria-label="Search listings">
+            <Button variant="ghost" size="icon" className="hidden md:flex text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10" aria-label="Search listings">
               <Search className="h-4 w-4" />
             </Button>
           </Link>
@@ -100,7 +100,7 @@ export function Header() {
           {isAuthenticated && user ? (
             <>
               <Link href="/buyer/watchlist">
-                <Button variant="ghost" size="icon" aria-label="Wishlist">
+                <Button variant="ghost" size="icon" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10" aria-label="Wishlist">
                   <Heart className="h-4 w-4" />
                 </Button>
               </Link>
@@ -109,11 +109,11 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 text-primary-foreground hover:bg-white/10"
                     aria-label="Open user menu"
                   >
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
-                      <User className="h-4 w-4 text-primary" />
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
+                      <User className="h-4 w-4 text-primary-foreground" />
                     </div>
                     <span className="hidden md:inline text-sm">
                       {user.name}
@@ -167,12 +167,12 @@ export function Header() {
           ) : (
             <div className="flex items-center gap-2">
               <Link href="/login">
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
                   Sign in
                 </Button>
               </Link>
               <Link href="/register">
-                <Button variant="secondary" size="sm">Get Started</Button>
+                <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-medium">Get Started</Button>
               </Link>
             </div>
           )}

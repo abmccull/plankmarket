@@ -27,6 +27,9 @@ import {
   notifications,
   savedSearches,
   offers,
+  offerEvents,
+  conversations,
+  messages,
   disputes,
   disputeMessages,
   feedback,
@@ -665,6 +668,7 @@ async function seed() {
 
   // Some tables may not be migrated yet — skip gracefully
   const tables = [
+    messages, conversations, offerEvents,
     disputeMessages, disputes, feedback, savedSearches,
     notifications, watchlist, reviews, listingPromotions,
     offers, orders, media, listings, users,
@@ -1320,6 +1324,348 @@ async function seed() {
     const status = p.isActive ? `active (${p.durationDays - p.daysActive}d left)` : "expired";
     console.log(`  + [${p.tier}] listing #${p.listingIdx} — ${status}`);
   }
+  console.log();
+
+  // -----------------------------------------------------------------------
+  // 10. Create conversations & messages
+  // -----------------------------------------------------------------------
+  console.log("Creating conversations & messages...");
+
+  // Conversation 1: Emily asking Sarah about White Oak (listing 0)
+  const [conv1] = await db
+    .insert(conversations)
+    .values({
+      listingId: listingIds[0]!,
+      buyerId: userMap["emily@davisflooring.com"]!,
+      sellerId: userMap["sarah@mitchellflooring.com"]!,
+      lastMessageAt: hoursAgo(3),
+      buyerLastReadAt: hoursAgo(3),
+      sellerLastReadAt: hoursAgo(5),
+    })
+    .returning();
+
+  const conv1Messages = [
+    {
+      senderId: userMap["emily@davisflooring.com"]!,
+      body: "Hi Sarah! I'm interested in the White Oak Hardwood. Is the full 2,000 sq ft still available? I have a residential project in Dallas that would be perfect for this.",
+      createdAt: daysAgo(2),
+    },
+    {
+      senderId: userMap["sarah@mitchellflooring.com"]!,
+      body: "Hi Emily! Yes, the full lot is still available. We have 2 full pallets in our Austin warehouse. Are you looking for the full quantity or would a partial order work?",
+      createdAt: hoursAgo(46),
+    },
+    {
+      senderId: userMap["emily@davisflooring.com"]!,
+      body: "I'd probably need about 500 sq ft for this project. Is that possible? Also, could you share any close-up photos of the wire-brushed finish?",
+      createdAt: daysAgo(1),
+    },
+    {
+      senderId: userMap["sarah@mitchellflooring.com"]!,
+      body: "Absolutely, 500 sq ft works fine — that's 20 boxes. I'll take some detail shots tomorrow and send them over. The wire-brushed texture is really beautiful in person, very natural feel.",
+      createdAt: hoursAgo(18),
+    },
+    {
+      senderId: userMap["emily@davisflooring.com"]!,
+      body: "That would be great, thank you! One more question — do you offer freight shipping to Dallas or would I need to arrange my own pickup?",
+      createdAt: hoursAgo(3),
+    },
+  ];
+
+  for (const m of conv1Messages) {
+    await db.insert(messages).values({
+      conversationId: conv1!.id,
+      senderId: m.senderId,
+      body: m.body,
+      createdAt: m.createdAt,
+    });
+  }
+
+  // Conversation 2: Michael asking James about Laminate (listing 9)
+  const [conv2] = await db
+    .insert(conversations)
+    .values({
+      listingId: listingIds[9]!,
+      buyerId: userMap["michael@browncontracting.com"]!,
+      sellerId: userMap["james@chenfloors.com"]!,
+      lastMessageAt: hoursAgo(1),
+      buyerLastReadAt: hoursAgo(1),
+      sellerLastReadAt: null,
+    })
+    .returning();
+
+  const conv2Messages = [
+    {
+      senderId: userMap["michael@browncontracting.com"]!,
+      body: "James, we just finished installing the laminate from the last order and it looks great. Do you have any more in stock? We've got another project coming up.",
+      createdAt: hoursAgo(5),
+    },
+    {
+      senderId: userMap["james@chenfloors.com"]!,
+      body: "Hey Michael, glad to hear it turned out well! I still have about 3,000 sq ft left in the Warm Chestnut. Same AC5 commercial grade. Want me to hold some for you?",
+      createdAt: hoursAgo(4),
+    },
+    {
+      senderId: userMap["michael@browncontracting.com"]!,
+      body: "Yes please! I'll need about 1,500 sq ft. Can we work out a volume discount since this is our second order?",
+      createdAt: hoursAgo(1),
+    },
+  ];
+
+  for (const m of conv2Messages) {
+    await db.insert(messages).values({
+      conversationId: conv2!.id,
+      senderId: m.senderId,
+      body: m.body,
+      createdAt: m.createdAt,
+    });
+  }
+
+  // Conversation 3: Lisa asking Robert about Walnut (listing 15)
+  const [conv3] = await db
+    .insert(conversations)
+    .values({
+      listingId: listingIds[15]!,
+      buyerId: userMap["lisa@wilsonrenovations.com"]!,
+      sellerId: userMap["robert@thompsonlumber.com"]!,
+      lastMessageAt: daysAgo(1),
+      buyerLastReadAt: daysAgo(1),
+      sellerLastReadAt: daysAgo(1),
+    })
+    .returning();
+
+  await db.insert(messages).values({
+    conversationId: conv3!.id,
+    senderId: userMap["lisa@wilsonrenovations.com"]!,
+    body: "Hi Robert, I love the look of this walnut. Could you tell me more about the oil finish? Is it a hardwax oil or a penetrating oil? My client is particular about maintenance.",
+    createdAt: daysAgo(1),
+  });
+
+  console.log("  + 3 conversations with 9 messages\n");
+
+  // -----------------------------------------------------------------------
+  // 11. Create offers with negotiation events
+  // -----------------------------------------------------------------------
+  console.log("Creating offers & negotiation events...");
+
+  // Offer 1: Emily offers on James's Black Walnut (listing 5) — countered, awaiting buyer response
+  const [offer1] = await db
+    .insert(offers)
+    .values({
+      listingId: listingIds[5]!,
+      buyerId: userMap["emily@davisflooring.com"]!,
+      sellerId: userMap["james@chenfloors.com"]!,
+      offerPricePerSqFt: 6.50,
+      quantitySqFt: 400,
+      totalPrice: 2600,
+      status: "countered",
+      message: "I'd love to buy 400 sq ft for a client's living room. Would you consider $6.50/sqft?",
+      counterPricePerSqFt: 7.00,
+      counterMessage: "I can come down a bit but $6.50 is below my cost. How about $7.00/sqft?",
+      currentRound: 2,
+      lastActorId: userMap["james@chenfloors.com"]!,
+      expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+      createdAt: daysAgo(2),
+      updatedAt: daysAgo(1),
+    })
+    .returning();
+
+  // Offer 1 events
+  await db.insert(offerEvents).values([
+    {
+      offerId: offer1!.id,
+      actorId: userMap["emily@davisflooring.com"]!,
+      eventType: "initial_offer",
+      pricePerSqFt: 6.50,
+      quantitySqFt: 400,
+      totalPrice: 2600,
+      message: "I'd love to buy 400 sq ft for a client's living room. Would you consider $6.50/sqft?",
+      createdAt: daysAgo(2),
+    },
+    {
+      offerId: offer1!.id,
+      actorId: userMap["james@chenfloors.com"]!,
+      eventType: "counter",
+      pricePerSqFt: 7.00,
+      quantitySqFt: 400,
+      totalPrice: 2800,
+      message: "I can come down a bit but $6.50 is below my cost. How about $7.00/sqft?",
+      createdAt: daysAgo(1),
+    },
+  ]);
+  console.log("  + Offer 1: Emily ↔ James (Black Walnut) — countered, Emily's turn");
+
+  // Offer 2: Michael offers on Maria's Brazilian Cherry (listing 10) — accepted
+  const [offer2] = await db
+    .insert(offers)
+    .values({
+      listingId: listingIds[10]!,
+      buyerId: userMap["michael@browncontracting.com"]!,
+      sellerId: userMap["maria@garciahardwoods.com"]!,
+      offerPricePerSqFt: 5.75,
+      quantitySqFt: 300,
+      totalPrice: 1725,
+      status: "accepted",
+      message: "Beautiful material! Would you take $5.75/sqft for 300 sq ft?",
+      currentRound: 1,
+      lastActorId: userMap["maria@garciahardwoods.com"]!,
+      expiresAt: daysAgo(3),
+      createdAt: daysAgo(6),
+      updatedAt: daysAgo(5),
+    })
+    .returning();
+
+  await db.insert(offerEvents).values([
+    {
+      offerId: offer2!.id,
+      actorId: userMap["michael@browncontracting.com"]!,
+      eventType: "initial_offer",
+      pricePerSqFt: 5.75,
+      quantitySqFt: 300,
+      totalPrice: 1725,
+      message: "Beautiful material! Would you take $5.75/sqft for 300 sq ft?",
+      createdAt: daysAgo(6),
+    },
+    {
+      offerId: offer2!.id,
+      actorId: userMap["maria@garciahardwoods.com"]!,
+      eventType: "accept",
+      pricePerSqFt: 5.75,
+      quantitySqFt: 300,
+      totalPrice: 1725,
+      createdAt: daysAgo(5),
+    },
+  ]);
+  console.log("  + Offer 2: Michael ↔ Maria (Brazilian Cherry) — accepted");
+
+  // Offer 3: Lisa offers on Sarah's Hickory (listing 3) — multi-round, pending (Lisa's latest counter)
+  const [offer3] = await db
+    .insert(offers)
+    .values({
+      listingId: listingIds[3]!,
+      buyerId: userMap["lisa@wilsonrenovations.com"]!,
+      sellerId: userMap["sarah@mitchellflooring.com"]!,
+      offerPricePerSqFt: 3.00,
+      quantitySqFt: 600,
+      totalPrice: 1800,
+      status: "countered",
+      message: "Love the hand-scraped finish! Would $3.00/sqft work for 600 sq ft?",
+      counterPricePerSqFt: 3.40,
+      counterMessage: "Let's meet in the middle at $3.40?",
+      currentRound: 3,
+      lastActorId: userMap["lisa@wilsonrenovations.com"]!,
+      expiresAt: new Date(Date.now() + 36 * 60 * 60 * 1000),
+      createdAt: daysAgo(4),
+      updatedAt: hoursAgo(12),
+    })
+    .returning();
+
+  await db.insert(offerEvents).values([
+    {
+      offerId: offer3!.id,
+      actorId: userMap["lisa@wilsonrenovations.com"]!,
+      eventType: "initial_offer",
+      pricePerSqFt: 3.00,
+      quantitySqFt: 600,
+      totalPrice: 1800,
+      message: "Love the hand-scraped finish! Would $3.00/sqft work for 600 sq ft?",
+      createdAt: daysAgo(4),
+    },
+    {
+      offerId: offer3!.id,
+      actorId: userMap["sarah@mitchellflooring.com"]!,
+      eventType: "counter",
+      pricePerSqFt: 3.60,
+      quantitySqFt: 600,
+      totalPrice: 2160,
+      message: "Thanks for your interest! The lowest I can go is $3.60 for this grade.",
+      createdAt: daysAgo(3),
+    },
+    {
+      offerId: offer3!.id,
+      actorId: userMap["lisa@wilsonrenovations.com"]!,
+      eventType: "counter",
+      pricePerSqFt: 3.40,
+      quantitySqFt: 600,
+      totalPrice: 2040,
+      message: "Let's meet in the middle at $3.40?",
+      createdAt: hoursAgo(12),
+    },
+  ]);
+  console.log("  + Offer 3: Lisa ↔ Sarah (Hickory) — Round 3, Sarah's turn");
+
+  // Offer 4: Emily offers on Robert's Walnut Character (listing 15) — rejected
+  const [offer4] = await db
+    .insert(offers)
+    .values({
+      listingId: listingIds[15]!,
+      buyerId: userMap["emily@davisflooring.com"]!,
+      sellerId: userMap["robert@thompsonlumber.com"]!,
+      offerPricePerSqFt: 4.00,
+      quantitySqFt: 750,
+      totalPrice: 3000,
+      status: "rejected",
+      message: "Would you take $4.00/sqft for the full lot?",
+      currentRound: 1,
+      lastActorId: userMap["robert@thompsonlumber.com"]!,
+      expiresAt: daysAgo(5),
+      createdAt: daysAgo(8),
+      updatedAt: daysAgo(7),
+    })
+    .returning();
+
+  await db.insert(offerEvents).values([
+    {
+      offerId: offer4!.id,
+      actorId: userMap["emily@davisflooring.com"]!,
+      eventType: "initial_offer",
+      pricePerSqFt: 4.00,
+      quantitySqFt: 750,
+      totalPrice: 3000,
+      message: "Would you take $4.00/sqft for the full lot?",
+      createdAt: daysAgo(8),
+    },
+    {
+      offerId: offer4!.id,
+      actorId: userMap["robert@thompsonlumber.com"]!,
+      eventType: "reject",
+      message: "Sorry, $4.00 is too far below my floor price. I need at least $5.50 for this quality walnut.",
+      createdAt: daysAgo(7),
+    },
+  ]);
+  console.log("  + Offer 4: Emily ↔ Robert (Walnut Character) — rejected");
+
+  // Offer 5: Michael offers on Sarah's Bamboo (listing 4) — pending, awaiting seller
+  const [offer5] = await db
+    .insert(offers)
+    .values({
+      listingId: listingIds[4]!,
+      buyerId: userMap["michael@browncontracting.com"]!,
+      sellerId: userMap["sarah@mitchellflooring.com"]!,
+      offerPricePerSqFt: 2.65,
+      quantitySqFt: 500,
+      totalPrice: 1325,
+      status: "pending",
+      message: "I'm interested in the bamboo for an eco-friendly office build. Any flexibility on price for 500 sq ft?",
+      currentRound: 1,
+      lastActorId: userMap["michael@browncontracting.com"]!,
+      expiresAt: new Date(Date.now() + 40 * 60 * 60 * 1000),
+      createdAt: hoursAgo(8),
+      updatedAt: hoursAgo(8),
+    })
+    .returning();
+
+  await db.insert(offerEvents).values({
+    offerId: offer5!.id,
+    actorId: userMap["michael@browncontracting.com"]!,
+    eventType: "initial_offer",
+    pricePerSqFt: 2.65,
+    quantitySqFt: 500,
+    totalPrice: 1325,
+    message: "I'm interested in the bamboo for an eco-friendly office build. Any flexibility on price for 500 sq ft?",
+    createdAt: hoursAgo(8),
+  });
+  console.log("  + Offer 5: Michael ↔ Sarah (Bamboo) — pending, Sarah's turn");
   console.log();
 
   // -----------------------------------------------------------------------
