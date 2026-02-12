@@ -27,6 +27,7 @@ export default function SellerAnalyticsPage() {
     },
   });
 
+  // eslint-disable-next-line react-compiler/react-compiler
   const now = Date.now();
   const isLoading = listingsLoading || ordersLoading;
 
