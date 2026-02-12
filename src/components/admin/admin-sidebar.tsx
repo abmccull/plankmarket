@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
+  TrendingUp,
   Users,
   List,
   Package,
@@ -21,6 +22,7 @@ interface SidebarItem {
 
 const adminItems: SidebarItem[] = [
   { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+  { title: "Finance", href: "/admin/finance", icon: TrendingUp },
   { title: "Users", href: "/admin/users", icon: Users },
   { title: "Listings", href: "/admin/listings", icon: List },
   { title: "Orders", href: "/admin/orders", icon: Package },

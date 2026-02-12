@@ -1,6 +1,6 @@
 import { createTRPCRouter, adminProcedure } from "../trpc";
 import { users, listings, orders } from "../db/schema";
-import { desc, sql, eq, like, or, and } from "drizzle-orm";
+import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -387,4 +387,103 @@ export const adminRouter = createTRPCRouter({
 
       return updatedUser;
     }),
+
+  // Get finance dashboard statistics
+  getFinanceStats: adminProcedure.query(async ({ ctx }) => {
+    // Summary KPIs
+    const [summary] = await ctx.db
+      .select({
+        totalGmv: sql<number>`coalesce(sum(subtotal), 0)`,
+        totalBuyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+        totalSellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+        platformRevenue: sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+        totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+        avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
+        orderCount: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(orders);
+
+    // By order status
+    const byStatus = await ctx.db
+      .select({
+        status: orders.status,
+        count: sql<number>`cast(count(*) as integer)`,
+        gmv: sql<number>`coalesce(sum(subtotal), 0)`,
+      })
+      .from(orders)
+      .groupBy(orders.status);
+
+    // Monthly trend (last 12 months)
+    const monthlyTrend = await ctx.db
+      .select({
+        month: sql<string>`to_char(date_trunc('month', created_at), 'YYYY-MM')`,
+        orderCount: sql<number>`cast(count(*) as integer)`,
+        gmv: sql<number>`coalesce(sum(subtotal), 0)`,
+        buyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+        sellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+      })
+      .from(orders)
+      .where(
+        sql`created_at >= date_trunc('month', now()) - interval '11 months'`
+      )
+      .groupBy(sql`date_trunc('month', created_at)`)
+      .orderBy(asc(sql`date_trunc('month', created_at)`));
+
+    // Escrow breakdown
+    const escrowBreakdown = await ctx.db
+      .select({
+        escrowStatus: orders.escrowStatus,
+        count: sql<number>`cast(count(*) as integer)`,
+        total: sql<number>`coalesce(sum(total_price), 0)`,
+      })
+      .from(orders)
+      .groupBy(orders.escrowStatus);
+
+    // Top 5 sellers by GMV
+    const topSellers = await ctx.db
+      .select({
+        sellerId: orders.sellerId,
+        sellerName: users.name,
+        businessName: users.businessName,
+        gmv: sql<number>`coalesce(sum(${orders.subtotal}), 0)`,
+        orderCount: sql<number>`cast(count(*) as integer)`,
+      })
+      .from(orders)
+      .innerJoin(users, eq(orders.sellerId, users.id))
+      .groupBy(orders.sellerId, users.name, users.businessName)
+      .orderBy(desc(sql`sum(${orders.subtotal})`))
+      .limit(5);
+
+    // Recent 10 orders
+    const recentOrders = await ctx.db.query.orders.findMany({
+      orderBy: [desc(orders.createdAt)],
+      limit: 10,
+      columns: {
+        id: true,
+        orderNumber: true,
+        totalPrice: true,
+        buyerFee: true,
+        sellerFee: true,
+        status: true,
+        createdAt: true,
+      },
+      with: {
+        buyer: {
+          columns: { name: true, businessName: true },
+        },
+        seller: {
+          columns: { name: true, businessName: true },
+        },
+      },
+    });
+
+    return {
+      summary,
+      byStatus,
+      monthlyTrend,
+      escrowBreakdown,
+      topSellers,
+      recentOrders,
+    };
+  }),
 });
