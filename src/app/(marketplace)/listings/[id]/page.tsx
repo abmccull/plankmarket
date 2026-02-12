@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -9,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SellerPaymentNotReadyDialog } from "@/components/checkout/seller-payment-not-ready-dialog";
+import { MakeOfferModal } from "@/components/offers/make-offer-modal";
 import {
   formatCurrency,
   formatSqFt,
@@ -25,6 +28,8 @@ import {
   Clock,
   Eye,
   Loader2,
+  MessageSquare,
+  HandCoins,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
@@ -67,8 +72,12 @@ const finishLabels: Record<string, string> = {
 export default function ListingDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const listingId = params.id as string;
+
+  const [showPaymentNotReadyDialog, setShowPaymentNotReadyDialog] = useState(false);
+  const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
+  const [isContactingLoading, setIsContactingLoading] = useState(false);
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
     id: listingId,
@@ -82,6 +91,7 @@ export default function ListingDetailPage() {
   const utils = trpc.useUtils();
   const addToWatchlist = trpc.watchlist.add.useMutation();
   const removeFromWatchlist = trpc.watchlist.remove.useMutation();
+  const getOrCreateConversation = trpc.message.getOrCreateConversation.useMutation();
 
   const handleWatchlist = async () => {
     if (!isAuthenticated) {
@@ -120,6 +130,53 @@ export default function ListingDetailPage() {
       }
     }
   };
+
+  const handleBuyNowClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!listing?.seller) return;
+
+    // Check if seller has completed Stripe onboarding
+    if (!listing.seller.stripeOnboardingComplete) {
+      e.preventDefault();
+      setShowPaymentNotReadyDialog(true);
+    }
+  };
+
+  const handleContactSeller = async () => {
+    if (!isAuthenticated) {
+      router.push(`/login?redirect=/listings/${listingId}`);
+      return;
+    }
+
+    setIsContactingLoading(true);
+    try {
+      const conversation = await getOrCreateConversation.mutateAsync({
+        listingId,
+      });
+
+      if (conversation?.id) {
+        toast.success("Opening conversation with seller");
+        router.push(`/messages/${conversation.id}`);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to contact seller";
+      toast.error(message);
+    } finally {
+      setIsContactingLoading(false);
+    }
+  };
+
+  const handleMakeOfferClick = () => {
+    if (!isAuthenticated) {
+      router.push(`/login?redirect=/listings/${listingId}`);
+      return;
+    }
+
+    setShowMakeOfferModal(true);
+  };
+
+  // Check if current user is the seller
+  const isOwnListing = user && listing?.sellerId === user.id;
 
   if (isLoading) {
     return (
@@ -410,43 +467,88 @@ export default function ListingDetailPage() {
               </div>
 
               {/* Actions */}
-              <div className="space-y-2">
-                {listing.buyNowPrice && (
-                  <Link
-                    href={
-                      isAuthenticated
-                        ? `/listings/${listing.id}/checkout`
-                        : `/login?redirect=/listings/${listing.id}/checkout`
-                    }
-                    className="block"
-                  >
-                    <Button variant="secondary" className="w-full tabular-nums" size="lg">
-                      Buy Now - {formatCurrency(listing.buyNowPrice)}
-                    </Button>
-                  </Link>
-                )}
-
-                {listing.allowOffers && (
-                  <Button variant="outline" className="w-full" size="lg">
-                    Make an Offer
-                  </Button>
-                )}
-
-                {!listing.buyNowPrice && !listing.allowOffers && (
-                  <Link
-                    href={
-                      isAuthenticated
-                        ? `/listings/${listing.id}/checkout`
-                        : `/login?redirect=/listings/${listing.id}/checkout`
-                    }
-                    className="block"
-                  >
+              {isOwnListing ? (
+                <div className="space-y-2">
+                  <Link href={`/seller/listings/${listing.id}/edit`}>
                     <Button className="w-full" size="lg">
-                      Purchase
+                      Edit Listing
                     </Button>
                   </Link>
-                )}
-              </div>
+                  <Button variant="outline" className="w-full" size="lg" disabled>
+                    View as Buyer
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Primary action - Buy Now or Purchase */}
+                  {listing.buyNowPrice ? (
+                    <Link
+                      href={
+                        isAuthenticated
+                          ? `/listings/${listing.id}/checkout`
+                          : `/login?redirect=/listings/${listing.id}/checkout`
+                      }
+                      className="block"
+                      onClick={handleBuyNowClick}
+                    >
+                      <Button variant="secondary" className="w-full tabular-nums" size="lg">
+                        Buy Now - {formatCurrency(listing.buyNowPrice)}
+                      </Button>
+                    </Link>
+                  ) : !listing.allowOffers ? (
+                    <Link
+                      href={
+                        isAuthenticated
+                          ? `/listings/${listing.id}/checkout`
+                          : `/login?redirect=/listings/${listing.id}/checkout`
+                      }
+                      className="block"
+                      onClick={handleBuyNowClick}
+                    >
+                      <Button className="w-full" size="lg">
+                        Purchase
+                      </Button>
+                    </Link>
+                  ) : null}
+
+                  {/* Secondary actions - Make Offer and Contact Seller */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {listing.allowOffers && (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        size="lg"
+                        onClick={handleMakeOfferClick}
+                        aria-label="Make an offer on this listing"
+                      >
+                        <HandCoins className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Make Offer
+                      </Button>
+                    )}
+
+                    <Button
+                      variant={listing.allowOffers ? "outline" : "default"}
+                      className={listing.allowOffers ? "w-full" : "w-full sm:col-span-2"}
+                      size="lg"
+                      onClick={handleContactSeller}
+                      disabled={isContactingLoading}
+                      aria-label="Contact the seller"
+                    >
+                      {isContactingLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                          Contact Seller
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               <Separator />
 
@@ -508,6 +610,30 @@ export default function ListingDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Payment Not Ready Dialog */}
+      {listing.seller && (
+        <SellerPaymentNotReadyDialog
+          open={showPaymentNotReadyDialog}
+          onOpenChange={setShowPaymentNotReadyDialog}
+          sellerId={listing.seller.id}
+          sellerName={listing.seller.businessName || listing.seller.name}
+          listingId={listing.id}
+        />
+      )}
+
+      {/* Make Offer Modal */}
+      {listing && (
+        <MakeOfferModal
+          open={showMakeOfferModal}
+          onOpenChange={setShowMakeOfferModal}
+          listingId={listing.id}
+          listingTitle={listing.title}
+          askPricePerSqFt={listing.askPricePerSqFt}
+          totalSqFt={listing.totalSqFt}
+          moq={listing.moq}
+        />
+      )}
     </div>
   );
 }

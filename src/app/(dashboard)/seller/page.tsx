@@ -1,6 +1,7 @@
 "use client";
 
 import { StatsCard } from "@/components/dashboard/stats-card";
+import { StripeOnboardingBanner } from "@/components/dashboard/stripe-onboarding-banner";
 import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import {
@@ -44,6 +45,8 @@ export default function SellerDashboardPage() {
           Overview of your listings, orders, and performance
         </p>
       </div>
+
+      <StripeOnboardingBanner />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { trpc } from "@/lib/trpc/client";
+import { UnreadBadge } from "@/components/messaging/unread-badge";
 import {
   LayoutDashboard,
   Package,
@@ -15,6 +17,8 @@ import {
   BarChart3,
   CreditCard,
   List,
+  MessageSquare,
+  Handshake,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -27,6 +31,8 @@ const sellerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
   { title: "My Listings", href: "/seller/listings", icon: List },
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
+  { title: "Offers", href: "/offers", icon: Handshake },
+  { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Orders", href: "/seller/orders", icon: Package },
   { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
   { title: "Payments", href: "/seller/stripe-onboarding", icon: CreditCard },
@@ -36,6 +42,8 @@ const sellerItems: SidebarItem[] = [
 const buyerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
   { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
+  { title: "Offers", href: "/offers", icon: Handshake },
+  { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
   { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
   { title: "Settings", href: "/buyer/settings", icon: Settings },
@@ -47,6 +55,13 @@ export function Sidebar() {
 
   const isSeller = pathname.startsWith("/seller");
   const items = isSeller ? sellerItems : buyerItems;
+
+  // Get unread message count
+  const { data: unreadData } = trpc.message.getUnreadCount.useQuery(undefined, {
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  const unreadCount = unreadData?.count || 0;
 
   return (
     <aside className="hidden lg:flex w-64 flex-col border-r bg-sidebar min-h-[calc(100vh-4rem)]">
@@ -72,6 +87,7 @@ export function Sidebar() {
             (item.href !== "/seller" &&
               item.href !== "/buyer" &&
               pathname.startsWith(item.href));
+          const isMessagesItem = item.href === "/messages";
           return (
             <Link
               key={item.href}
@@ -85,6 +101,9 @@ export function Sidebar() {
             >
               <item.icon className="h-4 w-4" />
               {item.title}
+              {isMessagesItem && unreadCount > 0 && (
+                <UnreadBadge count={unreadCount} className="ml-auto" />
+              )}
             </Link>
           );
         })}

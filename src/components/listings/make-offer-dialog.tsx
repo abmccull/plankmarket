@@ -79,7 +79,7 @@ export function MakeOfferDialog({
   const buyerFee = subtotal * BUYER_FEE_PERCENTAGE;
   const totalCost = subtotal + buyerFee;
 
-  const createOfferMutation = trpc.offer.create.useMutation();
+  const createOfferMutation = trpc.offer.createOffer.useMutation();
 
   const onSubmit = async (data: MakeOfferFormData) => {
     setIsSubmitting(true);

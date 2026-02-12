@@ -1,7 +1,26 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  ArrowRight,
+  Search,
+  ShoppingCart,
+  Truck,
+  Package,
+  DollarSign,
+  BarChart3,
+  Shield,
+  Eye,
+  CreditCard,
+  Globe,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "How It Works",
@@ -9,102 +28,236 @@ export const metadata: Metadata = {
 
 export default function HowItWorksPage() {
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
-      <div className="mb-6">
-        <Link href="/">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Home
-          </Button>
-        </Link>
-      </div>
+    <>
+      {/* Hero Section */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
-      <article className="prose prose-slate dark:prose-invert max-w-none">
-        <h1>How It Works</h1>
-        <p className="text-muted-foreground">
-          PlankMarket connects buyers and sellers of surplus flooring materials through a simple, transparent process.
-        </p>
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
+              Simple & Transparent
+            </Badge>
+            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+              How PlankMarket Works
+            </h1>
+            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
+              PlankMarket connects buyers and sellers of surplus flooring materials through a simple, transparent process. Whether you are sourcing materials or clearing inventory, we make it easy.
+            </p>
+          </div>
+        </div>
+      </section>
 
-        <h2>For Buyers</h2>
-        <p>
-          Finding the flooring inventory you need has never been easier. Our platform simplifies the entire purchasing process from discovery to delivery.
-        </p>
+      {/* Buyer Steps */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <Badge variant="outline" className="mb-4">For Buyers</Badge>
+            <h2 className="font-display text-3xl font-bold">
+              Find and Purchase Flooring
+            </h2>
+            <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
+              Finding the flooring inventory you need has never been easier. Our platform simplifies the entire purchasing process from discovery to delivery.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+            {[
+              {
+                icon: Search,
+                step: "1",
+                title: "Browse Inventory",
+                description:
+                  "Search through thousands of listings featuring hardwood, engineered wood, vinyl plank, laminate, bamboo, and tile. Filter by material type, color, finish, lot size, price, and location.",
+              },
+              {
+                icon: ShoppingCart,
+                step: "2",
+                title: "Get Instant Quotes",
+                description:
+                  "Every listing displays clear pricing with no hidden fees. View price per square foot, total lot size, and available quantity. All sellers are verified businesses.",
+              },
+              {
+                icon: CreditCard,
+                step: "3",
+                title: "Purchase Securely",
+                description:
+                  "Complete your purchase securely through Stripe payment processing. Coordinate shipping details directly with the seller through our built-in messaging system.",
+              },
+              {
+                icon: Truck,
+                step: "4",
+                title: "Receive Your Order",
+                description:
+                  "Track your order status through your dashboard. Confirm receipt to release payment to the seller. Our support team helps resolve any issues quickly.",
+              },
+            ].map((item) => (
+              <Card key={item.step} className="card-hover-lift">
+                <CardHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold shrink-0">
+                      {item.step}
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
+                      <item.icon className="h-6 w-6 text-primary" />
+                    </div>
+                  </div>
+                  <CardTitle className="font-display">{item.title}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        <h3>1. Browse Surplus & Closeout Flooring</h3>
-        <p>
-          Search through thousands of listings featuring hardwood, engineered wood, vinyl plank (LVP), laminate, bamboo, and tile. Use our advanced filters to narrow down by material type, color, finish, lot size, price per square foot, and location.
-        </p>
+      {/* Seller Steps */}
+      <section className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <Badge variant="outline" className="mb-4">For Sellers</Badge>
+            <h2 className="font-display text-3xl font-bold">
+              List and Sell Your Surplus
+            </h2>
+            <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
+              Turn your surplus flooring inventory into revenue. PlankMarket provides everything you need to list, manage, and sell your overstock, closeouts, and discontinued materials.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+            {[
+              {
+                icon: Package,
+                step: "1",
+                title: "List Your Inventory",
+                description:
+                  "Create detailed listings in minutes. Upload high-quality photos, specify material type, color, finish, dimensions, and quantity. The more detail, the faster it sells.",
+              },
+              {
+                icon: DollarSign,
+                step: "2",
+                title: "Set Your Pricing",
+                description:
+                  "You control the price. Set competitive rates based on market conditions, material quality, and lot size. Update pricing anytime to respond to demand.",
+              },
+              {
+                icon: ShoppingCart,
+                step: "3",
+                title: "Receive Orders",
+                description:
+                  "Get notified immediately when a buyer places an order. Review details and coordinate shipping through our messaging system. Buyers pay upfront securely.",
+              },
+              {
+                icon: BarChart3,
+                step: "4",
+                title: "Ship & Get Paid",
+                description:
+                  "Arrange freight and ship materials. Mark orders as shipped with tracking info. Payment is released to your Stripe account within 3-5 business days after confirmation.",
+              },
+            ].map((item) => (
+              <Card key={item.step} className="card-hover-lift">
+                <CardHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-sm font-bold shrink-0">
+                      {item.step}
+                    </div>
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
+                      <item.icon className="h-6 w-6 text-secondary" />
+                    </div>
+                  </div>
+                  <CardTitle className="font-display">{item.title}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        <h3>2. Get Instant Quotes</h3>
-        <p>
-          Every listing displays clear pricing with no hidden fees. View price per square foot, total lot size, and available quantity. All sellers on PlankMarket are verified businesses, so you can purchase with confidence.
-        </p>
+      {/* Benefits */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold">Key Benefits</h2>
+            <p className="mt-3 text-muted-foreground">
+              Why thousands of flooring professionals trust PlankMarket
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {[
+              {
+                icon: Shield,
+                title: "Verified Sellers",
+                description:
+                  "All sellers go through a verification process to ensure they are legitimate businesses. Review seller ratings and transaction history before purchasing.",
+              },
+              {
+                icon: Eye,
+                title: "Transparent Pricing",
+                description:
+                  "No surprises. All prices are displayed clearly with price per square foot and total lot cost. Our fee structure is straightforward with no hidden charges.",
+              },
+              {
+                icon: CreditCard,
+                title: "Secure Payments via Stripe",
+                description:
+                  "All transactions are processed through Stripe, one of the most trusted payment platforms. Buyers are protected, and sellers receive guaranteed payment on delivery.",
+              },
+              {
+                icon: Globe,
+                title: "Nationwide Shipping",
+                description:
+                  "Buy and sell flooring materials across the country. Our platform supports transactions nationwide, with sellers often assisting with freight for larger orders.",
+              },
+            ].map((item) => (
+              <Card key={item.title} className="card-hover-lift">
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-2">
+                    <item.icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <CardTitle className="font-display">{item.title}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        <h3>3. Purchase & Arrange Freight</h3>
-        <p>
-          Complete your purchase securely through our platform using Stripe payment processing. Coordinate shipping and freight details directly with the seller through our built-in messaging system. For large orders, many sellers offer freight assistance or delivery options.
-        </p>
-
-        <h3>4. Receive Your Inventory</h3>
-        <p>
-          Track your order status through your dashboard. Once delivered, confirm receipt to release payment to the seller. If there are any issues with your order, our support team is here to help resolve disputes quickly.
-        </p>
-
-        <h2>For Sellers</h2>
-        <p>
-          Turn your surplus flooring inventory into revenue. PlankMarket provides everything you need to list, manage, and sell your overstock, closeouts, and discontinued materials.
-        </p>
-
-        <h3>1. List Your Surplus Inventory</h3>
-        <p>
-          Create detailed listings in minutes. Upload high-quality photos, specify material type, color, finish, dimensions, and quantity available. Provide accurate descriptions to help buyers make informed decisions. The more detailed your listing, the faster it will sell.
-        </p>
-
-        <h3>2. Set Your Pricing</h3>
-        <p>
-          You control the price. Set competitive rates based on market conditions, material quality, and lot size. Update pricing anytime to respond to demand. Our platform provides pricing insights to help you optimize your listings.
-        </p>
-
-        <h3>3. Receive Orders</h3>
-        <p>
-          Get notified immediately when a buyer places an order. Review order details and coordinate shipping through our messaging system. Buyers pay upfront through our secure payment system, so you never have to worry about payment collection.
-        </p>
-
-        <h3>4. Ship & Get Paid</h3>
-        <p>
-          Arrange freight and ship the materials to the buyer. Mark the order as shipped in your dashboard and provide tracking information. Once the buyer confirms receipt, payment is released to your connected Stripe account, typically within 3-5 business days.
-        </p>
-
-        <h2>Key Benefits</h2>
-
-        <h3>Verified Sellers</h3>
-        <p>
-          All sellers go through a verification process to ensure they are legitimate businesses. Buyers can review seller ratings and transaction history before making a purchase.
-        </p>
-
-        <h3>Transparent Pricing</h3>
-        <p>
-          No surprises. All prices are displayed clearly with price per square foot and total lot cost. Our platform fee structure is straightforward with no hidden charges.
-        </p>
-
-        <h3>Secure Payments via Stripe</h3>
-        <p>
-          All transactions are processed through Stripe, one of the most trusted payment platforms in the world. Buyers are protected, and sellers receive guaranteed payment upon successful delivery.
-        </p>
-
-        <h3>Nationwide Shipping</h3>
-        <p>
-          Buy and sell flooring materials across the country. Our platform supports transactions nationwide, with sellers often able to assist with freight arrangements for larger orders.
-        </p>
-
-        <h2>Ready to Get Started?</h2>
-        <p>
-          Whether you are looking to source surplus flooring or clear out excess inventory, PlankMarket makes it easy. Join thousands of flooring professionals who trust our platform for B2B transactions.
-        </p>
-        <p>
-          <Link href="/register?role=buyer">Create a buyer account</Link> to start browsing, or <Link href="/register?role=seller">register as a seller</Link> to begin listing your inventory today.
-        </p>
-      </article>
-    </div>
+      {/* CTA */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
+            <div className="text-center relative z-10">
+              <h2 className="font-display text-3xl font-bold mb-4">
+                Ready to Get Started?
+              </h2>
+              <p className="text-white/80 mb-8 max-w-xl mx-auto">
+                Whether you are looking to source surplus flooring or clear out excess inventory, PlankMarket makes it easy. Join thousands of flooring professionals who trust our platform.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link href="/register?role=buyer">
+                  <Button
+                    size="xl"
+                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                  >
+                    Start Buying <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/register?role=seller">
+                  <Button
+                    size="xl"
+                    variant="secondary"
+                    className="bg-white/20 text-white border-white/30 hover:bg-white/30"
+                  >
+                    Start Selling
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }

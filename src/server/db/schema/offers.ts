@@ -6,6 +6,7 @@ import {
   timestamp,
   index,
   pgEnum,
+  integer,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { listings } from "./listings";
@@ -40,6 +41,12 @@ export const offers = pgTable(
 
     // Counter offer
     counterPricePerSqFt: real("counter_price_per_sq_ft"),
+
+    // Negotiation tracking
+    currentRound: integer("current_round").default(1).notNull(),
+    lastActorId: uuid("last_actor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
 
     // Status
     status: offerStatusEnum("status").notNull().default("pending"),

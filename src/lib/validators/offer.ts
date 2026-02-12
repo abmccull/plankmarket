@@ -16,6 +16,38 @@ export const createOfferSchema = z.object({
     .optional(),
 });
 
+export const counterOfferSchema = z.object({
+  offerId: z.string().uuid(),
+  pricePerSqFt: z
+    .number()
+    .positive("Price must be positive")
+    .max(1000, "Price seems too high"),
+  message: z
+    .string()
+    .max(500, "Message must be at most 500 characters")
+    .optional(),
+});
+
+export const acceptOfferSchema = z.object({
+  offerId: z.string().uuid(),
+});
+
+export const rejectOfferSchema = z.object({
+  offerId: z.string().uuid(),
+  message: z
+    .string()
+    .max(500, "Message must be at most 500 characters")
+    .optional(),
+});
+
+export const withdrawOfferSchema = z.object({
+  offerId: z.string().uuid(),
+});
+
+export const getOfferByIdSchema = z.object({
+  offerId: z.string().uuid(),
+});
+
 export const respondToOfferSchema = z
   .object({
     offerId: z.string().uuid(),
@@ -44,4 +76,9 @@ export const respondToOfferSchema = z
   );
 
 export type CreateOfferInput = z.infer<typeof createOfferSchema>;
+export type CounterOfferInput = z.infer<typeof counterOfferSchema>;
+export type AcceptOfferInput = z.infer<typeof acceptOfferSchema>;
+export type RejectOfferInput = z.infer<typeof rejectOfferSchema>;
+export type WithdrawOfferInput = z.infer<typeof withdrawOfferSchema>;
+export type GetOfferByIdInput = z.infer<typeof getOfferByIdSchema>;
 export type RespondToOfferInput = z.infer<typeof respondToOfferSchema>;

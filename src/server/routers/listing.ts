@@ -133,6 +133,7 @@ export const listingRouter = createTRPCRouter({
               avatarUrl: true,
               verified: true,
               createdAt: true,
+              stripeOnboardingComplete: true,
             },
           },
           media: {

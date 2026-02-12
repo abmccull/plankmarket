@@ -41,6 +41,14 @@ export default function CheckoutPage() {
     id: listingId,
   });
 
+  // Check seller payment readiness
+  useEffect(() => {
+    if (listing?.seller && !listing.seller.stripeOnboardingComplete) {
+      toast.error("This seller hasn't set up payment processing yet.");
+      router.push(`/listings/${listingId}`);
+    }
+  }, [listing, listingId, router]);
+
   const createOrder = trpc.order.create.useMutation();
   const createPaymentIntent = trpc.payment.createPaymentIntent.useMutation();
 

@@ -1,7 +1,24 @@
 import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  ArrowRight,
+  CheckCircle2,
+  XCircle,
+  CreditCard,
+  Shield,
+  TrendingUp,
+  HelpCircle,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Pricing & Fees",
@@ -9,143 +26,305 @@ export const metadata: Metadata = {
 
 export default function PricingPage() {
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
-      <div className="mb-6">
-        <Link href="/">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Home
-          </Button>
-        </Link>
-      </div>
+    <>
+      {/* Hero Section */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
-      <article className="prose prose-slate dark:prose-invert max-w-none">
-        <h1>Pricing & Fees</h1>
-        <p className="text-muted-foreground">
-          Transparent pricing with no hidden charges. PlankMarket keeps fees simple so you can focus on buying and selling flooring materials.
-        </p>
+        <div className="container mx-auto px-4 relative z-10">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
+              No Hidden Fees
+            </Badge>
+            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+              Simple, Transparent Pricing
+            </h1>
+            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
+              Transparent pricing with no hidden charges. PlankMarket keeps fees simple so you can focus on buying and selling flooring materials.
+            </p>
+          </div>
+        </div>
+      </section>
 
-        <h2>For Buyers</h2>
+      {/* Pricing Cards */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            {/* Buyer Card */}
+            <Card className="card-hover-lift border-secondary/30 relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-secondary to-secondary/50" />
+              <CardHeader className="text-center pb-4">
+                <Badge variant="outline" className="w-fit mx-auto mb-2 border-secondary text-secondary">
+                  For Buyers
+                </Badge>
+                <CardTitle className="font-display text-3xl">Free</CardTitle>
+                <CardDescription>No platform fees for buyers</CardDescription>
+              </CardHeader>
+              <Separator />
+              <CardContent className="pt-6">
+                <ul className="space-y-3">
+                  {[
+                    "Free to browse and register",
+                    "No buyer platform fees",
+                    "No membership charges",
+                    "No transaction fees",
+                    "Secure Stripe payment processing",
+                    "Save searches and watchlists",
+                    "Direct messaging with sellers",
+                    "Order tracking and support",
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-secondary shrink-0 mt-0.5" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-6">
+                  <Link href="/register?role=buyer" className="block">
+                    <Button className="w-full" variant="secondary">
+                      Start Buying Free <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
 
-        <h3>Free to Browse & Register</h3>
-        <p>
-          Creating a buyer account on PlankMarket is completely free. Browse thousands of surplus flooring listings, save searches, and contact sellers at no cost.
-        </p>
+            {/* Seller Card */}
+            <Card className="card-hover-lift border-primary/30 relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-primary/50" />
+              <CardHeader className="text-center pb-4">
+                <Badge variant="outline" className="w-fit mx-auto mb-2 border-primary text-primary">
+                  For Sellers
+                </Badge>
+                <CardTitle className="font-display text-3xl">Commission-Based</CardTitle>
+                <CardDescription>Pay only when you sell</CardDescription>
+              </CardHeader>
+              <Separator />
+              <CardContent className="pt-6">
+                <ul className="space-y-3">
+                  {[
+                    "Free to list — unlimited listings",
+                    "Commission only on completed sales",
+                    "Secure payment via Stripe Connect",
+                    "Built-in messaging and order management",
+                    "Access to nationwide buyer network",
+                    "Customer support for you and buyers",
+                    "Seller dashboard and analytics",
+                    "Fast payouts within 3-5 business days",
+                  ].map((item) => (
+                    <li key={item} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-6">
+                  <Link href="/register?role=seller" className="block">
+                    <Button className="w-full">
+                      Start Selling <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
 
-        <h3>No Buyer Fees</h3>
-        <p>
-          Buyers pay only the listed price for materials plus any applicable shipping costs. There are no platform fees, transaction fees, or membership charges for buyers.
-        </p>
+      {/* Fee Breakdown */}
+      <section className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold">Fee Breakdown</h2>
+            <p className="mt-3 text-muted-foreground">
+              Understanding what you pay and when
+            </p>
+          </div>
+          <div className="max-w-3xl mx-auto">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center shrink-0">
+                      <CreditCard className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-1">Platform Commission</h3>
+                      <p className="text-sm text-muted-foreground">
+                        PlankMarket charges a commission on each completed transaction. This covers listing hosting, buyer network access, secure payment processing, escrow services, messaging tools, and platform support.
+                      </p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center shrink-0">
+                      <Shield className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-1">Payment Processing (Stripe)</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Standard Stripe fees apply: approximately 2.9% + $0.30 per credit/debit card transaction. ACH transfers have lower percentage fees. These are charged by Stripe and deducted automatically before payout.
+                      </p>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center shrink-0">
+                      <TrendingUp className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-1">Payout Timeline</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Once a buyer confirms receipt, payment is released and transferred to your connected Stripe account. Funds are typically available in your bank within 3-5 business days.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
 
-        <h3>Payment Processing</h3>
-        <p>
-          All payments are processed securely through Stripe. Standard payment processing fees apply and are included in the transaction, not added as a separate charge to buyers.
-        </p>
+      {/* No Hidden Fees */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold">No Hidden Fees</h2>
+            <p className="mt-3 text-muted-foreground">
+              Unlike other marketplaces, we never charge for these
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+            {[
+              "Monthly subscription fees",
+              "Listing or insertion fees",
+              "Featured listing charges",
+              "Renewal fees for unsold listings",
+              "Account maintenance fees",
+              "Withdrawal or payout fees",
+            ].map((item) => (
+              <Card key={item} className="bg-red-50/50 border-red-100">
+                <CardHeader className="flex-row items-center gap-3 py-4">
+                  <XCircle className="h-5 w-5 text-red-400 shrink-0" />
+                  <CardDescription className="text-foreground font-medium text-sm">
+                    {item}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        <h2>For Sellers</h2>
+      {/* Volume Sellers */}
+      <section className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="max-w-3xl mx-auto">
+            <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100/30 overflow-hidden relative">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-amber-500" />
+              <CardHeader className="text-center">
+                <Badge className="w-fit mx-auto mb-2 border-transparent bg-amber-100 text-amber-800">
+                  Enterprise
+                </Badge>
+                <CardTitle className="font-display text-2xl">Volume Sellers</CardTitle>
+                <CardDescription>
+                  High-volume sellers with large inventories or frequent transactions may be eligible for reduced commission rates. Contact our partnerships team to discuss custom pricing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-center">
+                <Link href="mailto:partnerships@plankmarket.com">
+                  <Button variant="outline" className="border-amber-300 hover:bg-amber-100">
+                    Contact Partnerships Team
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
 
-        <h3>Free to List</h3>
-        <p>
-          Listing your surplus flooring inventory on PlankMarket is free. Create as many listings as you need with no upfront costs or listing fees.
-        </p>
+      {/* Refunds & FAQ */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold">Common Questions</h2>
+          </div>
+          <div className="max-w-3xl mx-auto space-y-4">
+            {[
+              {
+                question: "What happens in case of a dispute or return?",
+                answer:
+                  "Our escrow system protects both parties. Buyers are protected until they confirm receipt, and sellers are protected by upfront payment. Disputes are mediated by our support team. Commission and processing fees are refunded on full refunds; partial refunds get proportional adjustments.",
+              },
+              {
+                question: "Are there plans for premium features?",
+                answer:
+                  "We are developing optional premium features like featured listing placement, priority support, advanced analytics, and inventory management integrations. All premium features will be optional — core features remain available at standard commission rates.",
+              },
+              {
+                question: "How does tax reporting work?",
+                answer:
+                  "Sellers receive tax documentation from Stripe Connect for all transactions. You are responsible for reporting income and paying applicable taxes per local, state, and federal regulations.",
+              },
+              {
+                question: "Have more questions about pricing?",
+                answer:
+                  "Contact us at support@plankmarket.com. We are happy to explain how our pricing works and help you understand your expected costs or earnings.",
+              },
+            ].map((item) => (
+              <Card key={item.question} className="card-hover-lift">
+                <CardHeader>
+                  <div className="flex items-start gap-3">
+                    <HelpCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <div>
+                      <CardTitle className="text-base font-semibold">{item.question}</CardTitle>
+                      <CardDescription className="mt-2">{item.answer}</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
 
-        <h3>Commission Structure</h3>
-        <p>
-          PlankMarket charges a commission only when your materials sell. The platform takes a percentage of each completed transaction. Our commission structure is designed to be competitive with other B2B marketplaces while providing you with access to a nationwide network of buyers.
-        </p>
-        <p>
-          <strong>Current Commission Rate:</strong> X% of the sale price
-        </p>
-        <p>
-          The commission covers:
-        </p>
-        <ul>
-          <li>Hosting and maintaining your listings</li>
-          <li>Access to our buyer network</li>
-          <li>Secure payment processing and escrow services</li>
-          <li>Messaging and order management tools</li>
-          <li>Customer support for you and your buyers</li>
-          <li>Platform maintenance and improvements</li>
-        </ul>
-
-        <h3>Payment Processing Fees</h3>
-        <p>
-          In addition to the platform commission, standard Stripe payment processing fees apply to all transactions:
-        </p>
-        <ul>
-          <li>Credit and debit card payments: approximately 2.9% + $0.30 per transaction</li>
-          <li>ACH transfers: lower percentage fee (varies by transaction size)</li>
-        </ul>
-        <p>
-          These fees are standard for online payment processing and are charged by Stripe, not PlankMarket. Payment processing fees are deducted automatically before funds are transferred to your account.
-        </p>
-
-        <h3>Payout Timeline</h3>
-        <p>
-          Once a buyer confirms receipt of materials, your payment is released and transferred to your connected Stripe account. Funds are typically available in your bank account within 3-5 business days, depending on your bank.
-        </p>
-
-        <h2>No Hidden Fees</h2>
-        <p>
-          We believe in transparent pricing. Unlike other marketplaces, PlankMarket does not charge:
-        </p>
-        <ul>
-          <li>Monthly subscription fees</li>
-          <li>Listing fees or insertion fees</li>
-          <li>Featured listing charges</li>
-          <li>Renewal fees for unsold listings</li>
-          <li>Account maintenance fees</li>
-          <li>Withdrawal or payout fees</li>
-        </ul>
-
-        <h2>Volume Sellers</h2>
-        <p>
-          High-volume sellers with large inventories or frequent transactions may be eligible for reduced commission rates. Contact our partnerships team at <a href="mailto:partnerships@plankmarket.com">partnerships@plankmarket.com</a> to discuss custom pricing.
-        </p>
-
-        <h2>Optional Premium Features (Future)</h2>
-        <p>
-          PlankMarket is continually developing new features to help sellers maximize their reach and sales. Future optional premium features may include:
-        </p>
-        <ul>
-          <li>Featured listing placement for increased visibility</li>
-          <li>Priority customer support</li>
-          <li>Advanced analytics and sales reporting</li>
-          <li>Enhanced seller profile customization</li>
-          <li>Integration with inventory management systems</li>
-        </ul>
-        <p>
-          All premium features will remain optional. You can continue to use PlankMarket with the standard commission structure and full access to core features at no additional cost.
-        </p>
-
-        <h2>Refunds & Disputes</h2>
-        <p>
-          In the event of a dispute or return, PlankMarket will work with both parties to reach a fair resolution. Our escrow system protects both buyers and sellers:
-        </p>
-        <ul>
-          <li>Buyers are protected by escrow until they confirm receipt</li>
-          <li>Sellers are protected by upfront payment before shipping</li>
-          <li>Disputes are mediated by our support team</li>
-          <li>Refunds are processed through the original payment method</li>
-        </ul>
-        <p>
-          Commission and payment processing fees are refunded to sellers in the event of a full refund. Partial refunds result in proportional commission adjustments.
-        </p>
-
-        <h2>Tax Reporting</h2>
-        <p>
-          Sellers will receive tax documentation from Stripe Connect for all transactions processed through the platform. You are responsible for reporting income and paying applicable taxes in accordance with local, state, and federal regulations.
-        </p>
-
-        <h2>Questions About Pricing?</h2>
-        <p>
-          If you have questions about our pricing structure or need clarification on fees, please contact us at <a href="mailto:support@plankmarket.com">support@plankmarket.com</a>. We are happy to explain how our pricing works and help you understand your expected costs or earnings.
-        </p>
-
-        <p>
-          Ready to get started? <Link href="/register?role=buyer">Create a buyer account</Link> or <Link href="/register?role=seller">register as a seller</Link> today.
-        </p>
-      </article>
-    </div>
+      {/* CTA */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
+            <div className="text-center relative z-10">
+              <h2 className="font-display text-3xl font-bold mb-4">
+                Ready to Get Started?
+              </h2>
+              <p className="text-white/80 mb-8 max-w-xl mx-auto">
+                Join PlankMarket today. Buyers browse for free, sellers pay only when they sell.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <Link href="/register?role=buyer">
+                  <Button
+                    size="xl"
+                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                  >
+                    Create Buyer Account <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/register?role=seller">
+                  <Button
+                    size="xl"
+                    variant="secondary"
+                    className="bg-white/20 text-white border-white/30 hover:bg-white/30"
+                  >
+                    Create Seller Account
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }

@@ -1,10 +1,11 @@
 import {
   createTRPCRouter,
+  publicProcedure,
   protectedProcedure,
   sellerProcedure,
 } from "../trpc";
-import { orders, users } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { orders, users, notifications } from "../db/schema";
+import { eq, and, gt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import Stripe from "stripe";
@@ -15,6 +16,22 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
 });
 
 export const paymentRouter = createTRPCRouter({
+  // Check if seller has completed payment setup
+  checkSellerPaymentReady: publicProcedure
+    .input(z.object({ sellerId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const seller = await ctx.db.query.users.findFirst({
+        where: eq(users.id, input.sellerId),
+        columns: { id: true, stripeOnboardingComplete: true },
+      });
+
+      if (!seller) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Seller not found" });
+      }
+
+      return { ready: seller.stripeOnboardingComplete };
+    }),
+
   // Create a payment intent for an order
   createPaymentIntent: protectedProcedure
     .input(z.object({ orderId: z.string().uuid() }))
@@ -197,4 +214,54 @@ export const paymentRouter = createTRPCRouter({
       return { connected: false, onboardingComplete: false };
     }
   }),
+
+  // Nudge seller to complete Stripe onboarding
+  nudgeSellerToOnboard: protectedProcedure
+    .input(z.object({ sellerId: z.string().uuid(), listingId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      // 1. Check if seller already has stripeOnboardingComplete=true
+      const seller = await ctx.db.query.users.findFirst({
+        where: eq(users.id, input.sellerId),
+        columns: { id: true, stripeOnboardingComplete: true },
+      });
+
+      if (!seller) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Seller not found",
+        });
+      }
+
+      if (seller.stripeOnboardingComplete) {
+        return { alreadyReady: true };
+      }
+
+      // 2. Check if a "system" notification was already sent to this seller
+      //    in the last 24 hours (spam protection)
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentNotification = await ctx.db.query.notifications.findFirst({
+        where: and(
+          eq(notifications.userId, input.sellerId),
+          eq(notifications.type, "system"),
+          gt(notifications.createdAt, twentyFourHoursAgo)
+        ),
+      });
+
+      if (recentNotification) {
+        return { notified: false, reason: "recently_notified" };
+      }
+
+      // 3. Insert a notification for the seller
+      await ctx.db.insert(notifications).values({
+        userId: input.sellerId,
+        type: "system",
+        title: "Someone wants to purchase your listing!",
+        message:
+          "A buyer is interested in your listing. Set up Stripe payments to start receiving orders.",
+        data: { listingId: input.listingId },
+      });
+
+      // 4. Return success
+      return { notified: true };
+    }),
 });
