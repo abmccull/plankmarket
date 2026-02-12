@@ -13,7 +13,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StarRating } from "@/components/shared/star-rating";
 import { CheckCircle2, MapPin, Calendar, Mail } from "lucide-react";
 import { ListingCard } from "@/components/search/listing-card";
-import { cn } from "@/lib/utils";
 
 interface SellerProfilePageProps {
   params: Promise<{

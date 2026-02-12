@@ -38,7 +38,7 @@ export function StripePaymentForm({ listingId, orderId }: StripePaymentFormProps
       if (error) {
         setErrorMessage(error.message || "An error occurred during payment processing.");
       }
-    } catch (err) {
+    } catch {
       setErrorMessage("An unexpected error occurred. Please try again.");
     } finally {
       setIsProcessing(false);

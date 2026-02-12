@@ -36,7 +36,7 @@ interface DataTableProps<TData, TValue> {
   data: TData[];
 }
 
-export function DataTableColumnHeader<TData, TValue>({
+export function DataTableColumnHeader({
   column,
   title,
 }: {

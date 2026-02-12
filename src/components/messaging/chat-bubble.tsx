@@ -13,7 +13,6 @@ interface ChatBubbleProps {
 export function ChatBubble({
   message,
   senderName,
-  senderAvatar,
   timestamp,
   isCurrentUser,
   showSenderInfo = true,

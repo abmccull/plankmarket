@@ -23,7 +23,7 @@ interface UploadedImage {
   sortOrder: number;
 }
 
-export function PhotoUpload({ onImagesChange, initialMediaIds = [] }: PhotoUploadProps) {
+export function PhotoUpload({ onImagesChange }: PhotoUploadProps) {
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
