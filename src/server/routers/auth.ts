@@ -3,6 +3,7 @@ import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
 import { users } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import zipcodes from "zipcodes";
 
 export const authRouter = createTRPCRouter({
   // Register a new user (creates DB record after Supabase auth signup)
@@ -37,6 +38,17 @@ export const authRouter = createTRPCRouter({
         });
       }
 
+      // Geo-lookup from ZIP code
+      let lat: number | undefined;
+      let lng: number | undefined;
+      if (input.zipCode) {
+        const zipInfo = zipcodes.lookup(input.zipCode);
+        if (zipInfo) {
+          lat = zipInfo.latitude;
+          lng = zipInfo.longitude;
+        }
+      }
+
       // Create user record in our database
       const [newUser] = await ctx.db
         .insert(users)
@@ -47,6 +59,9 @@ export const authRouter = createTRPCRouter({
           role: input.role,
           businessName: input.businessName,
           phone: input.phone,
+          zipCode: input.zipCode,
+          lat,
+          lng,
         })
         .returning();
 
@@ -92,6 +107,7 @@ export const authRouter = createTRPCRouter({
         avatarUrl: ctx.user.avatarUrl,
         verified: ctx.user.verified,
         stripeOnboardingComplete: ctx.user.stripeOnboardingComplete,
+        zipCode: ctx.user.zipCode,
       },
       isAuthenticated: true,
     };

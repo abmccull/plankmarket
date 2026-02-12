@@ -295,6 +295,18 @@ export const listingRouter = createTRPCRouter({
         case "popularity":
           orderByClause = desc(listings.viewsCount);
           break;
+        case "proximity":
+          if (buyerLat !== undefined && buyerLng !== undefined) {
+            orderByClause = asc(
+              sql`3959 * acos(
+                cos(radians(${buyerLat})) * cos(radians(${listings.locationLat})) * cos(radians(${listings.locationLng}) - radians(${buyerLng}))
+                + sin(radians(${buyerLat})) * sin(radians(${listings.locationLat}))
+              )`
+            );
+          } else {
+            orderByClause = desc(listings.createdAt);
+          }
+          break;
         case "date_newest":
         default:
           orderByClause = desc(listings.createdAt);
