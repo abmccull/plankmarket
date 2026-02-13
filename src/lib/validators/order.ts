@@ -15,6 +15,12 @@ export const createOrderSchema = z.object({
       message: "Please enter a valid phone number",
     })
     .optional(),
+  selectedQuoteId: z.string().optional(),
+  selectedCarrier: z.string().optional(),
+  carrierRate: z.number().optional(),
+  shippingPrice: z.number().optional(),
+  estimatedTransitDays: z.number().int().optional(),
+  quoteExpiresAt: z.string().datetime().optional(),
 });
 
 export const updateOrderStatusSchema = z.object({

@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
 import { Loader2, Package, MapPin, Truck, Store } from "lucide-react";
+import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import type { OrderStatus } from "@/types";
 
 export default function BuyerOrderDetailPage() {
@@ -83,6 +84,12 @@ export default function BuyerOrderDetailPage() {
               <span className="text-muted-foreground">Buyer Fee (3%)</span>
               <span>{formatCurrency(order.buyerFee)}</span>
             </div>
+            {order.shippingPrice && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Shipping</span>
+                <span>{formatCurrency(order.shippingPrice)}</span>
+              </div>
+            )}
             <Separator />
             <div className="flex justify-between font-semibold">
               <span>Total</span>
@@ -112,7 +119,25 @@ export default function BuyerOrderDetailPage() {
               </p>
             </div>
 
-            {order.trackingNumber && (
+            {order.selectedCarrier && (
+              <>
+                <Separator />
+                <div>
+                  <h4 className="font-medium flex items-center gap-1 mb-1">
+                    <Truck className="h-3 w-3" />
+                    Carrier
+                  </h4>
+                  <p>{order.selectedCarrier}</p>
+                  {order.estimatedTransitDays && (
+                    <p className="text-muted-foreground">
+                      Est. {order.estimatedTransitDays} business days
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {!order.selectedQuoteId && order.trackingNumber && (
               <>
                 <Separator />
                 <div>
@@ -142,6 +167,9 @@ export default function BuyerOrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Shipment Tracking (Priority1 orders) */}
+      {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
 
       {/* Order Timeline */}
       <Card>

@@ -30,6 +30,7 @@ import {
   Loader2,
   MessageSquare,
   HandCoins,
+  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
@@ -395,7 +396,19 @@ export default function ListingDetailPage() {
                     conditionLabels[listing.condition] || listing.condition
                   }
                 />
+                {listing.palletWeight && (
+                  <SpecItem
+                    label="Pallet Weight"
+                    value={`${listing.palletWeight.toLocaleString()} lbs`}
+                  />
+                )}
               </div>
+              {listing.palletWeight && listing.palletLength && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Truck className="h-4 w-4" />
+                  <span>Instant shipping quotes available at checkout</span>
+                </div>
+              )}
             </CardContent>
           </Card>
 

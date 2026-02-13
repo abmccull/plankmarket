@@ -66,12 +66,14 @@ export const paymentRouter = createTRPCRouter({
       }
 
       // Create Stripe PaymentIntent with marketplace fees
+      // Shipping funds stay on PlankMarket's platform (PlankMarket pays Priority1 separately)
+      const applicationFee = Math.round(
+        (order.buyerFee + order.sellerFee + (order.shippingPrice ?? 0)) * 100
+      );
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(order.totalPrice * 100), // Convert to cents
         currency: "usd",
-        application_fee_amount: Math.round(
-          (order.buyerFee + order.sellerFee) * 100
-        ),
+        application_fee_amount: applicationFee,
         transfer_data: {
           destination: order.seller.stripeAccountId,
         },

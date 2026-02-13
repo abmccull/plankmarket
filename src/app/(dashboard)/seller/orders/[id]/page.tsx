@@ -20,6 +20,7 @@ import {
 } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2, Package, Truck, MapPin, User } from "lucide-react";
+import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import { useState } from "react";
 import type { OrderStatus } from "@/types";
 
@@ -115,6 +116,12 @@ export default function SellerOrderDetailPage() {
                 -{formatCurrency(order.sellerFee)}
               </span>
             </div>
+            {order.shippingPrice && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Shipping (paid by buyer)</span>
+                <span className="text-muted-foreground">{formatCurrency(order.shippingPrice)}</span>
+              </div>
+            )}
             <Separator />
             <div className="flex justify-between font-semibold">
               <span>Your Payout</span>
@@ -158,7 +165,25 @@ export default function SellerOrderDetailPage() {
                 <p className="text-muted-foreground">{order.shippingPhone}</p>
               )}
             </div>
-            {order.trackingNumber && (
+            {order.selectedCarrier && (
+              <>
+                <Separator />
+                <div>
+                  <h4 className="font-medium flex items-center gap-1 mb-1">
+                    <Truck className="h-3 w-3" />
+                    Carrier
+                  </h4>
+                  <p>{order.selectedCarrier}</p>
+                  {order.estimatedTransitDays && (
+                    <p className="text-muted-foreground">
+                      Est. {order.estimatedTransitDays} business days
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {!order.selectedQuoteId && order.trackingNumber && (
               <>
                 <Separator />
                 <div>
@@ -177,6 +202,9 @@ export default function SellerOrderDetailPage() {
         </Card>
       </div>
 
+      {/* Shipment Tracking (Priority1 orders) */}
+      {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
+
       {/* Actions */}
       {order.status !== "delivered" && order.status !== "cancelled" && (
         <Card>
@@ -184,7 +212,9 @@ export default function SellerOrderDetailPage() {
             <CardTitle className="text-lg">Update Order</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {(order.status === "pending" || order.status === "confirmed") && (
+            {/* Manual tracking fields only for legacy (non-Priority1) orders */}
+            {!order.selectedQuoteId &&
+              (order.status === "pending" || order.status === "confirmed") && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -212,13 +242,15 @@ export default function SellerOrderDetailPage() {
                   Confirm Order
                 </Button>
               )}
-              {(order.status === "confirmed" ||
-                order.status === "processing") && (
+              {/* Manual shipping/delivery only for legacy orders */}
+              {!order.selectedQuoteId &&
+                (order.status === "confirmed" ||
+                  order.status === "processing") && (
                 <Button onClick={() => handleUpdateStatus("shipped")}>
                   Mark as Shipped
                 </Button>
               )}
-              {order.status === "shipped" && (
+              {!order.selectedQuoteId && order.status === "shipped" && (
                 <Button onClick={() => handleUpdateStatus("delivered")}>
                   Mark as Delivered
                 </Button>

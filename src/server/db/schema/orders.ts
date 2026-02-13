@@ -4,6 +4,7 @@ import {
   text,
   varchar,
   timestamp,
+  integer,
   index,
   pgEnum,
 } from "drizzle-orm/pg-core";
@@ -52,7 +53,7 @@ export const orders = pgTable(
     stripeTransferId: varchar("stripe_transfer_id", { length: 255 }),
     paymentStatus: varchar("payment_status", { length: 50 }).default("pending"),
 
-    // Shipping
+    // Shipping address
     shippingName: varchar("shipping_name", { length: 255 }),
     shippingAddress: text("shipping_address"),
     shippingCity: varchar("shipping_city", { length: 100 }),
@@ -61,6 +62,15 @@ export const orders = pgTable(
     shippingPhone: varchar("shipping_phone", { length: 20 }),
     trackingNumber: varchar("tracking_number", { length: 255 }),
     carrier: varchar("carrier", { length: 100 }),
+
+    // Priority1 shipping integration
+    shippingPrice: money("shipping_price"), // what buyer pays (carrier rate + 15% margin)
+    carrierRate: money("carrier_rate"), // Priority1's raw rate
+    shippingMargin: money("shipping_margin"), // shippingPrice - carrierRate (PlankMarket profit)
+    selectedQuoteId: varchar("selected_quote_id", { length: 255 }), // Priority1 rateQuote.id
+    selectedCarrier: varchar("selected_carrier", { length: 255 }), // carrier display name
+    estimatedTransitDays: integer("estimated_transit_days"),
+    quoteExpiresAt: timestamp("quote_expires_at", { withTimezone: true }),
 
     // Status
     status: orderStatusEnum("status").notNull().default("pending"),

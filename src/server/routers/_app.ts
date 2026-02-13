@@ -14,6 +14,7 @@ import { feedbackRouter } from "./feedback";
 import { adminRouter } from "./admin";
 import { messageRouter } from "./message";
 import { notificationRouter } from "./notification";
+import { shippingRouter } from "./shipping";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -31,6 +32,7 @@ export const appRouter = createTRPCRouter({
   admin: adminRouter,
   message: messageRouter,
   notification: notificationRouter,
+  shipping: shippingRouter,
 });
 
 export type AppRouter = typeof appRouter;

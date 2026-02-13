@@ -66,6 +66,9 @@ export type {
 export { platformSettings } from "./settings";
 export type { PlatformSetting, NewPlatformSetting } from "./settings";
 
+export { shipments, shipmentStatusEnum } from "./shipments";
+export type { Shipment, NewShipment, TrackingEvent } from "./shipments";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -82,6 +85,7 @@ import { offerEvents } from "./offer-events";
 import { disputes, disputeMessages } from "./disputes";
 import { feedback } from "./feedback";
 import { conversations, messages } from "./conversations";
+import { shipments } from "./shipments";
 
 export const usersRelations = relations(users, ({ many }) => ({
   listings: many(listings),
@@ -146,6 +150,17 @@ export const ordersRelations = relations(orders, ({ one }) => ({
   dispute: one(disputes, {
     fields: [orders.id],
     references: [disputes.orderId],
+  }),
+  shipment: one(shipments, {
+    fields: [orders.id],
+    references: [shipments.orderId],
+  }),
+}));
+
+export const shipmentsRelations = relations(shipments, ({ one }) => ({
+  order: one(orders, {
+    fields: [shipments.orderId],
+    references: [orders.id],
   }),
 }));
 

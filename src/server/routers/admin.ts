@@ -1,8 +1,10 @@
 import { createTRPCRouter, adminProcedure } from "../trpc";
-import { users, listings, orders, notifications, platformSettings } from "../db/schema";
+import { users, listings, orders, notifications, platformSettings, shipments, shipmentStatusEnum } from "../db/schema";
 import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { priority1 } from "@/server/services/priority1";
+import type { TrackingEvent } from "@/server/db/schema";
 
 /** Default platform settings */
 const DEFAULT_SETTINGS: Record<string, unknown> = {
@@ -948,4 +950,178 @@ export const adminRouter = createTRPCRouter({
 
       return { success: true, count: input.length };
     }),
+
+  // ==========================================
+  // Priority1 Shipment Management
+  // ==========================================
+
+  // Get paginated shipments with filters
+  getShipments: adminProcedure
+    .input(
+      z.object({
+        status: z.enum(shipmentStatusEnum.enumValues).optional(),
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const offset = (input.page - 1) * input.limit;
+
+      const conditions = [];
+
+      if (input.status) {
+        conditions.push(eq(shipments.status, input.status));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const shipmentsList = await ctx.db.query.shipments.findMany({
+        where: whereClause,
+        orderBy: [desc(shipments.createdAt)],
+        limit: input.limit,
+        offset,
+        with: {
+          order: {
+            columns: {
+              id: true,
+              orderNumber: true,
+              buyerId: true,
+              sellerId: true,
+              carrierRate: true,
+              shippingPrice: true,
+              shippingMargin: true,
+            },
+          },
+        },
+      });
+
+      // Get total count
+      const [{ count }] = await ctx.db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(shipments)
+        .where(whereClause);
+
+      return {
+        items: shipmentsList,
+        total: count,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(count / input.limit),
+      };
+    }),
+
+  // Re-poll shipment status from Priority1
+  repollShipment: adminProcedure
+    .input(
+      z.object({
+        shipmentId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const shipment = await ctx.db.query.shipments.findFirst({
+        where: eq(shipments.id, input.shipmentId),
+      });
+
+      if (!shipment) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Shipment not found",
+        });
+      }
+
+      if (!shipment.proNumber && !shipment.priority1ShipmentId) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Shipment has no tracking identifier (PRO number or Priority1 ID)",
+        });
+      }
+
+      // Get status from Priority1
+      const statusResponse = await priority1.getStatus({
+        identifierType: "BILL_OF_LADING",
+        identifierValue: shipment.proNumber || shipment.priority1ShipmentId!,
+      });
+
+      if (!statusResponse.shipments || statusResponse.shipments.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No tracking information found from Priority1",
+        });
+      }
+
+      const p1Shipment = statusResponse.shipments[0];
+
+      // Map Priority1 status to our status enum (same logic as shipment-tracking.ts)
+      let mappedStatus = shipment.status;
+      const p1Status = p1Shipment.status?.toLowerCase() || "";
+      if (p1Status.includes("deliver") || p1Status === "completed") {
+        mappedStatus = "delivered";
+      } else if (p1Status.includes("out for delivery")) {
+        mappedStatus = "out_for_delivery";
+      } else if (
+        p1Status.includes("transit") ||
+        p1Status.includes("en-route") ||
+        p1Status.includes("picked up")
+      ) {
+        mappedStatus = "in_transit";
+      } else if (
+        p1Status.includes("exception") ||
+        p1Status.includes("error")
+      ) {
+        mappedStatus = "exception";
+      }
+
+      // Map tracking events
+      const trackingEvents: TrackingEvent[] = (
+        p1Shipment.trackingStatuses || []
+      ).map((ts) => ({
+        timestamp: ts.timeStamp,
+        status: ts.status,
+        location: [ts.city, ts.state].filter(Boolean).join(", "),
+        description: ts.statusReason || ts.status,
+      }));
+
+      // Update shipment
+      const [updatedShipment] = await ctx.db
+        .update(shipments)
+        .set({
+          status: mappedStatus,
+          trackingEvents,
+          carrierScac: p1Shipment.carrierCode || shipment.carrierScac,
+          carrierName: p1Shipment.carrierName || shipment.carrierName,
+          lastError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(shipments.id, input.shipmentId))
+        .returning();
+
+      return updatedShipment;
+    }),
+
+  // Get shipping aggregate statistics
+  getShippingStats: adminProcedure.query(async ({ ctx }) => {
+    // Get shipment counts
+    const [shipmentCounts] = await ctx.db
+      .select({
+        totalShipments: sql<number>`cast(count(*) as integer)`,
+        activeShipments: sql<number>`cast(count(*) filter (where status IN ('dispatched', 'in_transit', 'out_for_delivery')) as integer)`,
+      })
+      .from(shipments);
+
+    // Get revenue totals from orders with shipments (join to ensure they have shipping)
+    const [revenueTotals] = await ctx.db
+      .select({
+        totalRevenue: sql<number>`coalesce(sum(${orders.shippingPrice}), 0)`,
+        totalMargin: sql<number>`coalesce(sum(${orders.shippingMargin}), 0)`,
+      })
+      .from(orders)
+      .innerJoin(shipments, eq(shipments.orderId, orders.id));
+
+    return {
+      totalShipments: shipmentCounts.totalShipments,
+      activeShipments: shipmentCounts.activeShipments,
+      totalRevenue: revenueTotals.totalRevenue,
+      totalMargin: revenueTotals.totalMargin,
+    };
+  }),
 });

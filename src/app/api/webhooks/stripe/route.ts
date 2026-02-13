@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { orders, users, listings, listingPromotions } from "@/server/db/schema";
 import { eq, and } from "drizzle-orm";
 import { env } from "@/env";
+import { inngest } from "@/lib/inngest/client";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-01-28.clover" as const,
@@ -89,6 +90,14 @@ export async function POST(req: NextRequest) {
                 updatedAt: new Date(),
               })
               .where(eq(orders.id, orderId));
+
+            // Fire order/paid event for shipment auto-dispatch
+            inngest.send({
+              name: "order/paid",
+              data: { orderId },
+            }).catch((err) => {
+              console.error("Failed to send order/paid event:", err);
+            });
           }
         }
         break;

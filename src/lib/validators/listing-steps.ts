@@ -30,6 +30,11 @@ export const step2Schema = z.object({
     .number()
     .positive("Length must be positive")
     .optional(),
+  totalPallets: z.number().int().positive("Total pallets must be positive"),
+  palletWeight: z.number().positive("Pallet weight is required").max(5000, "Maximum 5000 lbs per pallet"),
+  palletLength: z.number().positive("Pallet length is required").max(120, "Maximum 120 inches"),
+  palletWidth: z.number().positive("Pallet width is required").max(120, "Maximum 120 inches"),
+  palletHeight: z.number().positive("Pallet height is required").max(120, "Maximum 120 inches"),
 });
 
 // Step 3: Pricing

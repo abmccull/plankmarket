@@ -10,6 +10,7 @@ import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, gt, isNull, isNo
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import zipcodes from "zipcodes";
+import { priority1 } from "@/server/services/priority1";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
@@ -50,6 +51,24 @@ export const listingRouter = createTRPCRouter({
           .where(inArray(media.id, mediaIds));
       }
 
+      // Auto-calculate freight class from Priority1 (non-fatal)
+      if (listingData.palletWeight && listingData.palletLength && listingData.palletWidth && listingData.palletHeight) {
+        priority1.getSuggestedClass({
+          totalWeight: listingData.palletWeight,
+          length: listingData.palletLength,
+          width: listingData.palletWidth,
+          height: listingData.palletHeight,
+          units: 1,
+        }).then(async (result) => {
+          await ctx.db
+            .update(listings)
+            .set({ freightClass: result.suggestedClass, updatedAt: new Date() })
+            .where(eq(listings.id, listing.id));
+        }).catch(() => {
+          // Non-fatal: listing still saved without freight class
+        });
+      }
+
       return listing;
     }),
 
@@ -87,6 +106,36 @@ export const listingRouter = createTRPCRouter({
         })
         .where(eq(listings.id, input.id))
         .returning();
+
+      // Auto-calculate freight class from Priority1 (non-fatal)
+      // If pallet dimensions are being updated, recalculate freight class
+      if (updateData.palletWeight || updateData.palletLength || updateData.palletWidth || updateData.palletHeight) {
+        // Get current values for any fields not being updated
+        const currentValues = {
+          palletWeight: updateData.palletWeight ?? existing.palletWeight,
+          palletLength: updateData.palletLength ?? existing.palletLength,
+          palletWidth: updateData.palletWidth ?? existing.palletWidth,
+          palletHeight: updateData.palletHeight ?? existing.palletHeight,
+        };
+
+        // Only recalculate if all dimensions are present
+        if (currentValues.palletWeight && currentValues.palletLength && currentValues.palletWidth && currentValues.palletHeight) {
+          priority1.getSuggestedClass({
+            totalWeight: currentValues.palletWeight,
+            length: currentValues.palletLength,
+            width: currentValues.palletWidth,
+            height: currentValues.palletHeight,
+            units: 1,
+          }).then(async (result) => {
+            await ctx.db
+              .update(listings)
+              .set({ freightClass: result.suggestedClass, updatedAt: new Date() })
+              .where(eq(listings.id, input.id));
+          }).catch(() => {
+            // Non-fatal: listing still updated without freight class
+          });
+        }
+      }
 
       return updated;
     }),

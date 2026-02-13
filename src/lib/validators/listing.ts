@@ -76,6 +76,13 @@ export const listingFormSchema = z.object({
     .positive("Total pallets must be positive")
     .optional(),
   moq: z.number().positive("MOQ must be positive").optional(),
+
+  // Freight / shipping dimensions (required via step validation, optional in form schema for initialization)
+  palletWeight: z.number().positive("Pallet weight must be positive").max(5000, "Maximum 5000 lbs per pallet").optional(),
+  palletLength: z.number().positive("Pallet length must be positive").max(120, "Maximum 120 inches").optional(),
+  palletWidth: z.number().positive("Pallet width must be positive").max(120, "Maximum 120 inches").optional(),
+  palletHeight: z.number().positive("Pallet height must be positive").max(120, "Maximum 120 inches").optional(),
+
   locationCity: z.string().max(100).optional(),
   locationState: z.string().length(2, "State must be 2 characters").optional(),
   locationZip: z.string().max(10).optional(),
@@ -219,6 +226,10 @@ export const csvListingRowSchema = z.object({
   locationZip: z.string().optional(),
   buyNowPrice: z.coerce.number().optional(),
   description: z.string().optional(),
+  palletWeight: z.coerce.number().optional(),
+  palletLength: z.coerce.number().optional(),
+  palletWidth: z.coerce.number().optional(),
+  palletHeight: z.coerce.number().optional(),
 });
 
 export type ListingFormInput = z.infer<typeof listingFormSchema>;

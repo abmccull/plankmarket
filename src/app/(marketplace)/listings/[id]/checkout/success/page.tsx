@@ -101,6 +101,12 @@ export default function CheckoutSuccessPage() {
                   <span className="text-muted-foreground">Buyer Fee</span>
                   <span>{formatCurrency(order.buyerFee)}</span>
                 </div>
+                {order.shippingPrice && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Shipping</span>
+                    <span>{formatCurrency(order.shippingPrice)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-semibold">
                   <span>Total Paid</span>
@@ -124,18 +130,42 @@ export default function CheckoutSuccessPage() {
                 </span>
                 <span>The seller will be notified of your order</span>
               </li>
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                  2
-                </span>
-                <span>You will receive tracking information once your order ships</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                  3
-                </span>
-                <span>Track your order status in your buyer dashboard</span>
-              </li>
+              {order?.selectedCarrier ? (
+                <>
+                  <li className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
+                      2
+                    </span>
+                    <span>
+                      Your shipment will be dispatched via{" "}
+                      <strong>{order.selectedCarrier}</strong>
+                      {order.estimatedTransitDays &&
+                        ` (est. ${order.estimatedTransitDays} business days)`}
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
+                      3
+                    </span>
+                    <span>Track live shipment status in your buyer dashboard</span>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
+                      2
+                    </span>
+                    <span>You will receive tracking information once your order ships</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
+                      3
+                    </span>
+                    <span>Track your order status in your buyer dashboard</span>
+                  </li>
+                </>
+              )}
             </ul>
           </div>
         </CardContent>

@@ -89,7 +89,8 @@ export const orderRouter = createTRPCRouter({
           Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
         const buyerFee = calculateBuyerFee(subtotal);
         const sellerFee = calculateSellerFee(subtotal);
-        const totalPrice = Math.round((subtotal + buyerFee) * 100) / 100;
+        const shippingPrice = input.shippingPrice ?? 0;
+        const totalPrice = Math.round((subtotal + buyerFee + shippingPrice) * 100) / 100;
         const sellerPayout = Math.round((subtotal - sellerFee) * 100) / 100;
 
         // Create the order within the transaction
@@ -113,6 +114,20 @@ export const orderRouter = createTRPCRouter({
             shippingState: input.shippingState,
             shippingZip: input.shippingZip,
             shippingPhone: input.shippingPhone,
+            // Priority1 shipping fields (if buyer selected a shipping quote)
+            ...(input.selectedQuoteId && {
+              selectedQuoteId: input.selectedQuoteId,
+              selectedCarrier: input.selectedCarrier,
+              carrierRate: input.carrierRate,
+              shippingPrice: input.shippingPrice,
+              shippingMargin: input.shippingPrice && input.carrierRate
+                ? Math.round((input.shippingPrice - input.carrierRate) * 100) / 100
+                : undefined,
+              estimatedTransitDays: input.estimatedTransitDays,
+              quoteExpiresAt: input.quoteExpiresAt
+                ? new Date(input.quoteExpiresAt)
+                : undefined,
+            }),
             status: "pending",
             escrowStatus: "held",
           })

@@ -116,6 +116,13 @@ export const listings = pgTable(
     originalTotalSqFt: real("original_total_sq_ft"),
     totalPallets: integer("total_pallets"),
     moq: real("moq"),
+
+    // Freight / shipping dimensions (required for new listings, nullable for legacy data)
+    palletWeight: real("pallet_weight"), // lbs per pallet
+    palletLength: real("pallet_length"), // inches
+    palletWidth: real("pallet_width"), // inches
+    palletHeight: real("pallet_height"), // inches
+    freightClass: varchar("freight_class", { length: 10 }), // auto-calculated via Priority1
     locationCity: varchar("location_city", { length: 100 }),
     locationState: varchar("location_state", { length: 2 }),
     locationZip: varchar("location_zip", { length: 10 }),
