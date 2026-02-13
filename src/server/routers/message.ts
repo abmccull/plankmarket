@@ -1,6 +1,7 @@
 import {
   createTRPCRouter,
   protectedProcedure,
+  verifiedProcedure,
 } from "../trpc";
 import {
   sendMessageSchema,
@@ -13,7 +14,7 @@ import { z } from "zod";
 
 export const messageRouter = createTRPCRouter({
   // Get or create a conversation for a listing
-  getOrCreateConversation: protectedProcedure
+  getOrCreateConversation: verifiedProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Get the listing to determine seller
@@ -117,7 +118,7 @@ export const messageRouter = createTRPCRouter({
     }),
 
   // Send a message in a conversation
-  sendMessage: protectedProcedure
+  sendMessage: verifiedProcedure
     .input(sendMessageSchema)
     .mutation(async ({ ctx, input }) => {
       // Verify user is participant in conversation

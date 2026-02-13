@@ -1,0 +1,150 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/server/db";
+import { users, notifications } from "@/server/db/schema";
+import { eq } from "drizzle-orm";
+import { verifyBusiness } from "@/server/services/ai-verification";
+
+/**
+ * Internal webhook for AI-powered business verification
+ * Triggers Claude AI analysis of a user's verification submission
+ *
+ * Security: Requires x-webhook-secret header to match VERIFICATION_WEBHOOK_SECRET
+ */
+export async function POST(request: NextRequest) {
+  try {
+    // Validate webhook secret
+    const webhookSecret = request.headers.get("x-webhook-secret");
+    const expectedSecret = process.env.VERIFICATION_WEBHOOK_SECRET;
+
+    if (!expectedSecret) {
+      console.error("VERIFICATION_WEBHOOK_SECRET not configured");
+      return NextResponse.json(
+        { error: { code: "SERVER_ERROR", message: "Webhook not configured" } },
+        { status: 500 },
+      );
+    }
+
+    if (webhookSecret !== expectedSecret) {
+      return NextResponse.json(
+        { error: { code: "UNAUTHORIZED", message: "Invalid webhook secret" } },
+        { status: 401 },
+      );
+    }
+
+    // Parse request body
+    const body = await request.json();
+    const { userId } = body;
+
+    if (!userId || typeof userId !== "string") {
+      return NextResponse.json(
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "userId is required and must be a string",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    // Fetch user from database
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "NOT_FOUND",
+            message: `User with id ${userId} not found`,
+          },
+        },
+        { status: 404 },
+      );
+    }
+
+    // Validate required fields for verification
+    if (!user.businessName || !user.einTaxId) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "BAD_REQUEST",
+            message: "User missing required verification fields",
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    // Call AI verification service
+    const verificationResult = await verifyBusiness({
+      businessName: user.businessName,
+      einTaxId: user.einTaxId,
+      businessWebsite: user.businessWebsite,
+      businessLicenseUrl: user.verificationDocUrl,
+      role: user.role,
+      name: user.name,
+      email: user.email,
+      businessAddress: user.businessAddress,
+    });
+
+    // Prepare update data
+    const updateData: {
+      aiVerificationScore: number;
+      aiVerificationNotes: string;
+      verificationStatus?: "verified" | "pending";
+      verified?: boolean;
+    } = {
+      aiVerificationScore: verificationResult.score,
+      aiVerificationNotes: JSON.stringify(verificationResult),
+    };
+
+    // Auto-approve if score >= 90
+    if (verificationResult.score >= 90) {
+      updateData.verificationStatus = "verified";
+      updateData.verified = true;
+    }
+    // Otherwise leave as pending for admin review
+
+    // Update user record
+    await db.update(users).set(updateData).where(eq(users.id, userId));
+
+    // Send notification if approved
+    if (verificationResult.approved) {
+      await db.insert(notifications).values({
+        userId,
+        type: "system",
+        title: "Business Verified",
+        message:
+          "Your business has been automatically verified. You now have full access to the marketplace.",
+      });
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        userId,
+        score: verificationResult.score,
+        approved: verificationResult.approved,
+        status: updateData.verificationStatus || "pending",
+      },
+      { status: 200 },
+    );
+  } catch (error) {
+    console.error("Webhook error:", error);
+
+    return NextResponse.json(
+      {
+        error: {
+          code: "INTERNAL_ERROR",
+          message:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred",
+        },
+      },
+      { status: 500 },
+    );
+  }
+}

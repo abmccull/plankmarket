@@ -69,7 +69,31 @@ const enforceAuth = t.middleware(({ ctx, next }) => {
 
 export const protectedProcedure = t.procedure.use(enforceAuth);
 
-// Seller-only middleware
+// Verified user middleware - requires authenticated + verified (or admin)
+const enforceVerified = t.middleware(({ ctx, next }) => {
+  if (!ctx.authUser || !ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in to perform this action",
+    });
+  }
+  if (ctx.user.role !== "admin" && ctx.user.verificationStatus !== "verified") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your account is pending verification. Please wait for approval before performing this action.",
+    });
+  }
+  return next({
+    ctx: {
+      authUser: ctx.authUser,
+      user: ctx.user,
+    },
+  });
+});
+
+export const verifiedProcedure = t.procedure.use(enforceVerified);
+
+// Seller-only middleware (also requires verified)
 const enforceSeller = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {
     throw new TRPCError({
@@ -83,6 +107,12 @@ const enforceSeller = t.middleware(({ ctx, next }) => {
       message: "Only sellers can perform this action",
     });
   }
+  if (ctx.user.role !== "admin" && ctx.user.verificationStatus !== "verified") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your account is pending verification",
+    });
+  }
   return next({
     ctx: {
       authUser: ctx.authUser,
@@ -93,7 +123,7 @@ const enforceSeller = t.middleware(({ ctx, next }) => {
 
 export const sellerProcedure = t.procedure.use(enforceSeller);
 
-// Buyer-only middleware
+// Buyer-only middleware (also requires verified)
 const enforceBuyer = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {
     throw new TRPCError({
@@ -105,6 +135,12 @@ const enforceBuyer = t.middleware(({ ctx, next }) => {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Only buyers can perform this action",
+    });
+  }
+  if (ctx.user.role !== "admin" && ctx.user.verificationStatus !== "verified") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your account is pending verification",
     });
   }
   return next({

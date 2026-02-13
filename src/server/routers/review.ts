@@ -1,6 +1,7 @@
 import {
   createTRPCRouter,
   protectedProcedure,
+  verifiedProcedure,
   publicProcedure,
   sellerProcedure,
 } from "../trpc";
@@ -15,7 +16,7 @@ import { z } from "zod";
 
 export const reviewRouter = createTRPCRouter({
   // Create a review for an order
-  create: protectedProcedure
+  create: verifiedProcedure
     .input(createReviewSchema)
     .mutation(async ({ ctx, input }) => {
       // Get the order

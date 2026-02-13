@@ -2,6 +2,7 @@ import {
   createTRPCRouter,
   publicProcedure,
   protectedProcedure,
+  verifiedProcedure,
   sellerProcedure,
 } from "../trpc";
 import { orders, users, notifications } from "../db/schema";
@@ -33,7 +34,7 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   // Create a payment intent for an order
-  createPaymentIntent: protectedProcedure
+  createPaymentIntent: verifiedProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
@@ -216,7 +217,7 @@ export const paymentRouter = createTRPCRouter({
   }),
 
   // Nudge seller to complete Stripe onboarding
-  nudgeSellerToOnboard: protectedProcedure
+  nudgeSellerToOnboard: verifiedProcedure
     .input(z.object({ sellerId: z.string().uuid(), listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // 1. Check if seller already has stripeOnboardingComplete=true

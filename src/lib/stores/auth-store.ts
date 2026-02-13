@@ -9,6 +9,7 @@ interface AuthUser {
   businessName: string | null;
   avatarUrl: string | null;
   verified: boolean;
+  verificationStatus: string;
   stripeOnboardingComplete: boolean;
   zipCode: string | null;
 }

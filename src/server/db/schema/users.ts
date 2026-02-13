@@ -41,6 +41,12 @@ export const users = pgTable("users", {
   }),
   verificationNotes: text("verification_notes"),
 
+  // Business verification fields
+  businessWebsite: text("business_website"),
+  einTaxId: text("ein_tax_id"),
+  aiVerificationScore: real("ai_verification_score"),
+  aiVerificationNotes: text("ai_verification_notes"),
+
   // Geo fields for distance filtering
   zipCode: varchar("zip_code", { length: 5 }),
   lat: real("lat"),

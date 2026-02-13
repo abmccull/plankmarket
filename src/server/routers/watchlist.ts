@@ -1,6 +1,7 @@
 import {
   createTRPCRouter,
   protectedProcedure,
+  verifiedProcedure,
 } from "../trpc";
 import { watchlist, listings } from "../db/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -8,7 +9,7 @@ import { z } from "zod";
 
 export const watchlistRouter = createTRPCRouter({
   // Add to watchlist
-  add: protectedProcedure
+  add: verifiedProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Check if already watchlisted
@@ -41,7 +42,7 @@ export const watchlistRouter = createTRPCRouter({
     }),
 
   // Remove from watchlist
-  remove: protectedProcedure
+  remove: verifiedProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db

@@ -1,6 +1,7 @@
 import {
   createTRPCRouter,
   protectedProcedure,
+  verifiedProcedure,
   sellerProcedure,
 } from "../trpc";
 import {
@@ -101,7 +102,7 @@ export const offerRouter = createTRPCRouter({
    * Create an initial offer on a listing.
    * Sets lastActorId to buyerId, creates initial_offer event.
    */
-  createOffer: protectedProcedure
+  createOffer: verifiedProcedure
     .input(createOfferSchema)
     .mutation(async ({ ctx, input }) => {
       // Get the listing
@@ -230,7 +231,7 @@ export const offerRouter = createTRPCRouter({
    * Counter an offer. Either party can counter if it's their turn.
    * Increments currentRound, updates lastActorId, creates counter event.
    */
-  counterOffer: protectedProcedure
+  counterOffer: verifiedProcedure
     .input(counterOfferSchema)
     .mutation(async ({ ctx, input }) => {
       // Get the offer
@@ -348,7 +349,7 @@ export const offerRouter = createTRPCRouter({
    * Accept an offer. Only the party whose turn it is can accept.
    * Creates accept event, updates status to accepted.
    */
-  acceptOffer: protectedProcedure
+  acceptOffer: verifiedProcedure
     .input(acceptOfferSchema)
     .mutation(async ({ ctx, input }) => {
       const offer = await ctx.db.query.offers.findFirst({
@@ -458,7 +459,7 @@ export const offerRouter = createTRPCRouter({
    * Reject an offer. Only the party whose turn it is can reject.
    * Creates reject event, updates status to rejected.
    */
-  rejectOffer: protectedProcedure
+  rejectOffer: verifiedProcedure
     .input(rejectOfferSchema)
     .mutation(async ({ ctx, input }) => {
       const offer = await ctx.db.query.offers.findFirst({
@@ -561,7 +562,7 @@ export const offerRouter = createTRPCRouter({
    * Withdraw an offer. Only the buyer can withdraw, and only if status is pending or countered.
    * Creates withdraw event, updates status to withdrawn.
    */
-  withdrawOffer: protectedProcedure
+  withdrawOffer: verifiedProcedure
     .input(withdrawOfferSchema)
     .mutation(async ({ ctx, input }) => {
       const offer = await ctx.db.query.offers.findFirst({
@@ -990,7 +991,7 @@ export const offerRouter = createTRPCRouter({
    * Legacy endpoint: buyer withdraws their offer.
    * @deprecated Use withdrawOffer instead.
    */
-  withdraw: protectedProcedure
+  withdraw: verifiedProcedure
     .input(z.object({ offerId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const offer = await ctx.db.query.offers.findFirst({

@@ -1,5 +1,5 @@
 import { createTRPCRouter, adminProcedure } from "../trpc";
-import { users, listings, orders } from "../db/schema";
+import { users, listings, orders, notifications } from "../db/schema";
 import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -288,7 +288,7 @@ export const adminRouter = createTRPCRouter({
   getPendingVerifications: adminProcedure.query(async ({ ctx }) => {
     const pendingUsers = await ctx.db.query.users.findMany({
       where: eq(users.verificationStatus, "pending"),
-      orderBy: [desc(users.verificationRequestedAt)],
+      orderBy: [asc(users.verificationRequestedAt)], // FIFO - oldest first
     });
 
     return pendingUsers;
@@ -334,6 +334,28 @@ export const adminRouter = createTRPCRouter({
         })
         .where(eq(users.id, input.userId))
         .returning();
+
+      // Insert notification
+      if (input.status === "verified") {
+        await ctx.db.insert(notifications).values({
+          userId: input.userId,
+          type: "system",
+          title: "Account Verified",
+          message:
+            "Your business has been verified. You now have full access to PlankMarket.",
+          read: false,
+        });
+      } else {
+        await ctx.db.insert(notifications).values({
+          userId: input.userId,
+          type: "system",
+          title: "Verification Not Approved",
+          message: input.notes
+            ? `Your verification request was not approved. Reason: ${input.notes}`
+            : "Your verification request was not approved. Please contact support for more information.",
+          read: false,
+        });
+      }
 
       return updatedUser;
     }),

@@ -1,6 +1,6 @@
 import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
 import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
-import { users } from "../db/schema";
+import { users, notifications } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { env } from "@/env";
@@ -64,8 +64,39 @@ export const authRouter = createTRPCRouter({
           zipCode: input.zipCode,
           lat,
           lng,
+          // Business verification fields
+          einTaxId: input.einTaxId,
+          businessWebsite: input.businessWebsite,
+          verificationDocUrl: input.verificationDocUrl,
+          businessAddress: input.businessAddress,
+          businessCity: input.businessCity,
+          businessState: input.businessState,
+          businessZip: input.businessZip,
+          // Set verification to pending
+          verificationStatus: "pending",
+          verificationRequestedAt: new Date(),
+          verified: false,
         })
         .returning();
+
+      // Trigger async AI verification via internal webhook (fire-and-forget)
+      try {
+        const webhookSecret = process.env.VERIFICATION_WEBHOOK_SECRET;
+        if (webhookSecret) {
+          fetch(`${env.NEXT_PUBLIC_APP_URL}/api/webhooks/verify-business`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-webhook-secret": webhookSecret,
+            },
+            body: JSON.stringify({ userId: newUser!.id }),
+          }).catch((err) => {
+            console.error("Failed to trigger AI verification webhook:", err);
+          });
+        }
+      } catch {
+        // Don't block registration if webhook fails
+      }
 
       return {
         user: newUser,
@@ -108,6 +139,7 @@ export const authRouter = createTRPCRouter({
         businessName: ctx.user.businessName,
         avatarUrl: ctx.user.avatarUrl,
         verified: ctx.user.verified,
+        verificationStatus: ctx.user.verificationStatus,
         stripeOnboardingComplete: ctx.user.stripeOnboardingComplete,
         zipCode: ctx.user.zipCode,
       },
