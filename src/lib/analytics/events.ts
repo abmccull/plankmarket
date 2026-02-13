@@ -140,7 +140,7 @@ export function track<T extends PlankMarketEvent>(
   // This is a placeholder for server-side tracking
   // The actual implementation will use the PostHog server client
   if (typeof window !== "undefined") {
-    // eslint-disable-next-line no-console
+     
     console.warn(
       "Server-side track function called on client. Use useTrack hook instead."
     );

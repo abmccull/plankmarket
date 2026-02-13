@@ -63,7 +63,7 @@ export const listingExpiryWarning = inngest.createFunction(
 
           sentCount++;
         } catch (error) {
-          // eslint-disable-next-line no-console
+           
           console.error(
             `Failed to send expiry warning for listing ${listing.listingId}:`,
             error

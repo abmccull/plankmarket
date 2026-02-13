@@ -15,23 +15,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check initial session
     const initAuth = async () => {
       setLoading(true);
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-      if (session) {
-        try {
+        if (session) {
           const result = await utils.auth.getSession.fetch();
           if (result.isAuthenticated && result.user) {
             setUser(result.user);
           } else {
             setUser(null);
           }
-        } catch {
+        } else {
           setUser(null);
         }
-      } else {
+      } catch {
         setUser(null);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -42,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session) {
+        setLoading(true);
         try {
           const result = await utils.auth.getSession.fetch();
           if (result.isAuthenticated && result.user) {
@@ -51,9 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch {
           setUser(null);
+        } finally {
+          setLoading(false);
         }
       } else if (event === "SIGNED_OUT") {
         setUser(null);
+        setLoading(false);
       }
     });
 
