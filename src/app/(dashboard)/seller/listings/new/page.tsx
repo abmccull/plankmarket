@@ -8,7 +8,6 @@ import {
   listingFormSchema,
   type ListingFormInput,
 } from "@/lib/validators/listing";
-import { validateStep } from "@/lib/validators/listing-steps";
 import { useListingFormStore } from "@/lib/stores/listing-form-store";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -117,6 +116,15 @@ const CERTIFICATIONS = [
   { value: "nauf", label: "NAUF" },
 ];
 
+const STEP_FIELDS: Record<number, (keyof ListingFormInput)[]> = {
+  1: ["title", "materialType"],
+  2: ["totalSqFt", "totalPallets", "palletWeight", "palletLength", "palletWidth", "palletHeight"],
+  3: ["askPricePerSqFt"],
+  4: ["condition"],
+  5: [],
+  6: [],
+};
+
 export default function CreateListingPage() {
   const router = useRouter();
   const { currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
@@ -130,6 +138,7 @@ export default function CreateListingPage() {
     handleSubmit,
     setValue,
     watch,
+    trigger,
     formState: { errors },
   } = useForm<ListingFormInput>({
     resolver: zodResolver(listingFormSchema) as never,
@@ -139,57 +148,28 @@ export default function CreateListingPage() {
   const watchedValues = watch();
 
   const handleNext = async () => {
-    // Update form data before validation
     updateFormData(watchedValues);
 
-    // Prepare data for step validation
-    let stepData: Record<string, unknown> = {};
-
-    if (currentStep === 1) {
-      stepData = {
-        title: watchedValues.title,
-        materialType: watchedValues.materialType,
-      };
-    } else if (currentStep === 2) {
-      stepData = {
-        totalSqFt: watchedValues.totalSqFt,
-        widthInches: watchedValues.width,
-        lengthInches: watchedValues.length,
-        totalPallets: watchedValues.totalPallets,
-        palletWeight: watchedValues.palletWeight,
-        palletLength: watchedValues.palletLength,
-        palletWidth: watchedValues.palletWidth,
-        palletHeight: watchedValues.palletHeight,
-      };
-    } else if (currentStep === 3) {
-      stepData = {
-        askPricePerSqFt: watchedValues.askPricePerSqFt,
-        minimumOrderSqFt: watchedValues.moq,
-      };
-    } else if (currentStep === 4) {
-      stepData = {
-        condition: watchedValues.condition,
-        grade: watchedValues.grade,
-      };
-    } else if (currentStep === 5) {
-      stepData = {
-        photos: uploadedMediaIds,
-      };
-    }
-
-    // Validate the current step
-    const validation = validateStep(currentStep, stepData);
-
-    if (!validation.success && validation.errors) {
-      // Show error toasts for validation failures
-      Object.values(validation.errors).forEach((error) => {
-        toast.error(error);
-      });
+    // Step 5: photo validation (not a form field)
+    if (currentStep === 5) {
+      if (uploadedMediaIds.length === 0) {
+        toast.error("Please upload at least one photo");
+        return;
+      }
+      nextStep();
       return;
     }
 
-    // If validation passes, move to next step
-    nextStep();
+    const fields = STEP_FIELDS[currentStep];
+    if (!fields || fields.length === 0) {
+      nextStep();
+      return;
+    }
+
+    const isValid = await trigger(fields);
+    if (isValid) {
+      nextStep();
+    }
   };
 
   const handleBack = () => {
@@ -283,6 +263,13 @@ export default function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {STEP_FIELDS[1]?.some(f => errors[f]) && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 mb-4">
+                  <p className="text-sm font-medium text-destructive">
+                    Please fix the highlighted fields to continue
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="title">Listing Title *</Label>
                 <Input
@@ -313,7 +300,7 @@ export default function CreateListingPage() {
                   <Select
                     value={watchedValues.materialType}
                     onValueChange={(v) =>
-                      setValue("materialType", v as ListingFormInput["materialType"])
+                      setValue("materialType", v as ListingFormInput["materialType"], { shouldValidate: true })
                     }
                   >
                     <SelectTrigger>
@@ -327,6 +314,11 @@ export default function CreateListingPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {errors.materialType && (
+                    <p className="text-sm text-destructive">
+                      {errors.materialType.message}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -486,6 +478,13 @@ export default function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {STEP_FIELDS[2]?.some(f => errors[f]) && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 mb-4">
+                  <p className="text-sm font-medium text-destructive">
+                    Please fix the highlighted fields to continue
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="totalSqFt">Total Square Footage *</Label>
@@ -510,6 +509,11 @@ export default function CreateListingPage() {
                     placeholder="5"
                     {...register("totalPallets", { valueAsNumber: true })}
                   />
+                  {errors.totalPallets && (
+                    <p className="text-sm text-destructive">
+                      {errors.totalPallets.message}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -671,6 +675,13 @@ export default function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {STEP_FIELDS[3]?.some(f => errors[f]) && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 mb-4">
+                  <p className="text-sm font-medium text-destructive">
+                    Please fix the highlighted fields to continue
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="askPricePerSqFt">
                   Ask Price per Sq Ft ($) *
@@ -771,12 +782,19 @@ export default function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {STEP_FIELDS[4]?.some(f => errors[f]) && (
+                <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 mb-4">
+                  <p className="text-sm font-medium text-destructive">
+                    Please fix the highlighted fields to continue
+                  </p>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Condition *</Label>
                 <Select
                   value={watchedValues.condition}
                   onValueChange={(v) =>
-                    setValue("condition", v as ListingFormInput["condition"])
+                    setValue("condition", v as ListingFormInput["condition"], { shouldValidate: true })
                   }
                 >
                   <SelectTrigger>

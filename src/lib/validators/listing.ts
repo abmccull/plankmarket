@@ -18,7 +18,9 @@ export const listingFormSchema = z.object({
     "bamboo",
     "tile",
     "other",
-  ]),
+  ], {
+    message: "Please select a material type",
+  }),
   species: z.string().max(100).optional(),
   finish: z
     .enum([
@@ -33,7 +35,9 @@ export const listingFormSchema = z.object({
       "oiled",
       "unfinished",
       "other",
-    ])
+    ], {
+      message: "Please select a finish type",
+    })
     .optional(),
   grade: z
     .enum([
@@ -48,7 +52,9 @@ export const listingFormSchema = z.object({
       "standard",
       "economy",
       "other",
-    ])
+    ], {
+      message: "Please select a grade",
+    })
     .optional(),
   color: z.string().max(100).optional(),
   colorFamily: z.string().max(50).optional(),
@@ -109,7 +115,9 @@ export const listingFormSchema = z.object({
     "remnants",
     "closeout",
     "other",
-  ]),
+  ], {
+    message: "Please select a condition",
+  }),
   reasonCode: z
     .enum([
       "overproduction",
@@ -121,7 +129,9 @@ export const listingFormSchema = z.object({
       "packaging_damage",
       "end_of_season",
       "other",
-    ])
+    ], {
+      message: "Please select a reason",
+    })
     .optional(),
   certifications: z.array(z.string()).default([]),
 
