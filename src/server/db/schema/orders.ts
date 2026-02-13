@@ -3,7 +3,6 @@ import {
   uuid,
   text,
   varchar,
-  real,
   timestamp,
   index,
   pgEnum,
@@ -38,7 +37,7 @@ export const orders = pgTable(
       .notNull(),
 
     // Quantity & pricing (using exact numeric type to avoid floating-point errors)
-    quantitySqFt: real("quantity_sq_ft").notNull(),
+    quantitySqFt: money("quantity_sq_ft").notNull(),
     pricePerSqFt: money("price_per_sq_ft").notNull(),
     subtotal: money("subtotal").notNull(), // quantitySqFt * pricePerSqFt
     buyerFee: money("buyer_fee").notNull(), // 3%

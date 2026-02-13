@@ -63,6 +63,9 @@ export type {
   NewConversationMessage,
 } from "./conversations";
 
+export { platformSettings } from "./settings";
+export type { PlatformSetting, NewPlatformSetting } from "./settings";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";

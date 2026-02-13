@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   MessageSquare,
   Settings,
+  Megaphone,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -27,6 +28,7 @@ const adminItems: SidebarItem[] = [
   { title: "Listings", href: "/admin/listings", icon: List },
   { title: "Orders", href: "/admin/orders", icon: Package },
   { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
+  { title: "Promotions", href: "/admin/promotions", icon: Megaphone },
   { title: "Feedback", href: "/admin/feedback", icon: MessageSquare },
   { title: "Settings", href: "/admin/settings", icon: Settings },
 ];

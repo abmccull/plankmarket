@@ -1,27 +1,144 @@
 "use client";
 
+import { useReducer } from "react";
+import { trpc } from "@/lib/trpc/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import {
   DollarSign,
   CreditCard,
-  Mail,
   Globe,
   Shield,
   Clock,
   Server,
   FileText,
+  Loader2,
+  Save,
 } from "lucide-react";
 
+interface SettingsForm {
+  buyerFeePercent: number;
+  sellerFeePercent: number;
+  listingExpiryDays: number;
+  maxPhotosPerListing: number;
+  platformName: string;
+  supportEmail: string;
+  escrowReleaseDays: number;
+}
+
+type FormAction =
+  | { type: "SET_FIELD"; key: keyof SettingsForm; value: string | number }
+  | { type: "RESET" };
+
+function formReducer(state: { form: SettingsForm; isDirty: boolean }, action: FormAction) {
+  switch (action.type) {
+    case "SET_FIELD":
+      return {
+        form: { ...state.form, [action.key]: action.value },
+        isDirty: true,
+      };
+    case "RESET":
+      return { form: state.form, isDirty: false };
+    default:
+      return state;
+  }
+}
+
+function deriveFormFromSettings(settings: Record<string, unknown> | undefined): SettingsForm {
+  return {
+    buyerFeePercent: (settings?.buyerFeePercent as number) ?? 3,
+    sellerFeePercent: (settings?.sellerFeePercent as number) ?? 2,
+    listingExpiryDays: (settings?.listingExpiryDays as number) ?? 90,
+    maxPhotosPerListing: (settings?.maxPhotosPerListing as number) ?? 20,
+    platformName: (settings?.platformName as string) ?? "PlankMarket",
+    supportEmail: (settings?.supportEmail as string) ?? "support@plankmarket.com",
+    escrowReleaseDays: (settings?.escrowReleaseDays as number) ?? 3,
+  };
+}
+
 export default function AdminSettingsPage() {
+  const { data: settings, isLoading } = trpc.admin.getSettings.useQuery();
+  const utils = trpc.useUtils();
+
+  const initialForm = deriveFormFromSettings(settings);
+  const [state, dispatch] = useReducer(formReducer, {
+    form: initialForm,
+    isDirty: false,
+  });
+
+  // Derive the effective form values: use edited values if dirty, otherwise use server data
+  const form = state.isDirty ? state.form : deriveFormFromSettings(settings);
+  const isDirty = state.isDirty;
+
+  const updateMutation = trpc.admin.updateSettings.useMutation({
+    onSuccess: () => {
+      toast.success("Settings saved successfully");
+      dispatch({ type: "RESET" });
+      utils.admin.getSettings.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleChange = (key: keyof SettingsForm, value: string | number) => {
+    dispatch({ type: "SET_FIELD", key, value });
+  };
+
+  const handleSave = () => {
+    const settingsArray = Object.entries(form).map(([key, value]) => ({
+      key,
+      value,
+    }));
+    updateMutation.mutate(settingsArray);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-9 w-48" />
+        <Skeleton className="h-6 w-72" />
+        {[1, 2, 3].map((i) => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-6 w-40" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Platform Settings</h1>
-        <p className="text-muted-foreground mt-1">
-          Platform configuration and fee structure
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Platform Settings</h1>
+          <p className="text-muted-foreground mt-1">
+            Platform configuration and fee structure
+          </p>
+        </div>
+        <Button
+          onClick={handleSave}
+          disabled={!isDirty || updateMutation.isPending}
+        >
+          {updateMutation.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-4 w-4" />
+          )}
+          Save Changes
+        </Button>
       </div>
 
       {/* Fee Structure */}
@@ -37,17 +154,37 @@ export default function AdminSettingsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Buyer Fee</p>
-              <p className="text-2xl font-bold">3%</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Applied to transaction value
+            <div className="space-y-2">
+              <Label htmlFor="buyerFeePercent">Buyer Fee (%)</Label>
+              <Input
+                id="buyerFeePercent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="50"
+                value={form.buyerFeePercent}
+                onChange={(e) =>
+                  handleChange("buyerFeePercent", parseFloat(e.target.value) || 0)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Applied to transaction value, paid by buyer
               </p>
             </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-sm text-muted-foreground">Seller Fee</p>
-              <p className="text-2xl font-bold">2%</p>
-              <p className="text-xs text-muted-foreground mt-1">
+            <div className="space-y-2">
+              <Label htmlFor="sellerFeePercent">Seller Fee (%)</Label>
+              <Input
+                id="sellerFeePercent"
+                type="number"
+                step="0.1"
+                min="0"
+                max="50"
+                value={form.sellerFeePercent}
+                onChange={(e) =>
+                  handleChange("sellerFeePercent", parseFloat(e.target.value) || 0)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
                 Deducted from seller payout
               </p>
             </div>
@@ -55,7 +192,7 @@ export default function AdminSettingsPage() {
               <p className="text-sm text-muted-foreground">Stripe Processing</p>
               <p className="text-2xl font-bold">2.9% + $0.30</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Standard card processing fee
+                Standard card processing fee (not configurable)
               </p>
             </div>
           </div>
@@ -83,19 +220,23 @@ export default function AdminSettingsPage() {
           </div>
           <Separator />
           <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm font-medium">Payout Schedule</p>
-              <p className="text-xs text-muted-foreground">After buyer confirms receipt</p>
+            <div className="flex-1">
+              <Label htmlFor="escrowReleaseDays">Escrow Release (days after delivery)</Label>
+              <p className="text-xs text-muted-foreground">
+                Wait time before auto-releasing escrow funds
+              </p>
             </div>
-            <span className="text-sm font-medium">3-5 business days</span>
-          </div>
-          <Separator />
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm font-medium">Escrow Protection</p>
-              <p className="text-xs text-muted-foreground">Funds held until delivery confirmation</p>
-            </div>
-            <Badge variant="success">Enabled</Badge>
+            <Input
+              id="escrowReleaseDays"
+              type="number"
+              min="1"
+              max="30"
+              className="w-24"
+              value={form.escrowReleaseDays}
+              onChange={(e) =>
+                handleChange("escrowReleaseDays", parseInt(e.target.value) || 3)
+              }
+            />
           </div>
           <Separator />
           <div className="flex items-center justify-between py-2">
@@ -108,38 +249,87 @@ export default function AdminSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Platform Contacts */}
+      {/* Platform Info */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-primary" />
-            <CardTitle>Contact Addresses</CardTitle>
+            <Globe className="h-5 w-5 text-primary" />
+            <CardTitle>Platform Information</CardTitle>
           </div>
           <CardDescription>
-            Platform email addresses displayed to users
+            Platform name and contact configuration
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {[
-            { label: "General Support", email: "support@plankmarket.com" },
-            { label: "Partnerships", email: "partnerships@plankmarket.com" },
-            { label: "Privacy Inquiries", email: "privacy@plankmarket.com" },
-            { label: "Legal", email: "legal@plankmarket.com" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between py-2">
-              <p className="text-sm font-medium">{item.label}</p>
-              <a
-                href={`mailto:${item.email}`}
-                className="text-sm text-primary hover:underline"
-              >
-                {item.email}
-              </a>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="platformName">Platform Name</Label>
+              <Input
+                id="platformName"
+                value={form.platformName}
+                onChange={(e) => handleChange("platformName", e.target.value)}
+              />
             </div>
-          ))}
+            <div className="space-y-2">
+              <Label htmlFor="supportEmail">Support Email</Label>
+              <Input
+                id="supportEmail"
+                type="email"
+                value={form.supportEmail}
+                onChange={(e) => handleChange("supportEmail", e.target.value)}
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Listing Settings */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">Listing Configuration</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between py-1">
+              <Label htmlFor="maxPhotosPerListing" className="text-sm">Max Photos per Listing</Label>
+              <Input
+                id="maxPhotosPerListing"
+                type="number"
+                min="1"
+                max="50"
+                className="w-20"
+                value={form.maxPhotosPerListing}
+                onChange={(e) =>
+                  handleChange("maxPhotosPerListing", parseInt(e.target.value) || 20)
+                }
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between py-1">
+              <Label htmlFor="listingExpiryDays" className="text-sm">Listing Expiry (days)</Label>
+              <Input
+                id="listingExpiryDays"
+                type="number"
+                min="1"
+                max="365"
+                className="w-20"
+                value={form.listingExpiryDays}
+                onChange={(e) =>
+                  handleChange("listingExpiryDays", parseInt(e.target.value) || 90)
+                }
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between py-1">
+              <p className="text-sm">Material Categories</p>
+              <span className="text-sm font-medium">6 types</span>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Verification Settings */}
         <Card>
           <CardHeader>
@@ -162,32 +352,6 @@ export default function AdminSettingsPage() {
             <div className="flex items-center justify-between py-1">
               <p className="text-sm">Required Documents</p>
               <span className="text-sm font-medium">Business license, EIN</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Listing Settings */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              <CardTitle className="text-base">Listing Configuration</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center justify-between py-1">
-              <p className="text-sm">Max Photos per Listing</p>
-              <span className="text-sm font-medium">20</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between py-1">
-              <p className="text-sm">Listing Expiry</p>
-              <span className="text-sm font-medium">90 days</span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between py-1">
-              <p className="text-sm">Material Categories</p>
-              <span className="text-sm font-medium">6 types</span>
             </div>
           </CardContent>
         </Card>

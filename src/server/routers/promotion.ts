@@ -8,7 +8,7 @@ import {
   purchasePromotionSchema,
   cancelPromotionSchema,
 } from "@/lib/validators/promotion";
-import { listings, listingPromotions, media } from "../db/schema";
+import { listings, listingPromotions } from "../db/schema";
 import { eq, and, sql, desc, gt, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -26,12 +26,6 @@ const PRICING: Record<string, Record<number, number>> = {
   premium: { 7: 199, 14: 349, 30: 599 },
 };
 
-// Tier priority for sorting (higher = more visibility)
-const TIER_PRIORITY: Record<string, number> = {
-  premium: 3,
-  featured: 2,
-  spotlight: 1,
-};
 
 export const promotionRouter = createTRPCRouter({
   // Return the pricing matrix (no DB query)
@@ -498,4 +492,164 @@ export const promotionRouter = createTRPCRouter({
 
     return { expired: stalePromotions.length, refunded: refundCount };
   }),
+
+  // Admin: Get all promotions with stats
+  adminGetAll: adminProcedure
+    .input(
+      z.object({
+        tier: z.enum(["spotlight", "featured", "premium"]).optional(),
+        activeOnly: z.boolean().default(false),
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const offset = (input.page - 1) * input.limit;
+
+      const conditions = [];
+      if (input.tier) {
+        conditions.push(eq(listingPromotions.tier, input.tier));
+      }
+      if (input.activeOnly) {
+        conditions.push(eq(listingPromotions.isActive, true));
+        conditions.push(gt(listingPromotions.expiresAt, new Date()));
+      }
+
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+
+      const [items, countResult, revenueResult] = await Promise.all([
+        ctx.db.query.listingPromotions.findMany({
+          where: whereClause,
+          with: {
+            listing: {
+              columns: {
+                id: true,
+                title: true,
+                status: true,
+              },
+            },
+            seller: {
+              columns: {
+                id: true,
+                name: true,
+                businessName: true,
+              },
+            },
+          },
+          orderBy: desc(listingPromotions.createdAt),
+          limit: input.limit,
+          offset,
+        }),
+        ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(listingPromotions)
+          .where(whereClause),
+        // Revenue stats
+        ctx.db
+          .select({
+            totalRevenue: sql<number>`coalesce(sum(${listingPromotions.pricePaid}), 0)`,
+            activeCount: sql<number>`cast(count(*) filter (where ${listingPromotions.isActive} = true and ${listingPromotions.expiresAt} > now()) as integer)`,
+            spotlightRevenue: sql<number>`coalesce(sum(${listingPromotions.pricePaid}) filter (where ${listingPromotions.tier} = 'spotlight'), 0)`,
+            featuredRevenue: sql<number>`coalesce(sum(${listingPromotions.pricePaid}) filter (where ${listingPromotions.tier} = 'featured'), 0)`,
+            premiumRevenue: sql<number>`coalesce(sum(${listingPromotions.pricePaid}) filter (where ${listingPromotions.tier} = 'premium'), 0)`,
+          })
+          .from(listingPromotions)
+          .where(eq(listingPromotions.paymentStatus, "succeeded")),
+      ]);
+
+      const total = countResult[0]?.count ?? 0;
+      const stats = revenueResult[0] ?? {
+        totalRevenue: 0,
+        activeCount: 0,
+        spotlightRevenue: 0,
+        featuredRevenue: 0,
+        premiumRevenue: 0,
+      };
+
+      return {
+        items,
+        total,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(total / input.limit),
+        hasMore: offset + items.length < total,
+        stats,
+      };
+    }),
+
+  // Admin: Cancel a promotion
+  adminCancel: adminProcedure
+    .input(z.object({ promotionId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const promotion = await ctx.db.query.listingPromotions.findFirst({
+        where: eq(listingPromotions.id, input.promotionId),
+      });
+
+      if (!promotion) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Promotion not found",
+        });
+      }
+
+      if (!promotion.isActive) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This promotion is not active",
+        });
+      }
+
+      // Calculate pro-rata refund (reuse logic from seller cancel)
+      const now = new Date();
+      const totalMs =
+        new Date(promotion.expiresAt).getTime() -
+        new Date(promotion.startsAt).getTime();
+      const remainingMs =
+        new Date(promotion.expiresAt).getTime() - now.getTime();
+      const remainingRatio = Math.max(0, remainingMs / totalMs);
+      const refundAmount = Math.round(
+        promotion.pricePaid * remainingRatio * 100
+      );
+
+      // Issue Stripe refund
+      if (refundAmount > 0 && promotion.stripePaymentIntentId) {
+        try {
+          await stripe.refunds.create({
+            payment_intent: promotion.stripePaymentIntentId,
+            amount: refundAmount,
+          });
+        } catch (err) {
+          console.error(
+            `Failed to refund promotion ${promotion.id}:`,
+            err
+          );
+        }
+      }
+
+      // Deactivate promotion
+      await ctx.db
+        .update(listingPromotions)
+        .set({
+          isActive: false,
+          cancelledAt: now,
+          paymentStatus: refundAmount > 0 ? "refunded" : "succeeded",
+        })
+        .where(eq(listingPromotions.id, input.promotionId));
+
+      // Clear denormalized fields on listing
+      await ctx.db
+        .update(listings)
+        .set({
+          promotionTier: null,
+          promotionExpiresAt: null,
+          updatedAt: now,
+        })
+        .where(eq(listings.id, promotion.listingId));
+
+      return {
+        refundAmountCents: refundAmount,
+        refundAmountDollars: refundAmount / 100,
+      };
+    }),
 });

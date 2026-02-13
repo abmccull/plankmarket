@@ -1,8 +1,19 @@
 import { createTRPCRouter, adminProcedure } from "../trpc";
-import { users, listings, orders, notifications } from "../db/schema";
+import { users, listings, orders, notifications, platformSettings } from "../db/schema";
 import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+
+/** Default platform settings */
+const DEFAULT_SETTINGS: Record<string, unknown> = {
+  buyerFeePercent: 3,
+  sellerFeePercent: 2,
+  listingExpiryDays: 90,
+  maxPhotosPerListing: 20,
+  platformName: "PlankMarket",
+  supportEmail: "support@plankmarket.com",
+  escrowReleaseDays: 3,
+};
 
 export const adminRouter = createTRPCRouter({
   // Get dashboard statistics
@@ -595,5 +606,346 @@ export const adminRouter = createTRPCRouter({
         limit: input.limit,
         totalPages: Math.ceil(count / input.limit),
       };
+    }),
+
+  // ==========================================
+  // Moderation Actions
+  // ==========================================
+
+  // Flag a listing (set to archived with moderation note)
+  flagListing: adminProcedure
+    .input(
+      z.object({
+        listingId: z.string().uuid(),
+        reason: z.string().min(1, "Reason is required").max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.id, input.listingId),
+      });
+
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      if (listing.status === "archived") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Listing is already archived/flagged",
+        });
+      }
+
+      await ctx.db
+        .update(listings)
+        .set({ status: "archived", updatedAt: new Date() })
+        .where(eq(listings.id, input.listingId));
+
+      // Notify the seller
+      await ctx.db.insert(notifications).values({
+        userId: listing.sellerId,
+        type: "system",
+        title: "Listing Flagged by Admin",
+        message: `Your listing "${listing.title}" has been flagged and removed from the marketplace. Reason: ${input.reason}`,
+        data: { listingId: listing.id },
+        read: false,
+      });
+
+      return { success: true };
+    }),
+
+  // Unflag a listing (restore to active)
+  unflagListing: adminProcedure
+    .input(z.object({ listingId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.id, input.listingId),
+      });
+
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      if (listing.status !== "archived") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Listing is not currently archived/flagged",
+        });
+      }
+
+      await ctx.db
+        .update(listings)
+        .set({ status: "active", updatedAt: new Date() })
+        .where(eq(listings.id, input.listingId));
+
+      // Notify the seller
+      await ctx.db.insert(notifications).values({
+        userId: listing.sellerId,
+        type: "system",
+        title: "Listing Restored",
+        message: `Your listing "${listing.title}" has been reviewed and restored to the marketplace.`,
+        data: { listingId: listing.id },
+        read: false,
+      });
+
+      return { success: true };
+    }),
+
+  // Suspend a user
+  suspendUser: adminProcedure
+    .input(
+      z.object({
+        userId: z.string().uuid(),
+        reason: z.string().min(1, "Reason is required").max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const user = await ctx.db.query.users.findFirst({
+        where: eq(users.id, input.userId),
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      if (user.role === "admin") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot suspend an admin user",
+        });
+      }
+
+      if (!user.active) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "User is already suspended",
+        });
+      }
+
+      await ctx.db
+        .update(users)
+        .set({ active: false, updatedAt: new Date() })
+        .where(eq(users.id, input.userId));
+
+      // Notify the user
+      await ctx.db.insert(notifications).values({
+        userId: input.userId,
+        type: "system",
+        title: "Account Suspended",
+        message: `Your account has been suspended. Reason: ${input.reason}. Please contact support for more information.`,
+        read: false,
+      });
+
+      return { success: true };
+    }),
+
+  // Unsuspend a user
+  unsuspendUser: adminProcedure
+    .input(z.object({ userId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await ctx.db.query.users.findFirst({
+        where: eq(users.id, input.userId),
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      if (user.active) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "User is not currently suspended",
+        });
+      }
+
+      await ctx.db
+        .update(users)
+        .set({ active: true, updatedAt: new Date() })
+        .where(eq(users.id, input.userId));
+
+      // Notify the user
+      await ctx.db.insert(notifications).values({
+        userId: input.userId,
+        type: "system",
+        title: "Account Reinstated",
+        message: "Your account has been reinstated. You can now access PlankMarket again.",
+        read: false,
+      });
+
+      return { success: true };
+    }),
+
+  // Force cancel an order
+  forceCancelOrder: adminProcedure
+    .input(
+      z.object({
+        orderId: z.string().uuid(),
+        reason: z.string().min(1, "Reason is required").max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const order = await ctx.db.query.orders.findFirst({
+        where: eq(orders.id, input.orderId),
+      });
+
+      if (!order) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Order not found",
+        });
+      }
+
+      const terminalStatuses = ["cancelled", "refunded", "delivered"];
+      if (terminalStatuses.includes(order.status)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cannot cancel an order with status "${order.status}"`,
+        });
+      }
+
+      const updateData: Record<string, unknown> = {
+        status: "cancelled",
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+        notes: `Admin force-cancelled: ${input.reason}`,
+      };
+
+      // Refund escrow if held
+      if (order.escrowStatus === "held") {
+        updateData.escrowStatus = "refunded";
+      }
+
+      await ctx.db
+        .update(orders)
+        .set(updateData)
+        .where(eq(orders.id, input.orderId));
+
+      // Notify both buyer and seller
+      await ctx.db.insert(notifications).values([
+        {
+          userId: order.buyerId,
+          type: "system" as const,
+          title: "Order Cancelled by Admin",
+          message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
+          data: { orderId: order.id },
+          read: false,
+        },
+        {
+          userId: order.sellerId,
+          type: "system" as const,
+          title: "Order Cancelled by Admin",
+          message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
+          data: { orderId: order.id },
+          read: false,
+        },
+      ]);
+
+      return { success: true };
+    }),
+
+  // ==========================================
+  // Platform Settings
+  // ==========================================
+
+  // Get all settings as a key-value map
+  getSettings: adminProcedure.query(async ({ ctx }) => {
+    const settings = await ctx.db
+      .select()
+      .from(platformSettings);
+
+    // Merge defaults with stored values
+    const settingsMap: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+    for (const setting of settings) {
+      settingsMap[setting.key] = setting.value;
+    }
+
+    return settingsMap;
+  }),
+
+  // Update a single setting (upsert)
+  updateSetting: adminProcedure
+    .input(
+      z.object({
+        key: z.string().min(1).max(100),
+        value: z.unknown(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Check if setting exists
+      const existing = await ctx.db
+        .select()
+        .from(platformSettings)
+        .where(eq(platformSettings.key, input.key))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await ctx.db
+          .update(platformSettings)
+          .set({
+            value: input.value,
+            updatedAt: new Date(),
+            updatedBy: ctx.user.id,
+          })
+          .where(eq(platformSettings.key, input.key));
+      } else {
+        await ctx.db.insert(platformSettings).values({
+          key: input.key,
+          value: input.value,
+          updatedBy: ctx.user.id,
+        });
+      }
+
+      return { success: true };
+    }),
+
+  // Batch update settings
+  updateSettings: adminProcedure
+    .input(
+      z.array(
+        z.object({
+          key: z.string().min(1).max(100),
+          value: z.unknown(),
+        })
+      )
+    )
+    .mutation(async ({ ctx, input }) => {
+      for (const { key, value } of input) {
+        const existing = await ctx.db
+          .select()
+          .from(platformSettings)
+          .where(eq(platformSettings.key, key))
+          .limit(1);
+
+        if (existing.length > 0) {
+          await ctx.db
+            .update(platformSettings)
+            .set({
+              value,
+              updatedAt: new Date(),
+              updatedBy: ctx.user.id,
+            })
+            .where(eq(platformSettings.key, key));
+        } else {
+          await ctx.db.insert(platformSettings).values({
+            key,
+            value,
+            updatedBy: ctx.user.id,
+          });
+        }
+      }
+
+      return { success: true, count: input.length };
     }),
 });

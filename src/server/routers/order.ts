@@ -15,6 +15,7 @@ import { z } from "zod";
 import { calculateBuyerFee, calculateSellerFee } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { sendOrderConfirmationEmail } from "@/lib/email/send";
+import { inngest } from "@/lib/inngest/client";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
@@ -113,6 +114,7 @@ export const orderRouter = createTRPCRouter({
             shippingZip: input.shippingZip,
             shippingPhone: input.shippingPhone,
             status: "pending",
+            escrowStatus: "held",
           })
           .returning();
 
@@ -405,7 +407,7 @@ export const orderRouter = createTRPCRouter({
         updateData.notes = input.notes;
       }
 
-      // Set timestamp based on status
+      // Set timestamp and escrow status based on status transition
       switch (input.status) {
         case "confirmed":
           updateData.confirmedAt = new Date();
@@ -418,6 +420,10 @@ export const orderRouter = createTRPCRouter({
           break;
         case "cancelled":
           updateData.cancelledAt = new Date();
+          // Release escrow back to buyer on cancellation
+          if (order.escrowStatus === "held") {
+            updateData.escrowStatus = "refunded";
+          }
           break;
       }
 
@@ -426,6 +432,19 @@ export const orderRouter = createTRPCRouter({
         .set(updateData)
         .where(eq(orders.id, input.orderId))
         .returning();
+
+      // Fire Inngest event for escrow auto-release on delivery
+      if (input.status === "delivered") {
+        inngest.send({
+          name: "order/delivered",
+          data: {
+            orderId: order.id,
+            deliveredAt: new Date().toISOString(),
+          },
+        }).catch((err) => {
+          console.error("Failed to send escrow release event:", err);
+        });
+      }
 
       return updated;
     }),
