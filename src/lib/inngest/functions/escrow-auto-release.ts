@@ -4,6 +4,11 @@ import { orders } from "@/server/db/schema/orders";
 import { users } from "@/server/db/schema/users";
 import { eq } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import Stripe from "stripe";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2026-01-28.clover" as Stripe.LatestApiVersion,
+});
 
 interface OrderDeliveredEvent {
   data: {
@@ -22,18 +27,26 @@ export const escrowAutoRelease = inngest.createFunction(
     await step.sleep("wait-3-days", "3d");
 
     const releaseResult = await step.run("check-and-release", async () => {
-      // Fetch order details
-      const order = await db
-        .select()
-        .from(orders)
-        .where(eq(orders.id, eventData.orderId))
-        .limit(1);
+      // Fetch order details with seller relation
+      const order = await db.query.orders.findFirst({
+        where: eq(orders.id, eventData.orderId),
+        with: {
+          seller: {
+            columns: {
+              id: true,
+              stripeAccountId: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
+      });
 
-      if (order.length === 0) {
+      if (!order) {
         return { released: false, reason: "Order not found" };
       }
 
-      const orderData = order[0];
+      const orderData = order;
 
       // Check if escrow is still held (no dispute opened)
       if (orderData.escrowStatus !== "held") {
@@ -43,9 +56,36 @@ export const escrowAutoRelease = inngest.createFunction(
         };
       }
 
-      // Release escrow funds
-      // In a real implementation, this would trigger Stripe Transfer API
-      // For now, we just update the status
+      // Transfer funds via Stripe before updating escrow status
+      if (!orderData.seller?.stripeAccountId) {
+        throw new Error(
+          `Seller ${orderData.sellerId} has no Stripe account connected`
+        );
+      }
+
+      try {
+        await stripe.transfers.create(
+          {
+            amount: Math.round(Number(orderData.sellerPayout) * 100), // cents
+            currency: "usd",
+            destination: orderData.seller.stripeAccountId,
+            metadata: {
+              orderId: orderData.id,
+              orderNumber: orderData.orderNumber,
+            },
+          },
+          {
+            idempotencyKey: `escrow-release-${orderData.id}`,
+          }
+        );
+      } catch (error) {
+        // If Stripe transfer fails, throw error to trigger Inngest retry
+        throw new Error(
+          `Failed to transfer funds for order ${orderData.id}: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+      }
+
+      // Update escrow status only after successful transfer
       await db
         .update(orders)
         .set({
@@ -54,23 +94,14 @@ export const escrowAutoRelease = inngest.createFunction(
         })
         .where(eq(orders.id, eventData.orderId));
 
-      // Notify seller
-      const seller = await db
-        .select({
-          email: users.email,
-          name: users.name,
-        })
-        .from(users)
-        .where(eq(users.id, orderData.sellerId))
-        .limit(1);
-
-      if (seller.length > 0) {
+      // Notify seller (use seller from order relation)
+      if (orderData.seller) {
         await resend.emails.send({
           from: "PlankMarket <noreply@plankmarket.com>",
-          to: seller[0].email,
+          to: orderData.seller.email,
           subject: `Funds released for order ${orderData.orderNumber}`,
           html: `
-            <p>Hi ${seller[0].name},</p>
+            <p>Hi ${orderData.seller.name},</p>
             <p>Great news! The escrow funds for order <strong>${orderData.orderNumber}</strong> have been released and transferred to your account.</p>
             <p><strong>Payout Details:</strong></p>
             <ul>

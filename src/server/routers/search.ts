@@ -26,7 +26,7 @@ export const searchRouter = createTRPCRouter({
         .values({
           userId: ctx.user.id,
           name: input.name,
-          filters: input.filters as unknown as Record<string, unknown>,
+          filters: input.filters as SearchFilters,
           alertEnabled: input.alertEnabled,
         })
         .returning();

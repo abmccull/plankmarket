@@ -1,4 +1,4 @@
-import { createTRPCRouter, publicProcedure, protectedProcedure } from "../trpc";
+import { createTRPCRouter, publicProcedure, protectedProcedure, rateLimitedPublicProcedure } from "../trpc";
 import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
 import { users, notifications } from "../db/schema";
 import { eq } from "drizzle-orm";
@@ -8,7 +8,7 @@ import zipcodes from "zipcodes";
 
 export const authRouter = createTRPCRouter({
   // Register a new user (creates DB record after Supabase auth signup)
-  register: publicProcedure
+  register: rateLimitedPublicProcedure
     .input(registerSchema)
     .mutation(async ({ ctx, input }) => {
       // Sign up with Supabase Auth

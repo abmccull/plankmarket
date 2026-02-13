@@ -11,6 +11,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import zipcodes from "zipcodes";
 import { priority1 } from "@/server/services/priority1";
+import { redis } from "@/lib/redis/client";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
@@ -198,13 +199,31 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
-      // Increment view count (fire-and-forget)
-      ctx.db
-        .update(listings)
-        .set({ viewsCount: sql`${listings.viewsCount} + 1` })
-        .where(eq(listings.id, input.id))
-        .execute()
-        .catch(() => {});
+      // Increment view count with Redis deduplication (fire-and-forget, non-fatal)
+      (async () => {
+        try {
+          // Use authenticated user ID if available, otherwise use client IP
+          const viewerIdentifier = ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
+          const viewKey = `listing-view:${input.id}:${viewerIdentifier}`;
+
+          // Check if this viewer has already viewed this listing recently
+          const alreadyViewed = await redis.get(viewKey);
+
+          if (!alreadyViewed) {
+            // Mark as viewed with 1 hour TTL
+            await redis.set(viewKey, "1", { ex: 3600 });
+
+            // Increment the view count in the database
+            await ctx.db
+              .update(listings)
+              .set({ viewsCount: sql`${listings.viewsCount} + 1` })
+              .where(eq(listings.id, input.id));
+          }
+        } catch (error) {
+          // Non-fatal: view count tracking failure should not break the listing view
+          // Silently fail to ensure user experience is not affected
+        }
+      })();
 
       return listing;
     }),

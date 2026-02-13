@@ -6,6 +6,9 @@ import { db } from "./db";
 import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+import { env } from "@/env";
 
 export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
   const supabase = await createClient();
@@ -21,15 +24,42 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
     dbUser = result ?? null;
   }
 
+  // Extract client IP for anonymous rate limiting and view dedup
+  const clientIp =
+    opts.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    opts.req.headers.get("x-real-ip") ??
+    "unknown";
+
   return {
     db,
     authUser,
     user: dbUser,
     supabase,
+    clientIp,
   };
 }
 
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
+
+// Create Redis client for rate limiting
+const redis = new Redis({
+  url: env.UPSTASH_REDIS_REST_URL,
+  token: env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+// Standard rate limit: 60 requests per minute per user
+const standardRateLimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(60, "60 s"),
+  prefix: "rl:standard",
+});
+
+// Strict rate limit: 10 requests per minute (for sensitive operations)
+const strictRateLimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(10, "60 s"),
+  prefix: "rl:strict",
+});
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -51,12 +81,33 @@ export const createTRPCRouter = t.router;
 // Public procedure - no auth required
 export const publicProcedure = t.procedure;
 
+// Public procedure with strict rate limiting (for registration and other sensitive unauthenticated endpoints)
+export const rateLimitedPublicProcedure = t.procedure.use(
+  t.middleware(async ({ ctx, next }) => {
+    const identifier = `ip:${ctx.clientIp}`;
+    const { success } = await strictRateLimit.limit(identifier);
+    if (!success) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: "Too many requests. Please try again later.",
+      });
+    }
+    return next();
+  })
+);
+
 // Auth middleware - requires authenticated user
 const enforceAuth = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
       message: "You must be logged in to perform this action",
+    });
+  }
+  if (!ctx.user.active) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your account has been suspended. Please contact support.",
     });
   }
   return next({
@@ -67,7 +118,33 @@ const enforceAuth = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const protectedProcedure = t.procedure.use(enforceAuth);
+// Standard rate limit middleware
+const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
+  const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
+  const { success } = await standardRateLimit.limit(identifier);
+  if (!success) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many requests. Please try again later.",
+    });
+  }
+  return next();
+});
+
+// Strict rate limit middleware for sensitive operations
+const enforceStrictRateLimit = t.middleware(async ({ ctx, next }) => {
+  const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
+  const { success } = await strictRateLimit.limit(identifier);
+  if (!success) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many requests. Please try again later.",
+    });
+  }
+  return next();
+});
+
+export const protectedProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit);
 
 // Verified user middleware - requires authenticated + verified (or admin)
 const enforceVerified = t.middleware(({ ctx, next }) => {
@@ -91,7 +168,7 @@ const enforceVerified = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const verifiedProcedure = t.procedure.use(enforceVerified);
+export const verifiedProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceVerified);
 
 // Seller-only middleware (also requires verified)
 const enforceSeller = t.middleware(({ ctx, next }) => {
@@ -121,7 +198,7 @@ const enforceSeller = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const sellerProcedure = t.procedure.use(enforceSeller);
+export const sellerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceSeller);
 
 // Buyer-only middleware (also requires verified)
 const enforceBuyer = t.middleware(({ ctx, next }) => {
@@ -151,7 +228,7 @@ const enforceBuyer = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const buyerProcedure = t.procedure.use(enforceBuyer);
+export const buyerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceBuyer);
 
 // Admin-only middleware
 const enforceAdmin = t.middleware(({ ctx, next }) => {
@@ -175,4 +252,7 @@ const enforceAdmin = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const adminProcedure = t.procedure.use(enforceAdmin);
+export const adminProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceAdmin);
+
+// Strict rate limited procedure for sensitive operations (e.g., payment creation)
+export const strictRateLimitedProcedure = t.procedure.use(enforceAuth).use(enforceStrictRateLimit);

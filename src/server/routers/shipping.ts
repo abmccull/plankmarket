@@ -12,6 +12,7 @@ import { listings, orders, shipments } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { redis } from "@/lib/redis/client";
 
 /**
  * Calculate next business day (skip weekends) for pickup date
@@ -129,12 +130,10 @@ export const shippingRouter = createTRPCRouter({
           items,
         });
       } catch (error) {
+        console.error("Failed to fetch shipping rates from Priority1:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch shipping rates",
+          message: "Unable to fetch shipping rates. Please try again later.",
         });
       }
 
@@ -157,6 +156,32 @@ export const shippingRouter = createTRPCRouter({
 
       // Sort by shippingPrice ascending
       quotes.sort((a, b) => a.shippingPrice - b.shippingPrice);
+
+      // Cache each quote in Redis with 30-minute TTL
+      // This enables server-side verification during order creation
+      try {
+        await Promise.all(
+          quotes.map((quote) =>
+            redis.set(
+              `shipping-quote:${quote.quoteId}`,
+              JSON.stringify({
+                carrierRate: quote.carrierRate,
+                shippingPrice: quote.shippingPrice,
+                carrierName: quote.carrierName,
+                carrierScac: quote.carrierScac,
+                transitDays: quote.transitDays,
+                estimatedDelivery: quote.estimatedDelivery,
+                quoteExpiresAt: quote.quoteExpiresAt,
+                listingId: input.listingId,
+              }),
+              { ex: 1800 } // 30 minutes TTL
+            )
+          )
+        );
+      } catch (error) {
+        // Log cache error but don't fail the request
+        console.error("Failed to cache shipping quotes in Redis:", error);
+      }
 
       return quotes;
     }),
@@ -262,12 +287,10 @@ export const shippingRouter = createTRPCRouter({
 
         return { imageUrl: documentsResponse.imageUrl };
       } catch (error) {
+        console.error("Failed to fetch shipping document from Priority1:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to fetch shipping document",
+          message: "Unable to fetch shipping document. Please try again later.",
         });
       }
     }),

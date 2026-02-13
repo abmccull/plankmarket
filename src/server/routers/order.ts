@@ -16,6 +16,7 @@ import { calculateBuyerFee, calculateSellerFee } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { sendOrderConfirmationEmail } from "@/lib/email/send";
 import { inngest } from "@/lib/inngest/client";
+import { redis } from "@/lib/redis/client";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
@@ -80,6 +81,59 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
+        // SECURITY: Verify shipping quote from server-side cache
+        // Prevents client from manipulating shipping prices
+        let verifiedShippingPrice = 0;
+        let verifiedCarrierRate = 0;
+        let verifiedShippingMargin = 0;
+        let verifiedSelectedCarrier = input.selectedCarrier;
+        let verifiedCarrierScac: string | undefined;
+        let verifiedEstimatedTransitDays = input.estimatedTransitDays;
+        let verifiedEstimatedDelivery: string | undefined;
+        let quoteExpiresAt: Date | undefined;
+
+        if (input.selectedQuoteId) {
+          // Fetch cached quote from Redis
+          const cachedQuote = await redis.get(
+            `shipping-quote:${input.selectedQuoteId}`
+          );
+
+          if (!cachedQuote) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Shipping quote has expired. Please select a new shipping option.",
+            });
+          }
+
+          // Parse the cached quote
+          const quote =
+            typeof cachedQuote === "string"
+              ? JSON.parse(cachedQuote)
+              : cachedQuote;
+
+          // Verify the quote is for the correct listing
+          if (quote.listingId !== input.listingId) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Shipping quote does not match the selected listing.",
+            });
+          }
+
+          // Use SERVER-SIDE values instead of client-provided values
+          verifiedShippingPrice = quote.shippingPrice;
+          verifiedCarrierRate = quote.carrierRate;
+          verifiedShippingMargin =
+            Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
+          verifiedSelectedCarrier = quote.carrierName;
+          verifiedCarrierScac = quote.carrierScac;
+          verifiedEstimatedTransitDays = quote.transitDays;
+          verifiedEstimatedDelivery = quote.estimatedDelivery;
+          quoteExpiresAt = quote.quoteExpiresAt
+            ? new Date(quote.quoteExpiresAt)
+            : undefined;
+        }
+
         // Calculate pricing using originalTotalSqFt for stable buyNowPrice calculation
         const originalSqFt = listing.originalTotalSqFt ?? listing.totalSqFt;
         const pricePerSqFt = listing.buyNowPrice
@@ -89,7 +143,7 @@ export const orderRouter = createTRPCRouter({
           Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
         const buyerFee = calculateBuyerFee(subtotal);
         const sellerFee = calculateSellerFee(subtotal);
-        const shippingPrice = input.shippingPrice ?? 0;
+        const shippingPrice = verifiedShippingPrice; // Use verified value
         const totalPrice = Math.round((subtotal + buyerFee + shippingPrice) * 100) / 100;
         const sellerPayout = Math.round((subtotal - sellerFee) * 100) / 100;
 
@@ -115,18 +169,15 @@ export const orderRouter = createTRPCRouter({
             shippingZip: input.shippingZip,
             shippingPhone: input.shippingPhone,
             // Priority1 shipping fields (if buyer selected a shipping quote)
+            // Use VERIFIED values from Redis cache, not client input
             ...(input.selectedQuoteId && {
               selectedQuoteId: input.selectedQuoteId,
-              selectedCarrier: input.selectedCarrier,
-              carrierRate: input.carrierRate,
-              shippingPrice: input.shippingPrice,
-              shippingMargin: input.shippingPrice && input.carrierRate
-                ? Math.round((input.shippingPrice - input.carrierRate) * 100) / 100
-                : undefined,
-              estimatedTransitDays: input.estimatedTransitDays,
-              quoteExpiresAt: input.quoteExpiresAt
-                ? new Date(input.quoteExpiresAt)
-                : undefined,
+              selectedCarrier: verifiedSelectedCarrier,
+              carrierRate: verifiedCarrierRate,
+              shippingPrice: verifiedShippingPrice,
+              shippingMargin: verifiedShippingMargin,
+              estimatedTransitDays: verifiedEstimatedTransitDays,
+              quoteExpiresAt,
             }),
             status: "pending",
             escrowStatus: "held",

@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { db } from "@/server/db";
 import { users, notifications } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyBusiness } from "@/server/services/ai-verification";
+
+/**
+ * Performs constant-time string comparison to prevent timing attacks
+ */
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 /**
  * Internal webhook for AI-powered business verification
@@ -24,7 +33,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (webhookSecret !== expectedSecret) {
+    if (!webhookSecret || !safeCompare(webhookSecret, expectedSecret)) {
       return NextResponse.json(
         { error: { code: "UNAUTHORIZED", message: "Invalid webhook secret" } },
         { status: 401 },

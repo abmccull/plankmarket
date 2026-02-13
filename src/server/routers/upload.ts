@@ -3,7 +3,7 @@ import {
   sellerProcedure,
 } from "../trpc";
 import { media, listings } from "../db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -25,6 +25,23 @@ export const uploadRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // HIGH-2: Verify listing ownership before associating media
+      if (input.listingId) {
+        const listing = await ctx.db.query.listings.findFirst({
+          where: and(
+            eq(listings.id, input.listingId),
+            eq(listings.sellerId, ctx.user.id)
+          ),
+          columns: { id: true },
+        });
+        if (!listing) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only upload media to your own listings",
+          });
+        }
+      }
+
       const records = await ctx.db
         .insert(media)
         .values(
@@ -43,7 +60,7 @@ export const uploadRouter = createTRPCRouter({
       return records;
     }),
 
-  // Reorder media — batched into a single query using CASE expression
+  // Reorder media — using individual parameterized updates
   reorderMedia: sellerProcedure
     .input(
       z.object({
@@ -59,15 +76,33 @@ export const uploadRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       if (input.mediaOrder.length === 0) return { success: true };
 
-      // Build a single UPDATE with CASE expression instead of N separate queries
-      const ids = input.mediaOrder.map((m) => m.id);
-      const caseFragments = input.mediaOrder
-        .map((m) => `WHEN '${m.id}' THEN ${m.sortOrder}`)
-        .join(" ");
+      // HIGH-3: Verify listing ownership before reordering media
+      const listing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.listingId),
+          eq(listings.sellerId, ctx.user.id)
+        ),
+        columns: { id: true },
+      });
+      if (!listing) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only reorder media for your own listings",
+        });
+      }
 
-      await ctx.db.execute(
-        sql`UPDATE media SET sort_order = CASE id::text ${sql.raw(caseFragments)} END WHERE listing_id = ${input.listingId} AND id = ANY(${ids})`
-      );
+      // CRITICAL-1: Use parameterized updates instead of sql.raw() to prevent SQL injection
+      for (const item of input.mediaOrder) {
+        await ctx.db
+          .update(media)
+          .set({ sortOrder: item.sortOrder })
+          .where(
+            and(
+              eq(media.id, item.id),
+              eq(media.listingId, input.listingId)
+            )
+          );
+      }
 
       return { success: true };
     }),
@@ -101,6 +136,21 @@ export const uploadRouter = createTRPCRouter({
   getListingMedia: sellerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // HIGH-3: Verify listing ownership before returning media
+      const listing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.listingId),
+          eq(listings.sellerId, ctx.user.id)
+        ),
+        columns: { id: true },
+      });
+      if (!listing) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only view media for your own listings",
+        });
+      }
+
       const items = await ctx.db.query.media.findMany({
         where: eq(media.listingId, input.listingId),
         orderBy: (media, { asc }) => [asc(media.sortOrder)],

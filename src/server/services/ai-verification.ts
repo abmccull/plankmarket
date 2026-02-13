@@ -25,6 +25,18 @@ interface VerificationParams {
 }
 
 /**
+ * Sanitizes user input before interpolating into AI prompts
+ * Prevents prompt injection by removing newlines and special markdown characters
+ */
+function sanitizeForPrompt(input: string): string {
+  return input
+    .replace(/[\n\r]/g, " ")
+    .replace(/[#*`]/g, "")
+    .trim()
+    .slice(0, 500);
+}
+
+/**
  * Fetches an image URL and converts to base64 for Anthropic API
  * Returns null if fetch fails or content is not an image
  */
@@ -105,13 +117,13 @@ export async function verifyBusiness(
 Your task is to analyze a business verification submission and determine if this is a legitimate business that should be approved for the platform.
 
 ## Submission Data:
-- Business Name: ${businessName}
-- EIN/Tax ID: ${einTaxId}
-- Business Website: ${businessWebsite || "Not provided"}
-- Role: ${role}
-- Contact Name: ${name || "Not provided"}
-- Contact Email: ${email}
-- Business Address: ${businessAddress || "Not provided"}
+- Business Name: ${sanitizeForPrompt(businessName)}
+- EIN/Tax ID: ${sanitizeForPrompt(einTaxId)}
+- Business Website: ${businessWebsite ? sanitizeForPrompt(businessWebsite) : "Not provided"}
+- Role: ${sanitizeForPrompt(role)}
+- Contact Name: ${name ? sanitizeForPrompt(name) : "Not provided"}
+- Contact Email: ${sanitizeForPrompt(email)}
+- Business Address: ${businessAddress ? sanitizeForPrompt(businessAddress) : "Not provided"}
 
 ## Your Analysis Should:
 

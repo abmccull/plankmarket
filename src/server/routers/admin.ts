@@ -6,6 +6,16 @@ import { z } from "zod";
 import { priority1 } from "@/server/services/priority1";
 import type { TrackingEvent } from "@/server/db/schema";
 
+/**
+ * Escapes special LIKE wildcards in user input to prevent unintended pattern matching
+ */
+function escapeLike(input: string): string {
+  return input
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+}
+
 /** Default platform settings */
 const DEFAULT_SETTINGS: Record<string, unknown> = {
   buyerFeePercent: 3,
@@ -95,11 +105,12 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.query) {
+        const escapedQuery = escapeLike(input.query);
         conditions.push(
           or(
-            like(users.name, `%${input.query}%`),
-            like(users.email, `%${input.query}%`),
-            like(users.businessName, `%${input.query}%`)
+            like(users.name, `%${escapedQuery}%`),
+            like(users.email, `%${escapedQuery}%`),
+            like(users.businessName, `%${escapedQuery}%`)
           )
         );
       }
@@ -160,7 +171,7 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.query) {
-        conditions.push(like(listings.title, `%${input.query}%`));
+        conditions.push(like(listings.title, `%${escapeLike(input.query)}%`));
       }
 
       if (input.status) {
@@ -234,7 +245,7 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.orderNumber) {
-        conditions.push(like(orders.orderNumber, `%${input.orderNumber}%`));
+        conditions.push(like(orders.orderNumber, `%${escapeLike(input.orderNumber)}%`));
       }
 
       if (input.status) {
@@ -549,7 +560,7 @@ export const adminRouter = createTRPCRouter({
       const conditions = [];
 
       if (input.search) {
-        conditions.push(like(orders.orderNumber, `%${input.search}%`));
+        conditions.push(like(orders.orderNumber, `%${escapeLike(input.search)}%`));
       }
 
       if (input.status) {

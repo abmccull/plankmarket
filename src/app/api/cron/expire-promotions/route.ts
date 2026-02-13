@@ -15,7 +15,7 @@ const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
 export async function GET(req: NextRequest) {
   // Verify cron secret to prevent unauthorized access
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${env.INNGEST_EVENT_KEY}`) {
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
