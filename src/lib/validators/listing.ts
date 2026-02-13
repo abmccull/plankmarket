@@ -86,7 +86,7 @@ export const listingFormSchema = z.object({
     .positive("Price per sq ft must be positive")
     .max(1000, "Price seems too high"),
   buyNowPrice: z.number().positive("Buy now price must be positive").optional(),
-  allowOffers: z.boolean().default(true),
+  allowOffers: z.boolean(),
   floorPrice: z
     .number()
     .positive("Floor price must be positive")
@@ -116,7 +116,7 @@ export const listingFormSchema = z.object({
       "other",
     ])
     .optional(),
-  certifications: z.array(z.string()).default([]),
+  certifications: z.array(z.string()),
 
   // Step 5: Media (handled separately via upload)
   mediaIds: z.array(z.string().uuid()).optional(),

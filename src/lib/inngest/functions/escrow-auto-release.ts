@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
 import { env } from "@/env";
 import Stripe from "stripe";
+import { formatCurrency } from "@/lib/utils";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-01-28.clover" as const,
@@ -111,7 +112,7 @@ export const escrowAutoRelease = inngest.createFunction(
             <p><strong>Payout Details:</strong></p>
             <ul>
               <li>Order Number: ${escapeHtml(updatedOrder.orderNumber)}</li>
-              <li>Payout Amount: $${updatedOrder.sellerPayout.toFixed(2)}</li>
+              <li>Payout Amount: ${formatCurrency(updatedOrder.sellerPayout)}</li>
               <li>Released: ${new Date().toLocaleDateString()}</li>
             </ul>
             <p>The funds should appear in your connected bank account within 2-3 business days.</p>

@@ -33,7 +33,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { PhotoUpload } from "@/components/listings/photo-upload";
 import { WIDTH_OPTIONS, THICKNESS_OPTIONS, getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
 
@@ -132,7 +132,7 @@ export default function CreateListingPage() {
     control,
     formState: { errors },
   } = useForm<ListingFormInput>({
-    resolver: zodResolver(listingFormSchema) as never,
+    resolver: zodResolver(listingFormSchema),
     defaultValues: formData as Partial<ListingFormInput>,
   });
 
@@ -610,12 +610,10 @@ export default function CreateListingPage() {
                 {watchedValues.askPricePerSqFt > 0 &&
                   watchedValues.totalSqFt > 0 && (
                     <p className="text-sm text-muted-foreground">
-                      Total lot value: $
-                      {(
+                      Total lot value:{" "}
+                      {formatCurrency(
                         watchedValues.askPricePerSqFt * watchedValues.totalSqFt
-                      ).toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                      })}
+                      )}
                     </p>
                   )}
               </div>
@@ -825,15 +823,16 @@ export default function CreateListingPage() {
                   <h3 className="font-medium text-sm text-muted-foreground mb-1">
                     Total Sq Ft
                   </h3>
-                  <p>{watchedValues.totalSqFt?.toLocaleString() || "---"}</p>
+                  <p>{watchedValues.totalSqFt ? formatNumber(watchedValues.totalSqFt) : "---"}</p>
                 </div>
                 <div>
                   <h3 className="font-medium text-sm text-muted-foreground mb-1">
                     Price per Sq Ft
                   </h3>
                   <p>
-                    $
-                    {watchedValues.askPricePerSqFt?.toFixed(2) || "---"}
+                    {watchedValues.askPricePerSqFt
+                      ? formatCurrency(watchedValues.askPricePerSqFt)
+                      : "---"}
                   </p>
                 </div>
                 <div>
@@ -866,35 +865,26 @@ export default function CreateListingPage() {
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <span>Total lot value:</span>
                       <span className="font-medium text-right">
-                        $
-                        {(
+                        {formatCurrency(
                           watchedValues.askPricePerSqFt *
                           watchedValues.totalSqFt
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        )}
                       </span>
                       <span>Seller fee (2%):</span>
                       <span className="text-right">
-                        -$
-                        {(
+                        -{formatCurrency(
                           watchedValues.askPricePerSqFt *
                           watchedValues.totalSqFt *
                           0.02
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        )}
                       </span>
                       <span className="font-medium">Your payout:</span>
                       <span className="font-medium text-right text-primary">
-                        $
-                        {(
+                        {formatCurrency(
                           watchedValues.askPricePerSqFt *
                           watchedValues.totalSqFt *
                           0.98
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        )}
                       </span>
                     </div>
                   </div>

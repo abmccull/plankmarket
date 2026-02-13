@@ -6,6 +6,7 @@ import { users } from "@/server/db/schema/users";
 import { eq, and } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
 import { env } from "@/env";
+import { formatCurrency } from "@/lib/utils";
 
 function escapeHtml(str: string): string {
   return str
@@ -90,7 +91,7 @@ export const abandonedCheckout = inngest.createFunction(
                 <li>Material: ${escapeHtml(listing[0].materialType)}</li>
                 <li>Quantity: ${checkoutData.quantitySqFt} sq ft</li>
                 <li>Price: $${listing[0].askPricePerSqFt}/sq ft</li>
-                <li>Total: $${checkoutData.totalPrice.toFixed(2)}</li>
+                <li>Total: ${formatCurrency(checkoutData.totalPrice)}</li>
               </ul>
               <p>This listing is still available. Complete your purchase before someone else does!</p>
               <p><a href="${env.NEXT_PUBLIC_APP_URL}/listings/${listing[0].id}">Complete Purchase</a></p>

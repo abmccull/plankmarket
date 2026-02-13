@@ -20,6 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc/client";
+import { formatCurrency, formatSqFt, formatPricePerSqFt } from "@/lib/utils";
 
 const makeOfferSchema = z.object({
   offerPricePerSqFt: z
@@ -129,7 +130,7 @@ export function MakeOfferDialog({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Ask price: ${listing.askPricePerSqFt.toFixed(2)}/sq ft
+              Ask price: {formatPricePerSqFt(listing.askPricePerSqFt)}
             </p>
           </div>
 
@@ -148,7 +149,7 @@ export function MakeOfferDialog({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Available: {listing.totalSqFt.toLocaleString()} sq ft
+              Available: {formatSqFt(listing.totalSqFt)}
             </p>
           </div>
 
@@ -176,7 +177,7 @@ export function MakeOfferDialog({
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">
-                  ${subtotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(subtotal)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -184,14 +185,14 @@ export function MakeOfferDialog({
                   Buyer fee (3%)
                 </span>
                 <span className="font-medium">
-                  ${buyerFee.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(buyerFee)}
                 </span>
               </div>
               <Separator className="my-2" />
               <div className="flex items-center justify-between">
                 <span className="font-semibold">Total Cost</span>
                 <span className="font-bold text-primary text-lg">
-                  ${totalCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {formatCurrency(totalCost)}
                 </span>
               </div>
             </div>

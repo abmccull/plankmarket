@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -39,15 +38,11 @@ export function CounterOfferForm({
   onCancel,
   isLoading = false,
 }: CounterOfferFormProps) {
-  const [counterPrice, setCounterPrice] = useState<string>(
-    currentPricePerSqFt.toFixed(2)
-  );
-
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
-    setValue,
   } = useForm<CounterOfferFormValues>({
     resolver: zodResolver(counterOfferFormSchema),
     defaultValues: {
@@ -56,12 +51,8 @@ export function CounterOfferForm({
     },
   });
 
-  const handlePriceChange = (value: string) => {
-    setCounterPrice(value);
-    setValue("pricePerSqFt", parseFloat(value) || 0);
-  };
-
-  const calculatedTotal = parseFloat(counterPrice) * quantitySqFt || 0;
+  const watchedPrice = useWatch({ control, name: "pricePerSqFt" }) || 0;
+  const calculatedTotal = watchedPrice * quantitySqFt;
 
   const onSubmitForm = async (data: CounterOfferFormValues) => {
     await onSubmit({
@@ -83,8 +74,8 @@ export function CounterOfferForm({
         <div className="flex justify-between text-base font-semibold">
           <span>Your counter</span>
           <span className="tabular-nums">
-            {counterPrice && !isNaN(parseFloat(counterPrice))
-              ? `${formatCurrency(parseFloat(counterPrice))}/sq ft`
+            {watchedPrice > 0
+              ? `${formatCurrency(watchedPrice)}/sq ft`
               : "—"}
           </span>
         </div>
@@ -103,8 +94,6 @@ export function CounterOfferForm({
           max="1000"
           placeholder="0.00"
           {...register("pricePerSqFt", { valueAsNumber: true })}
-          value={counterPrice}
-          onChange={(e) => handlePriceChange(e.target.value)}
           aria-invalid={!!errors.pricePerSqFt}
           aria-describedby={errors.pricePerSqFt ? "pricePerSqFt-error" : undefined}
           disabled={isLoading}
