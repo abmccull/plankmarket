@@ -499,13 +499,13 @@ export const orderRouter = createTRPCRouter({
         .where(eq(orders.id, input.orderId))
         .returning();
 
-      // Fire Inngest event for escrow auto-release on delivery
-      if (input.status === "delivered") {
+      // Fire Inngest event for escrow release on shipment pickup
+      if (input.status === "shipped") {
         inngest.send({
-          name: "order/delivered",
+          name: "order/picked-up",
           data: {
             orderId: order.id,
-            deliveredAt: new Date().toISOString(),
+            pickedUpAt: new Date().toISOString(),
           },
         }).catch((err) => {
           console.error("Failed to send escrow release event:", err);

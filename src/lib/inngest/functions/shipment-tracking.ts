@@ -86,6 +86,30 @@ export const shipmentTracking = inngest.createFunction(
             updatedAt: new Date(),
           };
 
+          // Fire escrow release when shipment is picked up (transitions to in_transit)
+          if (
+            mappedStatus === "in_transit" &&
+            shipment.status === "dispatched"
+          ) {
+            // Update order status to shipped
+            await db
+              .update(orders)
+              .set({
+                status: "shipped",
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, shipment.orderId));
+
+            // Fire order/picked-up event to release escrow funds to seller
+            await inngest.send({
+              name: "order/picked-up",
+              data: {
+                orderId: shipment.orderId,
+                pickedUpAt: new Date().toISOString(),
+              },
+            });
+          }
+
           if (mappedStatus === "delivered" && !shipment.deliveredAt) {
             updateData.deliveredAt = new Date();
             delivered++;
@@ -99,15 +123,6 @@ export const shipmentTracking = inngest.createFunction(
                 updatedAt: new Date(),
               })
               .where(eq(orders.id, shipment.orderId));
-
-            // Fire order/delivered event for escrow release
-            await inngest.send({
-              name: "order/delivered",
-              data: {
-                orderId: shipment.orderId,
-                deliveredAt: new Date().toISOString(),
-              },
-            });
 
             // Try to fetch delivery receipt
             try {
