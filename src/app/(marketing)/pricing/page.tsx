@@ -59,16 +59,14 @@ export default function PricingPage() {
                   For Buyers
                 </Badge>
                 <CardTitle className="font-display text-3xl">Free</CardTitle>
-                <CardDescription>No platform fees for buyers</CardDescription>
+                <CardDescription>Free to browse and register</CardDescription>
               </CardHeader>
               <Separator />
               <CardContent className="pt-6">
                 <ul className="space-y-3">
                   {[
                     "Free to browse and register",
-                    "No buyer platform fees",
-                    "No membership charges",
-                    "No transaction fees",
+                    "3% buyer fee on purchases",
                     "Secure Stripe payment processing",
                     "Save searches and watchlists",
                     "Direct messaging with sellers",
@@ -98,20 +96,20 @@ export default function PricingPage() {
                   For Sellers
                 </Badge>
                 <CardTitle className="font-display text-3xl">Commission-Based</CardTitle>
-                <CardDescription>Pay only when you sell</CardDescription>
+                <CardDescription>2% commission on completed sales</CardDescription>
               </CardHeader>
               <Separator />
               <CardContent className="pt-6">
                 <ul className="space-y-3">
                   {[
                     "Free to list — unlimited listings",
-                    "Commission only on completed sales",
+                    "2% commission only on completed sales",
                     "Secure payment via Stripe Connect",
                     "Built-in messaging and order management",
                     "Access to nationwide buyer network",
                     "Customer support for you and buyers",
                     "Seller dashboard and analytics",
-                    "Fast payouts within 3-5 business days",
+                    "Fast payouts within 3-5 business days after shipment pickup",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm">
                       <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -152,7 +150,7 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Platform Commission</h3>
                       <p className="text-sm text-muted-foreground">
-                        PlankMarket charges a commission on each completed transaction. This covers listing hosting, buyer network access, secure payment processing, escrow services, messaging tools, and platform support.
+                        PlankMarket charges a 2% seller commission and 3% buyer fee on each completed transaction. This covers listing hosting, buyer network access, secure payment processing, payment protection, messaging tools, and platform support.
                       </p>
                     </div>
                   </div>
@@ -176,9 +174,59 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Payout Timeline</h3>
                       <p className="text-sm text-muted-foreground">
-                        Once a buyer confirms receipt, payment is released and transferred to your connected Stripe account. Funds are typically available in your bank within 3-5 business days.
+                        Once shipment is picked up by the carrier, payment is automatically released and transferred to your connected Stripe account. Funds are typically available in your bank within 3-5 business days.
                       </p>
                     </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Fee Example */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold">Fee Example</h2>
+            <p className="mt-3 text-muted-foreground">
+              See how fees work on a typical transaction
+            </p>
+          </div>
+          <div className="max-w-3xl mx-auto">
+            <Card className="border-primary/30">
+              <CardHeader>
+                <CardTitle className="text-xl">Example: $10,000 Order</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm font-medium">Subtotal</span>
+                    <span className="text-sm font-semibold">$10,000.00</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Buyer fee (3%)</span>
+                    <span className="text-sm">$300.00</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 bg-secondary/10 px-3 rounded-md">
+                    <span className="text-sm font-semibold">Buyer total</span>
+                    <span className="text-sm font-semibold">$10,300.00 + shipping</span>
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Seller commission (2%)</span>
+                    <span className="text-sm">$200.00</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
+                    <span className="text-sm font-semibold">Seller payout</span>
+                    <span className="text-sm font-semibold">$9,800.00</span>
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex justify-between items-start py-2">
+                    <span className="text-sm text-muted-foreground">Stripe processing (~2.9% + $0.30)</span>
+                    <span className="text-sm text-muted-foreground text-right">Deducted by Stripe from payout</span>
                   </div>
                 </div>
               </CardContent>
@@ -256,7 +304,7 @@ export default function PricingPage() {
               {
                 question: "What happens in case of a dispute or return?",
                 answer:
-                  "Our escrow system protects both parties. Buyers are protected until they confirm receipt, and sellers are protected by upfront payment. Disputes are mediated by our support team. Commission and processing fees are refunded on full refunds; partial refunds get proportional adjustments.",
+                  "Our secure payment hold protects both parties. Buyers have 48 hours after delivery to report damage or shortage, with photo evidence and delivery receipt notes required. Freight damage must be noted on the delivery receipt at time of delivery. If no dispute is opened within 5 business days of delivery, the transaction is considered complete. Disputes are mediated by our support team. Commission and processing fees are refunded on full refunds; partial refunds get proportional adjustments.",
               },
               {
                 question: "Are there plans for premium features?",

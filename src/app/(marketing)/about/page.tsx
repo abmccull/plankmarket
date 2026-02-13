@@ -29,6 +29,9 @@ import {
   CreditCard,
   MessageSquare,
   DollarSign,
+  Package,
+  AlertTriangle,
+  Globe,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -90,18 +93,21 @@ export default function AboutPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: "Industry Waste", value: "$B+", subtitle: "Surplus inventory annually" },
-                { label: "Limited Options", value: "3", subtitle: "Liquidate, donate, or dispose" },
-                { label: "Fragmented", value: "0", subtitle: "Centralized B2B platforms before us" },
-                { label: "Lost Revenue", value: "80%+", subtitle: "Value lost on surplus materials" },
+                { icon: TrendingDown, label: "Billions", subtitle: "In Surplus Inventory", description: "The US flooring industry generates billions in overstock, closeout, and discontinued inventory annually" },
+                { icon: Package, label: "Limited", subtitle: "Liquidation Options", description: "Sellers typically choose between liquidators, donation, or disposal — all at significant loss" },
+                { icon: Globe, label: "No", subtitle: "Dedicated B2B Platform", description: "Until now, no marketplace focused exclusively on surplus flooring materials" },
+                { icon: TrendingDown, label: "Up to 80%", subtitle: "Value Lost", description: "Surplus materials often sell for a fraction of original value through traditional channels" },
               ].map((stat) => (
                 <Card key={stat.label} className="text-center">
                   <CardHeader className="pb-2">
-                    <div className="font-display text-2xl font-bold text-primary">{stat.value}</div>
-                    <CardTitle className="text-sm">{stat.label}</CardTitle>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mx-auto mb-2">
+                      <stat.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="font-display text-2xl font-bold text-primary">{stat.label}</div>
+                    <CardTitle className="text-sm">{stat.subtitle}</CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <p className="text-xs text-muted-foreground">{stat.subtitle}</p>
+                    <p className="text-xs text-muted-foreground">{stat.description}</p>
                   </CardContent>
                 </Card>
               ))}
@@ -127,9 +133,9 @@ export default function AboutPage() {
               </h3>
               <ul className="space-y-3">
                 {[
-                  { icon: Users, text: "Nationwide platform reaching thousands of qualified buyers" },
+                  { icon: Users, text: "Nationwide platform reaching qualified buyers" },
                   { icon: Zap, text: "Simple listing tools with photos and detailed specs" },
-                  { icon: CreditCard, text: "Secure payment processing with Stripe escrow" },
+                  { icon: CreditCard, text: "Secure payment processing with payment protection" },
                   { icon: MessageSquare, text: "Built-in messaging and order management" },
                   { icon: DollarSign, text: "Fast, reliable payouts after successful delivery" },
                 ].map((item) => (
@@ -261,7 +267,7 @@ export default function AboutPage() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
             {[
               { icon: Eye, title: "Transparency", description: "Clear pricing and honest policies" },
-              { icon: Shield, title: "Security", description: "Verified sellers and escrow protection" },
+              { icon: Shield, title: "Security", description: "Verified sellers and payment protection" },
               { icon: Zap, title: "Efficiency", description: "Simple tools that save time" },
               { icon: Leaf, title: "Sustainability", description: "Circular economy in flooring" },
               { icon: Heart, title: "Support", description: "Responsive customer service" },

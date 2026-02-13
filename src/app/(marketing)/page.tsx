@@ -146,8 +146,8 @@ export default function HomePage() {
                 </div>
                 <CardTitle className="font-display">Receive</CardTitle>
                 <CardDescription>
-                  Coordinated freight shipping from warehouse to your door.
-                  Full tracking, insurance options, and delivery confirmation.
+                  Coordinated LTL freight from warehouse to your door.
+                  Full tracking, delivery confirmation, and 48-hour inspection window for damage claims.
                 </CardDescription>
               </CardHeader>
             </Card>

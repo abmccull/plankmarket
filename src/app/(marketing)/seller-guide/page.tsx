@@ -27,6 +27,7 @@ import {
   Star,
   Zap,
   CheckCircle2,
+  Shield,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -201,7 +202,7 @@ export default function SellerGuidePage() {
                 name: "Hardwood",
                 badge: "hardwood" as const,
                 description:
-                  "Solid wood flooring — oak, maple, hickory, walnut, cherry, and exotic species. Specify pre-finished or unfinished, plank width, and grade.",
+                  "Solid wood flooring — oak, maple, hickory, walnut, cherry, and exotic species. Specify prefinished or unfinished, plank width, and grade.",
               },
               {
                 name: "Engineered Wood",
@@ -277,7 +278,7 @@ export default function SellerGuidePage() {
                 step: "3",
                 title: "Package Materials",
                 description:
-                  "Keep materials in original packaging when possible. Securely band or wrap pallets, clearly label shipments, and provide accurate weight and dimensions.",
+                  "Package materials properly — palletized, banded, and stretch-wrapped for LTL freight. Provide accurate weight, dimensions, and pallet count.",
               },
               {
                 icon: Truck,
@@ -291,7 +292,7 @@ export default function SellerGuidePage() {
                 step: "5",
                 title: "Get Paid",
                 description:
-                  "Once the buyer confirms receipt, payment is released to your Stripe account. Funds arrive in your bank within 3-5 business days.",
+                  "Payment is automatically released when the carrier picks up your shipment. Funds arrive in your bank within 3-5 business days.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -313,8 +314,64 @@ export default function SellerGuidePage() {
         </div>
       </section>
 
-      {/* Tips for Faster Sales */}
+      {/* Freight & Shipping Requirements */}
       <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl font-bold">Freight & Shipping Requirements</h2>
+            <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
+              Clear guidelines for packaging and shipping surplus flooring materials
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            {[
+              {
+                icon: Package,
+                title: "Packaging Standards",
+                description:
+                  "All materials must be palletized, banded, and stretch-wrapped. Use corner protectors for hardwood and engineered wood.",
+              },
+              {
+                icon: FileText,
+                title: "Required Information",
+                description:
+                  "Accurate weight, dimensions (L×W×H per pallet), pallet count, and NMFC class if known.",
+              },
+              {
+                icon: DollarSign,
+                title: "Shipping Quotes",
+                description:
+                  "PlankMarket provides integrated freight quotes from our carrier network. Shipping costs are calculated based on origin, destination, weight, and dimensions.",
+              },
+              {
+                icon: Shield,
+                title: "Damage Prevention",
+                description:
+                  "Ensure materials are secured to prevent shifting during transit. Loose boxes or unwrapped pallets may result in damage claims.",
+              },
+              {
+                icon: CheckCircle2,
+                title: "Delivery & Inspection",
+                description:
+                  "Buyers must inspect shipments upon delivery and note any damage on the delivery receipt (BOL). Photo evidence within 48 hours is required for damage claims.",
+              },
+            ].map((item) => (
+              <Card key={item.title} className="card-hover-lift">
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-2">
+                    <item.icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <CardTitle className="font-display">{item.title}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Tips for Faster Sales */}
+      <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl font-bold">Tips for Faster Sales</h2>
@@ -377,7 +434,7 @@ export default function SellerGuidePage() {
       </section>
 
       {/* Payment Processing */}
-      <section className="py-20 bg-muted/30">
+      <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
             <Card>
@@ -394,8 +451,8 @@ export default function SellerGuidePage() {
                 <ul className="space-y-3">
                   {[
                     "Buyers pay upfront when placing an order",
-                    "Funds are held in escrow until the buyer confirms receipt",
-                    "Once confirmed, payment is released to your Stripe account",
+                    "Funds are held securely until the carrier picks up the shipment",
+                    "Once pickup is confirmed, payment is automatically released to your Stripe account",
                     "Funds typically available in your bank within 3-5 business days",
                     "View all transaction history and earnings in your seller dashboard",
                   ].map((item) => (
@@ -420,7 +477,7 @@ export default function SellerGuidePage() {
       </section>
 
       {/* CTA */}
-      <section className="py-20">
+      <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />

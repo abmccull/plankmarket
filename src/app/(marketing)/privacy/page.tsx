@@ -131,9 +131,10 @@ export default function PrivacyPolicyPage() {
           <p className="text-sm text-muted-foreground">
             We implement appropriate technical and organizational security measures to protect your information:
           </p>
+          <p className="text-sm text-muted-foreground mb-3">
+            We use reasonable administrative, technical, and physical safeguards to protect your information. Data is transmitted using industry-standard encryption protocols.
+          </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Encryption of data in transit and at rest</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Regular security assessments and updates</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Access controls and authentication mechanisms</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Employee training on data protection practices</li>
           </ul>
@@ -301,7 +302,7 @@ export default function PrivacyPolicyPage() {
               At PlankMarket, we take your privacy seriously. This policy explains how we collect, use, disclose, and safeguard your information.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Last Updated: January 1, 2025
+              Last Updated: February 13, 2026
             </p>
           </div>
         </div>

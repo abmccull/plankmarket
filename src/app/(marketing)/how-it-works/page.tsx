@@ -68,7 +68,7 @@ export default function HowItWorksPage() {
                 step: "1",
                 title: "Browse Inventory",
                 description:
-                  "Search through thousands of listings featuring hardwood, engineered wood, vinyl plank, laminate, bamboo, and tile. Filter by material type, color, finish, lot size, price, and location.",
+                  "Browse listings featuring hardwood, engineered wood, vinyl plank, laminate, bamboo, and tile. Filter by material type, color, finish, lot size, price, and location.",
               },
               {
                 icon: ShoppingCart,
@@ -89,7 +89,7 @@ export default function HowItWorksPage() {
                 step: "4",
                 title: "Receive Your Order",
                 description:
-                  "Track your order status through your dashboard. Confirm receipt to release payment to the seller. Our support team helps resolve any issues quickly.",
+                  "Track your order status through your dashboard. Inspect materials upon delivery and note any issues on the delivery receipt. Payment is automatically released to the seller when the carrier picks up the shipment.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -151,7 +151,7 @@ export default function HowItWorksPage() {
                 step: "4",
                 title: "Ship & Get Paid",
                 description:
-                  "Arrange freight and ship materials. Mark orders as shipped with tracking info. Payment is released to your Stripe account within 3-5 business days after confirmation.",
+                  "Coordinate freight pickup through PlankMarket. Mark orders as shipped with tracking info. Payment is automatically released to your Stripe account when the carrier picks up the shipment, with funds in your bank within 3-5 business days.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -179,7 +179,7 @@ export default function HowItWorksPage() {
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl font-bold">Key Benefits</h2>
             <p className="mt-3 text-muted-foreground">
-              Why thousands of flooring professionals trust PlankMarket
+              Why flooring professionals trust PlankMarket
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -200,7 +200,7 @@ export default function HowItWorksPage() {
                 icon: CreditCard,
                 title: "Secure Payments via Stripe",
                 description:
-                  "All transactions are processed through Stripe, one of the most trusted payment platforms. Buyers are protected, and sellers receive guaranteed payment on delivery.",
+                  "All transactions are processed through Stripe, one of the most trusted payment platforms. Buyers are protected, and sellers receive secure payouts after shipment pickup.",
               },
               {
                 icon: Globe,
@@ -233,7 +233,7 @@ export default function HowItWorksPage() {
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
-                Whether you are looking to source surplus flooring or clear out excess inventory, PlankMarket makes it easy. Join thousands of flooring professionals who trust our platform.
+                Whether you are looking to source surplus flooring or clear out excess inventory, PlankMarket makes it easy.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/register?role=buyer">

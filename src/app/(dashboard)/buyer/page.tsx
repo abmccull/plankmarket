@@ -130,7 +130,7 @@ export default function BuyerDashboardPage() {
       <div className="rounded-2xl bg-gradient-to-br from-primary to-secondary p-8 text-center text-white relative overflow-hidden">
         <div className="absolute -top-20 -right-20 h-60 w-60 rounded-full bg-white/5 blur-3xl" />
         <h3 className="text-xl font-display font-semibold mb-2">Find Your Next Deal</h3>
-        <p className="text-white/80 mb-4">Browse thousands of liquidation flooring lots at wholesale prices</p>
+        <p className="text-white/80 mb-4">Browse liquidation flooring lots at wholesale prices</p>
         <Link href="/listings">
           <Button size="lg" className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110">
             Browse Listings <ArrowRight className="ml-2 h-4 w-4" />

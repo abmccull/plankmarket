@@ -19,23 +19,25 @@ function LogoIcon({ size = 32 }: { size?: number }) {
     <svg
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 86 86"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       {/* Top plank (left-aligned) */}
-      <rect x="2" y="2" width="34" height="10" rx="1.5" fill="#6B3A2A" />
-      {/* Left-pointing arrow */}
-      <polygon points="2,14.5 10,10 10,19" fill="white" />
-      <rect x="10" y="12.5" width="22" height="4" rx="0.5" fill="white" />
+      <rect x="0" y="0" width="52" height="22" rx="2" fill="#6B3A2A" />
       {/* Middle plank (shifted right) */}
-      <rect x="12" y="18" width="34" height="10" rx="1.5" fill="#6B3A2A" />
-      {/* Right-pointing arrow */}
-      <rect x="16" y="30.5" width="22" height="4" rx="0.5" fill="white" />
-      <polygon points="46,32.5 38,28 38,37" fill="white" />
-      {/* Bottom plank (slightly shifted) */}
-      <rect x="6" y="36" width="38" height="10" rx="1.5" fill="#6B3A2A" />
+      <rect x="22" y="32" width="54" height="22" rx="2" fill="#6B3A2A" />
+      {/* Bottom plank (wider, slightly shifted) */}
+      <rect x="8" y="64" width="76" height="22" rx="2" fill="#6B3A2A" />
+
+      {/* Left-pointing arrow (between top and middle planks) */}
+      <polygon points="0,27 18,15 18,39" fill="white" />
+      <rect x="18" y="21" width="38" height="12" rx="1" fill="white" />
+
+      {/* Right-pointing arrow (between middle and bottom planks) */}
+      <rect x="22" y="53" width="44" height="12" rx="1" fill="white" />
+      <polygon points="84,59 66,47 66,71" fill="white" />
     </svg>
   );
 }

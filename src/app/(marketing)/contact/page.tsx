@@ -46,6 +46,9 @@ export default function ContactPage() {
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
               Reach out to the PlankMarket team with questions, feedback, or partnership inquiries. We typically respond within 24 hours.
             </p>
+            <p className="mt-4 text-sm text-muted-foreground">
+              <strong>Tip:</strong> For order-related inquiries, please include your order number in the subject line for faster response.
+            </p>
           </div>
         </div>
       </section>

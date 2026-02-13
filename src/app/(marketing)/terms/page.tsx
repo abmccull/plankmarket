@@ -23,6 +23,13 @@ import {
   RefreshCw,
   MapPin,
   Mail,
+  CreditCard,
+  Truck,
+  Clock,
+  Package,
+  FileCheck,
+  ShieldAlert,
+  Award,
 } from "lucide-react";
 
 export default function TermsOfServicePage() {
@@ -91,21 +98,22 @@ export default function TermsOfServicePage() {
       title: "Transactions and Payment",
       content: (
         <p className="text-sm text-muted-foreground">
-          All transactions on PlankMarket are contracts between buyers and sellers. PlankMarket acts as a marketplace platform and is not a party to these transactions. Payment processing is handled through our secure third-party payment processor. By making a purchase, you authorize us to charge the total amount including applicable fees.
+          All transactions on PlankMarket are contracts between buyers and sellers. PlankMarket acts as a marketplace platform and is not a party to these transactions. Payment processing is handled through our secure third-party payment processor (Stripe). By making a purchase, you authorize us to charge the total amount including applicable fees.
         </p>
       ),
     },
     {
       icon: DollarSign,
       number: "6",
-      title: "Fees and Pricing",
+      title: "Transaction Fees",
       content: (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">PlankMarket charges the following fees:</p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Buyer fee: 3% of the transaction value</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Seller fee: As stated in the seller agreement</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Payment processing fees as applicable</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 3% of the transaction subtotal, added to the buyer&apos;s total at checkout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Commission:</strong> 2% of the transaction subtotal, deducted from seller payout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Payment Processing:</strong> Standard payment processing fees (approximately 2.9% + $0.30 per card transaction) are charged by our payment processor and deducted from seller payouts</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping:</strong> Shipping costs are determined by carrier rates and are the buyer&apos;s responsibility unless otherwise agreed</li>
           </ul>
           <p className="text-sm text-muted-foreground">
             All fees are subject to change with 30 days notice. Fees are non-refundable except as required by law or as explicitly stated in our refund policy.
@@ -114,8 +122,159 @@ export default function TermsOfServicePage() {
       ),
     },
     {
-      icon: Ban,
+      icon: CreditCard,
       number: "7",
+      title: "Payment Hold and Release",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            When a buyer completes a purchase, funds are held securely by our payment processor (Stripe). Funds are automatically released to the seller&apos;s connected Stripe account once the shipment is confirmed picked up by the carrier. Sellers typically receive funds in their bank account within 3-5 business days after release.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            PlankMarket uses a secure hold-and-release payment model. This is not a regulated escrow service. By using the platform, you acknowledge that PlankMarket is not acting as an escrow agent, trustee, or fiduciary.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: Package,
+      number: "8",
+      title: "Condition and Grading",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Surplus flooring materials are sold in the condition described in the listing. Common condition grades include:
+          </p>
+          <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>New Overstock:</strong> Unused, first-quality materials from excess production or canceled orders</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Discontinued:</strong> First-quality materials no longer in active production</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Closeout:</strong> End-of-line inventory being cleared at reduced prices</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seconds:</strong> Materials with minor cosmetic imperfections that do not affect performance</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Slight Damage:</strong> Materials with visible defects; extent described in listing</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Returns:</strong> Previously sold materials returned by end customers; condition varies</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Remnants:</strong> Partial lots or leftover quantities from larger orders</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Sellers must accurately describe the condition of materials. Buyers acknowledge that surplus materials may have minor variations and should review all listing photos and descriptions carefully before purchase.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: Truck,
+      number: "9",
+      title: "Freight and Shipping",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            <strong>Shipping Responsibility:</strong> Unless otherwise agreed between buyer and seller, the buyer is responsible for shipping costs. PlankMarket may facilitate shipping quotes and booking through integrated freight carriers.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Packaging Requirements:</strong> Sellers must ensure all materials are properly palletized, banded, and stretch-wrapped for LTL freight shipment. Inadequate packaging that results in damage during transit is the seller&apos;s responsibility.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Required Shipment Information:</strong> Sellers must provide accurate weight, dimensions, pallet count, and material classification for freight quotes.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Risk of Loss:</strong> Title and risk of loss transfer from seller to buyer upon carrier pickup. Freight damage claims should be filed with the carrier, with PlankMarket assisting in documentation.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Delivery Receipt:</strong> Both parties acknowledge that the signed delivery receipt (Bill of Lading) serves as the primary evidence of shipment condition at delivery.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: Clock,
+      number: "10",
+      title: "Inspection and Acceptance",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Buyers must inspect all shipments upon delivery and note any visible damage, shortage, or discrepancy on the delivery receipt (Bill of Lading) at the time of delivery.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Buyers have 48 hours after delivery to report damage, shortage, or material discrepancy to PlankMarket with supporting evidence including:
+          </p>
+          <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Photographs of damaged or incorrect materials</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Copy of the signed delivery receipt with noted exceptions</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Description of the issue</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            If no dispute is reported within 5 business days of confirmed delivery, the transaction is considered complete and final.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: Scale,
+      number: "11",
+      title: "Dispute Resolution",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            In the event of a dispute between buyer and seller, PlankMarket will mediate in good faith. Both parties agree to:
+          </p>
+          <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Provide requested evidence within 3 business days</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Cooperate with PlankMarket&apos;s investigation</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Accept PlankMarket&apos;s resolution as binding for transactions under $5,000</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            For disputes exceeding $5,000, either party may pursue resolution through binding arbitration administered by the American Arbitration Association under its Commercial Arbitration Rules, conducted in the State of Delaware.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>CLASS ACTION WAIVER:</strong> You agree that any dispute resolution proceedings will be conducted only on an individual basis and not in a class, consolidated, or representative action.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: ShieldAlert,
+      number: "12",
+      title: "Chargebacks and Payment Reversals",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            If a buyer initiates a chargeback or payment reversal through their payment provider, PlankMarket reserves the right to:
+          </p>
+          <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Suspend the buyer&apos;s account pending investigation</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Provide transaction evidence to the payment processor</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Deduct disputed amounts from the buyer&apos;s future transactions</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Pursue recovery of funds if the chargeback is determined to be fraudulent</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Sellers are protected from chargebacks on transactions where delivery is confirmed and no valid dispute was raised within the inspection period.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: FileCheck,
+      number: "13",
+      title: "Seller Representations and Indemnity",
+      content: (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            By listing materials on PlankMarket, sellers represent and warrant that:
+          </p>
+          <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>They have clear title and authority to sell the listed materials</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Material descriptions, photos, and condition reports are accurate</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Materials comply with applicable safety standards (CARB2, FloorScore, etc. where claimed)</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Materials do not infringe on any third-party intellectual property rights</li>
+          </ul>
+          <p className="text-sm text-muted-foreground">
+            Sellers agree to indemnify and hold harmless PlankMarket from any claims arising from misrepresentation, intellectual property infringement, product defects, or regulatory non-compliance related to their listings.
+          </p>
+        </div>
+      ),
+    },
+    {
+      icon: Ban,
+      number: "14",
       title: "Prohibited Items and Conduct",
       content: (
         <div className="space-y-3">
@@ -134,18 +293,8 @@ export default function TermsOfServicePage() {
       ),
     },
     {
-      icon: Scale,
-      number: "8",
-      title: "Disputes and Resolution",
-      content: (
-        <p className="text-sm text-muted-foreground">
-          In the event of a dispute between buyers and sellers, parties should first attempt to resolve the issue directly. If resolution cannot be reached, either party may contact PlankMarket support for assistance. We reserve the right to mediate disputes and make final decisions regarding refunds, cancellations, and account actions.
-        </p>
-      ),
-    },
-    {
       icon: AlertTriangle,
-      number: "9",
+      number: "15",
       title: "Limitation of Liability",
       content: (
         <div className="space-y-3">
@@ -167,7 +316,7 @@ export default function TermsOfServicePage() {
     },
     {
       icon: BookOpen,
-      number: "10",
+      number: "16",
       title: "Intellectual Property",
       content: (
         <p className="text-sm text-muted-foreground">
@@ -177,7 +326,7 @@ export default function TermsOfServicePage() {
     },
     {
       icon: Ban,
-      number: "11",
+      number: "17",
       title: "Termination",
       content: (
         <p className="text-sm text-muted-foreground">
@@ -187,7 +336,7 @@ export default function TermsOfServicePage() {
     },
     {
       icon: RefreshCw,
-      number: "12",
+      number: "18",
       title: "Changes to Terms",
       content: (
         <p className="text-sm text-muted-foreground">
@@ -197,7 +346,7 @@ export default function TermsOfServicePage() {
     },
     {
       icon: MapPin,
-      number: "13",
+      number: "19",
       title: "Governing Law",
       content: (
         <p className="text-sm text-muted-foreground">
@@ -207,7 +356,7 @@ export default function TermsOfServicePage() {
     },
     {
       icon: Mail,
-      number: "14",
+      number: "20",
       title: "Contact Information",
       content: (
         <p className="text-sm text-muted-foreground">
@@ -239,7 +388,7 @@ export default function TermsOfServicePage() {
               Please read these terms carefully before using PlankMarket. By accessing our platform, you agree to be bound by these terms.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Last Updated: January 1, 2025
+              Last Updated: February 13, 2026
             </p>
           </div>
         </div>
