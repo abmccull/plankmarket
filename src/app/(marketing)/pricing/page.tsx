@@ -21,8 +21,17 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Pricing & Fees",
+  title: "Pricing & Fees - Transparent B2B Marketplace Costs",
+  description:
+    "PlankMarket charges a 3% buyer fee and 2% seller fee with no hidden costs. Transparent pricing for the B2B flooring liquidation marketplace.",
+  openGraph: {
+    title: "PlankMarket Pricing & Fees",
+    description:
+      "Simple, transparent fee structure: 3% buyer fee, 2% seller fee, no hidden costs.",
+  },
 };
+
+export const revalidate = 3600;
 
 export default function PricingPage() {
   return (

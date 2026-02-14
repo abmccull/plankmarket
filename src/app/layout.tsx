@@ -21,7 +21,10 @@ const dmSerif = DM_Serif_Display({
   subsets: ["latin"],
 });
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plankmarket.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(BASE_URL),
   title: {
     default: "PlankMarket - B2B Wood Flooring Liquidation Marketplace",
     template: "%s | PlankMarket",
@@ -29,15 +32,32 @@ export const metadata: Metadata = {
   description:
     "The B2B marketplace connecting flooring manufacturers and distributors with retailers for liquidation, overstock, discontinued, and closeout inventory at wholesale prices.",
   keywords: [
-    "flooring",
-    "liquidation",
-    "wholesale",
-    "B2B",
-    "marketplace",
-    "hardwood",
-    "overstock",
-    "closeout",
+    "flooring liquidation",
+    "wholesale flooring",
+    "B2B flooring marketplace",
+    "surplus hardwood",
+    "overstock flooring",
+    "closeout flooring",
+    "discontinued flooring",
+    "flooring wholesale",
   ],
+  openGraph: {
+    type: "website",
+    siteName: "PlankMarket",
+    title: "PlankMarket - B2B Wood Flooring Liquidation Marketplace",
+    description:
+      "The B2B marketplace connecting flooring manufacturers and distributors with retailers for liquidation, overstock, discontinued, and closeout inventory at wholesale prices.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "PlankMarket - B2B Wood Flooring Liquidation Marketplace",
+    description:
+      "The B2B marketplace connecting flooring manufacturers and distributors with retailers for liquidation, overstock, discontinued, and closeout inventory at wholesale prices.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
@@ -50,6 +70,21 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} antialiased min-h-screen`}
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              name: "PlankMarket",
+              url: BASE_URL,
+              logo: `${BASE_URL}/logo.svg`,
+              description:
+                "B2B marketplace for surplus flooring materials connecting manufacturers, distributors, and retailers.",
+              sameAs: [],
+            }),
+          }}
+        />
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded focus:shadow-lg focus:outline-2 focus:outline-offset-2">
           Skip to main content
         </a>

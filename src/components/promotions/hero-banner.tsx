@@ -85,7 +85,7 @@ export function PremiumHeroBanner() {
                 by Verified Seller{listing.seller.businessState ? ` in ${listing.seller.businessState}` : ""}
               </p>
             )}
-            <Link href={`/listings/${listing.id}`}>
+            <Link href={`/listings/${listing.slug || listing.id}`}>
               <Button
                 size="lg"
                 className="bg-white text-primary hover:bg-white/90"

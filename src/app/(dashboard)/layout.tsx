@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { VerificationGate } from "@/components/dashboard/verification-gate";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default function DashboardLayout({
   children,

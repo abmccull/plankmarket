@@ -34,8 +34,17 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "About Us",
+  title: "About Us - Our Mission to Reduce Flooring Waste",
+  description:
+    "Learn about PlankMarket's mission to create a transparent, efficient B2B marketplace for surplus flooring materials, reducing waste while helping businesses recover value.",
+  openGraph: {
+    title: "About PlankMarket",
+    description:
+      "Reducing waste in the flooring industry by connecting buyers and sellers of surplus materials.",
+  },
 };
+
+export const revalidate = 3600;
 
 export default function AboutPage() {
   return (

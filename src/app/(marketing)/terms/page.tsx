@@ -1,3 +1,4 @@
+import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +31,15 @@ import {
   FileCheck,
   ShieldAlert,
 } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description:
+    "PlankMarket Terms of Service governing the use of the B2B flooring liquidation marketplace.",
+  robots: { index: false, follow: true },
+};
+
+export const revalidate = 3600;
 
 export default function TermsOfServicePage() {
   const sections = [

@@ -12,6 +12,7 @@ import type { PromotionTier } from "@/types";
 
 interface SponsoredListing {
   id: string;
+  slug?: string | null;
   title: string;
   askPricePerSqFt: number;
   totalSqFt: number;
@@ -75,7 +76,7 @@ export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
         {listings.map((listing) => (
           <Link
             key={listing.id}
-            href={`/listings/${listing.id}`}
+            href={`/listings/${listing.slug || listing.id}`}
             className="shrink-0 w-[220px]"
           >
             <Card className="overflow-hidden hover:shadow-md transition-shadow border-primary/20">

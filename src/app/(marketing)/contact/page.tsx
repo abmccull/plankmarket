@@ -24,8 +24,17 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Contact Us",
+  title: "Contact Us - Get Help with PlankMarket",
+  description:
+    "Contact the PlankMarket team for support with buying, selling, shipping, payments, or account questions. We're here to help flooring professionals.",
+  openGraph: {
+    title: "Contact PlankMarket",
+    description:
+      "Get in touch with the PlankMarket support team for any questions about the B2B flooring marketplace.",
+  },
 };
+
+export const revalidate = 3600;
 
 export default function ContactPage() {
   return (

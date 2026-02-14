@@ -23,8 +23,17 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "How It Works",
+  title: "How It Works - Buy & Sell Surplus Flooring",
+  description:
+    "Discover how PlankMarket works for buyers and sellers. Browse surplus flooring inventory, purchase securely via Stripe, and coordinate freight shipping nationwide.",
+  openGraph: {
+    title: "How PlankMarket Works",
+    description:
+      "Simple, transparent process for buying and selling surplus flooring materials B2B.",
+  },
 };
+
+export const revalidate = 3600;
 
 export default function HowItWorksPage() {
   return (

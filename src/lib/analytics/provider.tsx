@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { PostHogProvider } from "posthog-js/react";
-import { initPostHog } from "./posthog-client";
 import { useAuthStore } from "@/lib/stores/auth-store";
-
-const posthogClient = initPostHog();
+import type { PostHog } from "posthog-js";
 
 export function PostHogAnalyticsProvider({
   children,
@@ -13,8 +11,17 @@ export function PostHogAnalyticsProvider({
   children: React.ReactNode;
 }) {
   const user = useAuthStore((state) => state.user);
+  const [posthogClient, setPosthogClient] = useState<PostHog | null>(null);
+
+  // Lazy-load PostHog after initial render to improve Core Web Vitals
+  useEffect(() => {
+    import("./posthog-client").then(({ initPostHog }) => {
+      setPosthogClient(initPostHog());
+    });
+  }, []);
 
   useEffect(() => {
+    if (!posthogClient) return;
     if (user) {
       posthogClient.identify(user.id, {
         email: user.email,
@@ -27,7 +34,11 @@ export function PostHogAnalyticsProvider({
     } else {
       posthogClient.reset();
     }
-  }, [user]);
+  }, [user, posthogClient]);
+
+  if (!posthogClient) {
+    return <>{children}</>;
+  }
 
   return <PostHogProvider client={posthogClient}>{children}</PostHogProvider>;
 }

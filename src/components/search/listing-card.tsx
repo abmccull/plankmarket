@@ -17,6 +17,7 @@ import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 interface ListingCardProps {
   listing: {
     id: string;
+    slug?: string | null;
     title: string;
     materialType: string;
     species: string | null;
@@ -68,7 +69,7 @@ export function ListingCard({ listing }: ListingCardProps) {
   const tier = listing.promotionTier;
 
   return (
-    <Link href={`/listings/${listing.id}`}>
+    <Link href={`/listings/${listing.slug || listing.id}`}>
       <Card
         className={cn(
           "group overflow-hidden card-hover-lift hover:shadow-lg transition-shadow duration-200",

@@ -1,3 +1,4 @@
+import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +25,15 @@ import {
   Shield,
   Gavel,
 } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "PlankMarket Privacy Policy detailing how we collect, use, and protect your data on the B2B flooring marketplace.",
+  robots: { index: false, follow: true },
+};
+
+export const revalidate = 3600;
 
 export default function PrivacyPolicyPage() {
   const sections = [

@@ -1,7 +1,6 @@
 import {
   createTRPCRouter,
   publicProcedure,
-  protectedProcedure,
   sellerProcedure,
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema } from "@/lib/validators/listing";
@@ -12,6 +11,7 @@ import { z } from "zod";
 import zipcodes from "zipcodes";
 import { priority1 } from "@/server/services/priority1";
 import { redis } from "@/lib/redis/client";
+import { slugify } from "@/lib/utils";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
@@ -43,6 +43,13 @@ export const listingRouter = createTRPCRouter({
           expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
         })
         .returning();
+
+      // Generate and update slug (title + first 6 chars of UUID for uniqueness)
+      const slug = `${slugify(input.title)}-${listing.id.slice(0, 6)}`;
+      await ctx.db
+        .update(listings)
+        .set({ slug })
+        .where(eq(listings.id, listing.id));
 
       // Link uploaded media to the listing
       if (mediaIds && mediaIds.length > 0) {
@@ -97,6 +104,7 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { mediaIds, ...updateData } = input.data;
 
       const [updated] = await ctx.db
@@ -218,7 +226,66 @@ export const listingRouter = createTRPCRouter({
               .set({ viewsCount: sql`${listings.viewsCount} + 1` })
               .where(eq(listings.id, input.id));
           }
-        } catch (error) {
+        } catch {
+          // Non-fatal: view count tracking failure should not break the listing view
+          // Silently fail to ensure user experience is not affected
+        }
+      })();
+
+      return listing;
+    }),
+
+  // Get a single listing by slug (public)
+  getBySlug: publicProcedure
+    .input(z.object({ slug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.slug, input.slug),
+        with: {
+          seller: {
+            columns: {
+              id: true,
+              verified: true,
+              createdAt: true,
+              stripeOnboardingComplete: true,
+              businessState: true,
+              role: true,
+            },
+          },
+          media: {
+            orderBy: (media, { asc }) => [asc(media.sortOrder)],
+          },
+        },
+      });
+
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      // Increment view count with Redis deduplication (fire-and-forget, non-fatal)
+      (async () => {
+        try {
+          // Use authenticated user ID if available, otherwise use client IP
+          const viewerIdentifier = ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
+          const viewKey = `listing-view:${listing.id}:${viewerIdentifier}`;
+
+          // Check if this viewer has already viewed this listing recently
+          const alreadyViewed = await redis.get(viewKey);
+
+          if (!alreadyViewed) {
+            // Mark as viewed with 1 hour TTL
+            await redis.set(viewKey, "1", { ex: 3600 });
+
+            // Increment the view count in the database
+            await ctx.db
+              .update(listings)
+              .set({ viewsCount: sql`${listings.viewsCount} + 1` })
+              .where(eq(listings.id, listing.id));
+          }
+        } catch {
           // Non-fatal: view count tracking failure should not break the listing view
           // Silently fail to ensure user experience is not affected
         }

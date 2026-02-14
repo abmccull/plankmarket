@@ -18,6 +18,8 @@ import {
 import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
 import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
 
+export const revalidate = 3600;
+
 export default function HomePage() {
   return (
     <>
@@ -299,6 +301,128 @@ export default function HomePage() {
                 Buyer fee + seller fee, no hidden costs
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Browse by Material */}
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <h2 className="font-display text-3xl font-bold text-center mb-8">Browse by Material</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 max-w-5xl mx-auto">
+            <Link href="/flooring/hardwood">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Hardwood</CardTitle>
+                  <CardDescription className="text-xs">Solid wood flooring</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/engineered">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Engineered</CardTitle>
+                  <CardDescription className="text-xs">Engineered hardwood</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/laminate">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Laminate</CardTitle>
+                  <CardDescription className="text-xs">Laminate planks</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/vinyl_lvp">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Vinyl / LVP</CardTitle>
+                  <CardDescription className="text-xs">Luxury vinyl plank</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/bamboo">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Bamboo</CardTitle>
+                  <CardDescription className="text-xs">Sustainable bamboo</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/tile">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Tile</CardTitle>
+                  <CardDescription className="text-xs">Ceramic & porcelain</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Browse by Condition */}
+      <section className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <h2 className="font-display text-3xl font-bold text-center mb-8">Browse by Condition</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
+            <Link href="/flooring/condition/new_overstock">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">New Overstock</CardTitle>
+                  <CardDescription className="text-xs">Brand new surplus</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/condition/discontinued">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Discontinued</CardTitle>
+                  <CardDescription className="text-xs">Discontinued lines</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/condition/closeout">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Closeout</CardTitle>
+                  <CardDescription className="text-xs">Closeout deals</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/condition/slight_damage">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Slight Damage</CardTitle>
+                  <CardDescription className="text-xs">Minor imperfections</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/condition/seconds">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Seconds</CardTitle>
+                  <CardDescription className="text-xs">Factory seconds</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/condition/remnants">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Remnants</CardTitle>
+                  <CardDescription className="text-xs">Partial lots</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
+            <Link href="/flooring/condition/returns">
+              <Card className="card-hover-lift text-center h-full">
+                <CardHeader>
+                  <CardTitle className="text-base">Returns</CardTitle>
+                  <CardDescription className="text-xs">Customer returns</CardDescription>
+                </CardHeader>
+              </Card>
+            </Link>
           </div>
         </div>
       </section>

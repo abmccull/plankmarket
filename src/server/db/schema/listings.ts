@@ -92,6 +92,7 @@ export const listings = pgTable(
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
     title: varchar("title", { length: 255 }).notNull(),
+    slug: text("slug").unique(),
     description: text("description"),
     status: listingStatusEnum("status").notNull().default("draft"),
 
@@ -167,6 +168,7 @@ export const listings = pgTable(
     index("listings_material_type_idx").on(table.materialType),
     index("listings_condition_idx").on(table.condition),
     index("listings_location_state_idx").on(table.locationState),
+    index("listings_slug_idx").on(table.slug),
     index("listings_ask_price_idx").on(table.askPricePerSqFt),
     index("listings_created_at_idx").on(table.createdAt),
     index("listings_total_sq_ft_idx").on(table.totalSqFt),

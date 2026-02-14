@@ -31,8 +31,17 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Seller Guide",
+  title: "Seller Guide - How to List and Sell Surplus Flooring",
+  description:
+    "Complete guide for sellers on PlankMarket. Learn how to create listings, set pricing, manage orders, and get paid for surplus flooring inventory.",
+  openGraph: {
+    title: "PlankMarket Seller Guide",
+    description:
+      "Everything you need to know about selling surplus flooring on PlankMarket.",
+  },
 };
+
+export const revalidate = 3600;
 
 export default function SellerGuidePage() {
   return (
