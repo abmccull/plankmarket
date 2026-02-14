@@ -158,7 +158,7 @@ export default function ListingsPage() {
             value={String(filters.limit ?? 24)}
             onValueChange={(v) => setLimit(parseInt(v))}
           >
-            <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectTrigger className="w-full sm:w-[140px] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -171,7 +171,7 @@ export default function ListingsPage() {
             value={filters.sort}
             onValueChange={(v) => setSort(v as SortOption)}
           >
-            <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>

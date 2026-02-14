@@ -141,11 +141,13 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Order Management</h1>
-        <p className="text-muted-foreground mt-1">
-          View and monitor all platform orders
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-3xl font-bold">Order Management</h1>
+          <p className="text-muted-foreground mt-1">
+            View and monitor all platform orders
+          </p>
+        </div>
       </div>
 
       {isLoading ? (

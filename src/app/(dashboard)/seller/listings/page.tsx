@@ -34,7 +34,7 @@ export default function SellerListingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-bold">My Listings</h1>
           <p className="text-muted-foreground mt-1">
@@ -132,7 +132,7 @@ export default function SellerListingsPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     <span className="text-xs text-muted-foreground">
                       {formatRelativeTime(listing.createdAt)}
                     </span>

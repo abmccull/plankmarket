@@ -294,7 +294,7 @@ export default function CreateListingPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Material Type *</Label>
                   <Select
@@ -331,7 +331,7 @@ export default function CreateListingPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Finish</Label>
                   <Select
@@ -375,7 +375,7 @@ export default function CreateListingPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Thickness</Label>
                   <Select
@@ -446,7 +446,7 @@ export default function CreateListingPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="color">Color</Label>
                   <Input
@@ -485,7 +485,7 @@ export default function CreateListingPage() {
                   </p>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="totalSqFt">Total Square Footage *</Label>
                   <Input
@@ -517,7 +517,7 @@ export default function CreateListingPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="sqFtPerBox">Sq Ft Per Box</Label>
                   <Input
@@ -546,7 +546,7 @@ export default function CreateListingPage() {
                 Required for shipping quotes. Standard pallet: 48&quot;L x 40&quot;W. Typical flooring pallet weighs 1,000-2,500 lbs.
               </p>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="palletWeight">Pallet Weight (lbs) *</Label>
                   <Input
@@ -579,7 +579,7 @@ export default function CreateListingPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="palletWidth">Pallet Width (in) *</Label>
                   <Input
@@ -628,7 +628,7 @@ export default function CreateListingPage() {
               <Separator className="my-4" />
 
               <h3 className="font-medium">Warehouse Location</h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="locationCity">City</Label>
                   <Input
@@ -902,7 +902,7 @@ export default function CreateListingPage() {
                 <p className="font-semibold">{watchedValues.title || "---"}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <h3 className="font-medium text-sm text-muted-foreground mb-1">
                     Material

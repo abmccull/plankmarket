@@ -150,7 +150,7 @@ export function Header() {
                     )}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80">
+                <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] sm:w-80 max-h-[70vh] overflow-y-auto">
                   <DropdownMenuLabel className="flex items-center justify-between">
                     <span>Notifications</span>
                     {unreadCount > 0 && (
@@ -222,7 +222,7 @@ export function Header() {
                     className="flex items-center gap-2 text-primary-foreground hover:bg-white/10"
                     aria-label="Open user menu"
                   >
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
                       <User className="h-4 w-4 text-primary-foreground" />
                     </div>
                     <span className="hidden md:inline text-sm">

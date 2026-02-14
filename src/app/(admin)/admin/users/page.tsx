@@ -127,7 +127,7 @@ export default function AdminUsersPage() {
             handleRoleChange(row.original.id, value as UserRole)
           }
         >
-          <SelectTrigger className="w-32 h-8">
+          <SelectTrigger className="w-full sm:w-32 h-8">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -206,11 +206,13 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">User Management</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage registered users and their roles
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-3xl font-bold">User Management</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage registered users and their roles
+          </p>
+        </div>
       </div>
 
       {isLoading ? (

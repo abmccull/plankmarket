@@ -156,11 +156,13 @@ export default function AdminListingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Listing Management</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage all listings on the platform
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-3xl font-bold">Listing Management</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage all listings on the platform
+          </p>
+        </div>
       </div>
 
       {isLoading ? (

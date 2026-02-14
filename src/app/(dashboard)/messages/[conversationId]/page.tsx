@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Loader2, ArrowLeft, ExternalLink } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { toast } from "sonner";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 export default function ConversationPage() {
   const params = useParams();
@@ -127,28 +128,30 @@ export default function ConversationPage() {
   const otherParty = isBuyer
     ? conversationData.seller
     : conversationData.buyer;
-  const otherPartyName =
-    otherParty?.businessName || otherParty?.name || "Unknown";
+  const otherPartyName = otherParty
+    ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState })
+    : "Unknown";
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)]">
+    <div className="flex flex-col h-[calc(100dvh-8rem)]">
       {/* Header */}
       <Card elevation="flat" className="p-4 mb-4 border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => router.push("/messages")}
               aria-label="Back to messages"
+              className="shrink-0"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <div>
-              <h2 className="font-semibold text-lg">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold text-lg truncate">
                 {conversationData.listing.title}
               </h2>
-              <p className="text-sm text-muted-foreground">{otherPartyName}</p>
+              <p className="text-sm text-muted-foreground truncate">{otherPartyName}</p>
             </div>
           </div>
           <Link href={`/listings/${conversationData.listing.id}`}>
@@ -180,8 +183,7 @@ export default function ConversationPage() {
                   <ChatBubble
                     key={message.id}
                     message={message.body}
-                    senderName={message.sender.name}
-                    senderAvatar={message.sender.avatarUrl}
+                    senderName={getAnonymousDisplayName({ role: message.sender.role, businessState: message.sender.businessState })}
                     timestamp={message.createdAt}
                     isCurrentUser={isCurrentUser}
                     showSenderInfo={showSenderInfo}

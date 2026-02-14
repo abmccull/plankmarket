@@ -36,7 +36,7 @@ export function ChatBubble({
       {/* Message bubble */}
       <div
         className={cn(
-          "flex flex-col max-w-[70%]",
+          "flex flex-col max-w-[85%] sm:max-w-[70%]",
           isCurrentUser ? "items-end" : "items-start"
         )}
       >

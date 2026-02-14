@@ -227,11 +227,11 @@ export function PhotoUpload({ onImagesChange }: PhotoUploadProps) {
                 </div>
               )}
               {/* Action buttons */}
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent sm:bg-black/40 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                 <Button
                   size="icon"
                   variant="secondary"
-                  className="h-8 w-8"
+                  className="h-9 w-9"
                   onClick={() => handleMoveUp(index)}
                   disabled={index === 0}
                   aria-label="Move image up"
@@ -241,7 +241,7 @@ export function PhotoUpload({ onImagesChange }: PhotoUploadProps) {
                 <Button
                   size="icon"
                   variant="secondary"
-                  className="h-8 w-8"
+                  className="h-9 w-9"
                   onClick={() => handleMoveDown(index)}
                   disabled={index === uploadedImages.length - 1}
                   aria-label="Move image down"
@@ -251,7 +251,7 @@ export function PhotoUpload({ onImagesChange }: PhotoUploadProps) {
                 <Button
                   size="icon"
                   variant="destructive"
-                  className="h-8 w-8"
+                  className="h-9 w-9"
                   onClick={() => handleDelete(image.id)}
                   aria-label={`Delete ${image.fileName}`}
                 >

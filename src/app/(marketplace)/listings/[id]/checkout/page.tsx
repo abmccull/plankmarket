@@ -30,6 +30,7 @@ import ShippingQuoteSelector, {
   type SelectedShippingQuote,
 } from "@/components/checkout/shipping-quote-selector";
 import Image from "next/image";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 type CheckoutStep = "address" | "shipping" | "payment";
 
@@ -309,7 +310,7 @@ export default function CheckoutPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="shippingCity">City</Label>
                       <Input
@@ -420,7 +421,7 @@ export default function CheckoutPage() {
 
         {/* Right - Order Summary */}
         <div className="md:col-span-2">
-          <Card className="sticky top-20">
+          <Card className="lg:sticky lg:top-20">
             <CardHeader>
               <CardTitle className="text-lg">Order Summary</CardTitle>
             </CardHeader>
@@ -445,7 +446,7 @@ export default function CheckoutPage() {
                     {listing.title}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {listing.seller?.businessName}
+                    {listing.seller ? getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState }) : "Verified Seller"}
                   </p>
                 </div>
               </div>
