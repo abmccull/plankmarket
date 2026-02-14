@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc/client";
 import { ConversationListItem } from "@/components/messaging/conversation-list-item";
 import { Loader2, MessageSquare } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 export default function MessagesPage() {
   const { user } = useAuthStore();
@@ -45,8 +46,9 @@ export default function MessagesPage() {
             // Determine the other party (not the current user)
             const isBuyer = conversation.buyerId === user?.id;
             const otherParty = isBuyer ? conversation.seller : conversation.buyer;
-            const otherPartyName =
-              otherParty?.businessName || otherParty?.name || "Unknown";
+            const otherPartyName = otherParty
+              ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState })
+              : "Unknown";
 
             // Get last message
             const lastMessage = conversation.messages?.[0];

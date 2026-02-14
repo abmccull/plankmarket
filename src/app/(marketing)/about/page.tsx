@@ -30,7 +30,6 @@ import {
   MessageSquare,
   DollarSign,
   Package,
-  AlertTriangle,
   Globe,
 } from "lucide-react";
 

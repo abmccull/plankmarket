@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,12 +50,13 @@ export function PremiumHeroBanner() {
       <div className="container mx-auto px-4 py-12 md:py-16">
         <div className="flex flex-col md:flex-row items-center gap-8">
           {/* Image */}
-          <div className="w-full md:w-1/2 aspect-[16/9] rounded-lg overflow-hidden bg-black/20">
+          <div className="w-full md:w-1/2 aspect-[16/9] rounded-lg overflow-hidden bg-black/20 relative">
             {imageUrl ? (
-              <img
+              <Image
                 src={imageUrl}
                 alt={listing.title}
-                className="h-full w-full object-cover"
+                fill
+                className="object-cover"
               />
             ) : (
               <div className="h-full w-full flex items-center justify-center">
@@ -78,9 +80,9 @@ export function PremiumHeroBanner() {
               <span>{formatSqFt(listing.totalSqFt)}</span>
               <span>Lot: {formatCurrency(lotValue)}</span>
             </div>
-            {listing.seller?.businessName && (
+            {listing.seller && (
               <p className="text-sm text-white/70 mb-4">
-                by {listing.seller.businessName}
+                by Verified Seller{listing.seller.businessState ? ` in ${listing.seller.businessState}` : ""}
               </p>
             )}
             <Link href={`/listings/${listing.id}`}>

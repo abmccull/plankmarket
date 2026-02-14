@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { OfferStatusBadge } from "./offer-status-badge";
 import { formatCurrency, formatSqFt, formatRelativeTime } from "@/lib/utils";
 import { ArrowRight, AlertCircle } from "lucide-react";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 type OfferStatus = "pending" | "countered" | "accepted" | "rejected" | "withdrawn" | "expired";
 
@@ -24,13 +25,13 @@ interface OfferCardProps {
     };
     buyer: {
       id: string;
-      name: string;
-      businessName: string | null;
+      role: string;
+      businessState: string | null;
     };
     seller: {
       id: string;
-      name: string;
-      businessName: string | null;
+      role: string;
+      businessState: string | null;
     };
   };
   currentUserId: string;
@@ -44,7 +45,7 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
     (offer.status === "pending" || offer.status === "countered");
 
   const otherParty = userRole === "buyer" ? offer.seller : offer.buyer;
-  const otherPartyName = otherParty.businessName || otherParty.name;
+  const otherPartyName = getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState });
 
   // Determine current price (counter if available, else offer)
   const currentPrice = offer.counterPricePerSqFt || offer.offerPricePerSqFt;

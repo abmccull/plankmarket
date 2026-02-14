@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { noContactInfo } from "@/lib/content-filter/zod";
 
 export const createOfferSchema = z.object({
   listingId: z.string().uuid(),
@@ -13,6 +14,7 @@ export const createOfferSchema = z.object({
   message: z
     .string()
     .max(500, "Message must be at most 500 characters")
+    .superRefine(noContactInfo("offer message"))
     .optional(),
 });
 
@@ -25,6 +27,7 @@ export const counterOfferSchema = z.object({
   message: z
     .string()
     .max(500, "Message must be at most 500 characters")
+    .superRefine(noContactInfo("counter offer message"))
     .optional(),
 });
 
@@ -37,6 +40,7 @@ export const rejectOfferSchema = z.object({
   message: z
     .string()
     .max(500, "Message must be at most 500 characters")
+    .superRefine(noContactInfo("rejection message"))
     .optional(),
 });
 
@@ -60,6 +64,7 @@ export const respondToOfferSchema = z
     counterMessage: z
       .string()
       .max(500, "Message must be at most 500 characters")
+      .superRefine(noContactInfo("counter message"))
       .optional(),
   })
   .refine(

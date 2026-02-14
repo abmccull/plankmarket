@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StarRating } from "@/components/shared/star-rating";
 import { CheckCircle2, MapPin, Calendar, Mail } from "lucide-react";
 import { ListingCard } from "@/components/search/listing-card";
+import { getAnonymousDisplayName, getAnonymousInitials } from "@/lib/identity/display-name";
 
 interface SellerProfilePageProps {
   params: Promise<{
@@ -108,7 +109,7 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
                 <CardTitle className="text-3xl">
-                  {seller.businessName}
+                  {getAnonymousDisplayName({ role: "seller", businessState: "TX" })}
                 </CardTitle>
                 {seller.isVerified && (
                   <Badge className="bg-green-50 text-green-700 border-green-200">
@@ -120,18 +121,13 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
               <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
                 <div className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" />
-                  {seller.location}
+                  TX
                 </div>
                 <div className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
                   Member since {memberSinceFormatted}
                 </div>
               </div>
-              {seller.bio && (
-                <CardDescription className="text-base leading-relaxed max-w-3xl">
-                  {seller.bio}
-                </CardDescription>
-              )}
             </div>
           </div>
         </CardHeader>

@@ -10,14 +10,15 @@ import {
   LogOut,
   Clock,
 } from "lucide-react";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 type OfferEvent = {
   id: string;
   eventType: "initial_offer" | "counter" | "accept" | "reject" | "withdraw" | "expire";
   actor: {
     id: string;
-    name: string;
-    businessName: string | null;
+    role: string;
+    businessState: string | null;
   };
   pricePerSqFt?: number | null;
   quantitySqFt?: number | null;
@@ -79,7 +80,7 @@ export function OfferTimeline({ events, currentUserId }: OfferTimelineProps) {
         const config = eventConfig[event.eventType];
         const Icon = config.icon;
         const isCurrentUser = event.actor.id === currentUserId;
-        const actorName = event.actor.businessName || event.actor.name;
+        const actorName = getAnonymousDisplayName({ role: event.actor.role, businessState: event.actor.businessState });
 
         return (
           <div key={event.id} className="relative flex gap-4">

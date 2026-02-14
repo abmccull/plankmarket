@@ -2,6 +2,7 @@ import {
   createTRPCRouter,
   protectedProcedure,
   verifiedProcedure,
+  messagingProcedure,
 } from "../trpc";
 import {
   sendMessageSchema,
@@ -54,17 +55,15 @@ export const messageRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           buyer: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -98,17 +97,15 @@ export const messageRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           buyer: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -117,8 +114,8 @@ export const messageRouter = createTRPCRouter({
       return conversation;
     }),
 
-  // Send a message in a conversation
-  sendMessage: verifiedProcedure
+  // Send a message in a conversation (uses messagingProcedure for content policy enforcement)
+  sendMessage: messagingProcedure
     .input(sendMessageSchema)
     .mutation(async ({ ctx, input }) => {
       // Verify user is participant in conversation
@@ -199,17 +196,15 @@ export const messageRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           messages: {
@@ -283,8 +278,8 @@ export const messageRouter = createTRPCRouter({
           sender: {
             columns: {
               id: true,
-              name: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
         },

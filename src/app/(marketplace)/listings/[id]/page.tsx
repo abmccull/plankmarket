@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { getAnonymousDisplayName, getAnonymousInitials } from "@/lib/identity/display-name";
 
 const materialLabels: Record<string, string> = {
   hardwood: "Hardwood",
@@ -600,13 +601,12 @@ export default function ListingDetailPage() {
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                       <span className="text-sm font-semibold text-primary">
-                        {listing.seller.businessName?.charAt(0) ||
-                          listing.seller.name.charAt(0)}
+                        {getAnonymousInitials(listing.seller.role)}
                       </span>
                     </div>
                     <div>
                       <div className="text-sm font-medium flex items-center gap-1">
-                        {listing.seller.businessName || listing.seller.name}
+                        {getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState })}
                         {listing.seller.verified && (
                           <Shield className="h-3 w-3 text-secondary" />
                         )}
@@ -630,7 +630,7 @@ export default function ListingDetailPage() {
           open={showPaymentNotReadyDialog}
           onOpenChange={setShowPaymentNotReadyDialog}
           sellerId={listing.seller.id}
-          sellerName={listing.seller.businessName || listing.seller.name}
+          sellerName={getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState })}
           listingId={listing.id}
         />
       )}

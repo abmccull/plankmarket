@@ -69,6 +69,9 @@ export type { PlatformSetting, NewPlatformSetting } from "./settings";
 export { shipments, shipmentStatusEnum } from "./shipments";
 export type { Shipment, NewShipment, TrackingEvent } from "./shipments";
 
+export { contentViolations } from "./content-violations";
+export type { ContentViolation, NewContentViolation } from "./content-violations";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -86,6 +89,7 @@ import { disputes, disputeMessages } from "./disputes";
 import { feedback } from "./feedback";
 import { conversations, messages } from "./conversations";
 import { shipments } from "./shipments";
+import { contentViolations } from "./content-violations";
 
 export const usersRelations = relations(users, ({ many }) => ({
   listings: many(listings),
@@ -106,6 +110,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   buyerConversations: many(conversations, { relationName: "buyerConversations" }),
   sellerConversations: many(conversations, { relationName: "sellerConversations" }),
   sentMessages: many(messages),
+  contentViolations: many(contentViolations, { relationName: "userViolations" }),
+  reviewedViolations: many(contentViolations, { relationName: "reviewerViolations" }),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -315,5 +321,18 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   sender: one(users, {
     fields: [messages.senderId],
     references: [users.id],
+  }),
+}));
+
+export const contentViolationsRelations = relations(contentViolations, ({ one }) => ({
+  user: one(users, {
+    fields: [contentViolations.userId],
+    references: [users.id],
+    relationName: "userViolations",
+  }),
+  reviewer: one(users, {
+    fields: [contentViolations.reviewedBy],
+    references: [users.id],
+    relationName: "reviewerViolations",
   }),
 }));

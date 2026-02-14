@@ -17,6 +17,7 @@ import { nanoid } from "nanoid";
 import { sendOrderConfirmationEmail } from "@/lib/email/send";
 import { inngest } from "@/lib/inngest/client";
 import { redis } from "@/lib/redis/client";
+import { maskUserForOrder } from "@/lib/contact-masking";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
@@ -218,7 +219,6 @@ export const orderRouter = createTRPCRouter({
         subtotal: `${order.subtotal}`,
         buyerFee: `${order.buyerFee}`,
         total: `${order.totalPrice}`,
-        sellerName: "",
         orderId: order.id,
       }).catch((err) => {
         console.error("Failed to send order confirmation email:", err);
@@ -257,6 +257,8 @@ export const orderRouter = createTRPCRouter({
               businessName: true,
               email: true,
               phone: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
@@ -266,6 +268,8 @@ export const orderRouter = createTRPCRouter({
               businessName: true,
               email: true,
               phone: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -278,7 +282,13 @@ export const orderRouter = createTRPCRouter({
         });
       }
 
-      return order;
+      const isAdmin = ctx.user.role === "admin";
+
+      return {
+        ...order,
+        buyer: maskUserForOrder(order.buyer, order.status, isAdmin),
+        seller: maskUserForOrder(order.seller, order.status, isAdmin),
+      };
     }),
 
   // Get buyer's orders
@@ -329,7 +339,8 @@ export const orderRouter = createTRPCRouter({
             seller: {
               columns: {
                 id: true,
-                businessName: true,
+                role: true,
+                businessState: true,
               },
             },
           },
@@ -403,9 +414,8 @@ export const orderRouter = createTRPCRouter({
             buyer: {
               columns: {
                 id: true,
-                name: true,
-                businessName: true,
-                email: true,
+                role: true,
+                businessState: true,
               },
             },
           },

@@ -67,7 +67,6 @@ export default function CheckoutPage() {
 
   const {
     register,
-    handleSubmit,
     watch,
     reset,
     trigger,

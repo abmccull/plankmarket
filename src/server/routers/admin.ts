@@ -1,5 +1,5 @@
 import { createTRPCRouter, adminProcedure } from "../trpc";
-import { users, listings, orders, notifications, platformSettings, shipments, shipmentStatusEnum } from "../db/schema";
+import { users, listings, orders, notifications, platformSettings, shipments, shipmentStatusEnum, contentViolations } from "../db/schema";
 import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -1135,4 +1135,103 @@ export const adminRouter = createTRPCRouter({
       totalMargin: revenueTotals.totalMargin,
     };
   }),
+
+  // ==========================================
+  // Content Moderation
+  // ==========================================
+
+  // Get content violations with pagination
+  getContentViolations: adminProcedure
+    .input(
+      z.object({
+        reviewed: z.boolean().optional(),
+        userId: z.string().uuid().optional(),
+        contentType: z.string().optional(),
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const offset = (input.page - 1) * input.limit;
+
+      const conditions = [];
+      if (input.reviewed !== undefined) {
+        conditions.push(eq(contentViolations.reviewed, input.reviewed));
+      }
+      if (input.userId) {
+        conditions.push(eq(contentViolations.userId, input.userId));
+      }
+      if (input.contentType) {
+        conditions.push(eq(contentViolations.contentType, input.contentType));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const violationsList = await ctx.db.query.contentViolations.findMany({
+        where: whereClause,
+        orderBy: [desc(contentViolations.createdAt)],
+        limit: input.limit,
+        offset,
+        with: {
+          user: {
+            columns: {
+              id: true,
+              name: true,
+              email: true,
+              businessName: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      const [{ count }] = await ctx.db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(contentViolations)
+        .where(whereClause);
+
+      return {
+        violations: violationsList,
+        total: count,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(count / input.limit),
+      };
+    }),
+
+  // Review a content violation
+  reviewContentViolation: adminProcedure
+    .input(
+      z.object({
+        violationId: z.string().uuid(),
+        falsePositive: z.boolean(),
+        adminNotes: z.string().max(500).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const violation = await ctx.db.query.contentViolations.findFirst({
+        where: eq(contentViolations.id, input.violationId),
+      });
+
+      if (!violation) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Violation not found",
+        });
+      }
+
+      const [updated] = await ctx.db
+        .update(contentViolations)
+        .set({
+          reviewed: true,
+          reviewedBy: ctx.user.id,
+          reviewedAt: new Date(),
+          falsePositive: input.falsePositive,
+          adminNotes: input.adminNotes,
+        })
+        .where(eq(contentViolations.id, input.violationId))
+        .returning();
+
+      return updated;
+    }),
 });

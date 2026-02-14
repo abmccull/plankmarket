@@ -35,7 +35,6 @@ export async function sendOrderConfirmationEmail(params: {
   subtotal: string;
   buyerFee: string;
   total: string;
-  sellerName: string;
   orderId: string;
 }) {
   const orderUrl = `${env.NEXT_PUBLIC_APP_URL}/buyer/orders/${params.orderId}`;
@@ -53,7 +52,6 @@ export async function sendOrderConfirmationEmail(params: {
       subtotal: params.subtotal,
       buyerFee: params.buyerFee,
       total: params.total,
-      sellerName: params.sellerName,
       orderUrl,
     }),
   });

@@ -88,8 +88,7 @@ export const reviewRouter = createTRPCRouter({
           reviewer: {
             columns: {
               id: true,
-              name: true,
-              avatarUrl: true,
+              role: true,
             },
           },
         },
@@ -119,8 +118,7 @@ export const reviewRouter = createTRPCRouter({
           reviewer: {
             columns: {
               id: true,
-              name: true,
-              avatarUrl: true,
+              role: true,
             },
           },
         },

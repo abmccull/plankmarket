@@ -29,7 +29,6 @@ import {
   Package,
   FileCheck,
   ShieldAlert,
-  Award,
 } from "lucide-react";
 
 export default function TermsOfServicePage() {

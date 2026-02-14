@@ -103,8 +103,9 @@ export const watchlistRouter = createTRPCRouter({
                 seller: {
                   columns: {
                     id: true,
-                    businessName: true,
                     verified: true,
+                    role: true,
+                    businessState: true,
                   },
                 },
               },

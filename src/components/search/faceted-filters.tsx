@@ -232,7 +232,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleMaterial(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -264,7 +264,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleCondition(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -372,7 +372,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleWidth(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -404,7 +404,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleThickness(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -438,7 +438,7 @@ export function FacetedFilters() {
                     type="button"
                     role="option"
                     aria-selected={isActive}
-                    aria-pressed={isActive}
+    
                     onClick={() => toggleWearLayer(opt.value)}
                     className={badgeClass(isActive)}
                     title={opt.group}
@@ -473,7 +473,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleSpecies(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -505,7 +505,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleColorFamily(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -537,7 +537,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleFinish(opt.value)}
                 className={badgeClass(isActive)}
               >
@@ -619,7 +619,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleState(state)}
                 className={badgeClass(isActive)}
               >
@@ -651,7 +651,7 @@ export function FacetedFilters() {
                 type="button"
                 role="option"
                 aria-selected={isActive}
-                aria-pressed={isActive}
+
                 onClick={() => toggleCertification(opt.value)}
                 className={badgeClass(isActive)}
               >

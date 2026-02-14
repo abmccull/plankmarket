@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { noContactInfo } from "@/lib/content-filter/zod";
 
 export const sendMessageSchema = z.object({
   conversationId: z.string().uuid(),
-  body: z.string().min(1).max(2000),
+  body: z.string().min(1).max(2000).superRefine(noContactInfo("message")),
 });
 
 export const getMessagesSchema = z.object({

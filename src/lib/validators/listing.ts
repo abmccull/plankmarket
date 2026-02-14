@@ -1,14 +1,17 @@
 import { z } from "zod";
+import { noContactInfo } from "@/lib/content-filter/zod";
 
 export const listingFormSchema = z.object({
   // Step 1: Product Details
   title: z
     .string()
     .min(10, "Title must be at least 10 characters")
-    .max(255, "Title must be at most 255 characters"),
+    .max(255, "Title must be at most 255 characters")
+    .superRefine(noContactInfo("title")),
   description: z
     .string()
     .max(5000, "Description must be at most 5000 characters")
+    .superRefine(noContactInfo("description"))
     .optional(),
   materialType: z.enum([
     "hardwood",

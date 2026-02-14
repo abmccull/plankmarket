@@ -7,6 +7,7 @@ import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
 import { Loader2, Package } from "lucide-react";
 import type { OrderStatus } from "@/types";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 export default function BuyerOrdersPage() {
   const { data, isLoading } = trpc.order.getMyOrders.useQuery({
@@ -69,7 +70,7 @@ export default function BuyerOrdersPage() {
                 </h3>
                 <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
                   <span>{formatSqFt(order.quantitySqFt)}</span>
-                  <span>{order.seller.businessName}</span>
+                  <span>{getAnonymousDisplayName({ role: order.seller.role, businessState: order.seller.businessState })}</span>
                   <span>{formatDate(order.createdAt)}</span>
                 </div>
               </div>

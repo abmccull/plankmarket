@@ -178,12 +178,11 @@ export const listingRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
               verified: true,
               createdAt: true,
               stripeOnboardingComplete: true,
+              businessState: true,
+              role: true,
             },
           },
           media: {
@@ -415,8 +414,9 @@ export const listingRouter = createTRPCRouter({
         seller: {
           columns: {
             id: true as const,
-            businessName: true as const,
             verified: true as const,
+            businessState: true as const,
+            role: true as const,
           },
         },
       };

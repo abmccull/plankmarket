@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { env } from "@/env";
+import { checkViolationStatus } from "@/server/services/content-moderation";
 
 export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
   const supabase = await createClient();
@@ -256,3 +257,57 @@ export const adminProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit)
 
 // Strict rate limited procedure for sensitive operations (e.g., payment creation)
 export const strictRateLimitedProcedure = t.procedure.use(enforceAuth).use(enforceStrictRateLimit);
+
+// Messaging rate limit: 5 messages per hour for users with 3+ content violations
+const messagingRateLimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(5, "60 m"),
+  prefix: "rl:messaging-restricted",
+});
+
+// Content policy enforcement middleware
+// Checks user's violation history and applies escalating consequences:
+// - 1-2 violations: allowed (warning is shown in Zod rejection message)
+// - 3-4 violations: messaging rate-limited to 5/hour
+// - 5+ violations: auto-suspend account
+const enforceContentPolicy = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.user) {
+    return next();
+  }
+
+  const status = await checkViolationStatus(ctx.user.id);
+
+  if (status.action === "suspend") {
+    // Auto-suspend the account
+    await db
+      .update(users)
+      .set({ active: false })
+      .where(eq(users.id, ctx.user.id));
+
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "Your account has been suspended due to repeated policy violations. Please contact support.",
+    });
+  }
+
+  if (status.action === "rate_limit") {
+    const { success } = await messagingRateLimit.limit(ctx.user.id);
+    if (!success) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message:
+          "Your messaging has been rate-limited due to policy violations. Please try again later.",
+      });
+    }
+  }
+
+  return next();
+});
+
+// Messaging procedure — verified + content policy enforcement
+export const messagingProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceRateLimit)
+  .use(enforceVerified)
+  .use(enforceContentPolicy);

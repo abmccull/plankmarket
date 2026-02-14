@@ -247,13 +247,15 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -329,13 +331,13 @@ export const offerRouter = createTRPCRouter({
       // Notify the other party
       const recipientId =
         ctx.user.id === offer.buyerId ? offer.sellerId : offer.buyerId;
-      const actorName =
-        ctx.user.id === offer.buyerId ? offer.buyer.name : offer.seller.name;
+      const actorRole =
+        ctx.user.id === offer.buyerId ? "The buyer" : "The seller";
 
       await createOfferNotification(ctx.db, {
         recipientId,
         title: "Counter Offer Received",
-        message: `${actorName} countered with $${input.pricePerSqFt}/sq ft on "${offer.listing.title}"`,
+        message: `${actorRole} countered with $${input.pricePerSqFt}/sq ft on "${offer.listing.title}"`,
         data: {
           offerId: input.offerId,
           listingId: offer.listingId,
@@ -364,13 +366,15 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -439,13 +443,13 @@ export const offerRouter = createTRPCRouter({
       // Notify the other party
       const recipientId =
         ctx.user.id === offer.buyerId ? offer.sellerId : offer.buyerId;
-      const actorName =
-        ctx.user.id === offer.buyerId ? offer.buyer.name : offer.seller.name;
+      const actorRole =
+        ctx.user.id === offer.buyerId ? "The buyer" : "The seller";
 
       await createOfferNotification(ctx.db, {
         recipientId,
         title: "Offer Accepted",
-        message: `${actorName} accepted your offer on "${offer.listing.title}"`,
+        message: `${actorRole} accepted your offer on "${offer.listing.title}"`,
         data: {
           offerId: input.offerId,
           listingId: offer.listingId,
@@ -474,13 +478,15 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -542,13 +548,13 @@ export const offerRouter = createTRPCRouter({
       // Notify the other party
       const recipientId =
         ctx.user.id === offer.buyerId ? offer.sellerId : offer.buyerId;
-      const actorName =
-        ctx.user.id === offer.buyerId ? offer.buyer.name : offer.seller.name;
+      const actorRole =
+        ctx.user.id === offer.buyerId ? "The buyer" : "The seller";
 
       await createOfferNotification(ctx.db, {
         recipientId,
         title: "Offer Rejected",
-        message: `${actorName} rejected your offer on "${offer.listing.title}"`,
+        message: `${actorRole} rejected your offer on "${offer.listing.title}"`,
         data: {
           offerId: input.offerId,
           listingId: offer.listingId,
@@ -577,7 +583,8 @@ export const offerRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
-              name: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -663,17 +670,15 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           events: {
@@ -682,8 +687,8 @@ export const offerRouter = createTRPCRouter({
               actor: {
                 columns: {
                   id: true,
-                  name: true,
-                  businessName: true,
+                  role: true,
+                  businessState: true,
                 },
               },
             },
@@ -748,9 +753,8 @@ export const offerRouter = createTRPCRouter({
           actor: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -820,17 +824,15 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
         },
@@ -885,17 +887,15 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
-              name: true,
-              businessName: true,
-              avatarUrl: true,
+              role: true,
+              businessState: true,
             },
           },
         },

@@ -11,12 +11,11 @@ interface OrderConfirmationEmailProps {
   subtotal: string;
   buyerFee: string;
   total: string;
-  sellerName: string;
   orderUrl: string;
 }
 
 export default function OrderConfirmationEmail({
-  buyerName = "John",
+  buyerName = "there",
   orderNumber = "PM-ABC12345",
   listingTitle = "Premium White Oak Hardwood",
   quantity = "2,500 sq ft",
@@ -24,7 +23,6 @@ export default function OrderConfirmationEmail({
   subtotal = "$6,250.00",
   buyerFee = "$187.50",
   total = "$6,437.50",
-  sellerName = "Acme Flooring",
   orderUrl = "https://plankmarket.com/buyer/orders/123",
 }: OrderConfirmationEmailProps) {
   return (
@@ -33,8 +31,7 @@ export default function OrderConfirmationEmail({
       <Text style={paragraph}>Hi {buyerName},</Text>
       <Text style={paragraph}>
         Your order <strong>{orderNumber}</strong> has been placed successfully.
-        The seller ({sellerName}) has been notified and will process your order
-        shortly.
+        The seller has been notified and will process your order shortly.
       </Text>
 
       <Section style={orderBox}>

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { PromotionBadge } from "./promotion-badge";
 import { formatCurrency, formatSqFt } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Package } from "lucide-react";
@@ -18,8 +18,9 @@ interface SponsoredListing {
   promotionTier?: PromotionTier | null;
   media?: { url: string }[];
   seller?: {
-    businessName: string | null;
     verified: boolean;
+    role: string;
+    businessState: string | null;
   } | null;
 }
 
@@ -80,10 +81,11 @@ export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
             <Card className="overflow-hidden hover:shadow-md transition-shadow border-primary/20">
               <div className="aspect-[4/3] bg-muted relative overflow-hidden">
                 {listing.media?.[0] ? (
-                  <img
+                  <Image
                     src={listing.media[0].url}
                     alt={listing.title}
-                    className="h-full w-full object-cover"
+                    fill
+                    className="object-cover"
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center">
