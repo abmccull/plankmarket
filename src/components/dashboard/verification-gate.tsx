@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc/client";
 import { useEffect } from "react";
+import { celebrateMilestone } from "@/lib/utils/celebrate";
 import { VerificationPendingBanner } from "./verification-pending-banner";
 
 interface VerificationGateProps {
@@ -37,6 +38,9 @@ export function VerificationGate({ children }: VerificationGateProps) {
   // Auto-update auth store when verification status changes
   useEffect(() => {
     if (sessionData?.user && user && sessionData.user.verificationStatus !== user.verificationStatus) {
+      if (sessionData.user.verificationStatus === "verified" && user.verificationStatus === "pending") {
+        celebrateMilestone("You're Verified!", "Your business has been verified. You now have full access to PlankMarket.");
+      }
       setUser(sessionData.user);
     }
   }, [sessionData, user, setUser]);
@@ -183,7 +187,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
             </Card>
             <div className="flex justify-center gap-3">
               <Button asChild>
-                <Link href="/seller/verification">Resubmit Verification</Link>
+                <Link href={user.role === "seller" ? "/seller/verification" : "/buyer/settings"}>Resubmit Verification</Link>
               </Button>
               <Button variant="outline" asChild>
                 <Link href="/support">Contact Support</Link>

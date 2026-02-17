@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { db } from "@/server/db";
-import { users, notifications } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { users, notifications, listings } from "@/server/db/schema";
+import { eq, and } from "drizzle-orm";
 import { verifyBusiness } from "@/server/services/ai-verification";
 import { sendVerificationApprovedEmail } from "@/lib/email/send";
 
@@ -115,13 +115,18 @@ export async function POST(request: NextRequest) {
       updateData.verificationStatus = "verified";
       updateData.verified = true;
     }
-    // Otherwise leave as pending for admin review
 
     // Update user record
     await db.update(users).set(updateData).where(eq(users.id, userId));
 
     // Send notification if approved
     if (verificationResult.approved) {
+      // Auto-promote draft listings to active
+      await db
+        .update(listings)
+        .set({ status: "active" })
+        .where(and(eq(listings.sellerId, userId), eq(listings.status, "draft")));
+
       await db.insert(notifications).values({
         userId,
         type: "system",
@@ -138,6 +143,23 @@ export async function POST(request: NextRequest) {
       }).catch((err) => {
         console.error("Failed to send verification email:", err);
       });
+    } else {
+      // Score < 90: notify admins that manual review is needed
+      const admins = await db.query.users.findMany({
+        where: eq(users.role, "admin"),
+      });
+
+      if (admins.length > 0) {
+        await db.insert(notifications).values(
+          admins.map((admin) => ({
+            userId: admin.id,
+            type: "system" as const,
+            title: "Verification Needs Review",
+            message: `${user.name} (${user.businessName}) scored ${verificationResult.score}/100 and needs manual review.`,
+            data: { userId, score: verificationResult.score },
+          })),
+        );
+      }
     }
 
     return NextResponse.json(

@@ -178,7 +178,7 @@ export const authRouter = createTRPCRouter({
     const role = user.role;
 
     // Common checks
-    const emailVerified = user.verified || user.verificationStatus === "verified";
+    const emailVerified = !!ctx.authUser?.email_confirmed_at;
     const businessVerified = user.verificationStatus === "verified";
     const profileComplete = !!(user.name && user.businessName && user.phone);
 

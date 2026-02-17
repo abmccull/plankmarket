@@ -86,8 +86,9 @@ export async function sendVerificationRejectedEmail(params: {
   to: string;
   name: string;
   reason?: string;
+  role: "buyer" | "seller";
 }) {
-  const resubmitUrl = `${env.NEXT_PUBLIC_APP_URL}/seller/verification`;
+  const resubmitUrl = `${env.NEXT_PUBLIC_APP_URL}/${params.role === "seller" ? "seller/verification" : "buyer/settings"}`;
 
   return resend.emails.send({
     from: FROM,

@@ -121,7 +121,10 @@ const BUYER_ITEMS: ChecklistItem[] = [
 
 export function OnboardingChecklist() {
   const user = useAuthStore((state) => state.user);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("onboarding-checklist-dismissed") === "true";
+  });
   const { data: progress, isLoading } = trpc.auth.getOnboardingProgress.useQuery(
     undefined,
     { enabled: !!user }
@@ -143,7 +146,10 @@ export function OnboardingChecklist() {
         variant="ghost"
         size="icon"
         className="absolute right-2 top-2 h-8 w-8"
-        onClick={() => setIsDismissed(true)}
+        onClick={() => {
+          localStorage.setItem("onboarding-checklist-dismissed", "true");
+          setIsDismissed(true);
+        }}
         aria-label="Dismiss checklist"
       >
         <X className="h-4 w-4" />

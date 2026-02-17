@@ -4,6 +4,7 @@ import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { priority1 } from "@/server/services/priority1";
+import { sendVerificationApprovedEmail, sendVerificationRejectedEmail } from "@/lib/email/send";
 import type { TrackingEvent } from "@/server/db/schema";
 
 /**
@@ -359,8 +360,14 @@ export const adminRouter = createTRPCRouter({
         .where(eq(users.id, input.userId))
         .returning();
 
-      // Insert notification
+      // Insert notification and send email
       if (input.status === "verified") {
+        // Auto-promote draft listings to active
+        await ctx.db
+          .update(listings)
+          .set({ status: "active" })
+          .where(and(eq(listings.sellerId, input.userId), eq(listings.status, "draft")));
+
         await ctx.db.insert(notifications).values({
           userId: input.userId,
           type: "system",
@@ -368,6 +375,15 @@ export const adminRouter = createTRPCRouter({
           message:
             "Your business has been verified. You now have full access to PlankMarket.",
           read: false,
+        });
+
+        // Send verification approved email (fire-and-forget)
+        sendVerificationApprovedEmail({
+          to: user.email,
+          name: user.name,
+          role: user.role as "buyer" | "seller",
+        }).catch((err) => {
+          console.error("Failed to send verification approved email:", err);
         });
       } else {
         await ctx.db.insert(notifications).values({
@@ -378,6 +394,16 @@ export const adminRouter = createTRPCRouter({
             ? `Your verification request was not approved. Reason: ${input.notes}`
             : "Your verification request was not approved. Please contact support for more information.",
           read: false,
+        });
+
+        // Send verification rejected email (fire-and-forget)
+        sendVerificationRejectedEmail({
+          to: user.email,
+          name: user.name,
+          reason: input.notes,
+          role: user.role as "buyer" | "seller",
+        }).catch((err) => {
+          console.error("Failed to send verification rejected email:", err);
         });
       }
 

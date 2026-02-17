@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { CheckCircle2, Loader2, Package, ArrowRight } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { celebrateMilestone } from "@/lib/utils/celebrate";
 
 export default function CheckoutSuccessPage() {
   const params = useParams();
@@ -24,6 +25,19 @@ export default function CheckoutSuccessPage() {
     { id: orderIdParam! },
     { enabled: !!orderIdParam }
   );
+
+  const { data: myOrders } = trpc.order.getMyOrders.useQuery(
+    { page: 1, limit: 1 },
+    { enabled: !!order }
+  );
+
+  const celebratedRef = useRef(false);
+  useEffect(() => {
+    if (myOrders?.total === 1 && !celebratedRef.current) {
+      celebratedRef.current = true;
+      celebrateMilestone("First Purchase!", "Welcome to PlankMarket — your first order has been placed.");
+    }
+  }, [myOrders]);
 
   useEffect(() => {
     if (!paymentIntent || !paymentIntentClientSecret || !orderIdParam) {
