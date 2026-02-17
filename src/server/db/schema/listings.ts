@@ -152,6 +152,10 @@ export const listings = pgTable(
       withTimezone: true,
     }),
 
+    // Quality & shipping
+    qualityScore: integer("quality_score").default(0),
+    shipReady: boolean("ship_ready").default(false),
+
     // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

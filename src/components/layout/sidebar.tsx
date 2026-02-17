@@ -19,6 +19,10 @@ import {
   List,
   MessageSquare,
   Handshake,
+  ClipboardList,
+  Clock,
+  FileText,
+  SlidersHorizontal,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -31,6 +35,9 @@ const sellerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
   { title: "My Listings", href: "/seller/listings", icon: List },
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
+  { title: "Request Board", href: "/seller/request-board", icon: ClipboardList },
+  { title: "Follow-ups", href: "/seller/followups", icon: Clock },
+  { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
   { title: "Offers", href: "/offers", icon: Handshake },
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Orders", href: "/seller/orders", icon: Package },
@@ -46,6 +53,8 @@ const buyerItems: SidebarItem[] = [
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
   { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
+  { title: "My Requests", href: "/buyer/requests", icon: FileText },
+  { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
   { title: "Settings", href: "/buyer/settings", icon: Settings },
 ];
 

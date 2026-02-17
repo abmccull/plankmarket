@@ -15,6 +15,11 @@ import { adminRouter } from "./admin";
 import { messageRouter } from "./message";
 import { notificationRouter } from "./notification";
 import { shippingRouter } from "./shipping";
+import { preferencesRouter } from "./preferences";
+import { buyerRequestRouter } from "./buyer-request";
+import { matchingRouter } from "./matching";
+import { listingAssistantRouter } from "./listing-assistant";
+import { crmRouter } from "./crm";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -33,6 +38,11 @@ export const appRouter = createTRPCRouter({
   message: messageRouter,
   notification: notificationRouter,
   shipping: shippingRouter,
+  preferences: preferencesRouter,
+  buyerRequest: buyerRequestRouter,
+  matching: matchingRouter,
+  listingAssistant: listingAssistantRouter,
+  crm: crmRouter,
 });
 
 export type AppRouter = typeof appRouter;

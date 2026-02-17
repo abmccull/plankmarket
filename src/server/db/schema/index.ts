@@ -72,6 +72,43 @@ export type { Shipment, NewShipment, TrackingEvent } from "./shipments";
 export { contentViolations } from "./content-violations";
 export type { ContentViolation, NewContentViolation } from "./content-violations";
 
+export { userPreferences } from "./user-preferences";
+export type { UserPreference, NewUserPreference } from "./user-preferences";
+
+export {
+  buyerRequests,
+  buyerRequestResponses,
+  buyerRequestStatusEnum,
+  requestResponseStatusEnum,
+} from "./buyer-requests";
+export type {
+  BuyerRequest,
+  NewBuyerRequest,
+  BuyerRequestResponse,
+  NewBuyerRequestResponse,
+} from "./buyer-requests";
+
+export {
+  sellerBuyerTags,
+  sellerBuyerNotes,
+  followups,
+  followupStatusEnum,
+} from "./crm";
+export type {
+  SellerBuyerTag,
+  NewSellerBuyerTag,
+  SellerBuyerNote,
+  NewSellerBuyerNote,
+  Followup,
+  NewFollowup,
+} from "./crm";
+
+export { listingDraftsAi, aiDraftStatusEnum } from "./listing-drafts-ai";
+export type {
+  ListingDraftAi,
+  NewListingDraftAi,
+} from "./listing-drafts-ai";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -90,8 +127,12 @@ import { feedback } from "./feedback";
 import { conversations, messages } from "./conversations";
 import { shipments } from "./shipments";
 import { contentViolations } from "./content-violations";
+import { userPreferences } from "./user-preferences";
+import { buyerRequests, buyerRequestResponses } from "./buyer-requests";
+import { sellerBuyerTags, sellerBuyerNotes, followups } from "./crm";
+import { listingDraftsAi } from "./listing-drafts-ai";
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   listings: many(listings),
   buyerOrders: many(orders, { relationName: "buyerOrders" }),
   sellerOrders: many(orders, { relationName: "sellerOrders" }),
@@ -112,6 +153,16 @@ export const usersRelations = relations(users, ({ many }) => ({
   sentMessages: many(messages),
   contentViolations: many(contentViolations, { relationName: "userViolations" }),
   reviewedViolations: many(contentViolations, { relationName: "reviewerViolations" }),
+  preferences: one(userPreferences, {
+    fields: [users.id],
+    references: [userPreferences.userId],
+  }),
+  buyerRequests: many(buyerRequests, { relationName: "buyerRequests" }),
+  buyerRequestResponses: many(buyerRequestResponses, { relationName: "sellerResponses" }),
+  sellerBuyerTags: many(sellerBuyerTags, { relationName: "sellerTags" }),
+  sellerBuyerNotes: many(sellerBuyerNotes, { relationName: "sellerNotes" }),
+  sellerFollowups: many(followups, { relationName: "sellerFollowups" }),
+  listingDrafts: many(listingDraftsAi),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -334,5 +385,87 @@ export const contentViolationsRelations = relations(contentViolations, ({ one })
     fields: [contentViolations.reviewedBy],
     references: [users.id],
     relationName: "reviewerViolations",
+  }),
+}));
+
+export const userPreferencesRelations = relations(userPreferences, ({ one }) => ({
+  user: one(users, {
+    fields: [userPreferences.userId],
+    references: [users.id],
+  }),
+}));
+
+export const buyerRequestsRelations = relations(buyerRequests, ({ one, many }) => ({
+  buyer: one(users, {
+    fields: [buyerRequests.buyerId],
+    references: [users.id],
+    relationName: "buyerRequests",
+  }),
+  responses: many(buyerRequestResponses),
+}));
+
+export const buyerRequestResponsesRelations = relations(
+  buyerRequestResponses,
+  ({ one }) => ({
+    request: one(buyerRequests, {
+      fields: [buyerRequestResponses.requestId],
+      references: [buyerRequests.id],
+    }),
+    seller: one(users, {
+      fields: [buyerRequestResponses.sellerId],
+      references: [users.id],
+      relationName: "sellerResponses",
+    }),
+  })
+);
+
+export const sellerBuyerTagsRelations = relations(sellerBuyerTags, ({ one }) => ({
+  seller: one(users, {
+    fields: [sellerBuyerTags.sellerId],
+    references: [users.id],
+    relationName: "sellerTags",
+  }),
+  buyer: one(users, {
+    fields: [sellerBuyerTags.buyerId],
+    references: [users.id],
+  }),
+}));
+
+export const sellerBuyerNotesRelations = relations(sellerBuyerNotes, ({ one }) => ({
+  seller: one(users, {
+    fields: [sellerBuyerNotes.sellerId],
+    references: [users.id],
+    relationName: "sellerNotes",
+  }),
+  buyer: one(users, {
+    fields: [sellerBuyerNotes.buyerId],
+    references: [users.id],
+  }),
+}));
+
+export const followupsRelations = relations(followups, ({ one }) => ({
+  seller: one(users, {
+    fields: [followups.sellerId],
+    references: [users.id],
+    relationName: "sellerFollowups",
+  }),
+  buyer: one(users, {
+    fields: [followups.buyerId],
+    references: [users.id],
+  }),
+  conversation: one(conversations, {
+    fields: [followups.conversationId],
+    references: [conversations.id],
+  }),
+}));
+
+export const listingDraftsAiRelations = relations(listingDraftsAi, ({ one }) => ({
+  seller: one(users, {
+    fields: [listingDraftsAi.sellerId],
+    references: [users.id],
+  }),
+  appliedToListing: one(listings, {
+    fields: [listingDraftsAi.appliedToListingId],
+    references: [listings.id],
   }),
 }));
