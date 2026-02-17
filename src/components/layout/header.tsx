@@ -74,7 +74,7 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-primary text-primary-foreground shadow-elevation-xs border-primary/80">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background shadow-elevation-xs">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Mobile Menu Button */}
         <Sheet>
@@ -82,7 +82,7 @@ export function Header() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden text-primary-foreground hover:bg-white/10"
+              className="lg:hidden"
               aria-label="Open navigation menu"
             >
               <Menu className="h-6 w-6" />
@@ -96,21 +96,21 @@ export function Header() {
 
         {/* Logo */}
         <Link href="/">
-          <Logo variant="full" size="md" theme="dark" />
+          <Logo variant="full" size="md" />
         </Link>
 
         {/* Navigation */}
         <nav className="hidden md:flex items-center gap-6">
           <Link
             href="/listings"
-            className="link-animated text-sm font-medium text-primary-foreground/70 hover:text-primary-foreground transition-colors"
+            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             Browse Listings
           </Link>
           {isAuthenticated && user?.role === "seller" && (
             <Link
               href="/seller/listings/new"
-              className="link-animated text-sm font-medium text-primary-foreground/70 hover:text-primary-foreground transition-colors"
+              className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Create Listing
             </Link>
@@ -120,7 +120,7 @@ export function Header() {
         {/* Right side */}
         <div className="flex items-center gap-3">
           <Link href="/listings">
-            <Button variant="ghost" size="icon" className="hidden md:flex text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10" aria-label="Search listings">
+            <Button variant="ghost" size="icon" className="hidden md:flex text-muted-foreground hover:text-foreground" aria-label="Search listings">
               <Search className="h-4 w-4" />
             </Button>
           </Link>
@@ -128,7 +128,7 @@ export function Header() {
           {isAuthenticated && user ? (
             <>
               <Link href="/buyer/watchlist">
-                <Button variant="ghost" size="icon" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10" aria-label="Wishlist">
+                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" aria-label="Wishlist">
                   <Heart className="h-4 w-4" />
                 </Button>
               </Link>
@@ -139,7 +139,7 @@ export function Header() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="relative text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10"
+                    className="relative text-muted-foreground hover:text-foreground"
                     aria-label="Notifications"
                   >
                     <Bell className="h-4 w-4" />
@@ -219,11 +219,11 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="flex items-center gap-2 text-primary-foreground hover:bg-white/10"
+                    className="flex items-center gap-2 text-foreground hover:bg-muted"
                     aria-label="Open user menu"
                   >
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                      <User className="h-4 w-4 text-primary-foreground" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                      <User className="h-4 w-4 text-primary" />
                     </div>
                     <span className="hidden md:inline text-sm">
                       {user.name}
@@ -288,12 +288,12 @@ export function Header() {
           ) : (
             <div className="flex items-center gap-2">
               <Link href="/login">
-                <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+                <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                   Sign in
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm" className="bg-white text-primary hover:bg-white/90 font-medium">Get Started</Button>
+                <Button size="sm">Get Started</Button>
               </Link>
             </div>
           )}

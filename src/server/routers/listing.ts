@@ -6,7 +6,7 @@ import {
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema, csvListingRowSchema } from "@/lib/validators/listing";
 import { listings, media, notifications } from "../db/schema";
-import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, gt, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import zipcodes from "zipcodes";
@@ -581,27 +581,6 @@ export const listingRouter = createTRPCRouter({
       const where = and(...conditions);
       const offset = (input.page - 1) * input.limit;
 
-      // Max 20% of results can be promoted (e.g. 5 of 24)
-      const maxPromoted = Math.ceil(input.limit * 0.2);
-      const now = new Date();
-
-      // Promoted listings matching all active filters
-      const promotedConditions = [
-        ...conditions,
-        isNotNull(listings.promotionTier),
-        gt(listings.promotionExpiresAt, now),
-      ];
-
-      // Organic listings: no active promotion
-      const organicConditions = [
-        ...conditions,
-        or(
-          isNull(listings.promotionTier),
-          sql`${listings.promotionExpiresAt} <= ${now}`,
-          isNull(listings.promotionExpiresAt)
-        )!,
-      ];
-
       const withClause = {
         media: {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -618,25 +597,13 @@ export const listingRouter = createTRPCRouter({
         },
       };
 
-      const [promotedItems, organicItems, countResult] = await Promise.all([
+      const [items, countResult] = await Promise.all([
         ctx.db.query.listings.findMany({
-          where: and(...promotedConditions),
-          with: withClause,
-          orderBy: [
-            desc(
-              sql`CASE ${listings.promotionTier} WHEN 'premium' THEN 3 WHEN 'featured' THEN 2 ELSE 1 END`
-            ),
-            desc(listings.createdAt),
-          ],
-          limit: maxPromoted,
-          // No offset for promoted — always show the top promoted for this page
-        }),
-        ctx.db.query.listings.findMany({
-          where: and(...organicConditions),
+          where,
           with: withClause,
           orderBy: orderByClause,
-          limit: input.limit - maxPromoted,
-          offset: Math.max(0, offset - maxPromoted), // Adjust offset for organic
+          limit: input.limit,
+          offset,
         }),
         ctx.db
           .select({ count: sql<number>`count(*)::int` })
@@ -644,30 +611,14 @@ export const listingRouter = createTRPCRouter({
           .where(where),
       ]);
 
-      // Interleave: promoted at positions 0, 5, 10, 15
-      const interleaved: (typeof organicItems[number] & { isPromoted?: boolean })[] = [];
-      let pIdx = 0;
-      let oIdx = 0;
-      const promotedPositions = [0, 5, 10, 15];
-
-      for (let pos = 0; pos < input.limit; pos++) {
-        if (
-          promotedPositions.includes(pos) &&
-          pIdx < promotedItems.length
-        ) {
-          interleaved.push({
-            ...promotedItems[pIdx],
-            isPromoted: true,
-          });
-          pIdx++;
-        } else if (oIdx < organicItems.length) {
-          interleaved.push({
-            ...organicItems[oIdx],
-            isPromoted: false,
-          });
-          oIdx++;
-        }
-      }
+      const now = new Date();
+      const interleaved = items.map((item) => ({
+        ...item,
+        isPromoted:
+          item.promotionTier != null &&
+          item.promotionExpiresAt != null &&
+          item.promotionExpiresAt > now,
+      }));
 
       const total = countResult[0]?.count ?? 0;
 

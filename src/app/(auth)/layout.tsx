@@ -31,7 +31,10 @@ export default function AuthLayout({
           aria-hidden="true"
         />
         <div className="relative z-10 flex flex-col items-center justify-center w-full p-12 text-white">
-          <Logo variant="full" size="xl" className="[&_span]:!text-white mb-8" />
+          <span className="font-bold text-3xl leading-none mb-8">
+            <span className="text-white">Plank</span>
+            <span className="text-green-300">Market</span>
+          </span>
           <h2 className="text-3xl font-display font-bold text-center mb-4">
             B2B Flooring Liquidation
           </h2>
