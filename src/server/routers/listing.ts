@@ -4,8 +4,8 @@ import {
   sellerProcedure,
   sellerOrPendingProcedure,
 } from "../trpc";
-import { listingFormSchema, listingFilterSchema } from "@/lib/validators/listing";
-import { listings, media } from "../db/schema";
+import { listingFormSchema, listingFilterSchema, csvListingRowSchema } from "@/lib/validators/listing";
+import { listings, media, notifications } from "../db/schema";
 import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, gt, isNull, isNotNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -79,6 +79,135 @@ export const listingRouter = createTRPCRouter({
       }
 
       return listing;
+    }),
+
+  // Bulk create listings from CSV data
+  bulkCreate: sellerOrPendingProcedure
+    .input(z.object({ rows: z.array(csvListingRowSchema).min(1).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      const batchId = crypto.randomUUID();
+
+      const createdListings = await ctx.db.transaction(async (tx) => {
+        const results = [];
+
+        for (const row of input.rows) {
+          let locationLat: number | undefined;
+          let locationLng: number | undefined;
+          if (row.locationZip) {
+            const zipInfo = zipcodes.lookup(row.locationZip);
+            if (zipInfo) {
+              locationLat = zipInfo.latitude;
+              locationLng = zipInfo.longitude;
+            }
+          }
+
+          const [listing] = await tx
+            .insert(listings)
+            .values({
+              ...row,
+              sellerId: ctx.user.id,
+              status: "draft",
+              originalTotalSqFt: row.totalSqFt,
+              locationLat,
+              locationLng,
+              allowOffers: true,
+              certifications: [],
+              expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            })
+            .returning();
+
+          const slug = `${slugify(row.title)}-${listing.id.slice(0, 6)}`;
+          await tx
+            .update(listings)
+            .set({ slug })
+            .where(eq(listings.id, listing.id));
+
+          results.push(listing);
+        }
+
+        return results;
+      });
+
+      // Fire-and-forget freight class calculations
+      for (const row of input.rows) {
+        if (row.palletWeight && row.palletLength && row.palletWidth && row.palletHeight) {
+          const listing = createdListings.find((l) => l.title === row.title);
+          if (listing) {
+            priority1.getSuggestedClass({
+              totalWeight: row.palletWeight,
+              length: row.palletLength,
+              width: row.palletWidth,
+              height: row.palletHeight,
+              units: 1,
+            }).then(async (result) => {
+              await ctx.db
+                .update(listings)
+                .set({ freightClass: result.suggestedClass, updatedAt: new Date() })
+                .where(eq(listings.id, listing.id));
+            }).catch(() => {});
+          }
+        }
+      }
+
+      // Create in-app notification
+      await ctx.db.insert(notifications).values({
+        userId: ctx.user.id,
+        type: "system",
+        title: "Bulk Upload Complete",
+        message: `${createdListings.length} draft listing${createdListings.length !== 1 ? "s" : ""} created from CSV upload`,
+        data: { batchId, count: createdListings.length },
+      });
+
+      return {
+        batchId,
+        listings: createdListings.map((l) => ({
+          id: l.id,
+          title: l.title,
+          materialType: l.materialType,
+          totalSqFt: l.totalSqFt,
+          askPricePerSqFt: l.askPricePerSqFt,
+        })),
+        count: createdListings.length,
+      };
+    }),
+
+  // Publish multiple draft listings that have photos
+  publishBulk: sellerProcedure
+    .input(z.object({ listingIds: z.array(z.string().uuid()).min(1).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership and draft status, and check for media
+      const ownedListings = await ctx.db.query.listings.findMany({
+        where: and(
+          inArray(listings.id, input.listingIds),
+          eq(listings.sellerId, ctx.user.id),
+          eq(listings.status, "draft")
+        ),
+        with: {
+          media: { columns: { id: true }, limit: 1 },
+        },
+      });
+
+      const publishable = ownedListings.filter((l) => l.media.length > 0);
+      const skipped = ownedListings.filter((l) => l.media.length === 0);
+
+      if (publishable.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No listings have photos to publish. Add photos before publishing.",
+        });
+      }
+
+      const publishedIds = publishable.map((l) => l.id);
+      await ctx.db
+        .update(listings)
+        .set({ status: "active", updatedAt: new Date() })
+        .where(inArray(listings.id, publishedIds));
+
+      return {
+        publishedCount: publishable.length,
+        skippedCount: skipped.length,
+        publishedIds,
+      };
     }),
 
   // Update an existing listing

@@ -12,7 +12,7 @@ import {
   formatSqFt,
   formatRelativeTime,
 } from "@/lib/utils";
-import { Plus, Loader2, Eye, Heart, ExternalLink, Rocket } from "lucide-react";
+import { Plus, Loader2, Eye, Heart, ExternalLink, Rocket, FileSpreadsheet } from "lucide-react";
 import { BoostModal } from "@/components/promotions/boost-modal";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import type { ListingStatus, PromotionTier } from "@/types";
@@ -41,12 +41,20 @@ export default function SellerListingsPage() {
             Manage your flooring inventory listings
           </p>
         </div>
-        <Link href="/seller/listings/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Listing
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/seller/listings/bulk-upload">
+            <Button variant="outline">
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Bulk Upload
+            </Button>
+          </Link>
+          <Link href="/seller/listings/new">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Listing
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <Tabs

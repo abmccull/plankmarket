@@ -17,13 +17,13 @@ const mockOffer = {
   },
   buyer: {
     id: "buyer-1",
-    name: "John Doe",
-    businessName: "Doe Flooring Inc",
+    role: "buyer",
+    businessState: "TX",
   },
   seller: {
     id: "seller-1",
-    name: "Jane Smith",
-    businessName: "Smith Supply Co",
+    role: "seller",
+    businessState: "FL",
   },
 };
 
@@ -38,7 +38,7 @@ describe("OfferCard", () => {
     );
 
     expect(screen.getByText("Oak Hardwood Flooring")).toBeInTheDocument();
-    expect(screen.getByText(/Doe Flooring Inc/)).toBeInTheDocument();
+    expect(screen.getByText(/Verified Buyer in TX/)).toBeInTheDocument();
     expect(screen.getByText(/\$5\.50\/sq ft/)).toBeInTheDocument();
     expect(screen.getByText(/1,000 sq ft/)).toBeInTheDocument();
   });
@@ -93,7 +93,7 @@ describe("OfferCard", () => {
       />
     );
 
-    expect(screen.getByText(/Buyer: Doe Flooring Inc/)).toBeInTheDocument();
+    expect(screen.getByText(/Buyer:.*Verified Buyer in TX/)).toBeInTheDocument();
   });
 
   it("shows seller name to buyer", () => {
@@ -105,7 +105,7 @@ describe("OfferCard", () => {
       />
     );
 
-    expect(screen.getByText(/Seller: Smith Supply Co/)).toBeInTheDocument();
+    expect(screen.getByText(/Seller:.*Verified Seller in FL/)).toBeInTheDocument();
   });
 
   it("displays round number", () => {

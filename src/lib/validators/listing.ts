@@ -219,13 +219,13 @@ export const listingFilterSchema = z.object({
 
 export const csvListingRowSchema = z.object({
   title: z.string().min(1),
-  materialType: z.string().min(1),
+  materialType: z.enum(["hardwood", "engineered", "laminate", "vinyl_lvp", "bamboo", "tile", "other"]),
   totalSqFt: z.coerce.number().positive(),
   askPricePerSqFt: z.coerce.number().positive(),
-  condition: z.string().min(1),
+  condition: z.enum(["new_overstock", "discontinued", "slight_damage", "returns", "seconds", "remnants", "closeout", "other"]),
   species: z.string().optional(),
-  finish: z.string().optional(),
-  grade: z.string().optional(),
+  finish: z.enum(["matte", "semi_gloss", "gloss", "wire_brushed", "hand_scraped", "distressed", "smooth", "textured", "oiled", "unfinished", "other"]).optional(),
+  grade: z.enum(["select", "1_common", "2_common", "3_common", "cabin", "character", "rustic", "premium", "standard", "economy", "other"]).optional(),
   color: z.string().optional(),
   thickness: z.coerce.number().optional(),
   width: z.coerce.number().optional(),
@@ -247,3 +247,4 @@ export const csvListingRowSchema = z.object({
 
 export type ListingFormInput = z.infer<typeof listingFormSchema>;
 export type ListingFilterInput = z.infer<typeof listingFilterSchema>;
+export type CsvListingRow = z.infer<typeof csvListingRowSchema>;

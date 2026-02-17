@@ -3,12 +3,33 @@ import { VerificationGate } from "../verification-gate";
 import { useAuthStore } from "@/lib/stores/auth-store";
 
 // Mock the auth store
-jest.mock("@/lib/stores/auth-store");
-const mockUseAuthStore = useAuthStore as jest.MockedFunction<typeof useAuthStore>;
+vi.mock("@/lib/stores/auth-store");
+const mockUseAuthStore = vi.mocked(useAuthStore);
+
+// Mock tRPC to avoid "Unable to find tRPC Context" error
+vi.mock("@/lib/trpc/client", () => ({
+  trpc: {
+    auth: {
+      getSession: {
+        useQuery: vi.fn().mockReturnValue({ data: null }),
+      },
+    },
+  },
+}));
+
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  usePathname: vi.fn().mockReturnValue("/dashboard"),
+}));
+
+// Mock celebrate utility
+vi.mock("@/lib/utils/celebrate", () => ({
+  celebrateMilestone: vi.fn(),
+}));
 
 describe("VerificationGate", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it("renders children for verified users", () => {
@@ -27,9 +48,9 @@ describe("VerificationGate", () => {
       },
       isAuthenticated: true,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     render(
@@ -57,9 +78,9 @@ describe("VerificationGate", () => {
       },
       isAuthenticated: true,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     render(
@@ -87,9 +108,9 @@ describe("VerificationGate", () => {
       },
       isAuthenticated: true,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     render(
@@ -102,7 +123,7 @@ describe("VerificationGate", () => {
       screen.getByText("Your Business Verification is Under Review")
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/This typically takes 1-2 business days/)
+      screen.getByText(/usually verified within minutes/i)
     ).toBeInTheDocument();
     expect(screen.queryByText("Dashboard Content")).not.toBeInTheDocument();
   });
@@ -123,9 +144,9 @@ describe("VerificationGate", () => {
       },
       isAuthenticated: true,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     render(
@@ -157,9 +178,9 @@ describe("VerificationGate", () => {
       },
       isAuthenticated: true,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     render(
@@ -180,9 +201,9 @@ describe("VerificationGate", () => {
       user: null,
       isAuthenticated: false,
       isLoading: true,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     const { container } = render(
@@ -199,9 +220,9 @@ describe("VerificationGate", () => {
       user: null,
       isAuthenticated: false,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     const { container } = render(
@@ -229,9 +250,9 @@ describe("VerificationGate", () => {
       },
       isAuthenticated: true,
       isLoading: false,
-      setUser: jest.fn(),
-      setLoading: jest.fn(),
-      logout: jest.fn(),
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
     });
 
     render(
@@ -240,8 +261,9 @@ describe("VerificationGate", () => {
       </VerificationGate>
     );
 
-    // Check that decorative icons have aria-hidden
-    const icons = screen.getAllByRole("img", { hidden: true });
-    expect(icons.length).toBeGreaterThan(0);
+    // Check that decorative icons have aria-hidden (SVGs with aria-hidden)
+    const container = screen.getByText("Your Business Verification is Under Review").closest("div")!;
+    const svgs = container.parentElement!.querySelectorAll("svg[aria-hidden='true']");
+    expect(svgs.length).toBeGreaterThan(0);
   });
 });

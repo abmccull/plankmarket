@@ -22,6 +22,7 @@ import {
   ClipboardList,
   Clock,
   FileText,
+  FileSpreadsheet,
   SlidersHorizontal,
 } from "lucide-react";
 
@@ -35,6 +36,7 @@ const sellerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
   { title: "My Listings", href: "/seller/listings", icon: List },
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
+  { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet },
   { title: "Request Board", href: "/seller/request-board", icon: ClipboardList },
   { title: "Follow-ups", href: "/seller/followups", icon: Clock },
   { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },

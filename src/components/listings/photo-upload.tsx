@@ -14,6 +14,7 @@ import Image from "next/image";
 interface PhotoUploadProps {
   onImagesChange: (mediaIds: string[]) => void;
   initialMediaIds?: string[];
+  listingId?: string;
 }
 
 interface UploadedImage {
@@ -23,7 +24,7 @@ interface UploadedImage {
   sortOrder: number;
 }
 
-export function PhotoUpload({ onImagesChange }: PhotoUploadProps) {
+export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -38,6 +39,7 @@ export function PhotoUpload({ onImagesChange }: PhotoUploadProps) {
       try {
         // Record uploads in database
         const records = await recordUploadMutation.mutateAsync({
+          listingId,
           files: files.map((file) => ({
             url: file.url,
             key: file.key,

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MessageInput } from "../message-input";
 
 describe("MessageInput", () => {
-  const mockOnSendMessage = jest.fn();
+  const mockOnSendMessage = vi.fn();
 
   beforeEach(() => {
     mockOnSendMessage.mockClear();

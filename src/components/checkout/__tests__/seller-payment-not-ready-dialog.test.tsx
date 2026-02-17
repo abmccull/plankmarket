@@ -4,45 +4,45 @@ import { SellerPaymentNotReadyDialog } from "../seller-payment-not-ready-dialog"
 import { trpc } from "@/lib/trpc/client";
 import { useRouter } from "next/navigation";
 
-jest.mock("@/lib/trpc/client", () => ({
+vi.mock("@/lib/trpc/client", () => ({
   trpc: {
-    useUtils: jest.fn(),
+    useUtils: vi.fn(),
     payment: {
       nudgeSellerToOnboard: {
-        useMutation: jest.fn(),
+        useMutation: vi.fn(),
       },
     },
     watchlist: {
       add: {
-        useMutation: jest.fn(),
+        useMutation: vi.fn(),
       },
     },
     message: {
       getOrCreateConversation: {
-        useMutation: jest.fn(),
+        useMutation: vi.fn(),
       },
     },
   },
 }));
 
-jest.mock("next/navigation", () => ({
-  useRouter: jest.fn(),
+vi.mock("next/navigation", () => ({
+  useRouter: vi.fn(),
 }));
 
-jest.mock("sonner", () => ({
+vi.mock("sonner", () => ({
   toast: {
-    success: jest.fn(),
-    error: jest.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
 describe("SellerPaymentNotReadyDialog", () => {
-  const mockPush = jest.fn();
-  const mockOnOpenChange = jest.fn();
-  const mockNudgeMutateAsync = jest.fn();
-  const mockAddToWatchlistMutateAsync = jest.fn();
-  const mockGetOrCreateConversationMutateAsync = jest.fn();
-  const mockInvalidate = jest.fn();
+  const mockPush = vi.fn();
+  const mockOnOpenChange = vi.fn();
+  const mockNudgeMutateAsync = vi.fn();
+  const mockAddToWatchlistMutateAsync = vi.fn();
+  const mockGetOrCreateConversationMutateAsync = vi.fn();
+  const mockInvalidate = vi.fn();
 
   const defaultProps = {
     open: true,
@@ -53,24 +53,24 @@ describe("SellerPaymentNotReadyDialog", () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    (useRouter as jest.Mock).mockReturnValue({ push: mockPush });
-    (trpc.useUtils as jest.Mock).mockReturnValue({
+    vi.clearAllMocks();
+    vi.mocked(useRouter).mockReturnValue({ push: mockPush } as ReturnType<typeof useRouter>);
+    vi.mocked(trpc.useUtils).mockReturnValue({
       watchlist: {
         isWatchlisted: {
           invalidate: mockInvalidate,
         },
       },
-    });
-    (trpc.payment.nudgeSellerToOnboard.useMutation as jest.Mock).mockReturnValue({
+    } as unknown as ReturnType<typeof trpc.useUtils>);
+    vi.mocked(trpc.payment.nudgeSellerToOnboard.useMutation).mockReturnValue({
       mutateAsync: mockNudgeMutateAsync,
-    });
-    (trpc.watchlist.add.useMutation as jest.Mock).mockReturnValue({
+    } as unknown as ReturnType<typeof trpc.payment.nudgeSellerToOnboard.useMutation>);
+    vi.mocked(trpc.watchlist.add.useMutation).mockReturnValue({
       mutateAsync: mockAddToWatchlistMutateAsync,
-    });
-    (trpc.message.getOrCreateConversation.useMutation as jest.Mock).mockReturnValue({
+    } as unknown as ReturnType<typeof trpc.watchlist.add.useMutation>);
+    vi.mocked(trpc.message.getOrCreateConversation.useMutation).mockReturnValue({
       mutateAsync: mockGetOrCreateConversationMutateAsync,
-    });
+    } as unknown as ReturnType<typeof trpc.message.getOrCreateConversation.useMutation>);
   });
 
   it("renders dialog with correct title and description", () => {
@@ -137,8 +137,9 @@ describe("SellerPaymentNotReadyDialog", () => {
 
   it("disables buttons during loading", async () => {
     const user = userEvent.setup();
+    let resolvePromise: () => void;
     mockAddToWatchlistMutateAsync.mockImplementation(
-      () => new Promise((resolve) => setTimeout(resolve, 100))
+      () => new Promise<void>((resolve) => { resolvePromise = resolve; })
     );
 
     render(<SellerPaymentNotReadyDialog {...defaultProps} />);
@@ -147,9 +148,14 @@ describe("SellerPaymentNotReadyDialog", () => {
     await user.click(watchButton);
 
     // Buttons should be disabled during the async operation
-    expect(screen.getByRole("button", { name: /contact seller/i })).toBeDisabled();
-    expect(watchButton).toBeDisabled();
-    expect(screen.getByRole("button", { name: /maybe later/i })).toBeDisabled();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /contact seller/i })).toBeDisabled();
+      expect(watchButton).toBeDisabled();
+      expect(screen.getByRole("button", { name: /maybe later/i })).toBeDisabled();
+    });
+
+    // Clean up: resolve the pending promise
+    resolvePromise!();
   });
 
   it("closes dialog when Maybe Later is clicked", async () => {

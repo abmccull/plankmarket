@@ -104,8 +104,10 @@ describe("celebrateMilestone", () => {
 
     expect(() => celebrateMilestone("Test", "Test")).not.toThrow();
 
-    // Awaiting the settled promises ensures any unhandled rejections surface
-    // before the test completes — the test should still pass
+    // Wait for all microtasks (dynamic import + .then/.catch chain) to settle
+    await vi.dynamicImportSettled();
+    await new Promise((r) => setTimeout(r, 0));
+    // Flush any remaining microtasks queued by the catch handler
     await vi.dynamicImportSettled();
 
     // Toast should still have fired

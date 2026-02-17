@@ -8,36 +8,36 @@ const originalLocation = window.location;
 delete (window as { location?: Location }).location;
 window.location = { ...originalLocation, href: "" } as Location;
 
-jest.mock("@/lib/trpc/client", () => ({
+vi.mock("@/lib/trpc/client", () => ({
   trpc: {
     payment: {
       getConnectStatus: {
-        useQuery: jest.fn(),
+        useQuery: vi.fn(),
       },
       createConnectAccount: {
-        useMutation: jest.fn(),
+        useMutation: vi.fn(),
       },
     },
   },
 }));
 
-jest.mock("sonner", () => ({
+vi.mock("sonner", () => ({
   toast: {
-    success: jest.fn(),
-    error: jest.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
 describe("StripeOnboardingBanner", () => {
-  const mockMutateAsync = jest.fn();
+  const mockMutateAsync = vi.fn();
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     sessionStorage.clear();
     window.location.href = "";
-    (trpc.payment.createConnectAccount.useMutation as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.createConnectAccount.useMutation).mockReturnValue({
       mutateAsync: mockMutateAsync,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.createConnectAccount.useMutation>);
   });
 
   afterAll(() => {
@@ -45,10 +45,10 @@ describe("StripeOnboardingBanner", () => {
   });
 
   it("renders banner when onboarding is not complete", () => {
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: false },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -59,10 +59,10 @@ describe("StripeOnboardingBanner", () => {
   });
 
   it("does not render when onboarding is complete", () => {
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: true },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -72,10 +72,10 @@ describe("StripeOnboardingBanner", () => {
   });
 
   it("does not render when loading", () => {
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: undefined,
       isLoading: true,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -86,10 +86,10 @@ describe("StripeOnboardingBanner", () => {
 
   it("does not render when dismissed", () => {
     sessionStorage.setItem("stripe-onboarding-banner-dismissed", "true");
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: false },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -101,10 +101,10 @@ describe("StripeOnboardingBanner", () => {
   it("handles Set Up Now button click", async () => {
     const user = userEvent.setup();
     mockMutateAsync.mockResolvedValue({ url: "https://connect.stripe.com/setup" });
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: false },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -119,10 +119,10 @@ describe("StripeOnboardingBanner", () => {
 
   it("handles dismiss button click", async () => {
     const user = userEvent.setup();
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: false },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -144,10 +144,10 @@ describe("StripeOnboardingBanner", () => {
     mockMutateAsync.mockImplementation(
       () => new Promise((resolve) => setTimeout(() => resolve({ url: "https://stripe.com" }), 100))
     );
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: false },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
@@ -160,20 +160,22 @@ describe("StripeOnboardingBanner", () => {
   });
 
   it("renders with correct accessibility attributes", () => {
-    (trpc.payment.getConnectStatus.useQuery as jest.Mock).mockReturnValue({
+    vi.mocked(trpc.payment.getConnectStatus.useQuery).mockReturnValue({
       data: { onboardingComplete: false },
       isLoading: false,
-    });
+    } as unknown as ReturnType<typeof trpc.payment.getConnectStatus.useQuery>);
 
     render(<StripeOnboardingBanner />);
 
     const dismissButton = screen.getByRole("button", { name: /dismiss banner/i });
     expect(dismissButton).toHaveAttribute("aria-label", "Dismiss banner");
 
-    // Icons should be hidden from screen readers
-    const icons = screen.getAllByRole("img", { hidden: true });
-    icons.forEach((icon) => {
-      expect(icon).toHaveAttribute("aria-hidden", "true");
+    // Icons should be hidden from screen readers (SVGs with aria-hidden)
+    const banner = screen.getByText("Set up payments to start receiving orders").closest("[class*='border-amber']")!;
+    const svgs = banner.querySelectorAll("svg[aria-hidden='true']");
+    expect(svgs.length).toBeGreaterThan(0);
+    svgs.forEach((svg) => {
+      expect(svg).toHaveAttribute("aria-hidden", "true");
     });
   });
 });
