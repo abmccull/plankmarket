@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,15 @@ export default function HomePage() {
     <>
       {/* Hero Fork Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background min-h-[calc(100vh-4rem)] flex items-center">
+        {/* Hero background photo — parquet flooring in room */}
+        <Image
+          src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?w=1400&q=80&fit=crop"
+          alt=""
+          fill
+          className="object-cover opacity-[0.07]"
+          priority
+          aria-hidden="true"
+        />
         {/* Wood grain texture overlay */}
         <div
           aria-hidden="true"
@@ -63,7 +73,7 @@ export default function HomePage() {
             <Badge className="mb-6 border-transparent bg-amber-100 text-amber-800">
               B2B Flooring Marketplace
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
               The Smarter Way to Trade
               <br />
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
@@ -90,10 +100,10 @@ export default function HomePage() {
                     aria-hidden="true"
                   />
                 </div>
-                <h2 className="font-display text-2xl font-bold mb-2">
+                <h2 className="font-display text-2xl mb-2">
                   I&apos;m a Buyer
                 </h2>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                <p className="text-muted-foreground text-base leading-relaxed mb-6">
                   Source premium surplus flooring at 30–60% below wholesale.
                   Verified sellers, detailed specs, integrated freight.
                 </p>
@@ -115,10 +125,10 @@ export default function HomePage() {
                     aria-hidden="true"
                   />
                 </div>
-                <h2 className="font-display text-2xl font-bold mb-2">
+                <h2 className="font-display text-2xl mb-2">
                   I&apos;m a Seller
                 </h2>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                <p className="text-muted-foreground text-base leading-relaxed mb-6">
                   Liquidate overstock and closeout inventory fast. Reach verified
                   buyers, get paid in 3–5 days, 2% fee only when you sell.
                 </p>
@@ -179,19 +189,19 @@ export default function HomePage() {
         <div className="container mx-auto px-4 relative z-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             <div>
-              <div className="font-display text-2xl font-bold">6</div>
+              <div className="font-display text-2xl">6</div>
               <div className="text-sm opacity-80">Material Categories</div>
             </div>
             <div>
-              <div className="font-display text-2xl font-bold">All 50</div>
+              <div className="font-display text-2xl">All 50</div>
               <div className="text-sm opacity-80">US States</div>
             </div>
             <div>
-              <div className="font-display text-2xl font-bold">3% + 2%</div>
+              <div className="font-display text-2xl">3% + 2%</div>
               <div className="text-sm opacity-80">Transparent Fees</div>
             </div>
             <div>
-              <div className="font-display text-2xl font-bold">3–5 Days</div>
+              <div className="font-display text-2xl">3–5 Days</div>
               <div className="text-sm opacity-80">Seller Payouts</div>
             </div>
           </div>
@@ -212,7 +222,7 @@ export default function HomePage() {
             />
 
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl mb-4">
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
@@ -223,7 +233,7 @@ export default function HomePage() {
                 <Link href="/register?role=buyer">
                   <Button
                     size="xl"
-                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                    variant="gold"
                   >
                     Sign Up as Buyer
                     <ArrowRight className="ml-2 h-4 w-4" />

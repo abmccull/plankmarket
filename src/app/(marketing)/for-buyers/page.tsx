@@ -1,5 +1,6 @@
 import { type Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -70,11 +71,14 @@ export default function ForBuyersPage() {
         <div aria-hidden="true" className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
         <div className="container mx-auto px-4 relative z-10">
-          <div className="mx-auto max-w-3xl text-center">
+          <div className="mx-auto max-w-5xl">
+          {/* Two-column layout: copy left, photo right */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="text-center lg:text-left max-w-3xl mx-auto lg:mx-0">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               B2B Flooring Marketplace
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
               Stop Calling Around.{" "}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
                 Source Premium Flooring in One Place.
@@ -86,7 +90,7 @@ export default function ForBuyersPage() {
               overstock, closeout, and discontinued inventory — at 30–60% below
               standard wholesale prices.
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
               <Link href="/listings">
                 <Button size="xl" variant="gold">
                   Browse Available Inventory
@@ -101,7 +105,7 @@ export default function ForBuyersPage() {
             </div>
 
             {/* Trust badges */}
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground">
+            <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
               <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
                 <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
                 <span>Every seller is business-verified</span>
@@ -116,6 +120,20 @@ export default function ForBuyersPage() {
               </div>
             </div>
           </div>
+
+          {/* Hero image — living room with hardwood floors */}
+          <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg">
+            <Image
+              src="https://images.unsplash.com/photo-1721739511140-c53a4f6ef2c2?w=800&q=80&fit=crop"
+              alt="Living room showcasing premium hardwood flooring"
+              fill
+              className="object-cover"
+              priority
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" aria-hidden="true" />
+          </div>
+          </div>
+          </div>
         </div>
       </section>
 
@@ -123,7 +141,7 @@ export default function ForBuyersPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               You already know how this goes.
             </h2>
           </div>
@@ -158,7 +176,7 @@ export default function ForBuyersPage() {
                   <CardTitle className="font-display text-lg leading-snug">
                     {pain.title}
                   </CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">
+                  <CardDescription className="text-base leading-relaxed">
                     {pain.description}
                   </CardDescription>
                 </CardHeader>
@@ -179,6 +197,23 @@ export default function ForBuyersPage() {
             </p>
           </div>
 
+          {/* Aspirational room image */}
+          <div className="relative max-w-4xl mx-auto mb-16 h-64 rounded-2xl overflow-hidden shadow-elevation-md">
+            <Image
+              src="https://images.unsplash.com/photo-1668910242969-bd2933e7a5cf?w=1200&q=80&fit=crop"
+              alt="Bright room with beautiful wood floor and natural light through large windows"
+              fill
+              className="object-cover"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/30 to-transparent" aria-hidden="true" />
+            <div className="absolute inset-0 flex items-center px-10 relative z-10">
+              <p className="text-white font-display text-2xl max-w-xs drop-shadow-lg">
+                Premium flooring. Better prices.
+              </p>
+            </div>
+          </div>
+
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {/* Value Prop 1 */}
             <div className="flex flex-col gap-4">
@@ -186,10 +221,10 @@ export default function ForBuyersPage() {
                 <Search className="h-7 w-7 text-primary" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="font-display text-xl font-bold mb-2">
+                <h3 className="font-display text-xl mb-2">
                   One marketplace for all surplus flooring inventory.
                 </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                <p className="text-muted-foreground text-base leading-relaxed mb-3">
                   Stop calling distributors one by one. Browse hundreds of lots
                   — hardwood, engineered, laminate, LVP, bamboo, tile — from
                   verified manufacturers and distributors across all 50 states.
@@ -210,10 +245,10 @@ export default function ForBuyersPage() {
                 <FileText className="h-7 w-7 text-primary" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="font-display text-xl font-bold mb-2">
+                <h3 className="font-display text-xl mb-2">
                   Every listing is fully documented. No surprises.
                 </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                <p className="text-muted-foreground text-base leading-relaxed mb-3">
                   PlankMarket requires detailed specs on every listing: material
                   type, species, dimensions, grade, finish, condition, pallet
                   count, and up to 20 high-resolution photos. You see exactly
@@ -232,10 +267,10 @@ export default function ForBuyersPage() {
                 <Shield className="h-7 w-7 text-primary" aria-hidden="true" />
               </div>
               <div>
-                <h3 className="font-display text-xl font-bold mb-2">
+                <h3 className="font-display text-xl mb-2">
                   Verified sellers. Secure payment. Real buyer protection.
                 </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                <p className="text-muted-foreground text-base leading-relaxed mb-3">
                   Every seller on PlankMarket undergoes business verification —
                   EIN verification, document review, and admin approval — before
                   listing a single lot. Payments are processed via Stripe and
@@ -259,7 +294,7 @@ export default function ForBuyersPage() {
             <Badge variant="outline" className="mb-4">
               Simple Process
             </Badge>
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Four steps from search to delivery.
             </h2>
           </div>
@@ -298,7 +333,7 @@ export default function ForBuyersPage() {
                   <CardTitle className="font-display text-base leading-snug">
                     {item.title}
                   </CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">
+                  <CardDescription className="text-base leading-relaxed">
                     {item.description}
                   </CardDescription>
                 </CardHeader>
@@ -312,7 +347,7 @@ export default function ForBuyersPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Built for buyers who move fast and buy smart.
             </h2>
           </div>
@@ -363,7 +398,7 @@ export default function ForBuyersPage() {
                   <CardTitle className="font-display text-base">
                     {feature.title}
                   </CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">
+                  <CardDescription className="text-base leading-relaxed">
                     {feature.description}
                   </CardDescription>
                 </CardHeader>
@@ -377,7 +412,7 @@ export default function ForBuyersPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Buyers who found a better way to source.
             </h2>
           </div>
@@ -442,7 +477,7 @@ export default function ForBuyersPage() {
             <div className="rounded-2xl bg-gradient-to-br from-primary to-secondary p-8">
               <dl className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
                 <div>
-                  <dt className="font-display text-3xl font-bold tabular-nums">
+                  <dt className="font-display text-3xl tabular-nums">
                     30–60%
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
@@ -450,7 +485,7 @@ export default function ForBuyersPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-display text-3xl font-bold tabular-nums">
+                  <dt className="font-display text-3xl tabular-nums">
                     20
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
@@ -458,7 +493,7 @@ export default function ForBuyersPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-display text-3xl font-bold tabular-nums">
+                  <dt className="font-display text-3xl tabular-nums">
                     44
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
@@ -466,7 +501,7 @@ export default function ForBuyersPage() {
                   </dd>
                 </div>
                 <div>
-                  <dt className="font-display text-3xl font-bold">
+                  <dt className="font-display text-3xl">
                     All 50
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
@@ -487,7 +522,7 @@ export default function ForBuyersPage() {
               <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
                 Transparent Pricing
               </Badge>
-              <h2 className="font-display text-3xl font-bold sm:text-4xl">
+              <h2 className="font-display text-3xl sm:text-4xl">
                 One fee. No surprises.
               </h2>
               <p className="mt-4 text-xl font-semibold text-primary">
@@ -541,7 +576,7 @@ export default function ForBuyersPage() {
 
               {/* Comparison */}
               <div className="space-y-4">
-                <h3 className="font-display text-lg font-bold">
+                <h3 className="font-display text-lg">
                   Compared to alternatives
                 </h3>
                 <div className="space-y-3">
@@ -591,7 +626,7 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-12">
-              <h2 className="font-display text-3xl font-bold sm:text-4xl">
+              <h2 className="font-display text-3xl sm:text-4xl">
                 Frequently asked questions
               </h2>
             </div>
@@ -685,7 +720,7 @@ export default function ForBuyersPage() {
             />
 
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold mb-4 sm:text-4xl">
+              <h2 className="font-display text-3xl mb-4 sm:text-4xl">
                 The best lots sell in days. Start sourcing smarter today.
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
@@ -696,7 +731,7 @@ export default function ForBuyersPage() {
               <Link href="/register?role=buyer">
                 <Button
                   size="xl"
-                  className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                  variant="gold"
                 >
                   Create Your Free Buyer Account
                   <ArrowRight className="ml-2 h-5 w-5" />

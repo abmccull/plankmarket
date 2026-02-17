@@ -56,7 +56,7 @@ export default function SellerGuidePage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Seller Resources
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
               Seller Guide
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -70,7 +70,7 @@ export default function SellerGuidePage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Getting Started</h2>
+            <h2 className="font-display text-3xl">Getting Started</h2>
             <p className="mt-3 text-muted-foreground">
               Three simple steps to start selling on PlankMarket
             </p>
@@ -122,7 +122,7 @@ export default function SellerGuidePage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Creating Effective Listings</h2>
+            <h2 className="font-display text-3xl">Creating Effective Listings</h2>
             <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
               The quality of your listings directly impacts how quickly your inventory sells. Follow these best practices.
             </p>
@@ -200,7 +200,7 @@ export default function SellerGuidePage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Supported Material Types</h2>
+            <h2 className="font-display text-3xl">Supported Material Types</h2>
             <p className="mt-3 text-muted-foreground">
               PlankMarket supports all major flooring material categories
             </p>
@@ -261,7 +261,7 @@ export default function SellerGuidePage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Managing Orders & Shipping</h2>
+            <h2 className="font-display text-3xl">Managing Orders & Shipping</h2>
             <p className="mt-3 text-muted-foreground">
               From order notification to delivery confirmation
             </p>
@@ -327,7 +327,7 @@ export default function SellerGuidePage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Freight & Shipping Requirements</h2>
+            <h2 className="font-display text-3xl">Freight & Shipping Requirements</h2>
             <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
               Clear guidelines for packaging and shipping surplus flooring materials
             </p>
@@ -383,7 +383,7 @@ export default function SellerGuidePage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Tips for Faster Sales</h2>
+            <h2 className="font-display text-3xl">Tips for Faster Sales</h2>
           </div>
           <Card className="max-w-3xl mx-auto bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
             <CardContent className="pt-6">
@@ -491,7 +491,7 @@ export default function SellerGuidePage() {
           <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl mb-4">
                 Ready to Start Selling?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
@@ -501,7 +501,7 @@ export default function SellerGuidePage() {
                 <Link href="/register?role=seller">
                   <Button
                     size="xl"
-                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                    variant="gold"
                   >
                     Create Seller Account <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>

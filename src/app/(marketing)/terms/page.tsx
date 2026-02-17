@@ -390,7 +390,7 @@ export default function TermsOfServicePage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Legal
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
               Terms of Service
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -433,7 +433,7 @@ export default function TermsOfServicePage() {
             <Separator className="mb-8" />
             <div className="flex items-center justify-center gap-2 mb-4">
               <Gavel className="h-5 w-5 text-primary" />
-              <h2 className="font-display text-xl font-bold">Related Policies</h2>
+              <h2 className="font-display text-xl">Related Policies</h2>
             </div>
             <p className="text-sm text-muted-foreground mb-6">
               Please also review our other policies that govern your use of PlankMarket.

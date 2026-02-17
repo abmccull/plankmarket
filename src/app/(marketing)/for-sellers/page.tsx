@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -310,49 +311,66 @@ export default function ForSellersPage() {
         <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" aria-hidden="true" />
 
         <div className="container mx-auto px-4 relative z-10">
-          <div className="mx-auto max-w-3xl text-center">
-            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              Liquidate Faster. Recover More.
-            </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-              Your Surplus Flooring Has a Buyer.{" "}
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Find Them Here.
-              </span>
-            </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              PlankMarket is the dedicated B2B marketplace where flooring manufacturers, distributors, and retailers move overstock, discontinued, and closeout inventory — directly to verified buyers who are actively looking for it.
-            </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/register?role=seller">
-                <Button
-                  size="xl"
-                  className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
-                >
-                  List Your First Lot Free
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/how-it-works">
-                <Button variant="outline" size="xl">
-                  See How It Works
-                </Button>
-              </Link>
-            </div>
+          <div className="mx-auto max-w-5xl">
+            {/* Two-column layout: photo left, copy right */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              {/* Hero image — stack of wooden planks */}
+              <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg order-last lg:order-first">
+                <Image
+                  src="https://images.unsplash.com/photo-1681752972950-6229ca099fbc?w=800&q=80&fit=crop"
+                  alt="Stacked wooden flooring planks ready for liquidation"
+                  fill
+                  className="object-cover"
+                  priority
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" aria-hidden="true" />
+              </div>
 
-            {/* Trust signals */}
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-3 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>Verified buyers only — no tire-kickers</span>
-              </div>
-              <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                <CreditCard className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>Stripe payments, funds held securely until pickup</span>
-              </div>
-              <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>2% commission, no listing fees, no monthly costs</span>
+              <div className="text-center lg:text-left">
+                <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
+                  Liquidate Faster. Recover More.
+                </Badge>
+                <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
+                  Your Surplus Flooring Has a Buyer.{" "}
+                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    Find Them Here.
+                  </span>
+                </h1>
+                <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto lg:mx-0">
+                  PlankMarket is the dedicated B2B marketplace where flooring manufacturers, distributors, and retailers move overstock, discontinued, and closeout inventory — directly to verified buyers who are actively looking for it.
+                </p>
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+                  <Link href="/register?role=seller">
+                    <Button
+                      size="xl"
+                      variant="gold"
+                    >
+                      List Your First Lot Free
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                  <Link href="/how-it-works">
+                    <Button variant="outline" size="xl">
+                      See How It Works
+                    </Button>
+                  </Link>
+                </div>
+
+                {/* Trust signals */}
+                <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
+                    <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>Verified buyers only — no tire-kickers</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
+                    <CreditCard className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>Stripe payments, funds held securely until pickup</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
+                    <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>2% commission, no listing fees, no monthly costs</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -363,7 +381,7 @@ export default function ForSellersPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Every day that surplus sits,{" "}
               <span className="text-primary">it&apos;s costing you.</span>
             </h2>
@@ -376,7 +394,7 @@ export default function ForSellersPage() {
                     <point.icon className="h-6 w-6 text-red-500" aria-hidden="true" />
                   </div>
                   <CardTitle className="font-display text-lg leading-snug">{point.title}</CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">{point.description}</CardDescription>
+                  <CardDescription className="text-base leading-relaxed">{point.description}</CardDescription>
                 </CardHeader>
               </Card>
             ))}
@@ -396,17 +414,34 @@ export default function ForSellersPage() {
             </p>
           </div>
 
+          {/* Warehouse/inventory photo */}
+          <div className="relative max-w-4xl mx-auto mb-16 h-56 rounded-2xl overflow-hidden shadow-elevation-md">
+            <Image
+              src="https://images.unsplash.com/photo-1422246654994-34520d5a0340?w=1200&q=80&fit=crop"
+              alt="Brown wood planks stacked in a warehouse, representing surplus flooring inventory"
+              fill
+              className="object-cover"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-secondary/40 to-transparent" aria-hidden="true" />
+            <div className="absolute inset-0 flex items-center px-10 relative z-10">
+              <p className="text-white font-display text-2xl max-w-xs drop-shadow-lg">
+                Turn warehouse space into working capital.
+              </p>
+            </div>
+          </div>
+
           <div className="max-w-4xl mx-auto space-y-12">
             {VALUE_PROPS.map((prop) => (
               <div key={prop.number} className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 md:gap-10 items-start">
                 {/* Number badge */}
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
-                  <span className="font-display text-2xl font-bold text-primary" aria-hidden="true">
+                  <span className="font-display text-2xl text-primary" aria-hidden="true">
                     {prop.number}
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-display text-xl font-bold mb-3">{prop.title}</h3>
+                  <h3 className="font-display text-xl mb-3">{prop.title}</h3>
                   <p className="text-muted-foreground mb-4 leading-relaxed">{prop.description}</p>
                   <div className="flex items-start gap-2 bg-secondary/5 border border-secondary/20 rounded-lg p-4">
                     <CheckCircle2 className="h-4 w-4 text-secondary shrink-0 mt-0.5" aria-hidden="true" />
@@ -426,7 +461,7 @@ export default function ForSellersPage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               For Sellers
             </Badge>
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               From listing to payout in four steps.
             </h2>
           </div>
@@ -440,7 +475,7 @@ export default function ForSellersPage() {
                     {step.number}
                   </div>
                   <CardTitle className="font-display text-base leading-snug">{step.title}</CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">{step.description}</CardDescription>
+                  <CardDescription className="text-base leading-relaxed">{step.description}</CardDescription>
                 </CardHeader>
               </Card>
             ))}
@@ -448,7 +483,7 @@ export default function ForSellersPage() {
 
           <div className="text-center mt-10">
             <Link href="/register?role=seller">
-              <Button size="xl" className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110">
+              <Button size="xl" variant="gold">
                 Get Started Free
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -461,7 +496,7 @@ export default function ForSellersPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Every tool your team needs to move inventory efficiently.
             </h2>
           </div>
@@ -473,7 +508,7 @@ export default function ForSellersPage() {
                     <feature.icon className="h-6 w-6 text-primary" aria-hidden="true" />
                   </div>
                   <CardTitle className="font-display text-base">{feature.title}</CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">{feature.description}</CardDescription>
+                  <CardDescription className="text-base leading-relaxed">{feature.description}</CardDescription>
                 </CardHeader>
               </Card>
             ))}
@@ -485,7 +520,7 @@ export default function ForSellersPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Sellers who stopped sitting on surplus.
             </h2>
           </div>
@@ -530,7 +565,7 @@ export default function ForSellersPage() {
             <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/10">
               {STATS.map((stat) => (
                 <div key={stat.value} className="bg-primary/5 p-8 text-center">
-                  <div className="font-display text-4xl font-bold tabular-nums">{stat.value}</div>
+                  <div className="font-display text-4xl tabular-nums">{stat.value}</div>
                   <div className="text-sm font-medium mt-2 opacity-90">{stat.label}</div>
                   <div className="text-xs opacity-70 mt-1">{stat.detail}</div>
                 </div>
@@ -547,7 +582,7 @@ export default function ForSellersPage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Transparent Pricing
             </Badge>
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               2% on what you sell. Zero on what you don&apos;t.
             </h2>
             <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -666,7 +701,7 @@ export default function ForSellersPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
-            <h2 className="font-display text-3xl font-bold sm:text-4xl">
+            <h2 className="font-display text-3xl sm:text-4xl">
               Frequently asked questions
             </h2>
           </div>
@@ -734,7 +769,7 @@ export default function ForSellersPage() {
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent/10 rounded-full blur-3xl" aria-hidden="true" />
 
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold sm:text-4xl md:text-5xl mb-6">
+              <h2 className="font-display text-3xl sm:text-4xl md:text-5xl mb-6">
                 Your surplus is sitting.
                 <br />
                 Your buyers are waiting.
@@ -746,7 +781,7 @@ export default function ForSellersPage() {
                 <Link href="/register?role=seller">
                   <Button
                     size="xl"
-                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                    variant="gold"
                   >
                     Create Your Seller Account Free
                     <ArrowRight className="ml-2 h-4 w-4" />

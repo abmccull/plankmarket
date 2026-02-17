@@ -97,7 +97,7 @@ export default function BuyerDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold font-display">Buyer Dashboard</h1>
+        <h1 className="text-3xl font-display">Buyer Dashboard</h1>
         <p className="text-muted-foreground mt-1">
           Track your orders, watchlist, and saved searches
         </p>
@@ -328,7 +328,7 @@ export default function BuyerDashboardPage() {
         <h3 className="text-xl font-display font-semibold mb-2">Find Your Next Deal</h3>
         <p className="text-white/80 mb-4">Browse liquidation flooring lots at wholesale prices</p>
         <Link href="/listings">
-          <Button size="lg" className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110">
+          <Button size="lg" variant="gold">
             Browse Listings <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </Link>

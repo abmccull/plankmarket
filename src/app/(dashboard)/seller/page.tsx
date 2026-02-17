@@ -53,7 +53,7 @@ export default function SellerDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold font-display">Seller Dashboard</h1>
+        <h1 className="text-3xl font-display">Seller Dashboard</h1>
         <p className="text-muted-foreground mt-1">
           Overview of your listings, orders, and performance
         </p>

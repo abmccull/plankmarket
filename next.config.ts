@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "uploadthing.com",
       },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
     ],
   },
   async rewrites() {
@@ -36,7 +40,7 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com https://us.i.posthog.com",
               "frame-src https://js.stripe.com https://hooks.stripe.com",
-              "img-src 'self' https://utfs.io https://uploadthing.com https://*.supabase.co data: blob:",
+              "img-src 'self' https://utfs.io https://uploadthing.com https://*.supabase.co https://images.unsplash.com data: blob:",
               "style-src 'self' 'unsafe-inline'",
               "connect-src 'self' https://*.supabase.co https://api.stripe.com https://us.i.posthog.com wss://*.supabase.co",
               "font-src 'self'",

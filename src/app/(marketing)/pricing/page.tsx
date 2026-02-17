@@ -46,7 +46,7 @@ export default function PricingPage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               No Hidden Fees
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
               Simple, Transparent Pricing
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -143,7 +143,7 @@ export default function PricingPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Fee Breakdown</h2>
+            <h2 className="font-display text-3xl">Fee Breakdown</h2>
             <p className="mt-3 text-muted-foreground">
               Understanding what you pay and when
             </p>
@@ -198,7 +198,7 @@ export default function PricingPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Fee Example</h2>
+            <h2 className="font-display text-3xl">Fee Example</h2>
             <p className="mt-3 text-muted-foreground">
               See how fees work on a typical transaction
             </p>
@@ -248,7 +248,7 @@ export default function PricingPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">No Hidden Fees</h2>
+            <h2 className="font-display text-3xl">No Hidden Fees</h2>
             <p className="mt-3 text-muted-foreground">
               Unlike other marketplaces, we never charge for these
             </p>
@@ -306,7 +306,7 @@ export default function PricingPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Common Questions</h2>
+            <h2 className="font-display text-3xl">Common Questions</h2>
           </div>
           <div className="max-w-3xl mx-auto space-y-4">
             {[
@@ -353,7 +353,7 @@ export default function PricingPage() {
           <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl mb-4">
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
@@ -363,7 +363,7 @@ export default function PricingPage() {
                 <Link href="/register?role=buyer">
                   <Button
                     size="xl"
-                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                    variant="gold"
                   >
                     Create Buyer Account <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>

@@ -49,7 +49,7 @@ export default function ContactPage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               We&apos;re Here to Help
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
               Get in Touch
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -115,7 +115,7 @@ export default function ContactPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Help Topics</h2>
+            <h2 className="font-display text-3xl">Help Topics</h2>
             <p className="mt-3 text-muted-foreground">
               Find answers in our resources before reaching out
             </p>
@@ -239,7 +239,7 @@ export default function ContactPage() {
           <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl mb-4">
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
@@ -248,7 +248,7 @@ export default function ContactPage() {
               <Link href="/register">
                 <Button
                   size="xl"
-                  className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                  variant="gold"
                 >
                   Create Free Account <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>

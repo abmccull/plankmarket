@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { Logo } from "@/components/brand/logo";
 
 export const metadata: Metadata = {
@@ -14,27 +15,22 @@ export default function AuthLayout({
   return (
     <div className="flex min-h-screen">
       {/* Branded left panel — desktop only */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary to-secondary overflow-hidden">
-        {/* Wood grain texture overlay */}
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: `repeating-linear-gradient(
-              90deg,
-              transparent,
-              transparent 20px,
-              rgba(255,255,255,0.03) 20px,
-              rgba(255,255,255,0.03) 21px
-            ), repeating-linear-gradient(
-              0deg,
-              transparent,
-              transparent 4px,
-              rgba(255,255,255,0.02) 4px,
-              rgba(255,255,255,0.02) 5px
-            )`,
-          }}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        {/* Real wood planks photography */}
+        <Image
+          src="https://images.unsplash.com/photo-1422246654994-34520d5a0340?w=900&q=80&fit=crop"
+          alt=""
+          fill
+          className="object-cover"
+          priority
+          aria-hidden="true"
         />
-        <div className="relative flex flex-col items-center justify-center w-full p-12 text-white">
+        {/* Gradient overlay so text remains readable */}
+        <div
+          className="absolute inset-0 bg-gradient-to-br from-primary/85 to-secondary/80"
+          aria-hidden="true"
+        />
+        <div className="relative z-10 flex flex-col items-center justify-center w-full p-12 text-white">
           <Logo variant="full" size="xl" className="[&_span]:!text-white mb-8" />
           <h2 className="text-3xl font-display font-bold text-center mb-4">
             B2B Flooring Liquidation

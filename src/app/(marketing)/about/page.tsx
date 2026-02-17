@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -59,7 +60,7 @@ export default function AboutPage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Our Mission
             </Badge>
-            <h1 className="font-display text-4xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
               Reducing Waste in the{" "}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
                 Flooring Industry
@@ -78,7 +79,7 @@ export default function AboutPage() {
           <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
             <div>
               <Badge variant="outline" className="mb-4">The Problem</Badge>
-              <h2 className="font-display text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl mb-4">
                 Billions in Wasted Inventory
               </h2>
               <p className="text-muted-foreground mb-4">
@@ -111,7 +112,7 @@ export default function AboutPage() {
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mx-auto mb-2">
                       <stat.icon className="h-4 w-4 text-primary" />
                     </div>
-                    <div className="font-display text-2xl font-bold text-primary">{stat.label}</div>
+                    <div className="font-display text-2xl text-primary">{stat.label}</div>
                     <CardTitle className="text-sm">{stat.subtitle}</CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
@@ -128,7 +129,7 @@ export default function AboutPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Our Solution</h2>
+            <h2 className="font-display text-3xl">Our Solution</h2>
             <p className="mt-3 text-muted-foreground">
               A purpose-built B2B marketplace for surplus and closeout flooring
             </p>
@@ -136,7 +137,7 @@ export default function AboutPage() {
           <div className="grid md:grid-cols-2 gap-16 items-start max-w-5xl mx-auto">
             <div>
               <Badge variant="outline" className="mb-4">For Sellers</Badge>
-              <h3 className="font-display text-xl font-bold mb-4">
+              <h3 className="font-display text-xl mb-4">
                 Reach Buyers Nationwide
               </h3>
               <ul className="space-y-3">
@@ -158,7 +159,7 @@ export default function AboutPage() {
             </div>
             <div>
               <Badge variant="outline" className="mb-4">For Buyers</Badge>
-              <h3 className="font-display text-xl font-bold mb-4">
+              <h3 className="font-display text-xl mb-4">
                 Source Materials Below Cost
               </h3>
               <ul className="space-y-3">
@@ -184,9 +185,18 @@ export default function AboutPage() {
 
       {/* Sustainability */}
       <section className="relative py-16 bg-gradient-to-br from-primary to-secondary text-primary-foreground overflow-hidden">
+        {/* Wood grain texture close-up as decorative background */}
+        <Image
+          src="https://images.unsplash.com/photo-1688127145963-1063f22622a5?w=1400&q=80&fit=crop"
+          alt=""
+          fill
+          className="object-cover opacity-[0.08] mix-blend-overlay"
+          aria-hidden="true"
+          loading="lazy"
+        />
         <div className="container mx-auto px-4 relative z-10">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Sustainability & Impact</h2>
+            <h2 className="font-display text-3xl">Sustainability & Impact</h2>
             <p className="mt-3 text-white/80">
               Every transaction represents materials saved from waste
             </p>
@@ -214,7 +224,7 @@ export default function AboutPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Who We Serve</h2>
+            <h2 className="font-display text-3xl">Who We Serve</h2>
             <p className="mt-3 text-muted-foreground">
               Designed for flooring professionals across the supply chain
             </p>
@@ -270,7 +280,7 @@ export default function AboutPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl font-bold">Our Values</h2>
+            <h2 className="font-display text-3xl">Our Values</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
             {[
@@ -300,7 +310,7 @@ export default function AboutPage() {
           <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
             <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl font-bold mb-4">
+              <h2 className="font-display text-3xl mb-4">
                 Join the Marketplace
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
@@ -310,7 +320,7 @@ export default function AboutPage() {
                 <Link href="/register?role=seller">
                   <Button
                     size="xl"
-                    className="bg-gradient-to-b from-amber-400 to-amber-500 text-amber-950 shadow-md hover:shadow-lg hover:brightness-110"
+                    variant="gold"
                   >
                     Start Selling <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
