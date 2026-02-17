@@ -337,7 +337,7 @@ describe("applyCounter (counter-offer state transition)", () => {
   });
 
   it("should allow multiple rounds of countering", () => {
-    let offer = makePendingOffer({ currentRound: 1, lastActorId: BUYER_ID });
+    const offer = makePendingOffer({ currentRound: 1, lastActorId: BUYER_ID });
 
     // Round 2: seller counters
     const round2 = applyCounter(offer, 2.0, SELLER_ID);
