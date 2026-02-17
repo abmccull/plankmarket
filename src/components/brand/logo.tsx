@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils";
 
 interface LogoProps {
@@ -15,28 +16,39 @@ const sizeMap = {
 };
 
 function LogoIcon({ size = 32, className }: { size?: number; className?: string }) {
+  const maskId = useId();
+
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 80 80"
+      viewBox="0 0 86 86"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
       className={className}
     >
-      {/* Three equal planks, same size, aligned left */}
-      <rect x="0" y="0" width="80" height="18" rx="2" fill="currentColor" />
-      <rect x="0" y="31" width="80" height="18" rx="2" fill="currentColor" />
-      <rect x="0" y="62" width="80" height="18" rx="2" fill="currentColor" />
+      <defs>
+        <mask id={maskId}>
+          {/* White = visible, black = transparent */}
+          <rect width="86" height="86" fill="white" />
 
-      {/* Left-pointing arrow (gap between plank 1 and 2) — planks extend past both sides */}
-      <polygon points="6,27.5 18,20 18,35" fill="white" />
-      <rect x="18" y="22" width="56" height="11" rx="1" fill="white" />
+          {/* Left-pointing arrow cutout (between plank 1 and 2) */}
+          <polygon points="0,27 16,15 16,39" fill="black" />
+          <rect x="16" y="19" width="38" height="16" rx="1" fill="black" />
 
-      {/* Right-pointing arrow (gap between plank 2 and 3) — planks extend past both sides */}
-      <rect x="6" y="50" width="56" height="11" rx="1" fill="white" />
-      <polygon points="74,55.5 62,48 62,63" fill="white" />
+          {/* Right-pointing arrow cutout (between plank 2 and 3) */}
+          <rect x="24" y="51" width="42" height="16" rx="1" fill="black" />
+          <polygon points="86,59 70,47 70,71" fill="black" />
+        </mask>
+      </defs>
+
+      <g mask={`url(#${maskId})`}>
+        {/* Three staggered planks — matching reference design */}
+        <rect x="0" y="0" width="54" height="22" rx="3" fill="currentColor" />
+        <rect x="20" y="32" width="54" height="22" rx="3" fill="currentColor" />
+        <rect x="8" y="64" width="72" height="22" rx="3" fill="currentColor" />
+      </g>
     </svg>
   );
 }
