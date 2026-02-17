@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, CreditCard, CheckCircle, AlertCircle } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { celebrateMilestone } from "@/lib/utils/celebrate";
 
 export default function StripeOnboardingPage() {
   const searchParams = useSearchParams();
@@ -21,6 +23,17 @@ export default function StripeOnboardingPage() {
   const { data: status, isLoading } =
     trpc.payment.getConnectStatus.useQuery();
   const createAccount = trpc.payment.createConnectAccount.useMutation();
+
+  useEffect(() => {
+    if (isSuccess) {
+      celebrateMilestone(
+        "Stripe Connected!",
+        "You can now receive payments from buyers on PlankMarket."
+      );
+    }
+    // Only fire once on mount when success param is present
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleOnboard = async () => {
     try {

@@ -7,6 +7,8 @@ import { shipmentTracking } from "./shipment-tracking";
 import { buyerRequestAlerts } from "./buyer-request-alerts";
 import { preferenceMatchAlerts } from "./preference-match-alerts";
 import { followupReminders } from "./followup-reminders";
+import { onboardingDrip } from "./onboarding-drip";
+import { firstListingCongrats, firstPurchaseCongrats } from "./milestone-emails";
 
 export const functions = [
   savedSearchAlerts,
@@ -18,4 +20,7 @@ export const functions = [
   buyerRequestAlerts,
   preferenceMatchAlerts,
   followupReminders,
+  onboardingDrip,
+  firstListingCongrats,
+  firstPurchaseCongrats,
 ];

@@ -24,6 +24,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { celebrateMilestone } from "@/lib/utils/celebrate";
+import { OnboardingTip } from "@/components/ui/onboarding-tip";
 
 // ─── Constants (aligned to validator schema) ──────────────────────────────────
 
@@ -904,7 +906,7 @@ export default function PreferencesPage() {
             sellerPrefs.preferredBuyerRadiusMiles,
         });
       }
-      toast.success("Preferences saved!");
+      celebrateMilestone("Preferences Saved!", "You'll now see personalized recommendations based on your preferences.");
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -947,6 +949,12 @@ export default function PreferencesPage() {
         total={totalSteps}
         labels={stepLabels}
       />
+
+      {step === 1 && (
+        <OnboardingTip id="preferences-tip">
+          Setting preferences unlocks personalized recommendations and alerts for listings matching your needs.
+        </OnboardingTip>
+      )}
 
       {role === "buyer" ? renderBuyerStep() : renderSellerStep()}
 

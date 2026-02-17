@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { StripeOnboardingBanner } from "@/components/dashboard/stripe-onboarding-banner";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { EmptyState } from "@/components/ui/empty-state";
 import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -59,6 +61,8 @@ export default function SellerDashboardPage() {
 
       <StripeOnboardingBanner />
 
+      <OnboardingChecklist />
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Active Listings"
@@ -101,9 +105,12 @@ export default function SellerDashboardPage() {
                 <span className="font-medium">{stat.count}</span>
               </div>
             )) ?? (
-              <p className="text-sm text-muted-foreground">
-                No listings yet. Create your first listing to get started.
-              </p>
+              <EmptyState
+                icon={Package}
+                title="No listings yet"
+                description="Create your first listing to start selling"
+                action={{ label: "Create Listing", href: "/seller/listings/new" }}
+              />
             )}
           </div>
         </div>
@@ -127,9 +134,11 @@ export default function SellerDashboardPage() {
                 </div>
               </div>
             )) ?? (
-              <p className="text-sm text-muted-foreground">
-                No orders yet.
-              </p>
+              <EmptyState
+                icon={ShoppingCart}
+                title="No orders yet"
+                description="Orders will appear here once buyers purchase your listings"
+              />
             )}
           </div>
         </div>

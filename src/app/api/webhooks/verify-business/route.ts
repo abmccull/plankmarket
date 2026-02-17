@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { users, notifications } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyBusiness } from "@/server/services/ai-verification";
+import { sendVerificationApprovedEmail } from "@/lib/email/send";
 
 /**
  * Performs constant-time string comparison to prevent timing attacks
@@ -127,6 +128,15 @@ export async function POST(request: NextRequest) {
         title: "Business Verified",
         message:
           "Your business has been automatically verified. You now have full access to the marketplace.",
+      });
+
+      // Send verification approved email (fire-and-forget)
+      sendVerificationApprovedEmail({
+        to: user.email,
+        name: user.name,
+        role: user.role as "buyer" | "seller",
+      }).catch((err) => {
+        console.error("Failed to send verification email:", err);
       });
     }
 

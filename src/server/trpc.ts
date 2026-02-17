@@ -201,6 +201,37 @@ const enforceSeller = t.middleware(({ ctx, next }) => {
 
 export const sellerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceSeller);
 
+// Seller procedure that allows pending verification (for draft listings)
+const enforceSellerOrPending = t.middleware(({ ctx, next }) => {
+  if (!ctx.authUser || !ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in",
+    });
+  }
+  if (ctx.user.role !== "seller" && ctx.user.role !== "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only sellers can perform this action",
+    });
+  }
+  // Allow pending, verified, and admin - only block rejected/unverified
+  if (ctx.user.role !== "admin" && ctx.user.verificationStatus === "rejected") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Your verification was rejected. Please resubmit.",
+    });
+  }
+  return next({
+    ctx: {
+      authUser: ctx.authUser,
+      user: ctx.user,
+    },
+  });
+});
+
+export const sellerOrPendingProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceSellerOrPending);
+
 // Buyer-only middleware (also requires verified)
 const enforceBuyer = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {

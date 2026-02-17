@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { StatsCard } from "@/components/dashboard/stats-card";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
+import { EmptyState } from "@/components/ui/empty-state";
+import { OnboardingTip } from "@/components/ui/onboarding-tip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,6 +17,53 @@ import {
   FileText,
   SlidersHorizontal,
 } from "lucide-react";
+
+function TrendingSection() {
+  const { data: trending } = trpc.listing.getTrending.useQuery();
+
+  if (!trending || trending.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border bg-card p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold">Popular on PlankMarket</h3>
+        <Link href="/listings?sort=popularity">
+          <Button variant="ghost" size="sm">
+            View all <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
+          </Button>
+        </Link>
+      </div>
+      <div className="space-y-3">
+        {trending.map((listing) => (
+          <Link
+            key={listing.id}
+            href={`/listings/${listing.id}`}
+            className="flex items-center justify-between py-2 hover:bg-muted/30 rounded px-2 transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{listing.title}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                {listing.materialType && (
+                  <Badge variant="outline" className="text-xs">
+                    {listing.materialType.replace("_", " ")}
+                  </Badge>
+                )}
+                {listing.totalSqFt && (
+                  <span className="text-xs text-muted-foreground">
+                    {listing.totalSqFt.toLocaleString()} sqft
+                  </span>
+                )}
+              </div>
+            </div>
+            <span className="text-sm font-medium text-primary shrink-0 ml-2">
+              ${listing.askPricePerSqFt}/sqft
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function BuyerDashboardPage() {
   const { data: orders, isLoading: ordersLoading } =
@@ -53,6 +103,12 @@ export default function BuyerDashboardPage() {
         </p>
       </div>
 
+      <OnboardingTip id="buyer-welcome">
+        Welcome to PlankMarket! Start by browsing listings or setting your preferences to see personalized deals.
+      </OnboardingTip>
+
+      <OnboardingChecklist />
+
       <div className="grid gap-4 md:grid-cols-3">
         <StatsCard
           title="Total Orders"
@@ -83,9 +139,12 @@ export default function BuyerDashboardPage() {
             </Link>
           </div>
           {orders?.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No orders yet. Browse listings to get started.
-            </p>
+            <EmptyState
+              icon={ShoppingCart}
+              title="No orders yet"
+              description="Browse listings to find your next deal"
+              action={{ label: "Browse Listings", href: "/listings" }}
+            />
           ) : (
             <div className="space-y-3">
               {orders?.items.map((order) => (
@@ -122,9 +181,12 @@ export default function BuyerDashboardPage() {
             </Link>
           </div>
           {watchlist?.items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No items in your watchlist yet.
-            </p>
+            <EmptyState
+              icon={Heart}
+              title="No watchlist items"
+              description="Save listings you're interested in to track them"
+              action={{ label: "Browse Listings", href: "/listings" }}
+            />
           ) : (
             <div className="space-y-3">
               {watchlist?.items.map((item) => (
@@ -254,6 +316,11 @@ export default function BuyerDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Popular on PlankMarket */}
+      {(recommendedListings.length === 0 || prefsIncomplete) && (
+        <TrendingSection />
+      )}
 
       {/* CTA */}
       <div className="rounded-2xl bg-gradient-to-br from-primary to-secondary p-8 text-center text-white relative overflow-hidden">

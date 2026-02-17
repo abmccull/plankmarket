@@ -35,6 +35,9 @@ import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PhotoUpload } from "@/components/listings/photo-upload";
 import { WIDTH_OPTIONS, THICKNESS_OPTIONS, getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
+import { OnboardingTip } from "@/components/ui/onboarding-tip";
+import { celebrateMilestone } from "@/lib/utils/celebrate";
+import { useAuthStore } from "@/lib/stores/auth-store";
 
 const STEPS = [
   { id: 1, title: "Product Details", description: "Material and specs" },
@@ -127,6 +130,7 @@ const STEP_FIELDS: Record<number, (keyof ListingFormInput)[]> = {
 
 export default function CreateListingPage() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const { currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
     useListingFormStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -186,7 +190,12 @@ export default function CreateListingPage() {
         mediaIds: uploadedMediaIds,
       };
       const listing = await createMutation.mutateAsync(listingData);
-      toast.success("Listing created successfully!");
+      celebrateMilestone(
+        "Listing Created!",
+        user?.verificationStatus === "verified"
+          ? "Your listing is now live on PlankMarket!"
+          : "Your draft has been saved. It will go live after verification."
+      );
       reset();
       router.push(`/listings/${listing.id}`);
     } catch (error: unknown) {
@@ -263,6 +272,9 @@ export default function CreateListingPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <OnboardingTip id="listing-title-tip">
+                Tip: Include brand, species, and condition in your title for better search visibility
+              </OnboardingTip>
               {STEP_FIELDS[1]?.some(f => errors[f]) && (
                 <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 mb-4">
                   <p className="text-sm font-medium text-destructive">
@@ -1020,30 +1032,41 @@ export default function CreateListingPage() {
         )}
 
         {/* Navigation */}
-        <div className="flex items-center justify-between mt-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleBack}
-            disabled={currentStep === 1}
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back
-          </Button>
-
-          {currentStep < 6 ? (
-            <Button type="button" onClick={handleNext}>
-              Next
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          ) : (
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Publish Listing
-            </Button>
+        <div className="mt-6">
+          {currentStep === 6 && user?.verificationStatus !== "verified" && user?.role !== "admin" && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900 px-4 py-3 mb-4">
+              <p className="text-sm text-blue-800 dark:text-blue-200">
+                Your listing will be saved as a draft and published automatically once your business is verified.
+              </p>
+            </div>
           )}
+          <div className="flex items-center justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleBack}
+              disabled={currentStep === 1}
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
+
+            {currentStep < 6 ? (
+              <Button type="button" onClick={handleNext}>
+                Next
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            ) : (
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {user?.verificationStatus === "verified" || user?.role === "admin"
+                  ? "Publish Listing"
+                  : "Save as Draft"}
+              </Button>
+            )}
+          </div>
         </div>
       </form>
     </div>

@@ -2,6 +2,7 @@ import {
   createTRPCRouter,
   publicProcedure,
   sellerProcedure,
+  sellerOrPendingProcedure,
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema } from "@/lib/validators/listing";
 import { listings, media } from "../db/schema";
@@ -15,7 +16,7 @@ import { slugify } from "@/lib/utils";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
-  create: sellerProcedure
+  create: sellerOrPendingProcedure
     .input(listingFormSchema)
     .mutation(async ({ ctx, input }) => {
       const { mediaIds, ...listingData } = input;
@@ -36,7 +37,7 @@ export const listingRouter = createTRPCRouter({
         .values({
           ...listingData,
           sellerId: ctx.user.id,
-          status: "active",
+          status: ctx.user.verificationStatus === "verified" || ctx.user.role === "admin" ? "active" : "draft",
           originalTotalSqFt: listingData.totalSqFt,
           locationLat,
           locationLng,
@@ -618,4 +619,31 @@ export const listingRouter = createTRPCRouter({
 
     return stats;
   }),
+
+  // Get trending/popular listings (public)
+  getTrending: publicProcedure
+    .input(z.object({ limit: z.number().int().positive().max(12).default(6) }).optional())
+    .query(async ({ ctx, input }) => {
+      const limit = input?.limit ?? 6;
+      const items = await ctx.db.query.listings.findMany({
+        where: eq(listings.status, "active"),
+        with: {
+          media: {
+            orderBy: (media, { asc }) => [asc(media.sortOrder)],
+            limit: 1,
+          },
+          seller: {
+            columns: {
+              id: true,
+              verified: true,
+              businessState: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: desc(listings.viewsCount),
+        limit,
+      });
+      return items;
+    }),
 });
