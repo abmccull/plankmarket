@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -13,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StarRating } from "@/components/shared/star-rating";
 import { CheckCircle2, MapPin, Calendar, Mail } from "lucide-react";
 import { ListingCard } from "@/components/search/listing-card";
-import { getAnonymousDisplayName, getAnonymousInitials } from "@/lib/identity/display-name";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 interface SellerProfilePageProps {
   params: Promise<{

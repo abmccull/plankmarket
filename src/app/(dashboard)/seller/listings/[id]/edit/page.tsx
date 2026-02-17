@@ -133,6 +133,7 @@ export default function EditListingPage() {
     resolver: zodResolver(listingFormSchema) as never,
   });
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- React Hook Form is not memoization-safe by design
   const watchedValues = watch();
 
   // Pre-populate form when listing data loads

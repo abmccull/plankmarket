@@ -10,7 +10,7 @@ import {
   respondToReviewSchema,
 } from "@/lib/validators/review";
 import { reviews, orders } from "../db/schema";
-import { eq, and, desc, sql, avg } from "drizzle-orm";
+import { eq, desc, sql, avg } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 

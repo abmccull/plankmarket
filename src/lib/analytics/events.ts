@@ -131,18 +131,17 @@ export type PlankMarketEvent =
   | { event: "watchlist_added"; properties: WatchlistAddedProperties }
   | { event: "watchlist_removed"; properties: WatchlistRemovedProperties };
 
-// Track helper function for server-side use
+/* eslint-disable @typescript-eslint/no-unused-vars */
+// Placeholder for PostHog server client — params intentionally unused until integration
 export function track<T extends PlankMarketEvent>(
   distinctId: string,
   event: T["event"],
   properties: T["properties"]
 ): void {
-  // This is a placeholder for server-side tracking
-  // The actual implementation will use the PostHog server client
   if (typeof window !== "undefined") {
-     
     console.warn(
       "Server-side track function called on client. Use useTrack hook instead."
     );
   }
 }
+/* eslint-enable @typescript-eslint/no-unused-vars */

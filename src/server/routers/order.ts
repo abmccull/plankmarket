@@ -88,9 +88,7 @@ export const orderRouter = createTRPCRouter({
         let verifiedCarrierRate = 0;
         let verifiedShippingMargin = 0;
         let verifiedSelectedCarrier = input.selectedCarrier;
-        let verifiedCarrierScac: string | undefined;
         let verifiedEstimatedTransitDays = input.estimatedTransitDays;
-        let verifiedEstimatedDelivery: string | undefined;
         let quoteExpiresAt: Date | undefined;
 
         if (input.selectedQuoteId) {
@@ -127,9 +125,7 @@ export const orderRouter = createTRPCRouter({
           verifiedShippingMargin =
             Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
           verifiedSelectedCarrier = quote.carrierName;
-          verifiedCarrierScac = quote.carrierScac;
           verifiedEstimatedTransitDays = quote.transitDays;
-          verifiedEstimatedDelivery = quote.estimatedDelivery;
           quoteExpiresAt = quote.quoteExpiresAt
             ? new Date(quote.quoteExpiresAt)
             : undefined;

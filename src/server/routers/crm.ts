@@ -6,7 +6,7 @@ import {
 } from "../db/schema/crm";
 import { conversations } from "../db/schema/conversations";
 import { users } from "../db/schema/users";
-import { and, eq, sql, desc, asc, lte, or } from "drizzle-orm";
+import { and, eq, sql, desc, asc, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 

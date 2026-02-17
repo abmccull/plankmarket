@@ -2,7 +2,6 @@ import { db } from "@/server/db";
 import { contentViolations } from "@/server/db/schema";
 import type { Detection } from "@/lib/content-filter/patterns";
 import { redis } from "@/lib/redis/client";
-import { sql, eq, and, desc } from "drizzle-orm";
 
 /**
  * Log a content violation to the database.

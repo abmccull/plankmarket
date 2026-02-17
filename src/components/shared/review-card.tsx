@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
+import Image from "next/image";
 import { Card, CardContent } from "@/components/ui/card";
 import { StarRating } from "./star-rating";
 import { cn } from "@/lib/utils";
@@ -42,9 +43,11 @@ export function ReviewCard({
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
             {reviewerAvatar ? (
-              <img
+              <Image
                 src={reviewerAvatar}
                 alt={reviewerName}
+                width={40}
+                height={40}
                 className="h-10 w-10 rounded-full object-cover"
               />
             ) : (

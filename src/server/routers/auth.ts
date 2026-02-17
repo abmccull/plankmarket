@@ -1,6 +1,6 @@
 import { createTRPCRouter, publicProcedure, protectedProcedure, rateLimitedPublicProcedure } from "../trpc";
 import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
-import { users, notifications, listings, savedSearches, orders, userPreferences } from "../db/schema";
+import { users, listings, savedSearches, orders, userPreferences } from "../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";

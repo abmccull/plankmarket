@@ -13,7 +13,7 @@ import {
   buyerRequestResponses,
   notifications,
 } from "../db/schema";
-import { and, eq, sql, desc, inArray, asc } from "drizzle-orm";
+import { and, eq, sql, desc, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
