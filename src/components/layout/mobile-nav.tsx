@@ -57,28 +57,10 @@ export function MobileNav() {
       ];
     }
 
-    if (pathname.startsWith("/seller")) {
-      return [
-        { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
-        { title: "My Listings", href: "/seller/listings", icon: List },
-        { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
-        { title: "Orders", href: "/seller/orders", icon: Package },
-        { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
-        { title: "Payments", href: "/seller/stripe-onboarding", icon: CreditCard },
-        { title: "Settings", href: "/seller/settings", icon: Settings },
-      ];
-    }
-
-    if (pathname.startsWith("/buyer")) {
-      return [
-        { title: "Browse Listings", href: "/listings", icon: Search },
-        { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
-        { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
-        { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
-        { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
-        { title: "Settings", href: "/buyer/settings", icon: Settings },
-      ];
-    }
+    // Use user role to determine nav items, not just pathname.
+    // Shared routes like /preferences, /messages, /offers don't have a role prefix.
+    const isSeller =
+      user.role === "seller" || user.role === "admin" || pathname.startsWith("/seller");
 
     if (pathname.startsWith("/admin")) {
       return [
@@ -91,7 +73,26 @@ export function MobileNav() {
       ];
     }
 
-    return [{ title: "Browse Listings", href: "/listings", icon: Search }];
+    if (isSeller) {
+      return [
+        { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
+        { title: "My Listings", href: "/seller/listings", icon: List },
+        { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
+        { title: "Orders", href: "/seller/orders", icon: Package },
+        { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
+        { title: "Payments", href: "/seller/stripe-onboarding", icon: CreditCard },
+        { title: "Settings", href: "/seller/settings", icon: Settings },
+      ];
+    }
+
+    return [
+      { title: "Browse Listings", href: "/listings", icon: Search },
+      { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
+      { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
+      { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
+      { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
+      { title: "Settings", href: "/buyer/settings", icon: Settings },
+    ];
   };
 
   const navItems = getNavItems();

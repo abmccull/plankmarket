@@ -71,3 +71,37 @@ export function calculateSellerFee(price: number): number {
 export function calculateTotalWithFees(price: number): number {
   return price + calculateBuyerFee(price);
 }
+
+/**
+ * Extract a clean, user-friendly error message from tRPC/Zod errors.
+ * tRPC Zod validation errors come back as a JSON array of Zod issues in error.message.
+ * This parses that and returns just the human-readable message string.
+ */
+export function getErrorMessage(error: unknown, fallback = "Something went wrong. Please try again."): string {
+  if (!error) return fallback;
+
+  // Handle Error objects (including TRPCClientError)
+  if (error instanceof Error) {
+    const msg = error.message;
+
+    // tRPC wraps Zod validation errors as a JSON array string
+    if (msg.startsWith("[")) {
+      try {
+        const issues = JSON.parse(msg) as Array<{ message?: string }>;
+        if (Array.isArray(issues) && issues.length > 0 && issues[0]?.message) {
+          return issues[0].message;
+        }
+      } catch {
+        // Not valid JSON — fall through to use raw message
+      }
+    }
+
+    // Direct error message
+    if (msg && msg !== "undefined") return msg;
+  }
+
+  // Handle plain string errors
+  if (typeof error === "string" && error.length > 0) return error;
+
+  return fallback;
+}

@@ -23,7 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 import {
   Upload,
   Download,
@@ -61,7 +61,7 @@ export default function BulkUploadPage() {
       router.push("/seller/listings/bulk-upload/photos");
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to create listings");
+      toast.error(getErrorMessage(error, "Failed to create listings"));
       setState("preview");
     },
   });
@@ -80,7 +80,7 @@ export default function BulkUploadPage() {
 
       setState("preview");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to parse CSV");
+      toast.error(getErrorMessage(error, "Failed to parse CSV"));
     }
   }, []);
 

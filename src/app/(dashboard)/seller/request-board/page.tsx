@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/utils";
 import {
   ClipboardList,
   Loader2,
@@ -38,7 +39,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MATERIAL_OPTIONS = [
-  { value: "", label: "All Materials" },
+  { value: "all", label: "All Materials" },
   { value: "hardwood", label: "Hardwood" },
   { value: "engineered", label: "Engineered" },
   { value: "laminate", label: "Laminate" },
@@ -48,17 +49,17 @@ const MATERIAL_OPTIONS = [
   { value: "other", label: "Other" },
 ] as const;
 
-type MaterialFilter = "" | "hardwood" | "engineered" | "laminate" | "vinyl_lvp" | "bamboo" | "tile" | "other";
+type MaterialFilter = "all" | "hardwood" | "engineered" | "laminate" | "vinyl_lvp" | "bamboo" | "tile" | "other";
 
 const URGENCY_FILTER_OPTIONS = [
-  { value: "", label: "Any Urgency" },
+  { value: "all", label: "Any Urgency" },
   { value: "asap", label: "ASAP" },
   { value: "2_weeks", label: "2 Weeks" },
   { value: "4_weeks", label: "4 Weeks" },
   { value: "flexible", label: "Flexible" },
 ] as const;
 
-type UrgencyFilter = "" | "asap" | "2_weeks" | "4_weeks" | "flexible";
+type UrgencyFilter = "all" | "asap" | "2_weeks" | "4_weeks" | "flexible";
 
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest First" },
@@ -127,7 +128,7 @@ function RespondDialog({
   listings: ActiveListing[];
 }) {
   const [message, setMessage] = useState("");
-  const [selectedListingId, setSelectedListingId] = useState<string>("");
+  const [selectedListingId, setSelectedListingId] = useState<string>("none");
 
   const respondMutation = trpc.buyerRequest.respond.useMutation();
 
@@ -142,22 +143,20 @@ function RespondDialog({
       await respondMutation.mutateAsync({
         requestId: request.id,
         message: message.trim(),
-        listingId: selectedListingId || undefined,
+        listingId: selectedListingId !== "none" ? selectedListingId : undefined,
       });
       toast.success("Response sent!");
       setMessage("");
-      setSelectedListingId("");
+      setSelectedListingId("none");
       onOpenChange(false);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to send response.";
-      toast.error(msg);
+      toast.error(getErrorMessage(err, "Failed to send response."));
     }
   };
 
   const handleClose = () => {
     setMessage("");
-    setSelectedListingId("");
+    setSelectedListingId("none");
     onOpenChange(false);
   };
 
@@ -201,7 +200,7 @@ function RespondDialog({
                   <SelectValue placeholder="Select one of your listings..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No listing</SelectItem>
+                  <SelectItem value="none">No listing</SelectItem>
                   {listings.map((l) => (
                     <SelectItem key={l.id} value={l.id}>
                       {l.title}
@@ -318,15 +317,15 @@ function RequestBoardCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function SellerRequestBoardPage() {
-  const [materialFilter, setMaterialFilter] = useState<MaterialFilter>("");
-  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>("");
+  const [materialFilter, setMaterialFilter] = useState<MaterialFilter>("all");
+  const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [respondTarget, setRespondTarget] = useState<BuyerRequest | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const { data, isLoading } = trpc.buyerRequest.browse.useQuery({
-    materialTypes: materialFilter ? [materialFilter] : undefined,
-    urgency: urgencyFilter || undefined,
+    materialTypes: materialFilter !== "all" ? [materialFilter] : undefined,
+    urgency: urgencyFilter !== "all" ? urgencyFilter : undefined,
     sort: sortBy,
     page: 1,
     limit: 30,

@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getErrorMessage } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -49,7 +50,7 @@ function LoginForm() {
       });
 
       if (error) {
-        toast.error(error.message);
+        toast.error(getErrorMessage(error));
         return;
       }
 

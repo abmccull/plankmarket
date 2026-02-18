@@ -39,7 +39,7 @@ import {
   Crown,
   DollarSign,
 } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   DropdownMenu,
@@ -103,7 +103,7 @@ export default function AdminPromotionsPage() {
       setCancelDialogOpen(false);
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 

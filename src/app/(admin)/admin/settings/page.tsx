@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/utils";
 import {
   DollarSign,
   CreditCard,
@@ -83,7 +84,7 @@ export default function AdminSettingsPage() {
       utils.admin.getSettings.invalidate();
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 

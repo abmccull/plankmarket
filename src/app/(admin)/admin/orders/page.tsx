@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Loader2, MoreHorizontal, XCircle } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { OrderStatus } from "@/types";
 
@@ -63,7 +63,7 @@ export default function AdminOrdersPage() {
       setCancelReason("");
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 

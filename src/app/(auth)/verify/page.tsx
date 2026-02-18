@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getErrorMessage } from "@/lib/utils";
 import { toast } from "sonner";
 import { Mail, Loader2 } from "lucide-react";
 
@@ -56,7 +57,7 @@ export default function VerifyPage() {
       });
 
       if (error) {
-        toast.error(error.message);
+        toast.error(getErrorMessage(error));
         return;
       }
 

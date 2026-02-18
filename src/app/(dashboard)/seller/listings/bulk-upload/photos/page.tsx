@@ -7,7 +7,7 @@ import { useBulkUploadStore } from "@/lib/stores/bulk-upload-store";
 import { BulkPhotoUpload } from "@/components/listings/bulk-photo-upload";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
 import {
   Camera,
@@ -35,7 +35,7 @@ export default function BulkPhotoWizardPage() {
       router.push("/seller/listings");
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to publish listings");
+      toast.error(getErrorMessage(error, "Failed to publish listings"));
     },
   });
 

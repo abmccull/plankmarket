@@ -25,7 +25,7 @@ import { useFeatureFlag } from "@/lib/experiments/use-feature-flag";
 import { FEATURE_FLAGS } from "@/lib/experiments/feature-flags";
 import { trpc } from "@/lib/trpc/client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, getErrorMessage } from "@/lib/utils";
 
 const FEEDBACK_TYPES = [
   { value: "bug", label: "Bug Report" },
@@ -50,7 +50,7 @@ export function FeedbackWidget() {
       setRating(null);
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to submit feedback");
+      toast.error(getErrorMessage(error, "Failed to submit feedback"));
     },
   });
 

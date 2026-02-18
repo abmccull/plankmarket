@@ -23,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { OfferStatusBadge } from "@/components/offers/offer-status-badge";
 import { OfferTimeline } from "@/components/offers/offer-timeline";
 import { CounterOfferForm } from "@/components/offers/counter-offer-form";
-import { formatCurrency, formatSqFt } from "@/lib/utils";
+import { formatCurrency, formatSqFt, getErrorMessage } from "@/lib/utils";
 import {
   ArrowLeft,
   ExternalLink,
@@ -130,11 +130,7 @@ export default function OfferDetailPage() {
       setShowCounterForm(false);
       toast.success("Counter offer submitted");
     } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message || "Failed to submit counter offer");
-      } else {
-        toast.error("Failed to submit counter offer");
-      }
+      toast.error(getErrorMessage(error, "Failed to submit counter offer"));
     }
   };
 
@@ -145,11 +141,7 @@ export default function OfferDetailPage() {
       toast.success("Offer accepted");
       router.push("/offers");
     } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message || "Failed to accept offer");
-      } else {
-        toast.error("Failed to accept offer");
-      }
+      toast.error(getErrorMessage(error, "Failed to accept offer"));
     }
   };
 
@@ -163,11 +155,7 @@ export default function OfferDetailPage() {
       toast.success("Offer rejected");
       router.push("/offers");
     } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message || "Failed to reject offer");
-      } else {
-        toast.error("Failed to reject offer");
-      }
+      toast.error(getErrorMessage(error, "Failed to reject offer"));
     }
   };
 
@@ -178,11 +166,7 @@ export default function OfferDetailPage() {
       toast.success("Offer withdrawn");
       router.push("/offers");
     } catch (error) {
-      if (error instanceof Error) {
-        toast.error(error.message || "Failed to withdraw offer");
-      } else {
-        toast.error("Failed to withdraw offer");
-      }
+      toast.error(getErrorMessage(error, "Failed to withdraw offer"));
     }
   };
 

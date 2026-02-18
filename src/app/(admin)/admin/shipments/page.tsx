@@ -28,7 +28,7 @@ import {
   ExternalLink,
   RefreshCw,
 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 
 type ShipmentStatus = "pending" | "dispatched" | "in_transit" | "out_for_delivery" | "delivered" | "exception" | "cancelled";
@@ -101,8 +101,8 @@ export default function AdminShipmentsPage() {
       toast.success("Shipment tracking data refreshed");
       utils.admin.getShipments.invalidate();
     },
-    onError: (err: { message: string }) => {
-      toast.error(err.message);
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
     },
   });
 

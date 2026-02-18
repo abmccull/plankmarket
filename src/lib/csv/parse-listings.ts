@@ -24,7 +24,10 @@ export function parseListingsCsv(file: File): Promise<CsvParseResult> {
       header: true,
       skipEmptyLines: true,
       complete: (results) => {
-        const rawRows = results.data as Record<string, string>[];
+        // Filter out instruction/helper rows (start with ⬇ or "INSTRUCTIONS")
+        const rawRows = (results.data as Record<string, string>[]).filter(
+          (row) => !row.title?.startsWith("⬇") && !row.title?.startsWith("INSTRUCTIONS")
+        );
 
         if (rawRows.length > MAX_ROWS) {
           reject(new Error(`CSV exceeds maximum of ${MAX_ROWS} rows. Found ${rawRows.length} rows.`));

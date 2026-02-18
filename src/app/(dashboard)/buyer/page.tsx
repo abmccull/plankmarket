@@ -107,7 +107,7 @@ export default function BuyerDashboardPage() {
         Welcome to PlankMarket! Start by browsing listings or setting your preferences to see personalized deals.
       </OnboardingTip>
 
-      <OnboardingChecklist />
+      <OnboardingChecklist variant="buyer" />
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatsCard

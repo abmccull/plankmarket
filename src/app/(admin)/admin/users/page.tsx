@@ -31,7 +31,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, CheckCircle, XCircle, MoreHorizontal, Ban, ShieldCheck } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, getErrorMessage } from "@/lib/utils";
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { UserRole } from "@/types";
@@ -67,7 +67,7 @@ export default function AdminUsersPage() {
       setSuspendReason("");
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -78,7 +78,7 @@ export default function AdminUsersPage() {
       setUnsuspendDialogOpen(false);
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -88,9 +88,7 @@ export default function AdminUsersPage() {
       toast.success("User role updated successfully");
       utils.admin.getUsers.invalidate();
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Failed to update role";
-      toast.error(message);
+      toast.error(getErrorMessage(error, "Failed to update role"));
     }
   };
 

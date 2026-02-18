@@ -64,7 +64,11 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuthStore();
 
-  const isSeller = pathname.startsWith("/seller");
+  // Determine sidebar variant from user role, with pathname as fallback.
+  // Shared routes like /preferences, /messages, /offers don't contain a role
+  // prefix, so we rely on the user's actual role to keep the correct sidebar.
+  const isSeller =
+    user?.role === "seller" || user?.role === "admin" || pathname.startsWith("/seller");
   const items = isSeller ? sellerItems : buyerItems;
 
   // Get unread message count

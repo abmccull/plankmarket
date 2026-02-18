@@ -12,6 +12,7 @@ import { Loader2, ArrowLeft, ExternalLink } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { toast } from "sonner";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function ConversationPage() {
   const params = useParams();
@@ -60,7 +61,7 @@ export default function ConversationPage() {
       utils.message.getUnreadCount.invalidate();
     },
     onError: (error) => {
-      toast.error(error.message || "Failed to send message");
+      toast.error(getErrorMessage(error, "Failed to send message"));
     },
   });
 

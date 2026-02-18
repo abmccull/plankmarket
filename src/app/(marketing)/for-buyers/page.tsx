@@ -71,68 +71,68 @@ export default function ForBuyersPage() {
         <div aria-hidden="true" className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
         <div className="container mx-auto px-4 relative z-10">
-          <div className="mx-auto max-w-5xl">
-          {/* Two-column layout: copy left, photo right */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-          <div className="text-center lg:text-left max-w-3xl mx-auto lg:mx-0 lg:pt-4">
-            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              B2B Flooring Marketplace
-            </Badge>
-            <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
-              Stop Calling Around.{" "}
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Source Premium Flooring in One Place.
-              </span>
-            </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              PlankMarket connects flooring contractors, retailers, and builders
-              directly to verified manufacturers and distributors selling
-              overstock, closeout, and discontinued inventory — at 30–60% below
-              standard wholesale prices.
-            </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
-              <Link href="/listings">
-                <Button size="xl" variant="gold">
-                  Browse Available Inventory
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/register?role=buyer">
-                <Button size="xl" variant="outline">
-                  Create a Free Buyer Account
-                </Button>
-              </Link>
-            </div>
+          <div className="mx-auto max-w-6xl">
+            {/* Two-column layout: copy left, photo right */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start">
+              <div className="text-center lg:text-left lg:pt-4">
+                <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
+                  B2B Flooring Marketplace
+                </Badge>
+                <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
+                  Stop Calling Around.{" "}
+                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                    Source Premium Flooring in One Place.
+                  </span>
+                </h1>
+                <p className="mt-6 text-lg text-muted-foreground">
+                  PlankMarket connects flooring contractors, retailers, and builders
+                  directly to verified manufacturers and distributors selling
+                  overstock, closeout, and discontinued inventory — at 30–60% below
+                  standard wholesale prices.
+                </p>
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+                  <Link href="/listings">
+                    <Button size="xl" variant="gold">
+                      Browse Inventory
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
+                  </Link>
+                  <Link href="/register?role=buyer">
+                    <Button size="xl" variant="outline">
+                      Free Buyer Account
+                    </Button>
+                  </Link>
+                </div>
 
-            {/* Trust badges */}
-            <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>Every seller is business-verified</span>
+                {/* Trust badges */}
+                <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
+                    <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>Verified sellers</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
+                    <Layers className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>6 categories, 50 states</span>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
+                    <Lock className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                    <span>Stripe buyer protection</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                <Layers className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>6 flooring categories, all 50 US states</span>
-              </div>
-              <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                <Lock className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                <span>Secure Stripe payments, buyer protection included</span>
+
+              {/* Hero image — living room with hardwood floors */}
+              <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg">
+                <Image
+                  src="https://images.unsplash.com/photo-1722604828977-395d52c3cd23?w=800&q=80&fit=crop"
+                  alt="Modern living room with wide plank light oak hardwood flooring"
+                  fill
+                  className="object-cover"
+                  priority
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" aria-hidden="true" />
               </div>
             </div>
-          </div>
-
-          {/* Hero image — living room with hardwood floors */}
-          <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg">
-            <Image
-              src="https://images.unsplash.com/photo-1722604828977-395d52c3cd23?w=800&q=80&fit=crop"
-              alt="Modern living room with wide plank light oak hardwood flooring"
-              fill
-              className="object-cover"
-              priority
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" aria-hidden="true" />
-          </div>
-          </div>
           </div>
         </div>
       </section>

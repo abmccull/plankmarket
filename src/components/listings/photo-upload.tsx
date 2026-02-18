@@ -6,7 +6,7 @@ import { useUploadThing } from "@/lib/uploadthing";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
+import { cn, getErrorMessage } from "@/lib/utils";
 import { Upload, X, GripVertical, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
@@ -73,7 +73,7 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
     },
     onUploadError: (error) => {
       console.error("Upload error:", error);
-      toast.error(error.message || "Failed to upload images");
+      toast.error(getErrorMessage(error, "Failed to upload images"));
       setIsUploading(false);
       setUploadProgress(0);
     },

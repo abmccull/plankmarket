@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Loader2, MoreHorizontal, Flag, FlagOff, ExternalLink } from "lucide-react";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { ListingStatus } from "@/types";
 
@@ -59,7 +59,7 @@ export default function AdminListingsPage() {
       setFlagReason("");
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 
@@ -70,7 +70,7 @@ export default function AdminListingsPage() {
       setUnflagDialogOpen(false);
     },
     onError: (err) => {
-      toast.error(err.message);
+      toast.error(getErrorMessage(err));
     },
   });
 

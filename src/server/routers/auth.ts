@@ -173,9 +173,12 @@ export const authRouter = createTRPCRouter({
   }),
 
   // Get onboarding progress for current user
-  getOnboardingProgress: protectedProcedure.query(async ({ ctx }) => {
+  getOnboardingProgress: protectedProcedure
+    .input(z.object({ role: z.enum(["buyer", "seller"]).optional() }).optional())
+    .query(async ({ ctx, input }) => {
     const user = ctx.user;
-    const role = user.role;
+    // Allow explicit role override (e.g. admin viewing seller dashboard)
+    const role = input?.role ?? user.role;
 
     // Common checks
     const emailVerified = !!ctx.authUser?.email_confirmed_at;

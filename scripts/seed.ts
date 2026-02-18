@@ -697,6 +697,43 @@ const LISTINGS_BY_SELLER: Record<string, ListingSeed[]> = {
 };
 
 // ---------------------------------------------------------------------------
+// Flooring images — real Unsplash photos by material type
+// ---------------------------------------------------------------------------
+
+const FLOORING_IMAGES: Record<string, string[]> = {
+  hardwood: [
+    "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&q=80&fit=crop", // oak hardwood planks
+    "https://images.unsplash.com/photo-1622452225632-ab68861a3934?w=800&q=80&fit=crop", // hardwood floor closeup
+    "https://images.unsplash.com/photo-1615874959474-d609969a20ed?w=800&q=80&fit=crop", // hardwood in room
+  ],
+  engineered: [
+    "https://images.unsplash.com/photo-1560185893-a55cbc8c57e8?w=800&q=80&fit=crop", // engineered wood floor
+    "https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=800&q=80&fit=crop", // room with wood floor
+    "https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=800&q=80&fit=crop", // wood plank texture
+  ],
+  laminate: [
+    "https://images.unsplash.com/photo-1581858726788-75bc0f6a952d?w=800&q=80&fit=crop", // laminate floor texture
+    "https://images.unsplash.com/photo-1628744876497-eb30460be9f6?w=800&q=80&fit=crop", // light laminate planks
+    "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80&fit=crop", // room with laminate floor
+  ],
+  vinyl_lvp: [
+    "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=80&fit=crop", // vinyl plank floor
+    "https://images.unsplash.com/photo-1600573472556-e636c2acda9e?w=800&q=80&fit=crop", // modern vinyl floor
+    "https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=800&q=80&fit=crop", // room with vinyl floor
+  ],
+  bamboo: [
+    "https://images.unsplash.com/photo-1594026112284-02bb6f3352fe?w=800&q=80&fit=crop", // bamboo floor texture
+    "https://images.unsplash.com/photo-1600210492493-0946911123ea?w=800&q=80&fit=crop", // bamboo planks
+    "https://images.unsplash.com/photo-1600607687644-c7171b42498f?w=800&q=80&fit=crop", // room with natural floor
+  ],
+};
+
+function getFlooringImage(materialType: string, index: number): string {
+  const images = FLOORING_IMAGES[materialType] ?? FLOORING_IMAGES.hardwood!;
+  return images[index % images.length]!;
+}
+
+// ---------------------------------------------------------------------------
 // Main seed function
 // ---------------------------------------------------------------------------
 
@@ -850,13 +887,12 @@ async function seed() {
       listingIds.push(listingId);
       listingSellerMap[listingId] = sellerEmail;
 
-      // Insert 1–2 placeholder media per listing
-      const matLabel = l.materialType.replace("_", "+");
+      // Insert 1–2 real flooring photos per listing
       const specLabel = l.species ?? l.materialType;
 
       await db.insert(media).values({
         listingId,
-        url: `https://placehold.co/800x600/EEE/999?text=${encodeURIComponent(specLabel + " flooring")}`,
+        url: getFlooringImage(l.materialType, 0),
         fileName: `${specLabel}-flooring-1.jpg`,
         mimeType: "image/jpeg",
         altText: l.title,
@@ -867,7 +903,7 @@ async function seed() {
       if (l.daysOld % 3 !== 0) {
         await db.insert(media).values({
           listingId,
-          url: `https://placehold.co/800x600/DDD/888?text=${encodeURIComponent(matLabel + " detail")}`,
+          url: getFlooringImage(l.materialType, 1),
           fileName: `${specLabel}-flooring-2.jpg`,
           mimeType: "image/jpeg",
           altText: `${l.title} — detail`,

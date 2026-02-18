@@ -15,6 +15,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle, Shield } from "lucide-react";
+import { getErrorMessage } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 
 export default function ModerationPage() {
@@ -33,7 +34,7 @@ export default function ModerationPage() {
       refetch();
     },
     onError: (error) => {
-      toast.error(error.message);
+      toast.error(getErrorMessage(error));
     },
   });
 
