@@ -49,6 +49,9 @@ export function MobileNav() {
     if (!isAuthenticated || !user) {
       return [
         { title: "Browse Listings", href: "/listings", icon: Search },
+        { title: "How It Works", href: "/how-it-works", icon: LayoutDashboard },
+        { title: "Pricing", href: "/pricing", icon: CreditCard },
+        { title: "For Sellers", href: "/for-sellers", icon: Package },
         { title: "Login", href: "/login", icon: User },
         { title: "Register", href: "/register", icon: User },
       ];

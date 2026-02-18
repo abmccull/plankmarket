@@ -73,8 +73,8 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4 relative z-10">
           <div className="mx-auto max-w-5xl">
           {/* Two-column layout: copy left, photo right */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div className="text-center lg:text-left max-w-3xl mx-auto lg:mx-0">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          <div className="text-center lg:text-left max-w-3xl mx-auto lg:mx-0 lg:pt-4">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               B2B Flooring Marketplace
             </Badge>

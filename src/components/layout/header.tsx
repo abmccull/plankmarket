@@ -107,14 +107,41 @@ export function Header() {
           >
             Browse Listings
           </Link>
-          {isAuthenticated && user?.role === "seller" && (
+          <Link
+            href="/how-it-works"
+            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            How It Works
+          </Link>
+          <Link
+            href="/pricing"
+            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Pricing
+          </Link>
+          {isAuthenticated && user?.role === "seller" ? (
+            <>
+              <Link
+                href="/seller-guide"
+                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Seller Guide
+              </Link>
+              <Link
+                href="/seller/listings/new"
+                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Create Listing
+              </Link>
+            </>
+          ) : !isAuthenticated ? (
             <Link
-              href="/seller/listings/new"
+              href="/for-sellers"
               className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
-              Create Listing
+              For Sellers
             </Link>
-          )}
+          ) : null}
         </nav>
 
         {/* Right side */}
