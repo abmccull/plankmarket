@@ -510,7 +510,7 @@ export default function SellerGuidePage() {
                   <Button
                     size="xl"
                     variant="secondary"
-                    className="bg-white/20 text-white border-white/30 hover:bg-white/30"
+                    className="border-2 border-white/70 text-white bg-white/10 hover:bg-white/20"
                   >
                     Contact Support
                   </Button>

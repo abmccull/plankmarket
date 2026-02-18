@@ -124,8 +124,8 @@ export default function ForBuyersPage() {
           {/* Hero image — living room with hardwood floors */}
           <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg">
             <Image
-              src="https://images.unsplash.com/photo-1721739511140-c53a4f6ef2c2?w=800&q=80&fit=crop"
-              alt="Living room showcasing premium hardwood flooring"
+              src="https://images.unsplash.com/photo-1722604828977-395d52c3cd23?w=800&q=80&fit=crop"
+              alt="Modern living room with wide plank light oak hardwood flooring"
               fill
               className="object-cover"
               priority
@@ -200,8 +200,8 @@ export default function ForBuyersPage() {
           {/* Aspirational room image */}
           <div className="relative max-w-4xl mx-auto mb-16 h-64 rounded-2xl overflow-hidden shadow-elevation-md">
             <Image
-              src="https://images.unsplash.com/photo-1668910242969-bd2933e7a5cf?w=1200&q=80&fit=crop"
-              alt="Bright room with beautiful wood floor and natural light through large windows"
+              src="https://images.unsplash.com/photo-1751945965597-71171ec7a458?w=1200&q=80&fit=crop"
+              alt="Bright airy living room with natural light oak flooring and modern decor"
               fill
               className="object-cover"
               loading="lazy"
