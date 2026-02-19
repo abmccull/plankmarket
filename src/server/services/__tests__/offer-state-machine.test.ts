@@ -30,7 +30,7 @@ interface OfferForValidation {
   sellerId: string;
   lastActorId: string | null;
   status: OfferStatus;
-  expiresAt: Date;
+  expiresAt: Date | null;
   offerPricePerSqFt: number;
   counterPricePerSqFt: number | null;
   quantitySqFt: number;
@@ -74,7 +74,7 @@ function validateOfferIsActionable(offer: Pick<OfferForValidation, "status" | "e
   if (offer.status !== "pending" && offer.status !== "countered") {
     throw new OfferValidationError("BAD_REQUEST", `This offer cannot be ${action}`);
   }
-  if (new Date() > offer.expiresAt) {
+  if (offer.expiresAt && new Date() > offer.expiresAt) {
     throw new OfferValidationError("BAD_REQUEST", "This offer has expired");
   }
 }
@@ -119,16 +119,13 @@ const SELLER_ID = "seller-001";
 const THIRD_PARTY_ID = "third-party-999";
 
 function makePendingOffer(overrides: Partial<OfferForValidation> = {}): OfferForValidation {
-  const expiresAt = new Date();
-  expiresAt.setHours(expiresAt.getHours() + 48);
-
   return {
     id: "offer-abc",
     buyerId: BUYER_ID,
     sellerId: SELLER_ID,
     lastActorId: BUYER_ID, // buyer made the initial offer
     status: "pending",
-    expiresAt,
+    expiresAt: null, // offers don't expire by default
     offerPricePerSqFt: 2.5,
     counterPricePerSqFt: null,
     quantitySqFt: 100,
@@ -209,7 +206,12 @@ describe("validateOfferIsActionable", () => {
     );
   });
 
-  it("should throw for an expired offer", () => {
+  it("should pass for an offer with no expiration (expiresAt is null)", () => {
+    const offer = makePendingOffer({ status: "pending", expiresAt: null });
+    expect(() => validateOfferIsActionable(offer, "accepted")).not.toThrow();
+  });
+
+  it("should throw for an expired offer (expiresAt in the past)", () => {
     const pastDate = new Date("2020-01-01");
     const offer = makePendingOffer({ status: "pending", expiresAt: pastDate });
     expect(() => validateOfferIsActionable(offer, "accepted")).toThrowError(

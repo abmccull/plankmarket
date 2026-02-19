@@ -7,6 +7,7 @@ import { disputes, disputeMessages, orders } from "../db/schema";
 import { eq, and, or, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { processOrderRefund } from "@/server/services/refund";
 
 export const disputeRouter = createTRPCRouter({
   // Create a dispute on an order
@@ -307,6 +308,69 @@ export const disputeRouter = createTRPCRouter({
       return dispute;
     }),
 
+  // Get all disputes (admin only)
+  getAllDisputes: adminProcedure
+    .input(
+      z.object({
+        status: z
+          .enum([
+            "open",
+            "under_review",
+            "resolved_buyer",
+            "resolved_seller",
+            "closed",
+          ])
+          .optional(),
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const offset = (input.page - 1) * input.limit;
+
+      const whereClause = input.status
+        ? eq(disputes.status, input.status)
+        : undefined;
+
+      const disputesList = await ctx.db.query.disputes.findMany({
+        where: whereClause,
+        orderBy: [desc(disputes.createdAt)],
+        limit: input.limit,
+        offset,
+        with: {
+          order: {
+            columns: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              totalPrice: true,
+              paymentStatus: true,
+            },
+          },
+          initiator: {
+            columns: {
+              id: true,
+              name: true,
+              businessName: true,
+            },
+          },
+        },
+      });
+
+      const [{ count }] = await ctx.db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(disputes)
+        .where(whereClause);
+
+      return {
+        disputes: disputesList,
+        total: count,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(count / input.limit),
+      };
+    }),
+
   // Resolve a dispute (admin only)
   resolve: adminProcedure
     .input(
@@ -314,12 +378,16 @@ export const disputeRouter = createTRPCRouter({
         disputeId: z.string().uuid(),
         resolution: z.string().min(10).max(2000),
         outcome: z.enum(["resolved_buyer", "resolved_seller", "closed"]),
+        refundAmountCents: z.number().int().positive().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Get the dispute
+      // Get the dispute with order
       const dispute = await ctx.db.query.disputes.findFirst({
         where: eq(disputes.id, input.disputeId),
+        with: {
+          order: true,
+        },
       });
 
       if (!dispute) {
@@ -339,6 +407,21 @@ export const disputeRouter = createTRPCRouter({
           code: "BAD_REQUEST",
           message: "This dispute has already been resolved",
         });
+      }
+
+      // If resolved in buyer's favor, issue a refund
+      if (input.outcome === "resolved_buyer") {
+        if (
+          dispute.order.stripePaymentIntentId &&
+          dispute.order.paymentStatus === "succeeded"
+        ) {
+          await processOrderRefund({
+            db: ctx.db,
+            orderId: dispute.orderId,
+            amountCents: input.refundAmountCents,
+            reason: `Dispute resolved in buyer's favor: ${input.resolution}`,
+          });
+        }
       }
 
       // Update the dispute

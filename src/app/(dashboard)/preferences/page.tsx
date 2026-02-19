@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Save } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
 import { OnboardingTip } from "@/components/ui/onboarding-tip";
 
@@ -763,13 +764,21 @@ export default function PreferencesPage() {
   const role = (user?.role ?? "buyer") as "buyer" | "seller";
 
   const [step, setStep] = useState(1);
+  const [mode, setMode] = useState<"wizard" | "dashboard">("wizard");
   const [buyerPrefs, setBuyerPrefs] = useState<BuyerPrefs>(defaultBuyerPrefs);
   const [sellerPrefs, setSellerPrefs] =
     useState<SellerPrefs>(defaultSellerPrefs);
   const [isSaving, setIsSaving] = useState(false);
 
   // Load existing prefs and hydrate form state
-  const { data: existingPrefs } = trpc.preferences.get.useQuery();
+  const { data: existingPrefs, isLoading } = trpc.preferences.get.useQuery();
+
+  // Switch to dashboard mode when existing preferences are loaded
+  useEffect(() => {
+    if (existingPrefs) {
+      setMode("dashboard");
+    }
+  }, [existingPrefs]);
 
   useEffect(() => {
     if (!existingPrefs) return;
@@ -821,6 +830,7 @@ export default function PreferencesPage() {
     }
   }, [existingPrefs, role]);
 
+  const utils = trpc.useUtils();
   const upsertMutation = trpc.preferences.upsert.useMutation();
 
   const buyerStepLabels = [
@@ -906,7 +916,15 @@ export default function PreferencesPage() {
             sellerPrefs.preferredBuyerRadiusMiles,
         });
       }
-      celebrateMilestone("Preferences Saved!", "You'll now see personalized recommendations based on your preferences.");
+      // Invalidate so the query refetches on next visit
+      utils.preferences.get.invalidate();
+
+      if (mode === "wizard") {
+        celebrateMilestone("Preferences Saved!", "You'll now see personalized recommendations based on your preferences.");
+        setMode("dashboard");
+      } else {
+        toast.success("Preferences saved");
+      }
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -934,6 +952,79 @@ export default function PreferencesPage() {
     return <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
   };
 
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div>
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-5 w-72 mt-2" />
+        </div>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-lg border bg-card p-6 space-y-4"
+          >
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-64" />
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ─── Dashboard mode: all cards stacked, single save ──────────────────────────
+  if (mode === "dashboard") {
+    const updatedAt = (existingPrefs as any)?.updatedAt;
+
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Your Preferences</h1>
+          <p className="text-muted-foreground mt-1">
+            {updatedAt ? (
+              <>Last updated {new Date(updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</>
+            ) : (
+              <>Edit your {role === "buyer" ? "listing" : "buyer request"} preferences below.</>
+            )}
+          </p>
+        </div>
+
+        {role === "buyer" ? (
+          <div className="space-y-6">
+            <BuyerStep1 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+            <BuyerStep2 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+            <BuyerStep3 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <SellerStep1 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+            <SellerStep2 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+            <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+          </div>
+        )}
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? (
+              <Loader2
+                className="mr-2 h-4 w-4 animate-spin"
+                aria-hidden="true"
+              />
+            ) : (
+              <Save className="mr-2 h-4 w-4" aria-hidden="true" />
+            )}
+            Save Changes
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Wizard mode: step-by-step for first-time users ──────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>

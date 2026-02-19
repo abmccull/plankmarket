@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/server/db";
-import { orders, users, listings, listingPromotions } from "@/server/db/schema";
-import { eq, and } from "drizzle-orm";
+import { orders, users, listings, listingPromotions, disputes, notifications } from "@/server/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { env } from "@/env";
 import { inngest } from "@/lib/inngest/client";
 
@@ -146,6 +146,188 @@ export async function POST(req: NextRequest) {
               updatedAt: new Date(),
             })
             .where(eq(users.id, account.metadata.userId));
+
+          // Notify seller if account has past_due requirements and charges are disabled
+          const hasPastDue =
+            account.requirements?.past_due &&
+            account.requirements.past_due.length > 0;
+          if (hasPastDue && !account.charges_enabled) {
+            await db.insert(notifications).values({
+              userId: account.metadata.userId,
+              type: "system" as const,
+              title: "Stripe Account Requires Action",
+              message:
+                "Your Stripe account has been restricted. Please update your payment information to continue receiving payouts.",
+              read: false,
+            });
+          }
+        }
+        break;
+      }
+
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        const paymentIntentId = charge.payment_intent as string | null;
+
+        if (paymentIntentId) {
+          const order = await db.query.orders.findFirst({
+            where: eq(orders.stripePaymentIntentId, paymentIntentId),
+          });
+
+          if (order) {
+            const isFullRefund = charge.amount_refunded >= charge.amount;
+            await db
+              .update(orders)
+              .set({
+                paymentStatus: isFullRefund ? "refunded" : "partially_refunded",
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, order.id));
+
+            // Notify buyer
+            await db.insert(notifications).values({
+              userId: order.buyerId,
+              type: "system" as const,
+              title: "Refund Received",
+              message: `A ${isFullRefund ? "full" : "partial"} refund of $${(charge.amount_refunded / 100).toFixed(2)} has been processed for order ${order.orderNumber}.`,
+              data: { orderId: order.id },
+              read: false,
+            });
+          }
+        }
+        break;
+      }
+
+      case "charge.dispute.created": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const paymentIntentId = dispute.payment_intent as string | null;
+
+        if (paymentIntentId) {
+          const order = await db.query.orders.findFirst({
+            where: eq(orders.stripePaymentIntentId, paymentIntentId),
+          });
+
+          if (order) {
+            // Auto-create dispute record if none exists
+            const existingDispute = await db.query.disputes.findFirst({
+              where: eq(disputes.orderId, order.id),
+            });
+
+            if (!existingDispute) {
+              await db.insert(disputes).values({
+                orderId: order.id,
+                initiatorId: order.buyerId,
+                reason: `Stripe chargeback: ${dispute.reason}`,
+                description: `Automatic dispute created from Stripe chargeback. Dispute ID: ${dispute.id}. Reason: ${dispute.reason}.`,
+                status: "under_review",
+              });
+            }
+
+            // Notify admins by finding admin users
+            const adminUsers = await db.query.users.findMany({
+              where: eq(users.role, "admin"),
+              columns: { id: true },
+            });
+
+            if (adminUsers.length > 0) {
+              await db.insert(notifications).values(
+                adminUsers.map((admin) => ({
+                  userId: admin.id,
+                  type: "system" as const,
+                  title: "Stripe Chargeback Filed",
+                  message: `A chargeback has been filed for order ${order.orderNumber}. Reason: ${dispute.reason}. Amount: $${(dispute.amount / 100).toFixed(2)}.`,
+                  data: { orderId: order.id },
+                  read: false,
+                }))
+              );
+            }
+          }
+        }
+        break;
+      }
+
+      case "charge.dispute.closed": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const paymentIntentId = dispute.payment_intent as string | null;
+
+        if (paymentIntentId) {
+          const order = await db.query.orders.findFirst({
+            where: eq(orders.stripePaymentIntentId, paymentIntentId),
+          });
+
+          if (order) {
+            const existingDispute = await db.query.disputes.findFirst({
+              where: eq(disputes.orderId, order.id),
+            });
+
+            if (existingDispute) {
+              // Map Stripe dispute status to our status
+              const outcomeStatus =
+                dispute.status === "won"
+                  ? "resolved_seller"
+                  : dispute.status === "lost"
+                    ? "resolved_buyer"
+                    : "closed";
+
+              await db
+                .update(disputes)
+                .set({
+                  status: outcomeStatus as "resolved_buyer" | "resolved_seller" | "closed",
+                  resolution: `Stripe chargeback ${dispute.status}: ${dispute.reason}`,
+                  resolvedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(disputes.id, existingDispute.id));
+            }
+          }
+        }
+        break;
+      }
+
+      case "transfer.created": {
+        const transfer = event.data.object as Stripe.Transfer;
+        const orderId = transfer.metadata?.orderId;
+
+        if (orderId) {
+          // Belt-and-suspenders: persist stripeTransferId on the order
+          await db
+            .update(orders)
+            .set({
+              stripeTransferId: transfer.id,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(orders.id, orderId),
+                sql`${orders.stripeTransferId} IS NULL`
+              )
+            );
+        }
+        break;
+      }
+
+      case "payout.failed": {
+        const payout = event.data.object as Stripe.Payout;
+        // The connected account ID is in the Stripe-Account header
+        // which is available as event.account
+        const connectedAccountId = event.account;
+
+        if (connectedAccountId) {
+          // Find seller by connected account ID
+          const seller = await db.query.users.findFirst({
+            where: eq(users.stripeAccountId, connectedAccountId),
+            columns: { id: true },
+          });
+
+          if (seller) {
+            await db.insert(notifications).values({
+              userId: seller.id,
+              type: "system" as const,
+              title: "Payout Failed",
+              message: `A payout of $${(payout.amount / 100).toFixed(2)} failed. Please update your banking information in your Stripe dashboard.`,
+              read: false,
+            });
+          }
         }
         break;
       }

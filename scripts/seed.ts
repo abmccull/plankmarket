@@ -700,31 +700,32 @@ const LISTINGS_BY_SELLER: Record<string, ListingSeed[]> = {
 // Flooring images — real Unsplash photos by material type
 // ---------------------------------------------------------------------------
 
+// All images visually verified as actual wood flooring / plank textures
 const FLOORING_IMAGES: Record<string, string[]> = {
   hardwood: [
-    "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&q=80&fit=crop", // oak hardwood planks
-    "https://images.unsplash.com/photo-1622452225632-ab68861a3934?w=800&q=80&fit=crop", // hardwood floor closeup
-    "https://images.unsplash.com/photo-1615874959474-d609969a20ed?w=800&q=80&fit=crop", // hardwood in room
+    "https://images.unsplash.com/photo-1693948568453-a3564f179a84?w=800&q=80&fit=crop", // wood planks being installed
+    "https://images.unsplash.com/photo-1601063936640-a0e4e4ed081c?w=800&q=80&fit=crop", // rustic dark wood grain
+    "https://images.unsplash.com/photo-1650831341595-5408b892c486?w=800&q=80&fit=crop", // light oak floor planks
   ],
   engineered: [
-    "https://images.unsplash.com/photo-1560185893-a55cbc8c57e8?w=800&q=80&fit=crop", // engineered wood floor
-    "https://images.unsplash.com/photo-1600585152220-90363fe7e115?w=800&q=80&fit=crop", // room with wood floor
-    "https://images.unsplash.com/photo-1595428774223-ef52624120d2?w=800&q=80&fit=crop", // wood plank texture
+    "https://images.unsplash.com/photo-1617262869711-2f5006b61073?w=800&q=80&fit=crop", // multi-tone hardwood floor
+    "https://images.unsplash.com/photo-1617262869522-6740e6450f27?w=800&q=80&fit=crop", // warm hardwood floor closeup
+    "https://images.unsplash.com/photo-1675767443637-f35f2653b17a?w=800&q=80&fit=crop", // tight wood grain closeup
   ],
   laminate: [
-    "https://images.unsplash.com/photo-1581858726788-75bc0f6a952d?w=800&q=80&fit=crop", // laminate floor texture
-    "https://images.unsplash.com/photo-1628744876497-eb30460be9f6?w=800&q=80&fit=crop", // light laminate planks
-    "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=80&fit=crop", // room with laminate floor
+    "https://images.unsplash.com/photo-1667896563421-3f9750ecb0a4?w=800&q=80&fit=crop", // light parquet texture
+    "https://images.unsplash.com/photo-1650831341595-5408b892c486?w=800&q=80&fit=crop", // light oak planks
+    "https://images.unsplash.com/photo-1617262869522-6740e6450f27?w=800&q=80&fit=crop", // warm floor closeup
   ],
   vinyl_lvp: [
-    "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=80&fit=crop", // vinyl plank floor
-    "https://images.unsplash.com/photo-1600573472556-e636c2acda9e?w=800&q=80&fit=crop", // modern vinyl floor
-    "https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=800&q=80&fit=crop", // room with vinyl floor
+    "https://images.unsplash.com/photo-1650831341595-5408b892c486?w=800&q=80&fit=crop", // light oak planks
+    "https://images.unsplash.com/photo-1667896563421-3f9750ecb0a4?w=800&q=80&fit=crop", // light parquet texture
+    "https://images.unsplash.com/photo-1693948568453-a3564f179a84?w=800&q=80&fit=crop", // wood planks closeup
   ],
   bamboo: [
-    "https://images.unsplash.com/photo-1594026112284-02bb6f3352fe?w=800&q=80&fit=crop", // bamboo floor texture
-    "https://images.unsplash.com/photo-1600210492493-0946911123ea?w=800&q=80&fit=crop", // bamboo planks
-    "https://images.unsplash.com/photo-1600607687644-c7171b42498f?w=800&q=80&fit=crop", // room with natural floor
+    "https://images.unsplash.com/photo-1675767443637-f35f2653b17a?w=800&q=80&fit=crop", // light wood grain
+    "https://images.unsplash.com/photo-1617262869711-2f5006b61073?w=800&q=80&fit=crop", // multi-tone floor
+    "https://images.unsplash.com/photo-1650831341595-5408b892c486?w=800&q=80&fit=crop", // light oak planks
   ],
 };
 

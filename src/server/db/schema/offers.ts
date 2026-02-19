@@ -55,8 +55,8 @@ export const offers = pgTable(
     message: text("message"),
     counterMessage: text("counter_message"),
 
-    // Expiration (48 hours from creation by default)
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // Expiration — null means no expiration (offers don't expire unless a counter sets a deadline)
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
 
     // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })

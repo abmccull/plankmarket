@@ -167,13 +167,9 @@ export const offerRouter = createTRPCRouter({
       const totalPrice =
         Math.round(input.offerPricePerSqFt * input.quantitySqFt * 100) / 100;
 
-      // Set expiration to 48 hours from now
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 48);
-
       // Use transaction to create offer + event atomically
       const result = await ctx.db.transaction(async (tx) => {
-        // Create the offer
+        // Create the offer (no expiration — offers don't expire unless a counter sets a deadline)
         const [offer] = await tx
           .insert(offers)
           .values({
@@ -184,7 +180,6 @@ export const offerRouter = createTRPCRouter({
             quantitySqFt: input.quantitySqFt,
             totalPrice,
             message: input.message,
-            expiresAt,
             currentRound: 1,
             lastActorId: ctx.user.id,
             status: "pending",
@@ -276,8 +271,8 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check expiration
-      if (new Date() > offer.expiresAt) {
+      // Check expiration (only if an expiration was set)
+      if (offer.expiresAt && new Date() > offer.expiresAt) {
         await ctx.db
           .update(offers)
           .set({ status: "expired", updatedAt: new Date() })
@@ -395,8 +390,8 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check expiration
-      if (new Date() > offer.expiresAt) {
+      // Check expiration (only if an expiration was set)
+      if (offer.expiresAt && new Date() > offer.expiresAt) {
         await ctx.db
           .update(offers)
           .set({ status: "expired", updatedAt: new Date() })
@@ -507,8 +502,8 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check expiration
-      if (new Date() > offer.expiresAt) {
+      // Check expiration (only if an expiration was set)
+      if (offer.expiresAt && new Date() > offer.expiresAt) {
         await ctx.db
           .update(offers)
           .set({ status: "expired", updatedAt: new Date() })
@@ -950,7 +945,7 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      if (new Date() > offer.expiresAt) {
+      if (offer.expiresAt && new Date() > offer.expiresAt) {
         await ctx.db
           .update(offers)
           .set({ status: "expired" })

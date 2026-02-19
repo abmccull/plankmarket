@@ -4,7 +4,9 @@ import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { priority1 } from "@/server/services/priority1";
-import { sendVerificationApprovedEmail, sendVerificationRejectedEmail } from "@/lib/email/send";
+import { inngest } from "@/lib/inngest/client";
+import { sendVerificationApprovedEmail, sendVerificationRejectedEmail, sendRefundEmail } from "@/lib/email/send";
+import { processOrderRefund } from "@/server/services/refund";
 import type { TrackingEvent } from "@/server/db/schema";
 
 /**
@@ -854,6 +856,18 @@ export const adminRouter = createTRPCRouter({
         });
       }
 
+      // Issue actual Stripe refund if payment was successful
+      if (
+        order.stripePaymentIntentId &&
+        order.paymentStatus === "succeeded"
+      ) {
+        await processOrderRefund({
+          db: ctx.db,
+          orderId: input.orderId,
+          reason: `Admin force-cancel: ${input.reason}`,
+        });
+      }
+
       const updateData: Record<string, unknown> = {
         status: "cancelled",
         cancelledAt: new Date(),
@@ -861,8 +875,11 @@ export const adminRouter = createTRPCRouter({
         notes: `Admin force-cancelled: ${input.reason}`,
       };
 
-      // Refund escrow if held
-      if (order.escrowStatus === "held") {
+      // Mark escrow as refunded if it was held (and no payment to refund)
+      if (
+        order.escrowStatus === "held" &&
+        order.paymentStatus !== "succeeded"
+      ) {
         updateData.escrowStatus = "refunded";
       }
 
@@ -893,6 +910,146 @@ export const adminRouter = createTRPCRouter({
 
       return { success: true };
     }),
+
+  // Refund an order (full or partial)
+  refundOrder: adminProcedure
+    .input(
+      z.object({
+        orderId: z.string().uuid(),
+        amountCents: z.number().int().positive().optional(),
+        reason: z.string().min(1, "Reason is required").max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const order = await ctx.db.query.orders.findFirst({
+        where: eq(orders.id, input.orderId),
+        with: {
+          buyer: { columns: { email: true, name: true } },
+          seller: { columns: { email: true, name: true } },
+        },
+      });
+
+      if (!order) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Order not found",
+        });
+      }
+
+      const result = await processOrderRefund({
+        db: ctx.db,
+        orderId: input.orderId,
+        amountCents: input.amountCents,
+        reason: input.reason,
+      });
+
+      // Send refund confirmation emails (fire-and-forget)
+      const refundAmountFormatted = `$${result.amountRefunded.toFixed(2)}`;
+      sendRefundEmail({
+        to: order.buyer.email,
+        name: order.buyer.name,
+        orderNumber: order.orderNumber,
+        refundAmount: refundAmountFormatted,
+        reason: input.reason,
+        orderId: order.id,
+      }).catch((err) => {
+        console.error("Failed to send buyer refund email:", err);
+      });
+
+      sendRefundEmail({
+        to: order.seller.email,
+        name: order.seller.name,
+        orderNumber: order.orderNumber,
+        refundAmount: refundAmountFormatted,
+        reason: input.reason,
+        orderId: order.id,
+      }).catch((err) => {
+        console.error("Failed to send seller refund email:", err);
+      });
+
+      return {
+        success: true,
+        refundId: result.refundId,
+        amountRefunded: result.amountRefunded,
+      };
+    }),
+
+  // Retry a failed escrow transfer
+  retryTransfer: adminProcedure
+    .input(z.object({ orderId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await ctx.db.query.orders.findFirst({
+        where: eq(orders.id, input.orderId),
+      });
+
+      if (!order) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Order not found",
+        });
+      }
+
+      if (!order.transferFailedAt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This order does not have a failed transfer",
+        });
+      }
+
+      if (order.escrowStatus !== "held") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Cannot retry transfer — escrow status is "${order.escrowStatus}"`,
+        });
+      }
+
+      // Clear error fields
+      await ctx.db
+        .update(orders)
+        .set({
+          transferFailedAt: null,
+          transferError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, input.orderId));
+
+      // Re-fire the order/picked-up Inngest event
+      await inngest.send({
+        name: "order/picked-up",
+        data: {
+          orderId: order.id,
+          pickedUpAt: new Date().toISOString(),
+        },
+      });
+
+      return { success: true };
+    }),
+
+  // Get orders with failed transfers
+  getFailedTransfers: adminProcedure.query(async ({ ctx }) => {
+    const failedOrders = await ctx.db.query.orders.findMany({
+      where: and(
+        sql`${orders.transferFailedAt} IS NOT NULL`,
+        eq(orders.escrowStatus, "held")
+      ),
+      orderBy: [desc(orders.transferFailedAt)],
+      columns: {
+        id: true,
+        orderNumber: true,
+        sellerPayout: true,
+        escrowStatus: true,
+        transferFailedAt: true,
+        transferError: true,
+      },
+      with: {
+        seller: {
+          columns: { id: true, name: true, businessName: true },
+        },
+      },
+    });
+
+    return failedOrders;
+  }),
 
   // ==========================================
   // Platform Settings

@@ -7,6 +7,7 @@ import OnboardingNudgeEmail, {
   getOnboardingNudgeSubject,
 } from "@/emails/onboarding-nudge";
 import MilestoneCongratsEmail from "@/emails/milestone-congrats";
+import RefundConfirmationEmail from "@/emails/refund-confirmation";
 import React from "react";
 import { env } from "@/env";
 
@@ -119,6 +120,30 @@ export async function sendOnboardingNudgeEmail(params: {
       role: params.role,
       step: params.step,
       dashboardUrl,
+    }),
+  });
+}
+
+export async function sendRefundEmail(params: {
+  to: string;
+  name: string;
+  orderNumber: string;
+  refundAmount: string;
+  reason: string;
+  orderId: string;
+}) {
+  const orderUrl = `${env.NEXT_PUBLIC_APP_URL}/buyer/orders/${params.orderId}`;
+
+  return resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `Refund Processed - Order ${params.orderNumber}`,
+    react: React.createElement(RefundConfirmationEmail, {
+      name: params.name,
+      orderNumber: params.orderNumber,
+      refundAmount: params.refundAmount,
+      reason: params.reason,
+      orderUrl,
     }),
   });
 }

@@ -90,6 +90,15 @@ export const orders = pgTable(
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+
+    // Refund tracking
+    refundedAt: timestamp("refunded_at", { withTimezone: true }),
+    refundedAmount: money("refunded_amount"),
+    stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+
+    // Transfer error tracking
+    transferFailedAt: timestamp("transfer_failed_at", { withTimezone: true }),
+    transferError: text("transfer_error"),
   },
   (table) => [
     index("orders_buyer_id_idx").on(table.buyerId),

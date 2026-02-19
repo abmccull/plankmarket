@@ -24,7 +24,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Loader2, MoreHorizontal, XCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, MoreHorizontal, XCircle, RotateCcw } from "lucide-react";
 import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { OrderStatus } from "@/types";
@@ -41,6 +42,7 @@ interface Order {
     businessName: string | null;
   };
   totalPrice: number;
+  paymentStatus: string | null;
   status: OrderStatus;
   createdAt: Date | string;
 }
@@ -52,8 +54,11 @@ export default function AdminOrdersPage() {
   const utils = trpc.useUtils();
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [refundReason, setRefundReason] = useState("");
+  const [refundAmountCents, setRefundAmountCents] = useState<string>("");
 
   const forceCancelMutation = trpc.admin.forceCancelOrder.useMutation({
     onSuccess: () => {
@@ -61,6 +66,19 @@ export default function AdminOrdersPage() {
       utils.admin.getOrders.invalidate();
       setCancelDialogOpen(false);
       setCancelReason("");
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  const refundMutation = trpc.admin.refundOrder.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Refund of $${data.amountRefunded.toFixed(2)} processed`);
+      utils.admin.getOrders.invalidate();
+      setRefundDialogOpen(false);
+      setRefundReason("");
+      setRefundAmountCents("");
     },
     onError: (err) => {
       toast.error(getErrorMessage(err));
@@ -112,7 +130,8 @@ export default function AdminOrdersPage() {
       id: "actions",
       cell: ({ row }) => {
         const isTerminal = TERMINAL_STATUSES.includes(row.original.status);
-        if (isTerminal) return null;
+        const canRefund = row.original.paymentStatus === "succeeded";
+        if (isTerminal && !canRefund) return null;
 
         return (
           <DropdownMenu>
@@ -122,16 +141,32 @@ export default function AdminOrdersPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => {
-                  setSelectedOrder(row.original);
-                  setCancelDialogOpen(true);
-                }}
-              >
-                <XCircle className="mr-2 h-4 w-4" />
-                Force Cancel
-              </DropdownMenuItem>
+              {canRefund && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedOrder(row.original);
+                    setRefundAmountCents(
+                      (Math.round(row.original.totalPrice * 100)).toString()
+                    );
+                    setRefundDialogOpen(true);
+                  }}
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Refund
+                </DropdownMenuItem>
+              )}
+              {!isTerminal && (
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => {
+                    setSelectedOrder(row.original);
+                    setCancelDialogOpen(true);
+                  }}
+                >
+                  <XCircle className="mr-2 h-4 w-4" />
+                  Force Cancel
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -204,6 +239,80 @@ export default function AdminOrdersPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Force Cancel Order
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Refund Order Dialog */}
+      <AlertDialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Refund Order</AlertDialogTitle>
+            <AlertDialogDescription>
+              Issue a refund for order {selectedOrder?.orderNumber}. The refund
+              will be processed through Stripe and the buyer will be notified.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="refundAmount">Amount (cents)</Label>
+              <Input
+                id="refundAmount"
+                type="number"
+                placeholder="Amount in cents"
+                value={refundAmountCents}
+                onChange={(e) => setRefundAmountCents(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                {refundAmountCents
+                  ? `$${(parseInt(refundAmountCents) / 100).toFixed(2)}`
+                  : "Enter amount in cents"}
+                {selectedOrder &&
+                  ` (Full amount: $${selectedOrder.totalPrice.toFixed(2)})`}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="refundReason">Reason</Label>
+              <Textarea
+                id="refundReason"
+                placeholder="Reason for the refund"
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setRefundReason("");
+                setRefundAmountCents("");
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                !refundReason.trim() ||
+                !refundAmountCents ||
+                refundMutation.isPending
+              }
+              onClick={(e) => {
+                e.preventDefault();
+                if (selectedOrder) {
+                  refundMutation.mutate({
+                    orderId: selectedOrder.id,
+                    amountCents: parseInt(refundAmountCents),
+                    reason: refundReason,
+                  });
+                }
+              }}
+            >
+              {refundMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Process Refund
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

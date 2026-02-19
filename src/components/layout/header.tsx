@@ -29,12 +29,51 @@ import {
   Package,
   Menu,
   Bell,
+  ChevronRight,
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { getDashboardPath } from "@/lib/auth/roles";
 import { formatRelativeTime, truncate } from "@/lib/utils";
+import type { Notification } from "@/server/db/schema/notifications";
+import type { UserRole } from "@/types";
+
+function getNotificationHref(
+  notification: Pick<Notification, "type" | "data">,
+  role?: UserRole | null,
+): string | null {
+  const data = notification.data as Record<string, unknown> | null;
+
+  if (notification.type === "new_offer") return "/offers";
+
+  if (notification.type === "listing_match" && data?.listingSlug) {
+    return `/listings/${data.listingSlug}`;
+  }
+
+  if (data?.orderId) {
+    const base = role === "seller" ? "/seller" : "/buyer";
+    return `${base}/orders/${data.orderId}`;
+  }
+
+  if (data?.listingId && (notification.type === "listing_expiring" || notification.type === "system")) {
+    return "/seller/listings";
+  }
+
+  if (data?.conversationId) {
+    return `/messages?conversation=${data.conversationId}`;
+  }
+
+  if (data?.type === "response_accepted" || data?.type === "response_declined") {
+    return "/seller/request-board";
+  }
+
+  if (data?.type === "request_response") {
+    return "/buyer/requests";
+  }
+
+  return null;
+}
 
 export function Header() {
   const { user, isAuthenticated } = useAuthStore();
@@ -203,6 +242,10 @@ export function Header() {
                             if (!notification.read) {
                               markAsReadMutation.mutate({ id: notification.id });
                             }
+                            const href = getNotificationHref(notification, user?.role);
+                            if (href) {
+                              router.push(href);
+                            }
                           }}
                         >
                           <div className="mt-0.5">
@@ -224,6 +267,9 @@ export function Header() {
                               {formatRelativeTime(notification.createdAt)}
                             </p>
                           </div>
+                          {getNotificationHref(notification, user?.role) && (
+                            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
                         </DropdownMenuItem>
                       ))}
                       <DropdownMenuSeparator />

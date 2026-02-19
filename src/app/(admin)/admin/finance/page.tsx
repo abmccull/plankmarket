@@ -34,7 +34,11 @@ import {
   ShoppingCart,
   Search,
   X,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
+import { toast } from "sonner";
+import { getErrorMessage } from "@/lib/utils";
 import {
   AreaChart,
   Area,
@@ -75,6 +79,7 @@ export default function AdminFinancePage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="failed-transfers">Failed Transfers</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -83,6 +88,10 @@ export default function AdminFinancePage() {
 
         <TabsContent value="transactions">
           <TransactionsTab />
+        </TabsContent>
+
+        <TabsContent value="failed-transfers">
+          <FailedTransfersTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -506,6 +515,107 @@ function TransactionsTab() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── Failed Transfers Tab ─── */
+
+function FailedTransfersTab() {
+  const { data: failedTransfers, isLoading } =
+    trpc.admin.getFailedTransfers.useQuery();
+  const utils = trpc.useUtils();
+
+  const retryMutation = trpc.admin.retryTransfer.useMutation({
+    onSuccess: () => {
+      toast.success("Transfer retry initiated");
+      utils.admin.getFailedTransfers.invalidate();
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!failedTransfers?.length) {
+    return (
+      <div className="text-center py-12 mt-4">
+        <p className="text-muted-foreground">No failed transfers</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 mt-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            Failed Transfers ({failedTransfers.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order #</TableHead>
+                <TableHead>Seller</TableHead>
+                <TableHead className="text-right">Payout Amount</TableHead>
+                <TableHead>Failed At</TableHead>
+                <TableHead>Error</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {failedTransfers.map((order) => (
+                <TableRow key={order.id}>
+                  <TableCell className="font-mono text-sm">
+                    {order.orderNumber}
+                  </TableCell>
+                  <TableCell>
+                    {order.seller?.businessName || order.seller?.name || "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-medium">
+                    {formatCurrency(Number(order.sellerPayout))}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {order.transferFailedAt
+                      ? formatDate(order.transferFailedAt)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm text-destructive max-w-[300px] truncate">
+                    {order.transferError || "Unknown error"}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={retryMutation.isPending}
+                      onClick={() =>
+                        retryMutation.mutate({ orderId: order.id })
+                      }
+                    >
+                      {retryMutation.isPending ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                      )}
+                      Retry
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

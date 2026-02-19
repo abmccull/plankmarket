@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, CreditCard, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, CreditCard, CheckCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
 
@@ -23,6 +23,7 @@ export default function StripeOnboardingPage() {
   const { data: status, isLoading } =
     trpc.payment.getConnectStatus.useQuery();
   const createAccount = trpc.payment.createConnectAccount.useMutation();
+  const createLoginLink = trpc.payment.createLoginLink.useMutation();
 
   useEffect(() => {
     if (isSuccess) {
@@ -147,11 +148,65 @@ export default function StripeOnboardingPage() {
             </Button>
           )}
 
-          {status?.onboardingComplete && (
-            <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
-              Your Stripe account is fully set up. Payouts will be
-              processed automatically after successful orders.
+          {status?.onboardingComplete && status?.pastDue && (
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-400">
+                  Stripe requires updated information
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-500">
+                  Your account has been restricted. Please update your payment
+                  details to continue receiving payouts.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleOnboard}
+                disabled={createAccount.isPending}
+              >
+                {createAccount.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Update Info
+              </Button>
             </div>
+          )}
+
+          {status?.onboardingComplete && (
+            <>
+              <Button
+                variant="outline"
+                className="w-full"
+                disabled={createLoginLink.isPending}
+                onClick={async () => {
+                  try {
+                    const result = await createLoginLink.mutateAsync();
+                    if (result.url) {
+                      window.open(result.url, "_blank");
+                    }
+                  } catch (error: unknown) {
+                    const message =
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to open Stripe dashboard";
+                    toast.error(message);
+                  }
+                }}
+              >
+                {createLoginLink.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                )}
+                View Stripe Dashboard
+              </Button>
+              <div className="rounded-lg bg-muted/50 p-4 text-sm text-muted-foreground">
+                Your Stripe account is fully set up. Payouts will be
+                processed automatically after successful orders.
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

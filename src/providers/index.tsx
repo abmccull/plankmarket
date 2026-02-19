@@ -61,7 +61,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             <AuthProvider>
               {children}
             </AuthProvider>
-            <Toaster position="top-right" richColors closeButton />
+            <Toaster position="top-center" richColors closeButton />
           </ThemeProvider>
         </QueryClientProvider>
       </trpc.Provider>

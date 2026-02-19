@@ -6,7 +6,7 @@ import {
   sellerProcedure,
 } from "../trpc";
 import { orders, users, notifications } from "../db/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import Stripe from "stripe";
@@ -207,16 +207,130 @@ export const paymentRouter = createTRPCRouter({
           .where(eq(users.id, ctx.user.id));
       }
 
+      const requirements = account.requirements;
+      const pastDue = requirements?.past_due ?? [];
+      const currentlyDue = requirements?.currently_due ?? [];
+      const requiresAction = pastDue.length > 0 || currentlyDue.length > 0;
+      const disabledReason = requirements?.disabled_reason ?? null;
+
       return {
         connected: true,
         onboardingComplete,
         chargesEnabled: account.charges_enabled,
         payoutsEnabled: account.payouts_enabled,
+        requiresAction,
+        pastDue: pastDue.length > 0,
+        disabledReason,
       };
     } catch {
       return { connected: false, onboardingComplete: false };
     }
   }),
+
+  // Create Stripe Express Dashboard login link for seller
+  createLoginLink: sellerProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.user.stripeAccountId) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No Stripe account connected. Please complete onboarding first.",
+      });
+    }
+
+    if (!ctx.user.stripeOnboardingComplete) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Please complete Stripe onboarding before accessing the dashboard.",
+      });
+    }
+
+    const loginLink = await stripe.accounts.createLoginLink(
+      ctx.user.stripeAccountId
+    );
+
+    return { url: loginLink.url };
+  }),
+
+  // Get seller payout history (orders where escrow was released)
+  getPayoutHistory: sellerProcedure
+    .input(
+      z.object({
+        page: z.number().int().positive().default(1),
+        limit: z.number().int().positive().max(100).default(20),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const offset = (input.page - 1) * input.limit;
+
+      const where = and(
+        eq(orders.sellerId, ctx.user.id),
+        eq(orders.escrowStatus, "released")
+      );
+
+      const [items, countResult, summaryResult] = await Promise.all([
+        ctx.db.query.orders.findMany({
+          where,
+          orderBy: [desc(orders.updatedAt)],
+          limit: input.limit,
+          offset,
+          columns: {
+            id: true,
+            orderNumber: true,
+            sellerPayout: true,
+            stripeTransferId: true,
+            escrowStatus: true,
+            updatedAt: true,
+          },
+          with: {
+            listing: {
+              columns: { id: true, title: true },
+            },
+          },
+        }),
+        ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(orders)
+          .where(where),
+        ctx.db
+          .select({
+            totalEarned: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
+            totalOrders: sql<number>`count(*)::int`,
+          })
+          .from(orders)
+          .where(where),
+      ]);
+
+      // Also get pending escrow amount
+      const [pendingResult] = await ctx.db
+        .select({
+          pendingAmount: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
+          pendingCount: sql<number>`count(*)::int`,
+        })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.sellerId, ctx.user.id),
+            eq(orders.escrowStatus, "held")
+          )
+        );
+
+      const total = countResult[0]?.count ?? 0;
+      const summary = summaryResult[0] ?? { totalEarned: 0, totalOrders: 0 };
+      const pending = pendingResult ?? { pendingAmount: 0, pendingCount: 0 };
+
+      return {
+        items,
+        total,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(total / input.limit),
+        summary: {
+          totalEarned: summary.totalEarned,
+          completedPayouts: summary.totalOrders,
+          pendingEscrow: pending.pendingAmount,
+          pendingCount: pending.pendingCount,
+        },
+      };
+    }),
 
   // Nudge seller to complete Stripe onboarding
   nudgeSellerToOnboard: verifiedProcedure

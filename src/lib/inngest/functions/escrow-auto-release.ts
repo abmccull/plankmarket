@@ -57,8 +57,9 @@ export const escrowAutoRelease = inngest.createFunction(
         );
       }
 
+      let transfer: Stripe.Transfer;
       try {
-        await stripe.transfers.create(
+        transfer = await stripe.transfers.create(
           {
             amount: Math.round(Number(order.sellerPayout) * 100), // cents
             currency: "usd",
@@ -73,9 +74,22 @@ export const escrowAutoRelease = inngest.createFunction(
           }
         );
       } catch (error) {
-        // If Stripe transfer fails, throw error to trigger Inngest retry
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+
+        // Record the failure on the order for admin visibility
+        await db
+          .update(orders)
+          .set({
+            transferFailedAt: new Date(),
+            transferError: errorMessage,
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, eventData.orderId));
+
+        // Re-throw to trigger Inngest retry
         throw new Error(
-          `Failed to transfer funds for order ${order.id}: ${error instanceof Error ? error.message : "Unknown error"}`
+          `Failed to transfer funds for order ${order.id}: ${errorMessage}`
         );
       }
 
@@ -84,6 +98,7 @@ export const escrowAutoRelease = inngest.createFunction(
         .update(orders)
         .set({
           escrowStatus: "released",
+          stripeTransferId: transfer.id,
           updatedAt: new Date(),
         })
         .where(eq(orders.id, eventData.orderId));
