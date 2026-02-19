@@ -159,6 +159,11 @@ export default function EditListingPage() {
         totalSqFt: listing.totalSqFt,
         totalPallets: listing.totalPallets ?? undefined,
         moq: listing.moq ?? undefined,
+        moqUnit: listing.moqUnit ?? "sqft",
+        palletWeight: listing.palletWeight ?? undefined,
+        palletLength: listing.palletLength ?? undefined,
+        palletWidth: listing.palletWidth ?? undefined,
+        palletHeight: listing.palletHeight ?? undefined,
         locationCity: listing.locationCity ?? undefined,
         locationState: listing.locationState ?? undefined,
         locationZip: listing.locationZip ?? undefined,
@@ -484,7 +489,7 @@ export default function EditListingPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="totalPallets">Total Pallets</Label>
+                <Label htmlFor="totalPallets">Total Pallets *</Label>
                 <Input
                   id="totalPallets"
                   type="number"
@@ -517,14 +522,112 @@ export default function EditListingPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="moq">Minimum Order Quantity (sq ft)</Label>
-              <Input
-                id="moq"
-                type="number"
-                step="0.01"
-                placeholder="500"
-                {...register("moq", { valueAsNumber: true })}
-              />
+              <Label htmlFor="moq">Minimum Order Quantity *</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="moq"
+                  type="number"
+                  step="0.01"
+                  placeholder="500"
+                  className="flex-1"
+                  {...register("moq", { valueAsNumber: true })}
+                />
+                <Select
+                  value={watchedValues.moqUnit || "sqft"}
+                  onValueChange={(v) =>
+                    setValue("moqUnit", v as "pallets" | "sqft", { shouldDirty: true })
+                  }
+                >
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sqft">sq ft</SelectItem>
+                    <SelectItem value="pallets">pallets</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The smallest amount you&apos;ll sell in a single transaction
+              </p>
+              {errors.moq && (
+                <p className="text-sm text-destructive">
+                  {errors.moq.message}
+                </p>
+              )}
+            </div>
+
+            <Separator className="my-4" />
+
+            <h3 className="font-medium">Shipping Dimensions</h3>
+            <p className="text-sm text-muted-foreground mb-2">
+              Required for shipping quotes. Standard pallet: 48&quot;L x 40&quot;W. Typical flooring pallet weighs 1,000-2,500 lbs.
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="palletWeight">Pallet Weight (lbs) *</Label>
+                <Input
+                  id="palletWeight"
+                  type="number"
+                  step="1"
+                  placeholder="1200"
+                  {...register("palletWeight", { valueAsNumber: true })}
+                />
+                {errors.palletWeight && (
+                  <p className="text-sm text-destructive">
+                    {errors.palletWeight.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="palletLength">Pallet Length (in) *</Label>
+                <Input
+                  id="palletLength"
+                  type="number"
+                  step="1"
+                  placeholder="48"
+                  {...register("palletLength", { valueAsNumber: true })}
+                />
+                {errors.palletLength && (
+                  <p className="text-sm text-destructive">
+                    {errors.palletLength.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="palletWidth">Pallet Width (in) *</Label>
+                <Input
+                  id="palletWidth"
+                  type="number"
+                  step="1"
+                  placeholder="40"
+                  {...register("palletWidth", { valueAsNumber: true })}
+                />
+                {errors.palletWidth && (
+                  <p className="text-sm text-destructive">
+                    {errors.palletWidth.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="palletHeight">Pallet Height (in) *</Label>
+                <Input
+                  id="palletHeight"
+                  type="number"
+                  step="1"
+                  placeholder="48"
+                  {...register("palletHeight", { valueAsNumber: true })}
+                />
+                {errors.palletHeight && (
+                  <p className="text-sm text-destructive">
+                    {errors.palletHeight.message}
+                  </p>
+                )}
+              </div>
             </div>
 
             <Separator className="my-4" />
@@ -549,13 +652,18 @@ export default function EditListingPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="locationZip">ZIP Code</Label>
+                <Label htmlFor="locationZip">ZIP Code *</Label>
                 <Input
                   id="locationZip"
                   placeholder="75001"
                   maxLength={10}
                   {...register("locationZip")}
                 />
+                {errors.locationZip && (
+                  <p className="text-sm text-destructive">
+                    {errors.locationZip.message}
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>

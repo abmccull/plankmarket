@@ -82,19 +82,19 @@ export const listingFormSchema = z.object({
   totalPallets: z
     .number()
     .int()
-    .positive("Total pallets must be positive")
-    .optional(),
-  moq: z.number().positive("MOQ must be positive").optional(),
+    .positive("Total pallets is required"),
+  moq: z.number().positive("Minimum order quantity is required"),
+  moqUnit: z.enum(["pallets", "sqft"]),
 
-  // Freight / shipping dimensions (required via step validation, optional in form schema for initialization)
-  palletWeight: z.number().positive("Pallet weight must be positive").max(5000, "Maximum 5000 lbs per pallet").optional(),
-  palletLength: z.number().positive("Pallet length must be positive").max(120, "Maximum 120 inches").optional(),
-  palletWidth: z.number().positive("Pallet width must be positive").max(120, "Maximum 120 inches").optional(),
-  palletHeight: z.number().positive("Pallet height must be positive").max(120, "Maximum 120 inches").optional(),
+  // Freight / shipping dimensions
+  palletWeight: z.number().positive("Pallet weight is required").max(5000, "Maximum 5000 lbs per pallet"),
+  palletLength: z.number().positive("Pallet length is required").max(120, "Maximum 120 inches"),
+  palletWidth: z.number().positive("Pallet width is required").max(120, "Maximum 120 inches"),
+  palletHeight: z.number().positive("Pallet height is required").max(120, "Maximum 120 inches"),
 
   locationCity: z.string().max(100).optional(),
   locationState: z.string().length(2, "State must be 2 characters").optional(),
-  locationZip: z.string().max(10).optional(),
+  locationZip: z.string().min(5, "ZIP code is required").max(10),
 
   // Step 3: Pricing
   askPricePerSqFt: z
@@ -232,17 +232,18 @@ export const csvListingRowSchema = z.object({
   length: z.coerce.number().optional(),
   sqFtPerBox: z.coerce.number().optional(),
   boxesPerPallet: z.coerce.number().int().optional(),
-  totalPallets: z.coerce.number().int().optional(),
-  moq: z.coerce.number().optional(),
+  totalPallets: z.coerce.number().int().positive("Total pallets is required"),
+  moq: z.coerce.number().positive("Minimum order quantity is required"),
+  moqUnit: z.enum(["pallets", "sqft"]),
   locationCity: z.string().optional(),
   locationState: z.string().optional(),
-  locationZip: z.string().optional(),
+  locationZip: z.string().min(5, "ZIP code is required"),
   buyNowPrice: z.coerce.number().optional(),
   description: z.string().optional(),
-  palletWeight: z.coerce.number().optional(),
-  palletLength: z.coerce.number().optional(),
-  palletWidth: z.coerce.number().optional(),
-  palletHeight: z.coerce.number().optional(),
+  palletWeight: z.coerce.number().positive("Pallet weight is required"),
+  palletLength: z.coerce.number().positive("Pallet length is required"),
+  palletWidth: z.coerce.number().positive("Pallet width is required"),
+  palletHeight: z.coerce.number().positive("Pallet height is required"),
 });
 
 export type ListingFormInput = z.infer<typeof listingFormSchema>;

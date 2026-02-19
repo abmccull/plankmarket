@@ -276,6 +276,8 @@ export default function BulkUploadPage() {
                     <TableHead className="text-right">Sq Ft</TableHead>
                     <TableHead className="text-right">Price/SqFt</TableHead>
                     <TableHead>Condition</TableHead>
+                    <TableHead>ZIP</TableHead>
+                    <TableHead className="text-right">MOQ</TableHead>
                     <TableHead className="w-20">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -288,6 +290,10 @@ export default function BulkUploadPage() {
                       <TableCell className="text-right">{row.totalSqFt.toLocaleString()}</TableCell>
                       <TableCell className="text-right">{formatCurrency(row.askPricePerSqFt)}</TableCell>
                       <TableCell>{row.condition}</TableCell>
+                      <TableCell>{row.locationZip}</TableCell>
+                      <TableCell className="text-right">
+                        {row.moq} {row.moqUnit === "pallets" ? "plt" : "sf"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="success">Valid</Badge>
                       </TableCell>
@@ -296,7 +302,7 @@ export default function BulkUploadPage() {
                   {Object.entries(errorsByRow).map(([rowNum, rowErrors]) => (
                     <TableRow key={`err-${rowNum}`} className="bg-destructive/5">
                       <TableCell className="text-muted-foreground">{rowNum}</TableCell>
-                      <TableCell colSpan={5} className="text-destructive text-xs">
+                      <TableCell colSpan={7} className="text-destructive text-xs">
                         {rowErrors.map((e) => `${e.field}: ${e.message}`).join("; ")}
                       </TableCell>
                       <TableCell>

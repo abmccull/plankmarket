@@ -121,7 +121,7 @@ const CERTIFICATIONS = [
 
 const STEP_FIELDS: Record<number, (keyof ListingFormInput)[]> = {
   1: ["title", "materialType"],
-  2: ["totalSqFt", "totalPallets", "palletWeight", "palletLength", "palletWidth", "palletHeight"],
+  2: ["totalSqFt", "totalPallets", "palletWeight", "palletLength", "palletWidth", "palletHeight", "locationZip", "moq", "moqUnit"],
   3: ["askPricePerSqFt"],
   4: ["condition"],
   5: [],
@@ -627,14 +627,39 @@ export default function CreateListingPage() {
               <Separator className="my-4" />
 
               <div className="space-y-2">
-                <Label htmlFor="moq">Minimum Order Quantity (sq ft)</Label>
-                <Input
-                  id="moq"
-                  type="number"
-                  step="0.01"
-                  placeholder="500"
-                  {...register("moq", { valueAsNumber: true })}
-                />
+                <Label htmlFor="moq">Minimum Order Quantity *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="moq"
+                    type="number"
+                    step="0.01"
+                    placeholder="500"
+                    className="flex-1"
+                    {...register("moq", { valueAsNumber: true })}
+                  />
+                  <Select
+                    value={watchedValues.moqUnit || "sqft"}
+                    onValueChange={(v) =>
+                      setValue("moqUnit", v as "pallets" | "sqft", { shouldValidate: true })
+                    }
+                  >
+                    <SelectTrigger className="w-[130px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sqft">sq ft</SelectItem>
+                      <SelectItem value="pallets">pallets</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  The smallest amount you&apos;ll sell in a single transaction
+                </p>
+                {errors.moq && (
+                  <p className="text-sm text-destructive">
+                    {errors.moq.message}
+                  </p>
+                )}
               </div>
 
               <Separator className="my-4" />

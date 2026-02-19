@@ -10,6 +10,7 @@ export {
   gradeTypeEnum,
   conditionTypeEnum,
   reasonCodeEnum,
+  moqUnitEnum,
 } from "./listings";
 export type { Listing, NewListing } from "./listings";
 

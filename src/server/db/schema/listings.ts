@@ -72,6 +72,8 @@ export const conditionTypeEnum = pgEnum("condition_type", [
   "other",
 ]);
 
+export const moqUnitEnum = pgEnum("moq_unit", ["pallets", "sqft"]);
+
 export const reasonCodeEnum = pgEnum("reason_code", [
   "overproduction",
   "color_change",
@@ -117,6 +119,7 @@ export const listings = pgTable(
     originalTotalSqFt: real("original_total_sq_ft"),
     totalPallets: integer("total_pallets"),
     moq: real("moq"),
+    moqUnit: moqUnitEnum("moq_unit").default("sqft"),
 
     // Freight / shipping dimensions (required for new listings, nullable for legacy data)
     palletWeight: real("pallet_weight"), // lbs per pallet

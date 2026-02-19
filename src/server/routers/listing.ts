@@ -21,7 +21,7 @@ export const listingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { mediaIds, ...listingData } = input;
 
-      // Geo-lookup from ZIP code
+      // Geo-lookup from ZIP code + auto-derive city/state
       let locationLat: number | undefined;
       let locationLng: number | undefined;
       if (listingData.locationZip) {
@@ -29,6 +29,8 @@ export const listingRouter = createTRPCRouter({
         if (zipInfo) {
           locationLat = zipInfo.latitude;
           locationLng = zipInfo.longitude;
+          if (!listingData.locationCity) listingData.locationCity = zipInfo.city;
+          if (!listingData.locationState) listingData.locationState = zipInfo.state;
         }
       }
 
@@ -98,6 +100,8 @@ export const listingRouter = createTRPCRouter({
             if (zipInfo) {
               locationLat = zipInfo.latitude;
               locationLng = zipInfo.longitude;
+              if (!row.locationCity) row.locationCity = zipInfo.city;
+              if (!row.locationState) row.locationState = zipInfo.state;
             }
           }
 

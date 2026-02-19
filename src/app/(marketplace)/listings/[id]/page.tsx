@@ -272,7 +272,16 @@ async function ListingContent({ id }: { id: string }) {
                       value={listing.boxesPerPallet.toString()}
                     />
                   )}
-                  {listing.moq && <SpecItem label="Min Order" value={formatSqFt(listing.moq)} />}
+                  {listing.moq && (
+                    <SpecItem
+                      label="Min Order"
+                      value={
+                        listing.moqUnit === "pallets"
+                          ? `${listing.moq} pallet${listing.moq !== 1 ? "s" : ""}`
+                          : formatSqFt(listing.moq)
+                      }
+                    />
+                  )}
                   <SpecItem label="Condition" value={conditionLabel} />
                   {listing.palletWeight && (
                     <SpecItem

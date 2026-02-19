@@ -245,26 +245,39 @@ export default function CheckoutPage() {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="quantitySqFt">Quantity (sq ft)</Label>
-                    <Input
-                      id="quantitySqFt"
-                      type="number"
-                      step="0.01"
-                      min={listing.moq || 1}
-                      max={listing.totalSqFt}
-                      defaultValue={listing.totalSqFt}
-                      {...register("quantitySqFt", { valueAsNumber: true })}
-                      aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : undefined}
-                      aria-invalid={!!errors.quantitySqFt}
-                    />
-                    {errors.quantitySqFt && (
-                      <p id="quantitySqFt-error" className="text-sm text-destructive">
-                        {errors.quantitySqFt.message}
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Available: {formatSqFt(listing.totalSqFt)}
-                      {listing.moq && ` | Min order: ${formatSqFt(listing.moq)}`}
-                    </p>
+                    {(() => {
+                      const moqUnit = listing.moqUnit;
+                      const moqSqFt = moqUnit === "pallets" && listing.moq
+                        ? listing.moq * (listing.sqFtPerBox ?? 20) * (listing.boxesPerPallet ?? 30)
+                        : (listing.moq ?? 1);
+                      const moqDisplay = moqUnit === "pallets" && listing.moq
+                        ? `${listing.moq} pallet${listing.moq !== 1 ? "s" : ""} (~${formatSqFt(moqSqFt)})`
+                        : listing.moq ? formatSqFt(listing.moq) : null;
+                      return (
+                        <>
+                          <Input
+                            id="quantitySqFt"
+                            type="number"
+                            step="0.01"
+                            min={moqSqFt}
+                            max={listing.totalSqFt}
+                            defaultValue={listing.totalSqFt}
+                            {...register("quantitySqFt", { valueAsNumber: true })}
+                            aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : undefined}
+                            aria-invalid={!!errors.quantitySqFt}
+                          />
+                          {errors.quantitySqFt && (
+                            <p id="quantitySqFt-error" className="text-sm text-destructive">
+                              {errors.quantitySqFt.message}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            Available: {formatSqFt(listing.totalSqFt)}
+                            {moqDisplay && ` | Min order: ${moqDisplay}`}
+                          </p>
+                        </>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>
