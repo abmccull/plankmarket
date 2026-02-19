@@ -308,12 +308,9 @@ export async function POST(req: NextRequest) {
 
       case "payout.failed": {
         const payout = event.data.object as Stripe.Payout;
-        // The connected account ID is in the Stripe-Account header
-        // which is available as event.account
         const connectedAccountId = event.account;
 
         if (connectedAccountId) {
-          // Find seller by connected account ID
           const seller = await db.query.users.findFirst({
             where: eq(users.stripeAccountId, connectedAccountId),
             columns: { id: true },
@@ -327,6 +324,134 @@ export async function POST(req: NextRequest) {
               message: `A payout of $${(payout.amount / 100).toFixed(2)} failed. Please update your banking information in your Stripe dashboard.`,
               read: false,
             });
+          }
+        }
+        break;
+      }
+
+      case "payout.paid": {
+        const payout = event.data.object as Stripe.Payout;
+        const connectedAccountId = event.account;
+
+        if (connectedAccountId) {
+          const seller = await db.query.users.findFirst({
+            where: eq(users.stripeAccountId, connectedAccountId),
+            columns: { id: true },
+          });
+
+          if (seller) {
+            await db.insert(notifications).values({
+              userId: seller.id,
+              type: "system" as const,
+              title: "Payout Received",
+              message: `Your payout of $${(payout.amount / 100).toFixed(2)} has been sent to your bank account.`,
+              read: false,
+            });
+          }
+        }
+        break;
+      }
+
+      case "account.application.deauthorized": {
+        const account = event.data.object as Stripe.Application;
+        const connectedAccountId = event.account;
+
+        if (connectedAccountId) {
+          const seller = await db.query.users.findFirst({
+            where: eq(users.stripeAccountId, connectedAccountId),
+            columns: { id: true },
+          });
+
+          if (seller) {
+            await db
+              .update(users)
+              .set({
+                stripeOnboardingComplete: false,
+                updatedAt: new Date(),
+              })
+              .where(eq(users.id, seller.id));
+
+            await db.insert(notifications).values({
+              userId: seller.id,
+              type: "system" as const,
+              title: "Stripe Account Disconnected",
+              message:
+                "Your Stripe account has been disconnected from Plank Market. You will not be able to receive payments until you reconnect.",
+              read: false,
+            });
+          }
+        }
+        break;
+      }
+
+      case "payment_intent.canceled": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+
+        if (paymentIntent.metadata.type === "promotion") {
+          await db
+            .update(listingPromotions)
+            .set({ paymentStatus: "failed" })
+            .where(
+              eq(
+                listingPromotions.stripePaymentIntentId,
+                paymentIntent.id
+              )
+            );
+        } else {
+          const orderId = paymentIntent.metadata.orderId;
+          if (orderId) {
+            await db
+              .update(orders)
+              .set({
+                paymentStatus: "failed",
+                status: "cancelled",
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, orderId));
+          }
+        }
+        break;
+      }
+
+      case "charge.dispute.funds_withdrawn": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const paymentIntentId = dispute.payment_intent as string | null;
+
+        if (paymentIntentId) {
+          const order = await db.query.orders.findFirst({
+            where: eq(orders.stripePaymentIntentId, paymentIntentId),
+          });
+
+          if (order) {
+            await db
+              .update(orders)
+              .set({
+                escrowStatus: "disputed",
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, order.id));
+          }
+        }
+        break;
+      }
+
+      case "charge.dispute.funds_reinstated": {
+        const dispute = event.data.object as Stripe.Dispute;
+        const paymentIntentId = dispute.payment_intent as string | null;
+
+        if (paymentIntentId) {
+          const order = await db.query.orders.findFirst({
+            where: eq(orders.stripePaymentIntentId, paymentIntentId),
+          });
+
+          if (order) {
+            await db
+              .update(orders)
+              .set({
+                escrowStatus: "held",
+                updatedAt: new Date(),
+              })
+              .where(eq(orders.id, order.id));
           }
         }
         break;
