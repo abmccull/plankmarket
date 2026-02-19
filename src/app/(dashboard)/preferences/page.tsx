@@ -978,7 +978,7 @@ export default function PreferencesPage() {
 
   // ─── Dashboard mode: all cards stacked, single save ──────────────────────────
   if (mode === "dashboard") {
-    const updatedAt = (existingPrefs as any)?.updatedAt;
+    const updatedAt = (existingPrefs as Record<string, unknown>)?.updatedAt as string | undefined;
 
     return (
       <div className="max-w-2xl mx-auto space-y-6">

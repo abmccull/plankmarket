@@ -353,7 +353,6 @@ export async function POST(req: NextRequest) {
       }
 
       case "account.application.deauthorized": {
-        const account = event.data.object as Stripe.Application;
         const connectedAccountId = event.account;
 
         if (connectedAccountId) {
