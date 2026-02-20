@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
-import { Loader2, Heart } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Heart, Grid3X3, List } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const statusConfig = {
   delivered: { label: "Delivered", variant: "success" as const },
@@ -12,10 +15,11 @@ const statusConfig = {
   offer_accepted: { label: "Offer Accepted", variant: "success" as const },
   offer_pending: { label: "Offer Pending", variant: "warning" as const },
   sold: { label: "Sold", variant: "destructive" as const },
-  available: { label: "Available", variant: "outline" as const },
+  available: { label: "Available", variant: "secondary" as const },
 } as const;
 
 export default function BuyerWatchlistPage() {
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.watchlist.getMyWatchlist.useQuery({
     page: 1,
@@ -51,11 +55,48 @@ export default function BuyerWatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Watchlist</h1>
-        <p className="text-muted-foreground mt-1">
-          Listings you are keeping an eye on
-        </p>
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Watchlist</h1>
+          <p className="text-muted-foreground mt-1">
+            Listings you are keeping an eye on
+          </p>
+        </div>
+        {data && data.items.length > 0 && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">
+              {data.items.length} {data.items.length === 1 ? "item" : "items"}
+            </span>
+            <div className="flex border rounded-md">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 rounded-r-none",
+                  viewMode === "grid" && "bg-accent"
+                )}
+                onClick={() => setViewMode("grid")}
+                aria-label="Grid view"
+                aria-pressed={viewMode === "grid"}
+              >
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 rounded-l-none",
+                  viewMode === "list" && "bg-accent"
+                )}
+                onClick={() => setViewMode("list")}
+                aria-label="List view"
+                aria-pressed={viewMode === "list"}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -71,7 +112,12 @@ export default function BuyerWatchlistPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={cn(
+          "grid gap-4",
+          viewMode === "grid"
+            ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            : "grid-cols-1"
+        )}>
           {data?.items.map((item) => (
             <ListingCard
               key={item.id}

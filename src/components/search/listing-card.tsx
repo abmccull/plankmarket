@@ -130,6 +130,20 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
               </Badge>
             )}
           </div>
+          {onWatchlistToggle && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onWatchlistToggle(listing.id);
+              }}
+              className="absolute bottom-2 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-black/40 hover:bg-black/60 transition-colors"
+              aria-label={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+            >
+              <Heart className={cn("h-5 w-5 text-white", isWatchlisted && "fill-red-500 text-red-500")} />
+            </button>
+          )}
         </div>
 
         <CardContent className="p-4">
