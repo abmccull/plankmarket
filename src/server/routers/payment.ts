@@ -134,18 +134,10 @@ export const paymentRouter = createTRPCRouter({
       };
     }),
 
-  // Create Stripe Connect account for seller
+  // Create Stripe Connect account for seller (embedded onboarding — no redirect)
   createConnectAccount: sellerProcedure.mutation(async ({ ctx }) => {
     if (ctx.user.stripeAccountId) {
-      // Return existing onboarding link
-      const accountLink = await stripe.accountLinks.create({
-        account: ctx.user.stripeAccountId,
-        refresh_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?refresh=true`,
-        return_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?success=true`,
-        type: "account_onboarding",
-      });
-
-      return { url: accountLink.url };
+      return { alreadyExists: true, accountId: ctx.user.stripeAccountId };
     }
 
     // Create new connected account
@@ -171,15 +163,48 @@ export const paymentRouter = createTRPCRouter({
       })
       .where(eq(users.id, ctx.user.id));
 
-    // Create onboarding link
-    const accountLink = await stripe.accountLinks.create({
-      account: account.id,
-      refresh_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?refresh=true`,
-      return_url: `${env.NEXT_PUBLIC_APP_URL}/seller/stripe-onboarding?success=true`,
-      type: "account_onboarding",
+    return { alreadyExists: false, accountId: account.id };
+  }),
+
+  // Create Stripe Account Session for embedded components
+  createAccountSession: sellerProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.user.stripeAccountId) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Stripe account not connected",
+      });
+    }
+
+    const accountSession = await stripe.accountSessions.create({
+      account: ctx.user.stripeAccountId,
+      components: {
+        account_onboarding: { enabled: true },
+        payouts: {
+          enabled: true,
+          features: {
+            instant_payouts: true,
+            standard_payouts: true,
+            edit_payout_schedule: true,
+            external_account_collection: true,
+          },
+        },
+        payments: {
+          enabled: true,
+          features: {
+            refund_management: true,
+            dispute_management: true,
+            capture_payments: true,
+          },
+        },
+        account_management: {
+          enabled: true,
+          features: { external_account_collection: true },
+        },
+        notification_banner: { enabled: true },
+      },
     });
 
-    return { url: accountLink.url };
+    return { clientSecret: accountSession.client_secret };
   }),
 
   // Check Stripe Connect account status

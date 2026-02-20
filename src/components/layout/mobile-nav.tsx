@@ -80,7 +80,7 @@ export function MobileNav() {
         { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
         { title: "Orders", href: "/seller/orders", icon: Package },
         { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
-        { title: "Payments", href: "/seller/stripe-onboarding", icon: CreditCard },
+        { title: "Payments", href: "/seller/payments", icon: CreditCard },
         { title: "Settings", href: "/seller/settings", icon: Settings },
       ];
     }

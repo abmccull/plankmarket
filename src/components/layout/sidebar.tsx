@@ -16,7 +16,6 @@ import {
   Plus,
   BarChart3,
   CreditCard,
-  DollarSign,
   List,
   MessageSquare,
   Handshake,
@@ -45,8 +44,7 @@ const sellerItems: SidebarItem[] = [
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Orders", href: "/seller/orders", icon: Package },
   { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
-  { title: "Payouts", href: "/seller/payouts", icon: DollarSign },
-  { title: "Payments", href: "/seller/stripe-onboarding", icon: CreditCard },
+  { title: "Payments", href: "/seller/payments", icon: CreditCard },
   { title: "Settings", href: "/seller/settings", icon: Settings },
 ];
 

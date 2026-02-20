@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CreditCard, X, Loader2, ExternalLink } from "lucide-react";
-import { toast } from "sonner";
+import { CreditCard, X, ExternalLink } from "lucide-react";
 
 const BANNER_DISMISSED_KEY = "stripe-onboarding-banner-dismissed";
 
@@ -17,23 +17,12 @@ export function StripeOnboardingBanner() {
     }
     return false;
   });
-  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
+  const router = useRouter();
   const { data: connectStatus, isLoading } = trpc.payment.getConnectStatus.useQuery();
-  const createConnectAccount = trpc.payment.createConnectAccount.useMutation();
 
-  const handleSetUpPayments = async () => {
-    setIsCreatingAccount(true);
-    try {
-      const { url } = await createConnectAccount.mutateAsync();
-      toast.success("Redirecting to Stripe...");
-      window.location.href = url;
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to start Stripe onboarding";
-      toast.error(message);
-      setIsCreatingAccount(false);
-    }
+  const handleSetUpPayments = () => {
+    router.push("/seller/payments");
   };
 
   const handleDismiss = () => {
@@ -75,21 +64,11 @@ export function StripeOnboardingBanner() {
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleSetUpPayments}
-                disabled={isCreatingAccount}
                 size="sm"
                 className="bg-amber-600 hover:bg-amber-700 text-white"
               >
-                {isCreatingAccount ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                    Setting up...
-                  </>
-                ) : (
-                  <>
-                    <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Set Up Now
-                  </>
-                )}
+                <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                Set Up Now
               </Button>
               <p className="text-xs text-amber-700 dark:text-amber-500">
                 Powered by Stripe
