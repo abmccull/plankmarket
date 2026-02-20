@@ -12,6 +12,8 @@ import { conversations, messages, listings, media } from "../db/schema";
 import { eq, and, or, desc, asc, gt, lt, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { detectSelfReference } from "@/lib/content-filter";
+import { logContentViolation } from "@/server/services/content-moderation";
 
 export const messageRouter = createTRPCRouter({
   // Get or create a conversation for a listing
@@ -146,6 +148,34 @@ export const messageRouter = createTRPCRouter({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "You are not a participant in this conversation",
+        });
+      }
+
+      // Check for self-referencing identity info (business name, full name)
+      const selfRefDetections = detectSelfReference(input.body, ctx.user);
+      const highConfidence = selfRefDetections.filter(d => d.level === "high");
+      const mediumConfidence = selfRefDetections.filter(d => d.level === "medium");
+
+      if (highConfidence.length > 0) {
+        await logContentViolation({
+          userId: ctx.user.id,
+          contentType: "message",
+          contentBody: input.body,
+          detections: highConfidence,
+        });
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Your message appears to contain identifying business information. For your security, all communication must stay on PlankMarket.",
+        });
+      }
+
+      // Log medium-confidence detections for admin review (don't block)
+      if (mediumConfidence.length > 0) {
+        await logContentViolation({
+          userId: ctx.user.id,
+          contentType: "message",
+          contentBody: input.body,
+          detections: mediumConfidence,
         });
       }
 

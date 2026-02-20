@@ -8,7 +8,7 @@ import { ChatBubble } from "@/components/messaging/chat-bubble";
 import { MessageInput } from "@/components/messaging/message-input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowLeft, ExternalLink } from "lucide-react";
+import { Loader2, ArrowLeft, ExternalLink, Shield } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { toast } from "sonner";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
@@ -168,6 +168,16 @@ export default function ConversationPage() {
       <Card elevation="flat" className="flex-1 flex flex-col border overflow-hidden">
         {/* Messages list */}
         <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          {/* Platform protection system message */}
+          <div className="flex items-center gap-2 py-2 mb-2">
+            <div className="flex-1 border-t border-muted" />
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5 shrink-0">
+              <Shield className="h-3 w-3" />
+              Protected by PlankMarket escrow &amp; buyer protection
+            </span>
+            <div className="flex-1 border-t border-muted" />
+          </div>
+
           {!messages || messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <p>No messages yet. Start the conversation!</p>
@@ -202,6 +212,9 @@ export default function ConversationPage() {
             onSendMessage={handleSendMessage}
             placeholder={`Message ${otherPartyName}...`}
           />
+          <p className="text-xs text-muted-foreground text-center mt-2">
+            Keep transactions on PlankMarket for escrow protection and shipping guarantees.
+          </p>
         </div>
       </Card>
     </div>

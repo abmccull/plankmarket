@@ -53,6 +53,55 @@ export function analyzeContent(text: string): ContentFilterResult {
 }
 
 /**
+ * Detect self-referencing identity information in text.
+ * Checks if a user mentions their own business name or full name,
+ * which could be used to enable off-platform discovery (e.g., Googling).
+ *
+ * This is context-aware (requires user data) so it runs in the router layer,
+ * separate from the static Zod-based pattern matching.
+ */
+export function detectSelfReference(
+  text: string,
+  user: { name?: string | null; businessName?: string | null }
+): Detection[] {
+  const detections: Detection[] = [];
+  const normalizedText = text.toLowerCase();
+
+  // Check business name (high-confidence if full match, min 4 chars to avoid false positives)
+  if (user.businessName && user.businessName.length >= 4) {
+    const normalizedBizName = user.businessName.toLowerCase().trim();
+    const index = normalizedText.indexOf(normalizedBizName);
+    if (index !== -1) {
+      detections.push({
+        level: "high",
+        type: "business_name",
+        match: text.slice(index, index + normalizedBizName.length),
+        index,
+      });
+    }
+  }
+
+  // Check full name (first + last, medium-confidence — first names alone are too common)
+  if (user.name) {
+    const parts = user.name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const fullNameLower = user.name.toLowerCase().trim();
+      const index = normalizedText.indexOf(fullNameLower);
+      if (index !== -1) {
+        detections.push({
+          level: "medium",
+          type: "full_name",
+          match: text.slice(index, index + fullNameLower.length),
+          index,
+        });
+      }
+    }
+  }
+
+  return detections;
+}
+
+/**
  * Helper to format detection type as user-friendly string
  */
 export function formatDetectionType(type: string): string {
@@ -69,6 +118,10 @@ export function formatDetectionType(type: string): string {
       return "email address";
     case "intent_phrase":
       return "contact information request";
+    case "business_name":
+      return "business name";
+    case "full_name":
+      return "personal name";
     default:
       return "contact information";
   }
