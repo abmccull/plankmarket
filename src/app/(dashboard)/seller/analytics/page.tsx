@@ -9,7 +9,6 @@ import { ChartCard } from "@/components/analytics/chart-card";
 import { AreaChart } from "@/components/analytics/area-chart";
 import { BarChart } from "@/components/analytics/bar-chart";
 import { DonutChart } from "@/components/analytics/donut-chart";
-import { MetricRow } from "@/components/analytics/metric-row";
 import { TopListingsTable } from "@/components/analytics/top-listings-table";
 import { ReviewCard } from "@/components/shared/review-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";

@@ -136,7 +136,7 @@ export function ListingsBrowseClient({
         updateParams({ limit: "24" });
       }
     },
-    [initialParams.limit, updateParams]
+    [initialParams.limit, updateParams, GRID_LIMITS, LIST_LIMITS]
   );
 
   const handleSearchChange = useCallback(

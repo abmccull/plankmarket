@@ -20,7 +20,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Star } from "lucide-react";
 import { useState } from "react";
