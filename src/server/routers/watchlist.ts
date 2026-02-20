@@ -3,9 +3,18 @@ import {
   protectedProcedure,
   verifiedProcedure,
 } from "../trpc";
-import { watchlist, listings } from "../db/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { watchlist, listings, offers, orders } from "../db/schema";
+import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
+
+type BuyerStatus =
+  | "delivered"
+  | "shipped"
+  | "order_pending"
+  | "offer_accepted"
+  | "offer_pending"
+  | "sold"
+  | "available";
 
 export const watchlistRouter = createTRPCRouter({
   // Add to watchlist
@@ -125,8 +134,87 @@ export const watchlistRouter = createTRPCRouter({
 
       const total = countResult[0]?.count ?? 0;
 
+      const listingIds = items.map((i) => i.listingId);
+
+      // Fetch buyer's offers and orders for these listings in parallel
+      const [buyerOffers, buyerOrders] = listingIds.length > 0
+        ? await Promise.all([
+            ctx.db
+              .select({
+                listingId: offers.listingId,
+                status: offers.status,
+              })
+              .from(offers)
+              .where(
+                and(
+                  eq(offers.buyerId, ctx.user.id),
+                  inArray(offers.listingId, listingIds)
+                )
+              ),
+            ctx.db
+              .select({
+                listingId: orders.listingId,
+                status: orders.status,
+              })
+              .from(orders)
+              .where(
+                and(
+                  eq(orders.buyerId, ctx.user.id),
+                  inArray(orders.listingId, listingIds)
+                )
+              ),
+          ])
+        : [[], []];
+
+      // Group by listing ID
+      const offersByListing = new Map<string, typeof buyerOffers>();
+      for (const o of buyerOffers) {
+        const arr = offersByListing.get(o.listingId) ?? [];
+        arr.push(o);
+        offersByListing.set(o.listingId, arr);
+      }
+
+      const ordersByListing = new Map<string, typeof buyerOrders>();
+      for (const o of buyerOrders) {
+        const arr = ordersByListing.get(o.listingId) ?? [];
+        arr.push(o);
+        ordersByListing.set(o.listingId, arr);
+      }
+
+      const itemsWithStatus = items.map((item) => {
+        const listingOffers = offersByListing.get(item.listingId) ?? [];
+        const listingOrders = ordersByListing.get(item.listingId) ?? [];
+
+        let buyerStatus: BuyerStatus = "available";
+
+        // Priority: delivered > shipped > order_pending > offer_accepted > offer_pending > sold > available
+        if (listingOrders.some((o) => o.status === "delivered")) {
+          buyerStatus = "delivered";
+        } else if (listingOrders.some((o) => o.status === "shipped")) {
+          buyerStatus = "shipped";
+        } else if (
+          listingOrders.some((o) =>
+            ["pending", "confirmed", "processing"].includes(o.status)
+          )
+        ) {
+          buyerStatus = "order_pending";
+        } else if (listingOffers.some((o) => o.status === "accepted")) {
+          buyerStatus = "offer_accepted";
+        } else if (
+          listingOffers.some((o) =>
+            ["pending", "countered"].includes(o.status)
+          )
+        ) {
+          buyerStatus = "offer_pending";
+        } else if (item.listing.status === "sold") {
+          buyerStatus = "sold";
+        }
+
+        return { ...item, buyerStatus };
+      });
+
       return {
-        items,
+        items: itemsWithStatus,
         total,
         page: input.page,
         limit: input.limit,

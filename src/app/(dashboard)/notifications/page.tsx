@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,8 +30,10 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  XCircle,
 } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils";
+import { getNotificationHref } from "@/lib/utils/notification-href";
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   order_confirmed: "Order",
@@ -58,6 +62,8 @@ const NOTIFICATION_TYPE_VARIANTS: Record<string, "default" | "secondary" | "dest
 export default function NotificationsPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
+  const router = useRouter();
+  const { user } = useAuthStore();
 
   const { data, isLoading } = trpc.notification.getMyNotifications.useQuery({
     page,
@@ -92,8 +98,18 @@ export default function NotificationsPage() {
     },
   });
 
+  const clearReadMutation = trpc.notification.clearRead.useMutation({
+    onSuccess: () => {
+      utils.notification.getMyNotifications.invalidate();
+      utils.notification.getUnreadCount.invalidate();
+      utils.notification.getLatest.invalidate();
+      toast.success("Read notifications cleared");
+    },
+  });
+
   const { data: unreadData } = trpc.notification.getUnreadCount.useQuery();
   const unreadCount = unreadData?.count ?? 0;
+  const readCount = (data?.total ?? 0) - unreadCount;
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -106,21 +122,38 @@ export default function NotificationsPage() {
               : "All caught up"}
           </p>
         </div>
-        {unreadCount > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => markAllAsReadMutation.mutate()}
-            disabled={markAllAsReadMutation.isPending}
-          >
-            {markAllAsReadMutation.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCheck className="mr-2 h-4 w-4" />
-            )}
-            Mark all as read
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => markAllAsReadMutation.mutate()}
+              disabled={markAllAsReadMutation.isPending}
+            >
+              {markAllAsReadMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCheck className="mr-2 h-4 w-4" />
+              )}
+              Mark all as read
+            </Button>
+          )}
+          {readCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => clearReadMutation.mutate()}
+              disabled={clearReadMutation.isPending}
+            >
+              {clearReadMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <XCircle className="mr-2 h-4 w-4" />
+              )}
+              Clear read
+            </Button>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -143,99 +176,112 @@ export default function NotificationsPage() {
       ) : data && data.items.length > 0 ? (
         <>
           <div className="space-y-3">
-            {data.items.map((notification) => (
-              <Card
-                key={notification.id}
-                className={
-                  notification.read
-                    ? "opacity-75"
-                    : "border-l-4 border-l-primary"
-                }
-              >
-                <CardContent className="py-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex flex-col items-center gap-2 pt-0.5">
-                      {!notification.read && (
-                        <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                      )}
-                      <Badge
-                        variant={
-                          NOTIFICATION_TYPE_VARIANTS[notification.type] ??
-                          "outline"
-                        }
-                        className="text-[10px] shrink-0"
-                      >
-                        {NOTIFICATION_TYPE_LABELS[notification.type] ??
-                          notification.type}
-                      </Badge>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">
-                        {notification.title}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {notification.message}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {formatRelativeTime(notification.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {!notification.read && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() =>
-                            markAsReadMutation.mutate({
-                              id: notification.id,
-                            })
+            {data.items.map((notification) => {
+              const href = getNotificationHref(notification, user?.role);
+              return (
+                <Card
+                  key={notification.id}
+                  className={`${
+                    notification.read
+                      ? "opacity-75"
+                      : "border-l-4 border-l-primary"
+                  }${href ? " cursor-pointer transition-colors hover:bg-muted/50" : ""}`}
+                  onClick={() => {
+                    if (!href) return;
+                    if (!notification.read) {
+                      markAsReadMutation.mutate({ id: notification.id });
+                    }
+                    router.push(href);
+                  }}
+                >
+                  <CardContent className="py-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex flex-col items-center gap-2 pt-0.5">
+                        {!notification.read && (
+                          <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                        )}
+                        <Badge
+                          variant={
+                            NOTIFICATION_TYPE_VARIANTS[notification.type] ??
+                            "outline"
                           }
-                          disabled={markAsReadMutation.isPending}
-                          title="Mark as read"
+                          className="text-[10px] shrink-0"
                         >
-                          <CheckCheck className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
+                          {NOTIFICATION_TYPE_LABELS[notification.type] ??
+                            notification.type}
+                        </Badge>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">
+                          {notification.title}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {formatRelativeTime(notification.createdAt)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {!notification.read && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                            title="Delete notification"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              markAsReadMutation.mutate({
+                                id: notification.id,
+                              })
+                            }
+                            disabled={markAsReadMutation.isPending}
+                            title="Mark as read"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <CheckCheck className="h-4 w-4" />
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>
-                              Delete notification?
-                            </AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently remove this notification.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() =>
-                                deleteMutation.mutate({
-                                  id: notification.id,
-                                })
-                              }
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              title="Delete notification"
                             >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                Delete notification?
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently remove this notification.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() =>
+                                  deleteMutation.mutate({
+                                    id: notification.id,
+                                  })
+                                }
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                        {href && (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           {/* Pagination */}

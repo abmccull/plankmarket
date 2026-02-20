@@ -14,6 +14,8 @@ import { MapPin, Eye, Heart, Package } from "lucide-react";
 import type { PromotionTier } from "@/types";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
+
 interface ListingCardProps {
   listing: {
     id: string;
@@ -41,6 +43,9 @@ interface ListingCardProps {
       businessState: string | null;
     } | null;
   };
+  onWatchlistToggle?: (listingId: string) => void;
+  isWatchlisted?: boolean;
+  statusBadge?: { label: string; variant: BadgeVariant };
 }
 
 const materialLabels: Record<string, string> = {
@@ -64,7 +69,7 @@ const conditionLabels: Record<string, string> = {
   other: "Other",
 };
 
-export function ListingCard({ listing }: ListingCardProps) {
+export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusBadge }: ListingCardProps) {
   const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
 
   const isPromoted = listing.isPromoted || !!listing.promotionTier;
@@ -113,11 +118,18 @@ export function ListingCard({ listing }: ListingCardProps) {
             </Badge>
             {isPromoted && <PromotionBadge tier={tier} />}
           </div>
-          {listing.buyNowPrice && (
-            <Badge className="absolute top-2 right-2 text-xs bg-secondary text-secondary-foreground">
-              Buy Now
-            </Badge>
-          )}
+          <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+            {listing.buyNowPrice && (
+              <Badge className="text-xs bg-secondary text-secondary-foreground">
+                Buy Now
+              </Badge>
+            )}
+            {statusBadge && (
+              <Badge variant={statusBadge.variant} className="text-xs">
+                {statusBadge.label}
+              </Badge>
+            )}
+          </div>
         </div>
 
         <CardContent className="p-4">
@@ -168,10 +180,25 @@ export function ListingCard({ listing }: ListingCardProps) {
                 <Eye className="h-3 w-3" />
                 {listing.viewsCount}
               </span>
-              <span className="flex items-center gap-1">
-                <Heart className="h-3 w-3" />
-                {listing.watchlistCount}
-              </span>
+              {onWatchlistToggle ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onWatchlistToggle(listing.id);
+                  }}
+                  className="flex items-center gap-1 hover:text-red-500 transition-colors"
+                >
+                  <Heart className={cn("h-3 w-3", isWatchlisted && "fill-red-500 text-red-500")} />
+                  {listing.watchlistCount}
+                </button>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Heart className="h-3 w-3" />
+                  {listing.watchlistCount}
+                </span>
+              )}
             </div>
           </div>
 

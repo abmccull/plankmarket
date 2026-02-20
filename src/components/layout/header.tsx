@@ -36,44 +36,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { getDashboardPath } from "@/lib/auth/roles";
 import { formatRelativeTime, truncate } from "@/lib/utils";
-import type { Notification } from "@/server/db/schema/notifications";
-import type { UserRole } from "@/types";
-
-function getNotificationHref(
-  notification: Pick<Notification, "type" | "data">,
-  role?: UserRole | null,
-): string | null {
-  const data = notification.data as Record<string, unknown> | null;
-
-  if (notification.type === "new_offer") return "/offers";
-
-  if (notification.type === "listing_match" && data?.listingSlug) {
-    return `/listings/${data.listingSlug}`;
-  }
-
-  if (data?.orderId) {
-    const base = role === "seller" ? "/seller" : "/buyer";
-    return `${base}/orders/${data.orderId}`;
-  }
-
-  if (data?.listingId && (notification.type === "listing_expiring" || notification.type === "system")) {
-    return "/seller/listings";
-  }
-
-  if (data?.conversationId) {
-    return `/messages?conversation=${data.conversationId}`;
-  }
-
-  if (data?.type === "response_accepted" || data?.type === "response_declined") {
-    return "/seller/request-board";
-  }
-
-  if (data?.type === "request_response") {
-    return "/buyer/requests";
-  }
-
-  return null;
-}
+import { getNotificationHref } from "@/lib/utils/notification-href";
 
 export function Header() {
   const { user, isAuthenticated } = useAuthStore();
@@ -101,8 +64,21 @@ export function Header() {
       utils.notification.getLatest.invalidate();
     },
   });
+  const clearReadMutation = trpc.notification.clearRead.useMutation({
+    onSuccess: () => {
+      utils.notification.getUnreadCount.invalidate();
+      utils.notification.getLatest.invalidate();
+    },
+  });
 
   const unreadCount = unreadData?.count ?? 0;
+
+  const handleClearAll = async () => {
+    if (unreadCount > 0) {
+      await markAllAsReadMutation.mutateAsync();
+    }
+    clearReadMutation.mutate();
+  };
 
   const handleLogout = async () => {
     const supabase = createClient();
@@ -221,17 +197,31 @@ export function Header() {
                 <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] sm:w-80 max-h-[70vh] overflow-y-auto">
                   <DropdownMenuLabel className="flex items-center justify-between">
                     <span>Notifications</span>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          markAllAsReadMutation.mutate();
-                        }}
-                        className="text-xs font-normal text-primary hover:underline"
-                      >
-                        Mark all read
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            markAllAsReadMutation.mutate();
+                          }}
+                          className="text-xs font-normal text-primary hover:underline"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                      {latestNotifications && latestNotifications.length > 0 && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleClearAll();
+                          }}
+                          className="text-xs font-normal text-destructive hover:underline"
+                          disabled={clearReadMutation.isPending}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {latestNotifications && latestNotifications.length > 0 ? (

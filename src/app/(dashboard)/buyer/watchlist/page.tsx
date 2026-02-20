@@ -3,11 +3,50 @@
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
 import { Loader2, Heart } from "lucide-react";
+import { toast } from "sonner";
+
+const statusConfig = {
+  delivered: { label: "Delivered", variant: "success" as const },
+  shipped: { label: "Shipped", variant: "default" as const },
+  order_pending: { label: "Order Pending", variant: "warning" as const },
+  offer_accepted: { label: "Offer Accepted", variant: "success" as const },
+  offer_pending: { label: "Offer Pending", variant: "warning" as const },
+  sold: { label: "Sold", variant: "destructive" as const },
+  available: { label: "Available", variant: "outline" as const },
+} as const;
 
 export default function BuyerWatchlistPage() {
+  const utils = trpc.useUtils();
   const { data, isLoading } = trpc.watchlist.getMyWatchlist.useQuery({
     page: 1,
     limit: 50,
+  });
+
+  const removeMutation = trpc.watchlist.remove.useMutation({
+    onMutate: async ({ listingId }) => {
+      await utils.watchlist.getMyWatchlist.cancel();
+      const prev = utils.watchlist.getMyWatchlist.getData({ page: 1, limit: 50 });
+
+      utils.watchlist.getMyWatchlist.setData({ page: 1, limit: 50 }, (old) => {
+        if (!old) return old;
+        const filtered = old.items.filter((i) => i.listingId !== listingId);
+        return { ...old, items: filtered, total: filtered.length };
+      });
+
+      return { prev };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prev) {
+        utils.watchlist.getMyWatchlist.setData({ page: 1, limit: 50 }, context.prev);
+      }
+      toast.error("Failed to remove from watchlist");
+    },
+    onSuccess: () => {
+      toast.success("Removed from watchlist");
+    },
+    onSettled: () => {
+      utils.watchlist.getMyWatchlist.invalidate();
+    },
   });
 
   return (
@@ -34,7 +73,13 @@ export default function BuyerWatchlistPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {data?.items.map((item) => (
-            <ListingCard key={item.id} listing={item.listing} />
+            <ListingCard
+              key={item.id}
+              listing={item.listing}
+              isWatchlisted
+              onWatchlistToggle={(listingId) => removeMutation.mutate({ listingId })}
+              statusBadge={statusConfig[item.buyerStatus]}
+            />
           ))}
         </div>
       )}

@@ -118,6 +118,20 @@ export const notificationRouter = createTRPCRouter({
     return { success: true };
   }),
 
+  // Delete all read notifications
+  clearRead: protectedProcedure.mutation(async ({ ctx }) => {
+    await ctx.db
+      .delete(notifications)
+      .where(
+        and(
+          eq(notifications.userId, ctx.user.id),
+          eq(notifications.read, true)
+        )
+      );
+
+    return { success: true };
+  }),
+
   // Delete a notification
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
