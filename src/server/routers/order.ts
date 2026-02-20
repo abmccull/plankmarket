@@ -254,6 +254,7 @@ export const orderRouter = createTRPCRouter({
               email: true,
               phone: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -265,6 +266,7 @@ export const orderRouter = createTRPCRouter({
               email: true,
               phone: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -335,7 +337,9 @@ export const orderRouter = createTRPCRouter({
             seller: {
               columns: {
                 id: true,
+                name: true,
                 role: true,
+                businessCity: true,
                 businessState: true,
               },
             },
@@ -410,7 +414,9 @@ export const orderRouter = createTRPCRouter({
             buyer: {
               columns: {
                 id: true,
+                name: true,
                 role: true,
+                businessCity: true,
                 businessState: true,
               },
             },

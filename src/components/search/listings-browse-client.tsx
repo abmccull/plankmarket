@@ -63,8 +63,10 @@ interface ListingItem {
   isPromoted?: boolean;
   media?: { url: string }[];
   seller?: {
+    name?: string | null;
     verified: boolean;
     role: string;
+    businessCity?: string | null;
     businessState: string | null;
   } | null;
 }

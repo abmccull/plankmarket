@@ -37,6 +37,9 @@ function SellerProfileSkeleton() {
 }
 
 function SellerProfileContent({ sellerId }: { sellerId: string }) {
+  const { data: profile, isLoading: profileLoading } =
+    trpc.auth.getPublicProfile.useQuery({ userId: sellerId });
+
   const { data: reputation, isLoading: repLoading } =
     trpc.review.getUserReputation.useQuery({ userId: sellerId });
 
@@ -47,13 +50,15 @@ function SellerProfileContent({ sellerId }: { sellerId: string }) {
       limit: 20,
     });
 
-  if (repLoading) {
+  if (profileLoading || repLoading) {
     return <SellerProfileSkeleton />;
   }
 
   const displayName = getAnonymousDisplayName({
-    role: "seller",
-    businessState: null,
+    role: profile?.role ?? "seller",
+    businessState: profile?.businessState ?? null,
+    name: profile?.name ?? null,
+    businessCity: profile?.businessCity ?? null,
   });
 
   return (
@@ -71,14 +76,20 @@ function SellerProfileContent({ sellerId }: { sellerId: string }) {
                 </Badge>
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                <div className="flex items-center gap-1">
-                  <MapPin className="h-4 w-4" />
-                  Seller
-                </div>
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  Plank Market Seller
-                </div>
+                {(profile?.businessCity || profile?.businessState) && (
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-4 w-4" />
+                    {profile.businessCity && profile.businessState
+                      ? `${profile.businessCity}, ${profile.businessState}`
+                      : profile.businessState ?? profile.businessCity}
+                  </div>
+                )}
+                {profile?.createdAt && (
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    Member since {formatDate(profile.createdAt)}
+                  </div>
+                )}
               </div>
             </div>
           </div>

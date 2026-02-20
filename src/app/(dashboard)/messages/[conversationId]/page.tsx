@@ -130,7 +130,7 @@ export default function ConversationPage() {
     ? conversationData.seller
     : conversationData.buyer;
   const otherPartyName = otherParty
-    ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState })
+    ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState, name: otherParty.name, businessCity: otherParty.businessCity })
     : "Unknown";
 
   return (
@@ -184,7 +184,7 @@ export default function ConversationPage() {
                   <ChatBubble
                     key={message.id}
                     message={message.body}
-                    senderName={getAnonymousDisplayName({ role: message.sender.role, businessState: message.sender.businessState })}
+                    senderName={getAnonymousDisplayName({ role: message.sender.role, businessState: message.sender.businessState, name: message.sender.name, businessCity: message.sender.businessCity })}
                     timestamp={message.createdAt}
                     isCurrentUser={isCurrentUser}
                     showSenderInfo={showSenderInfo}

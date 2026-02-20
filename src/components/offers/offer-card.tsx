@@ -25,12 +25,16 @@ interface OfferCardProps {
     };
     buyer: {
       id: string;
+      name: string;
       role: string;
+      businessCity: string | null;
       businessState: string | null;
     };
     seller: {
       id: string;
+      name: string;
       role: string;
+      businessCity: string | null;
       businessState: string | null;
     };
   };
@@ -45,7 +49,7 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
     (offer.status === "pending" || offer.status === "countered");
 
   const otherParty = userRole === "buyer" ? offer.seller : offer.buyer;
-  const otherPartyName = getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState });
+  const otherPartyName = getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState, name: otherParty.name, businessCity: otherParty.businessCity });
 
   // Determine current price (counter if available, else offer)
   const currentPrice = offer.counterPricePerSqFt || offer.offerPricePerSqFt;

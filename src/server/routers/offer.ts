@@ -242,14 +242,18 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -361,14 +365,18 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -473,14 +481,18 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -578,7 +590,9 @@ export const offerRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -665,14 +679,18 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -682,7 +700,9 @@ export const offerRouter = createTRPCRouter({
               actor: {
                 columns: {
                   id: true,
+                  name: true,
                   role: true,
+                  businessCity: true,
                   businessState: true,
                 },
               },
@@ -748,7 +768,9 @@ export const offerRouter = createTRPCRouter({
           actor: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -819,14 +841,18 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -882,14 +908,18 @@ export const offerRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },

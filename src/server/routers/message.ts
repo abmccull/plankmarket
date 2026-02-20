@@ -55,14 +55,18 @@ export const messageRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -97,14 +101,18 @@ export const messageRouter = createTRPCRouter({
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -196,14 +204,18 @@ export const messageRouter = createTRPCRouter({
           buyer: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
           seller: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },
@@ -278,7 +290,9 @@ export const messageRouter = createTRPCRouter({
           sender: {
             columns: {
               id: true,
+              name: true,
               role: true,
+              businessCity: true,
               businessState: true,
             },
           },

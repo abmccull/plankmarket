@@ -8,19 +8,24 @@
  */
 
 /**
- * Generate an anonymous display name based on user role and state.
+ * Generate a display name based on user's first name + location, with fallback
+ * to anonymous role-based names when name is not available.
+ *
+ * @example
+ * getAnonymousDisplayName({ role: "seller", businessState: "TX", name: "John Smith", businessCity: "Austin" })
+ * // => "John from Austin, TX"
+ *
+ * @example
+ * getAnonymousDisplayName({ role: "seller", businessState: "TX", name: "John Smith" })
+ * // => "John from TX"
+ *
+ * @example
+ * getAnonymousDisplayName({ role: "seller", name: "John Smith" })
+ * // => "John"
  *
  * @example
  * getAnonymousDisplayName({ role: "seller", businessState: "FL" })
  * // => "Verified Seller in FL"
- *
- * @example
- * getAnonymousDisplayName({ role: "buyer", businessState: "TX" })
- * // => "Verified Buyer in TX"
- *
- * @example
- * getAnonymousDisplayName({ role: "seller", businessState: null })
- * // => "Verified Seller"
  *
  * @example
  * getAnonymousDisplayName({ role: "admin", businessState: null })
@@ -29,16 +34,30 @@
 export function getAnonymousDisplayName(user: {
   role: string;
   businessState?: string | null;
+  name?: string | null;
+  businessCity?: string | null;
 }): string {
   // Admin users are always revealed as platform support
   if (user.role === "admin") {
     return "PlankMarket Support";
   }
 
-  // Capitalize role for display
+  // Extract first name if available
+  const firstName = user.name?.split(" ")[0]?.trim();
+
+  if (firstName) {
+    if (user.businessCity && user.businessState) {
+      return `${firstName} from ${user.businessCity}, ${user.businessState}`;
+    }
+    if (user.businessState) {
+      return `${firstName} from ${user.businessState}`;
+    }
+    return firstName;
+  }
+
+  // Fallback: anonymous role-based display name
   const roleLabel = getRoleLabel(user.role);
 
-  // Include state if available
   if (user.businessState) {
     return `Verified ${roleLabel} in ${user.businessState}`;
   }

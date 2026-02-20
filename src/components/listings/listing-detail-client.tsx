@@ -52,9 +52,11 @@ interface ListingDetailClientProps {
     createdAt: Date | string;
     seller: {
       id: string;
+      name: string;
       verified: boolean;
       createdAt: Date | string;
       stripeOnboardingComplete: boolean;
+      businessCity: string | null;
       businessState: string | null;
       role: string;
     } | null;
@@ -378,7 +380,9 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     <div className="text-sm font-medium flex items-center gap-1">
                       {getAnonymousDisplayName({
                         role: listing.seller.role,
-                        businessState: listing.seller.businessState
+                        businessState: listing.seller.businessState,
+                        name: listing.seller.name,
+                        businessCity: listing.seller.businessCity
                       })}
                       {listing.seller.verified && (
                         <Shield className="h-3 w-3 text-secondary" />
@@ -437,7 +441,9 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
           sellerId={listing.seller.id}
           sellerName={getAnonymousDisplayName({
             role: listing.seller.role,
-            businessState: listing.seller.businessState
+            businessState: listing.seller.businessState,
+            name: listing.seller.name,
+            businessCity: listing.seller.businessCity
           })}
           listingId={listing.id}
         />

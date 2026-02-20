@@ -256,6 +256,33 @@ export const authRouter = createTRPCRouter({
     }
   }),
 
+  // Get public profile info for any user (for display name + location)
+  getPublicProfile: publicProcedure
+    .input(z.object({ userId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const user = await ctx.db.query.users.findFirst({
+        where: eq(users.id, input.userId),
+        columns: {
+          id: true,
+          name: true,
+          businessCity: true,
+          businessState: true,
+          role: true,
+          verified: true,
+          createdAt: true,
+        },
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found",
+        });
+      }
+
+      return user;
+    }),
+
   // Resubmit verification (for rejected users)
   resubmitVerification: protectedProcedure
     .input(z.object({

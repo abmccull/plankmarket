@@ -458,7 +458,7 @@ export default function CheckoutPage() {
                     {listing.title}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {listing.seller ? getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState }) : "Verified Seller"}
+                    {listing.seller ? getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState, name: listing.seller.name, businessCity: listing.seller.businessCity }) : "Verified Seller"}
                   </p>
                 </div>
               </div>

@@ -34,8 +34,10 @@ interface ListingCardProps {
     isPromoted?: boolean;
     media?: { url: string }[];
     seller?: {
+      name?: string | null;
       verified: boolean;
       role: string;
+      businessCity?: string | null;
       businessState: string | null;
     } | null;
   };
@@ -175,7 +177,7 @@ export function ListingCard({ listing }: ListingCardProps) {
 
           {listing.seller && (
             <div className="mt-2 pt-2 border-t flex items-center gap-1 text-sm text-muted-foreground">
-              <span>{getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState })}</span>
+              <span>{getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState, name: listing.seller.name, businessCity: listing.seller.businessCity })}</span>
               {listing.seller.verified && (
                 <svg
                   className="h-3 w-3 text-secondary"

@@ -70,7 +70,7 @@ export default function BuyerOrdersPage() {
                 </h3>
                 <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
                   <span>{formatSqFt(order.quantitySqFt)}</span>
-                  <span>{getAnonymousDisplayName({ role: order.seller.role, businessState: order.seller.businessState })}</span>
+                  <span>{getAnonymousDisplayName({ role: order.seller.role, businessState: order.seller.businessState, name: order.seller.name, businessCity: order.seller.businessCity })}</span>
                   <span>{formatDate(order.createdAt)}</span>
                 </div>
               </div>

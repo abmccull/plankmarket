@@ -104,6 +104,7 @@ export function maskUserForOrder(
     email?: string | null;
     phone?: string | null;
     role?: string;
+    businessCity?: string | null;
     businessState?: string | null;
   },
   orderStatus: string,
@@ -132,7 +133,7 @@ export function maskUserForOrder(
   const displayName =
     maskLevel.identity === "full"
       ? user.name
-      : getAnonymousDisplayName({ role: user.role ?? "buyer", businessState: user.businessState });
+      : getAnonymousDisplayName({ role: user.role ?? "buyer", businessState: user.businessState, name: user.name, businessCity: user.businessCity });
 
   // Apply contact masking based on contact mask level
   let maskedEmail: string | null = null;

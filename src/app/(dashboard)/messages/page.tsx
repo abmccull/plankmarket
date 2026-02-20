@@ -47,7 +47,7 @@ export default function MessagesPage() {
             const isBuyer = conversation.buyerId === user?.id;
             const otherParty = isBuyer ? conversation.seller : conversation.buyer;
             const otherPartyName = otherParty
-              ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState })
+              ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState, name: otherParty.name, businessCity: otherParty.businessCity })
               : "Unknown";
 
             // Get last message
