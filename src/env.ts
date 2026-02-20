@@ -17,6 +17,7 @@ export const env = createEnv({
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     VERIFICATION_WEBHOOK_SECRET: z.string().min(1).optional(),
     PRIORITY1_API_KEY: z.string().min(1).optional(),
+    CRON_SECRET: z.string().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -45,6 +46,7 @@ export const env = createEnv({
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     VERIFICATION_WEBHOOK_SECRET: process.env.VERIFICATION_WEBHOOK_SECRET,
     PRIORITY1_API_KEY: process.env.PRIORITY1_API_KEY,
+    CRON_SECRET: process.env.CRON_SECRET,
     NODE_ENV: process.env.NODE_ENV,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,

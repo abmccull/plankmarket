@@ -5,5 +5,11 @@
   "buildCommand": "next build",
   "git": {
     "deploymentEnabled": false
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/expire-promotions",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

@@ -73,10 +73,18 @@ export function ListingCard({ listing }: ListingCardProps) {
       <Card
         className={cn(
           "group overflow-hidden card-hover-lift hover:shadow-lg transition-shadow duration-200",
-          tier === "premium" && "border-purple-300 dark:border-purple-700",
-          tier === "featured" && "border-amber-300 dark:border-amber-700"
+          tier === "premium" && "border-purple-400 dark:border-purple-600 shadow-purple-100 dark:shadow-purple-950/30 shadow-md",
+          tier === "featured" && "border-amber-400 dark:border-amber-600 shadow-amber-100 dark:shadow-amber-950/30 shadow-md"
         )}
       >
+        {/* Promotion Top Border Accent */}
+        {tier === "premium" && (
+          <div className="h-1 bg-gradient-to-r from-purple-500 via-purple-400 to-purple-600" />
+        )}
+        {tier === "featured" && (
+          <div className="h-1 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600" />
+        )}
+
         {/* Image */}
         <div className="aspect-[4/3] bg-muted relative overflow-hidden">
           {listing.media?.[0] ? (

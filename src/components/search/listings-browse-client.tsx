@@ -6,6 +6,9 @@ import Link from "next/link";
 import { ListingCard } from "@/components/search/listing-card";
 import { FacetedFilters } from "@/components/search/faceted-filters";
 import { SponsoredCarousel } from "@/components/promotions/sponsored-carousel";
+import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
+import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
+import { FEATURES } from "@/lib/feature-flags";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -255,6 +258,12 @@ export function ListingsBrowseClient({
         </div>
       </div>
 
+      {/* Premium Hero Banner */}
+      {FEATURES.PROMOTIONS_ENABLED && <PremiumHeroBanner />}
+
+      {/* Featured Carousel */}
+      {FEATURES.PROMOTIONS_ENABLED && <FeaturedCarousel />}
+
       {/* Content */}
       <div className="flex gap-8">
         {isFilterPanelOpen && (
@@ -264,7 +273,7 @@ export function ListingsBrowseClient({
         )}
 
         <div className="flex-1">
-          {sponsoredListings && sponsoredListings.length > 0 && (
+          {FEATURES.PROMOTIONS_ENABLED && sponsoredListings && sponsoredListings.length > 0 && (
             <SponsoredCarousel listings={sponsoredListings} />
           )}
 

@@ -539,48 +539,64 @@ export const listingRouter = createTRPCRouter({
         }
       }
 
+      // Promotion boost tiebreaker: promoted listings sort first
+      const promotionBoost = desc(
+        sql`CASE
+          WHEN ${listings.promotionTier} IS NOT NULL AND ${listings.promotionExpiresAt} > NOW()
+          THEN CASE ${listings.promotionTier}
+            WHEN 'premium' THEN 3
+            WHEN 'featured' THEN 2
+            WHEN 'spotlight' THEN 1
+            ELSE 0
+          END
+          ELSE 0
+        END`
+      );
+
       // Sort
-      let orderByClause;
+      let userSort;
       switch (input.sort) {
         case "price_asc":
-          orderByClause = asc(listings.askPricePerSqFt);
+          userSort = asc(listings.askPricePerSqFt);
           break;
         case "price_desc":
-          orderByClause = desc(listings.askPricePerSqFt);
+          userSort = desc(listings.askPricePerSqFt);
           break;
         case "date_oldest":
-          orderByClause = asc(listings.createdAt);
+          userSort = asc(listings.createdAt);
           break;
         case "lot_value_desc":
-          orderByClause = desc(
+          userSort = desc(
             sql`${listings.askPricePerSqFt} * ${listings.totalSqFt}`
           );
           break;
         case "lot_value_asc":
-          orderByClause = asc(
+          userSort = asc(
             sql`${listings.askPricePerSqFt} * ${listings.totalSqFt}`
           );
           break;
         case "popularity":
-          orderByClause = desc(listings.viewsCount);
+          userSort = desc(listings.viewsCount);
           break;
         case "proximity":
           if (buyerLat !== undefined && buyerLng !== undefined) {
-            orderByClause = asc(
+            userSort = asc(
               sql`3959 * acos(
                 cos(radians(${buyerLat})) * cos(radians(${listings.locationLat})) * cos(radians(${listings.locationLng}) - radians(${buyerLng}))
                 + sin(radians(${buyerLat})) * sin(radians(${listings.locationLat}))
               )`
             );
           } else {
-            orderByClause = desc(listings.createdAt);
+            userSort = desc(listings.createdAt);
           }
           break;
         case "date_newest":
         default:
-          orderByClause = desc(listings.createdAt);
+          userSort = desc(listings.createdAt);
           break;
       }
+
+      const orderByClause = [promotionBoost, userSort];
 
       const where = and(...conditions);
       const offset = (input.page - 1) * input.limit;

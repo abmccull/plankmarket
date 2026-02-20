@@ -15,6 +15,7 @@ import {
 import { Plus, Loader2, Eye, Heart, ExternalLink, Rocket, FileSpreadsheet } from "lucide-react";
 import { BoostModal } from "@/components/promotions/boost-modal";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
+import { FEATURES } from "@/lib/feature-flags";
 import type { ListingStatus, PromotionTier } from "@/types";
 
 export default function SellerListingsPage() {
@@ -144,7 +145,7 @@ export default function SellerListingsPage() {
                     <span className="text-xs text-muted-foreground">
                       {formatRelativeTime(listing.createdAt)}
                     </span>
-                    {listing.status === "active" && !listing.promotionTier && (
+                    {FEATURES.PROMOTIONS_ENABLED && listing.status === "active" && !listing.promotionTier && (
                       <Button
                         variant="outline"
                         size="sm"

@@ -15,6 +15,7 @@ import {
   Megaphone,
   Scale,
 } from "lucide-react";
+import { FEATURES } from "@/lib/feature-flags";
 
 interface SidebarItem {
   title: string;
@@ -30,7 +31,9 @@ const adminItems: SidebarItem[] = [
   { title: "Orders", href: "/admin/orders", icon: Package },
   { title: "Disputes", href: "/admin/disputes", icon: Scale },
   { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
-  { title: "Promotions", href: "/admin/promotions", icon: Megaphone },
+  ...(FEATURES.PROMOTIONS_ENABLED
+    ? [{ title: "Promotions", href: "/admin/promotions", icon: Megaphone }]
+    : []),
   { title: "Feedback", href: "/admin/feedback", icon: MessageSquare },
   { title: "Settings", href: "/admin/settings", icon: Settings },
 ];
