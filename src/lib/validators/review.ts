@@ -3,6 +3,7 @@ import { noContactInfo } from "@/lib/content-filter/zod";
 
 export const createReviewSchema = z.object({
   orderId: z.string().uuid(),
+  direction: z.enum(["buyer_to_seller", "seller_to_buyer"]),
   rating: z
     .number()
     .int()

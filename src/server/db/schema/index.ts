@@ -32,7 +32,7 @@ export type { Notification, NewNotification } from "./notifications";
 export { listingPromotions, promotionTierEnum } from "./promotions";
 export type { ListingPromotion, NewListingPromotion } from "./promotions";
 
-export { reviews } from "./reviews";
+export { reviews, reviewDirectionEnum } from "./reviews";
 export type { Review, NewReview } from "./reviews";
 
 export { offers, offerStatusEnum } from "./offers";
@@ -143,6 +143,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   promotions: many(listingPromotions),
   reviewsGiven: many(reviews, { relationName: "reviewerReviews" }),
   reviewsReceived: many(reviews, { relationName: "sellerReviews" }),
+  reviewsAsReviewee: many(reviews, { relationName: "revieweeReviews" }),
   buyerOffers: many(offers, { relationName: "buyerOffers" }),
   sellerOffers: many(offers, { relationName: "sellerOffers" }),
   offerEvents: many(offerEvents),
@@ -186,7 +187,7 @@ export const mediaRelations = relations(media, ({ one }) => ({
   }),
 }));
 
-export const ordersRelations = relations(orders, ({ one }) => ({
+export const ordersRelations = relations(orders, ({ one, many }) => ({
   buyer: one(users, {
     fields: [orders.buyerId],
     references: [users.id],
@@ -201,10 +202,7 @@ export const ordersRelations = relations(orders, ({ one }) => ({
     fields: [orders.listingId],
     references: [listings.id],
   }),
-  review: one(reviews, {
-    fields: [orders.id],
-    references: [reviews.orderId],
-  }),
+  reviews: many(reviews),
   dispute: one(disputes, {
     fields: [orders.id],
     references: [disputes.orderId],
@@ -271,6 +269,11 @@ export const reviewsRelations = relations(reviews, ({ one }) => ({
     fields: [reviews.sellerId],
     references: [users.id],
     relationName: "sellerReviews",
+  }),
+  reviewee: one(users, {
+    fields: [reviews.revieweeId],
+    references: [users.id],
+    relationName: "revieweeReviews",
   }),
   order: one(orders, {
     fields: [reviews.orderId],

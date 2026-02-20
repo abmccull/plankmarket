@@ -11,8 +11,10 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
-import { Loader2, Package, MapPin, Truck, Store } from "lucide-react";
+import { Loader2, Package, MapPin, Truck, Store, Star } from "lucide-react";
 import TrackingTimeline from "@/components/shipping/tracking-timeline";
+import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
+import { ReviewCard } from "@/components/shared/review-card";
 import type { OrderStatus } from "@/types";
 
 export default function BuyerOrderDetailPage() {
@@ -22,6 +24,11 @@ export default function BuyerOrderDetailPage() {
   const { data: order, isLoading } = trpc.order.getById.useQuery({
     id: orderId,
   });
+
+  const { data: orderReviews } = trpc.review.getByOrder.useQuery(
+    { orderId },
+    { enabled: !!order && order.status === "delivered" }
+  );
 
   if (isLoading) {
     return (
@@ -201,6 +208,84 @@ export default function BuyerOrderDetailPage() {
           </div>
         </CardContent>
       </Card>
+      {/* Reviews Section */}
+      {order.status === "delivered" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Star className="h-5 w-5" />
+              Reviews
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Buyer's review of seller */}
+            {orderReviews?.buyerToSeller ? (
+              <div>
+                <p className="text-sm font-medium mb-2">Your Review</p>
+                <ReviewCard
+                  reviewerName="You"
+                  date={new Date(orderReviews.buyerToSeller.createdAt)}
+                  rating={orderReviews.buyerToSeller.rating}
+                  title={orderReviews.buyerToSeller.title ?? undefined}
+                  comment={orderReviews.buyerToSeller.comment ?? ""}
+                  subRatings={
+                    orderReviews.buyerToSeller.communicationRating
+                      ? {
+                          communication:
+                            orderReviews.buyerToSeller.communicationRating ??
+                            undefined,
+                          accuracy:
+                            orderReviews.buyerToSeller.accuracyRating ??
+                            undefined,
+                          shipping:
+                            orderReviews.buyerToSeller.shippingRating ??
+                            undefined,
+                        }
+                      : undefined
+                  }
+                  sellerResponse={
+                    orderReviews.buyerToSeller.sellerResponse
+                      ? {
+                          message: orderReviews.buyerToSeller.sellerResponse,
+                          date: new Date(
+                            orderReviews.buyerToSeller.sellerRespondedAt!
+                          ),
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm font-medium mb-2">
+                  Leave a Review for the Seller
+                </p>
+                <LeaveReviewForm
+                  orderId={orderId}
+                  direction="buyer_to_seller"
+                />
+              </div>
+            )}
+
+            {/* Seller's review of buyer */}
+            {orderReviews?.sellerToBuyer && (
+              <div>
+                <Separator className="mb-4" />
+                <p className="text-sm font-medium mb-2">
+                  Seller&apos;s Review of You
+                </p>
+                <ReviewCard
+                  reviewerName="Seller"
+                  date={new Date(orderReviews.sellerToBuyer.createdAt)}
+                  rating={orderReviews.sellerToBuyer.rating}
+                  title={orderReviews.sellerToBuyer.title ?? undefined}
+                  comment={orderReviews.sellerToBuyer.comment ?? ""}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

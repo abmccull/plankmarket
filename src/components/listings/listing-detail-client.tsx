@@ -28,6 +28,7 @@ import {
   MessageSquare,
   HandCoins,
 } from "lucide-react";
+import { StarRating } from "@/components/shared/star-rating";
 import { toast } from "sonner";
 import { getAnonymousDisplayName, getAnonymousInitials } from "@/lib/identity/display-name";
 
@@ -69,6 +70,11 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   const [showPaymentNotReadyDialog, setShowPaymentNotReadyDialog] = useState(false);
   const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
   const [isContactingLoading, setIsContactingLoading] = useState(false);
+
+  const { data: sellerReputation } = trpc.review.getUserReputation.useQuery(
+    { userId: listing.sellerId },
+    { enabled: !!listing.seller }
+  );
 
   const { data: watchlistStatus } = trpc.watchlist.isWatchlisted.useQuery(
     { listingId },
@@ -378,10 +384,43 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                         <Shield className="h-3 w-3 text-secondary" />
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Member since{" "}
-                      {formatDate(listing.seller.createdAt)}
-                    </div>
+                    {sellerReputation &&
+                    sellerReputation.averageRating !== null ? (
+                      <div className="flex items-center gap-1 text-xs">
+                        <StarRating
+                          value={sellerReputation.averageRating}
+                          readonly
+                          size="sm"
+                        />
+                        <span className="font-medium">
+                          {sellerReputation.averageRating}
+                        </span>
+                        <span className="text-muted-foreground">
+                          ({sellerReputation.reviewCount} review
+                          {sellerReputation.reviewCount !== 1 ? "s" : ""})
+                        </span>
+                        <span className="text-muted-foreground">
+                          &middot; {sellerReputation.completedTransactions}{" "}
+                          transaction
+                          {sellerReputation.completedTransactions !== 1
+                            ? "s"
+                            : ""}
+                        </span>
+                      </div>
+                    ) : sellerReputation &&
+                      sellerReputation.completedTransactions > 0 ? (
+                      <div className="text-xs text-muted-foreground">
+                        New seller &middot;{" "}
+                        {sellerReputation.completedTransactions} transaction
+                        {sellerReputation.completedTransactions !== 1
+                          ? "s"
+                          : ""}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        New to Plank Market
+                      </div>
+                    )}
                   </div>
                 </div>
               </>

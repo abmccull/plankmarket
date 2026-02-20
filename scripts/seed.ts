@@ -1123,6 +1123,8 @@ async function seed() {
       orderId: orderIds[r.orderIdx]!,
       reviewerId: userMap[r.reviewerEmail]!,
       sellerId: userMap[r.sellerEmail]!,
+      revieweeId: userMap[r.sellerEmail]!,
+      direction: "buyer_to_seller" as const,
       rating: r.rating,
       title: r.title,
       comment: r.comment,

@@ -32,6 +32,7 @@ import {
   AlertCircle,
   Ban,
 } from "lucide-react";
+import { StarRating } from "@/components/shared/star-rating";
 import { toast } from "sonner";
 
 export default function OfferDetailPage() {
@@ -79,6 +80,16 @@ export default function OfferDetailPage() {
       utils.offer.getMyOffers.invalidate();
     },
   });
+
+  const { data: buyerReputation } = trpc.review.getUserReputation.useQuery(
+    { userId: offer?.buyerId ?? "" },
+    { enabled: !!offer }
+  );
+
+  const { data: sellerReputation } = trpc.review.getUserReputation.useQuery(
+    { userId: offer?.sellerId ?? "" },
+    { enabled: !!offer }
+  );
 
   if (isLoading) {
     return (
@@ -236,6 +247,7 @@ export default function OfferDetailPage() {
                       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {(offer as any).buyer.businessName || (offer as any).buyer.name}
                     </p>
+                    <ReputationBadge reputation={buyerReputation} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -250,6 +262,7 @@ export default function OfferDetailPage() {
                       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                       {(offer as any).seller.businessName || (offer as any).seller.name}
                     </p>
+                    <ReputationBadge reputation={sellerReputation} />
                   </div>
                 </div>
               </div>
@@ -454,5 +467,47 @@ export default function OfferDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function ReputationBadge({
+  reputation,
+}: {
+  reputation:
+    | {
+        averageRating: number | null;
+        reviewCount: number;
+        completedTransactions: number;
+      }
+    | undefined;
+}) {
+  if (!reputation) return null;
+
+  if (reputation.averageRating !== null) {
+    return (
+      <div className="flex items-center gap-1 mt-0.5">
+        <StarRating value={reputation.averageRating} readonly size="sm" />
+        <span className="text-xs text-muted-foreground">
+          ({reputation.reviewCount})
+          {reputation.completedTransactions > 0 &&
+            ` · ${reputation.completedTransactions} txns`}
+        </span>
+      </div>
+    );
+  }
+
+  if (reputation.completedTransactions > 0) {
+    return (
+      <p className="text-xs text-muted-foreground mt-0.5">
+        {reputation.completedTransactions} completed transaction
+        {reputation.completedTransactions !== 1 ? "s" : ""}
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-xs text-muted-foreground mt-0.5">
+      New to Plank Market
+    </p>
   );
 }

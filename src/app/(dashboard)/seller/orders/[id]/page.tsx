@@ -19,8 +19,11 @@ import {
   formatDate,
 } from "@/lib/utils";
 import { toast } from "sonner";
-import { Loader2, Package, Truck, MapPin, User } from "lucide-react";
+import { Loader2, Package, Truck, MapPin, User, Star } from "lucide-react";
 import TrackingTimeline from "@/components/shipping/tracking-timeline";
+import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
+import { ReviewCard } from "@/components/shared/review-card";
+import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import type { OrderStatus } from "@/types";
 
@@ -29,9 +32,27 @@ export default function SellerOrderDetailPage() {
   const orderId = params.id as string;
   const [trackingNumber, setTrackingNumber] = useState("");
   const [carrier, setCarrier] = useState("");
+  const utils = trpc.useUtils();
 
   const { data: order, isLoading, refetch } = trpc.order.getById.useQuery({
     id: orderId,
+  });
+
+  const { data: orderReviews } = trpc.review.getByOrder.useQuery(
+    { orderId },
+    { enabled: !!order && order.status === "delivered" }
+  );
+
+  const [responseText, setResponseText] = useState("");
+  const respondMutation = trpc.review.respond.useMutation({
+    onSuccess: () => {
+      toast.success("Response submitted");
+      setResponseText("");
+      utils.review.getByOrder.invalidate({ orderId });
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
   });
 
   const updateStatus = trpc.order.updateStatus.useMutation();
@@ -264,6 +285,115 @@ export default function SellerOrderDetailPage() {
                     Cancel Order
                   </Button>
                 )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reviews Section */}
+      {order.status === "delivered" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Star className="h-5 w-5" />
+              Reviews
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Buyer's review of seller */}
+            {orderReviews?.buyerToSeller && (
+              <div>
+                <p className="text-sm font-medium mb-2">Buyer&apos;s Review</p>
+                <ReviewCard
+                  reviewerName="Buyer"
+                  date={new Date(orderReviews.buyerToSeller.createdAt)}
+                  rating={orderReviews.buyerToSeller.rating}
+                  title={orderReviews.buyerToSeller.title ?? undefined}
+                  comment={orderReviews.buyerToSeller.comment ?? ""}
+                  subRatings={
+                    orderReviews.buyerToSeller.communicationRating
+                      ? {
+                          communication:
+                            orderReviews.buyerToSeller.communicationRating ??
+                            undefined,
+                          accuracy:
+                            orderReviews.buyerToSeller.accuracyRating ??
+                            undefined,
+                          shipping:
+                            orderReviews.buyerToSeller.shippingRating ??
+                            undefined,
+                        }
+                      : undefined
+                  }
+                  sellerResponse={
+                    orderReviews.buyerToSeller.sellerResponse
+                      ? {
+                          message: orderReviews.buyerToSeller.sellerResponse,
+                          date: new Date(
+                            orderReviews.buyerToSeller.sellerRespondedAt!
+                          ),
+                        }
+                      : undefined
+                  }
+                />
+                {/* Respond form */}
+                {!orderReviews.buyerToSeller.sellerResponse && (
+                  <div className="mt-3 space-y-2">
+                    <Label className="text-sm font-medium">
+                      Respond to this review
+                    </Label>
+                    <Textarea
+                      placeholder="Write your response..."
+                      value={responseText}
+                      onChange={(e) => setResponseText(e.target.value)}
+                      maxLength={2000}
+                      rows={2}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={
+                        !responseText.trim() || respondMutation.isPending
+                      }
+                      onClick={() =>
+                        respondMutation.mutate({
+                          reviewId: orderReviews.buyerToSeller!.id,
+                          sellerResponse: responseText,
+                        })
+                      }
+                    >
+                      {respondMutation.isPending && (
+                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                      )}
+                      Submit Response
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Seller's review of buyer */}
+            <div>
+              {orderReviews?.buyerToSeller && <Separator className="mb-4" />}
+              {orderReviews?.sellerToBuyer ? (
+                <>
+                  <p className="text-sm font-medium mb-2">Your Review of the Buyer</p>
+                  <ReviewCard
+                    reviewerName="You"
+                    date={new Date(orderReviews.sellerToBuyer.createdAt)}
+                    rating={orderReviews.sellerToBuyer.rating}
+                    title={orderReviews.sellerToBuyer.title ?? undefined}
+                    comment={orderReviews.sellerToBuyer.comment ?? ""}
+                  />
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium mb-2">Rate the Buyer</p>
+                  <LeaveReviewForm
+                    orderId={orderId}
+                    direction="seller_to_buyer"
+                  />
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

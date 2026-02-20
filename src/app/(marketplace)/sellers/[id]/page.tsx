@@ -1,18 +1,20 @@
-import { Suspense } from "react";
-import { notFound } from "next/navigation";
+"use client";
+
+import { use } from "react";
+import { trpc } from "@/lib/trpc/client";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StarRating } from "@/components/shared/star-rating";
-import { CheckCircle2, MapPin, Calendar, Mail } from "lucide-react";
-import { ListingCard } from "@/components/search/listing-card";
+import { ReviewCard } from "@/components/shared/review-card";
+import { CheckCircle2, MapPin, Calendar } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
+import { formatDate } from "@/lib/utils";
 
 interface SellerProfilePageProps {
   params: Promise<{
@@ -20,83 +22,38 @@ interface SellerProfilePageProps {
   }>;
 }
 
-// Mock data - in production, fetch from tRPC
-async function getSellerData(sellerId: string) {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 100));
-
-  // Mock seller data
-  return {
-    id: sellerId,
-    businessName: "Premium Flooring Wholesale",
-    isVerified: true,
-    memberSince: new Date("2023-01-15"),
-    location: "Dallas, TX",
-    bio: "We are a wholesale flooring distributor specializing in high-quality hardwood, engineered, and luxury vinyl flooring. With over 20 years in the industry, we offer premium overstock and closeout inventory at competitive prices.",
-    rating: {
-      average: 4.8,
-      count: 127,
-    },
-    activeListings: [
-      {
-        id: "1",
-        title: "Premium White Oak Hardwood - 2,500 sq ft Overstock",
-        materialType: "hardwood" as const,
-        species: "White Oak",
-        askPricePerSqFt: 2.5,
-        totalSqFt: 2500,
-        buyNowPrice: null,
-        condition: "new_overstock" as const,
-        coverImageUrl: null,
-        locationCity: "Dallas",
-        locationState: "TX",
-        viewsCount: 0,
-        watchlistCount: 0,
-        createdAt: new Date(),
-      },
-      {
-        id: "2",
-        title: "Luxury Vinyl Plank - Natural Oak - 5,000 sq ft",
-        materialType: "vinyl_lvp" as const,
-        species: null,
-        askPricePerSqFt: 1.75,
-        totalSqFt: 5000,
-        buyNowPrice: null,
-        condition: "discontinued" as const,
-        coverImageUrl: null,
-        locationCity: "Dallas",
-        locationState: "TX",
-        viewsCount: 0,
-        watchlistCount: 0,
-        createdAt: new Date(),
-      },
-    ],
-  };
-}
-
 function SellerProfileSkeleton() {
   return (
-    <div className="space-y-8">
+    <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       <Skeleton className="h-32 w-full" />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
       </div>
+      <Skeleton className="h-64 w-full" />
     </div>
   );
 }
 
-async function SellerProfileContent({ sellerId }: { sellerId: string }) {
-  const seller = await getSellerData(sellerId);
+function SellerProfileContent({ sellerId }: { sellerId: string }) {
+  const { data: reputation, isLoading: repLoading } =
+    trpc.review.getUserReputation.useQuery({ userId: sellerId });
 
-  if (!seller) {
-    notFound();
+  const { data: reviewsData, isLoading: reviewsLoading } =
+    trpc.review.getByReviewee.useQuery({
+      userId: sellerId,
+      page: 1,
+      limit: 20,
+    });
+
+  if (repLoading) {
+    return <SellerProfileSkeleton />;
   }
 
-  const memberSinceFormatted = seller.memberSince.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
+  const displayName = getAnonymousDisplayName({
+    role: "seller",
+    businessState: null,
   });
 
   return (
@@ -107,44 +64,56 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
-                <CardTitle className="text-3xl">
-                  {getAnonymousDisplayName({ role: "seller", businessState: "TX" })}
-                </CardTitle>
-                {seller.isVerified && (
-                  <Badge className="bg-green-50 text-green-700 border-green-200">
-                    <CheckCircle2 className="h-3 w-3 mr-1" />
-                    Verified
-                  </Badge>
-                )}
+                <CardTitle className="text-3xl">{displayName}</CardTitle>
+                <Badge className="bg-green-50 text-green-700 border-green-200">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Verified
+                </Badge>
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
                 <div className="flex items-center gap-1">
                   <MapPin className="h-4 w-4" />
-                  TX
+                  Seller
                 </div>
                 <div className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
-                  Member since {memberSinceFormatted}
+                  Plank Market Seller
                 </div>
               </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4">
+            {reputation?.averageRating !== null && reputation?.averageRating !== undefined ? (
               <div className="flex items-center gap-2">
-                <StarRating value={seller.rating.average} readonly size="md" />
-                <span className="font-semibold">{seller.rating.average}</span>
+                <StarRating
+                  value={reputation.averageRating}
+                  readonly
+                  size="md"
+                />
+                <span className="font-semibold">{reputation.averageRating}</span>
                 <span className="text-sm text-muted-foreground">
-                  ({seller.rating.count} reviews)
+                  ({reputation.reviewCount} review
+                  {reputation.reviewCount !== 1 ? "s" : ""})
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  &middot; {reputation.completedTransactions} completed
+                  transaction
+                  {reputation.completedTransactions !== 1 ? "s" : ""}
                 </span>
               </div>
-            </div>
-            <Button>
-              <Mail className="h-4 w-4 mr-2" />
-              Contact Seller
-            </Button>
+            ) : reputation && reputation.completedTransactions > 0 ? (
+              <span className="text-sm text-muted-foreground">
+                New seller &middot; {reputation.completedTransactions} completed
+                transaction
+                {reputation.completedTransactions !== 1 ? "s" : ""}
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                New to Plank Market
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -155,10 +124,10 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold text-primary">
-                {seller.activeListings.length}
+                {reputation?.completedTransactions ?? 0}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                Active Listings
+                Completed Transactions
               </p>
             </div>
           </CardContent>
@@ -167,7 +136,7 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold text-primary">
-                {seller.rating.count}
+                {reputation?.reviewCount ?? 0}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
                 Total Reviews
@@ -179,7 +148,7 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
           <CardContent className="pt-6">
             <div className="text-center">
               <p className="text-3xl font-bold text-primary">
-                {seller.rating.average}
+                {reputation?.averageRating ?? "N/A"}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
                 Average Rating
@@ -189,64 +158,71 @@ async function SellerProfileContent({ sellerId }: { sellerId: string }) {
         </Card>
       </div>
 
-      {/* Active Listings Section */}
-      <div>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold">Active Listings</h2>
-            <p className="text-muted-foreground mt-1">
-              Browse available inventory from this seller
-            </p>
-          </div>
-        </div>
-
-        {seller.activeListings.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">
-                This seller currently has no active listings.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {seller.activeListings.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Reviews Section */}
       <div>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-bold">Reviews</h2>
             <p className="text-muted-foreground mt-1">
-              What buyers are saying about this seller
+              What others are saying about this seller
             </p>
           </div>
         </div>
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              Reviews component will be displayed here.
-            </p>
-          </CardContent>
-        </Card>
+        {reviewsLoading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </div>
+        ) : reviewsData && reviewsData.reviews.length > 0 ? (
+          <div className="space-y-4">
+            {reviewsData.reviews.map((review) => (
+              <ReviewCard
+                key={review.id}
+                reviewerName={
+                  review.direction === "buyer_to_seller" ? "Buyer" : "Seller"
+                }
+                date={new Date(review.createdAt)}
+                rating={review.rating}
+                title={review.title ?? undefined}
+                comment={review.comment ?? ""}
+                subRatings={
+                  review.communicationRating
+                    ? {
+                        communication: review.communicationRating ?? undefined,
+                        accuracy: review.accuracyRating ?? undefined,
+                        shipping: review.shippingRating ?? undefined,
+                      }
+                    : undefined
+                }
+                sellerResponse={
+                  review.sellerResponse
+                    ? {
+                        message: review.sellerResponse,
+                        date: new Date(review.sellerRespondedAt!),
+                      }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">
+                No reviews yet for this seller.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-export default async function SellerProfilePage({
+export default function SellerProfilePage({
   params,
 }: SellerProfilePageProps) {
-  const { id } = await params;
+  const { id } = use(params);
 
-  return (
-    <Suspense fallback={<SellerProfileSkeleton />}>
-      <SellerProfileContent sellerId={id} />
-    </Suspense>
-  );
+  return <SellerProfileContent sellerId={id} />;
 }
