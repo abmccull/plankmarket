@@ -4,6 +4,12 @@ import { orders, listings, offers, reviews } from "../db/schema";
 import { eq, and, sql, gte, lt, desc } from "drizzle-orm";
 import { z } from "zod";
 
+// Safe to use sql.raw() here because trunc is always one of "day" | "week" | "month"
+// from our own periodToDateRange function — never user input.
+function dateTrunc(trunc: "day" | "week" | "month", column: ReturnType<typeof sql>) {
+  return sql`date_trunc(${sql.raw(`'${trunc}'`)}, ${column})`;
+}
+
 export const analyticsRouter = createTRPCRouter({
   /**
    * Overview — KPIs with trends + revenue time series
@@ -45,11 +51,7 @@ export const analyticsRouter = createTRPCRouter({
       prevStats = prev;
     }
 
-    // Views — current period
-    const currentListingCond = start
-      ? and(eq(listings.sellerId, userId), gte(listings.createdAt, start))
-      : eq(listings.sellerId, userId);
-
+    // Views (all time for the seller)
     const [viewStats] = await ctx.db
       .select({
         totalViews: sql<number>`coalesce(sum(${listings.viewsCount}), 0)::int`,
@@ -57,7 +59,7 @@ export const analyticsRouter = createTRPCRouter({
       .from(listings)
       .where(eq(listings.sellerId, userId));
 
-    // Conversion rate: orders / views (all time views for the seller)
+    // Conversion rate: orders / views
     const views = viewStats.totalViews || 0;
     const conversionRate = views > 0 ? (currentStats.orderCount / views) * 100 : 0;
 
@@ -66,16 +68,18 @@ export const analyticsRouter = createTRPCRouter({
       ? and(eq(orders.sellerId, userId), gte(orders.createdAt, start))
       : eq(orders.sellerId, userId);
 
+    const bucket = dateTrunc(trunc, sql`${orders.createdAt}`);
+
     const timeSeries = await ctx.db
       .select({
-        date: sql<string>`date_trunc(${trunc}, ${orders.createdAt})::text`,
+        date: sql<string>`${bucket}::text`,
         revenue: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
         orders: sql<number>`count(*)::int`,
       })
       .from(orders)
       .where(timeSeriesCond)
-      .groupBy(sql`date_trunc(${trunc}, ${orders.createdAt})`)
-      .orderBy(sql`date_trunc(${trunc}, ${orders.createdAt})`);
+      .groupBy(bucket)
+      .orderBy(bucket);
 
     // Orders by status for the period
     const ordersByStatus = await ctx.db
@@ -153,16 +157,18 @@ export const analyticsRouter = createTRPCRouter({
       ? and(eq(orders.sellerId, userId), gte(orders.createdAt, start))
       : eq(orders.sellerId, userId);
 
+    const bucket = dateTrunc(trunc, sql`${orders.createdAt}`);
+
     const timeSeries = await ctx.db
       .select({
-        date: sql<string>`date_trunc(${trunc}, ${orders.createdAt})::text`,
+        date: sql<string>`${bucket}::text`,
         revenue: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
         avgOrderValue: sql<number>`coalesce(avg(${orders.subtotal}), 0)::float`,
       })
       .from(orders)
       .where(timeSeriesCond)
-      .groupBy(sql`date_trunc(${trunc}, ${orders.createdAt})`)
-      .orderBy(sql`date_trunc(${trunc}, ${orders.createdAt})`);
+      .groupBy(bucket)
+      .orderBy(bucket);
 
     return {
       kpis: {
@@ -225,20 +231,22 @@ export const analyticsRouter = createTRPCRouter({
       .orderBy(desc(listings.viewsCount))
       .limit(10);
 
-    // Listing creation time series (when were listings posted)
+    // Listing creation time series
     const listingCond = start
       ? and(eq(listings.sellerId, userId), gte(listings.createdAt, start))
       : eq(listings.sellerId, userId);
 
+    const monthBucket = sql`date_trunc(${sql.raw("'month'")}, ${listings.createdAt})`;
+
     const creationSeries = await ctx.db
       .select({
-        date: sql<string>`date_trunc('month', ${listings.createdAt})::text`,
+        date: sql<string>`${monthBucket}::text`,
         count: sql<number>`count(*)::int`,
       })
       .from(listings)
       .where(listingCond)
-      .groupBy(sql`date_trunc('month', ${listings.createdAt})`)
-      .orderBy(sql`date_trunc('month', ${listings.createdAt})`);
+      .groupBy(monthBucket)
+      .orderBy(monthBucket);
 
     return {
       kpis: {
@@ -282,9 +290,9 @@ export const analyticsRouter = createTRPCRouter({
       .select({
         avgDiscount: sql<number>`coalesce(
           avg(
-            case when ${listings.askPricePerSqFt} > 0
-            then (1 - ${offers.offerPricePerSqFt}::float / ${listings.askPricePerSqFt}::float) * 100
-            else 0 end
+            CASE WHEN ${listings.askPricePerSqFt} > 0
+            THEN (1.0 - (${offers.offerPricePerSqFt})::float / (${listings.askPricePerSqFt})::float) * 100.0
+            ELSE 0.0 END
           ), 0)::float`,
       })
       .from(offers)
@@ -296,15 +304,17 @@ export const analyticsRouter = createTRPCRouter({
       ? and(eq(offers.sellerId, userId), gte(offers.createdAt, start))
       : eq(offers.sellerId, userId);
 
+    const bucket = dateTrunc(trunc, sql`${offers.createdAt}`);
+
     const timeSeries = await ctx.db
       .select({
-        date: sql<string>`date_trunc(${trunc}, ${offers.createdAt})::text`,
+        date: sql<string>`${bucket}::text`,
         count: sql<number>`count(*)::int`,
       })
       .from(offers)
       .where(timeSeriesCond)
-      .groupBy(sql`date_trunc(${trunc}, ${offers.createdAt})`)
-      .orderBy(sql`date_trunc(${trunc}, ${offers.createdAt})`);
+      .groupBy(bucket)
+      .orderBy(bucket);
 
     // Top negotiated listings
     const topNegotiated = await ctx.db
@@ -366,7 +376,7 @@ export const analyticsRouter = createTRPCRouter({
           avgCommunication: sql<number>`coalesce(avg(${reviews.communicationRating}), 0)::float`,
           avgAccuracy: sql<number>`coalesce(avg(${reviews.accuracyRating}), 0)::float`,
           avgShipping: sql<number>`coalesce(avg(${reviews.shippingRating}), 0)::float`,
-          withResponse: sql<number>`count(case when ${reviews.sellerResponse} is not null then 1 end)::int`,
+          withResponse: sql<number>`count(CASE WHEN ${reviews.sellerResponse} IS NOT NULL THEN 1 END)::int`,
         })
         .from(reviews)
         .where(periodCond);
@@ -394,9 +404,11 @@ export const analyticsRouter = createTRPCRouter({
       }));
 
       // Rating over time
+      const reviewBucket = dateTrunc(trunc, sql`${reviews.createdAt}`);
+
       const ratingTimeSeries = await ctx.db
         .select({
-          date: sql<string>`date_trunc(${trunc}, ${reviews.createdAt})::text`,
+          date: sql<string>`${reviewBucket}::text`,
           avgRating: sql<number>`coalesce(avg(${reviews.rating}), 0)::float`,
           count: sql<number>`count(*)::int`,
         })
@@ -406,8 +418,8 @@ export const analyticsRouter = createTRPCRouter({
             ? and(baseCond, gte(reviews.createdAt, start))
             : baseCond
         )
-        .groupBy(sql`date_trunc(${trunc}, ${reviews.createdAt})`)
-        .orderBy(sql`date_trunc(${trunc}, ${reviews.createdAt})`);
+        .groupBy(reviewBucket)
+        .orderBy(reviewBucket);
 
       // Recent reviews (paginated)
       const offset = (input.reviewPage - 1) * input.reviewLimit;
