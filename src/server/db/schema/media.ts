@@ -8,6 +8,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { listings } from "./listings";
+import { buyerRequests } from "./buyer-requests";
 
 export const media = pgTable(
   "media",
@@ -15,6 +16,8 @@ export const media = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     listingId: uuid("listing_id")
       .references(() => listings.id, { onDelete: "cascade" }),
+    buyerRequestId: uuid("buyer_request_id")
+      .references(() => buyerRequests.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
     key: varchar("key", { length: 500 }),
     fileName: varchar("file_name", { length: 255 }),
@@ -29,6 +32,7 @@ export const media = pgTable(
   (table) => [
     index("media_listing_id_idx").on(table.listingId),
     index("media_sort_order_idx").on(table.listingId, table.sortOrder),
+    index("media_buyer_request_id_idx").on(table.buyerRequestId),
   ]
 );
 

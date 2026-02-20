@@ -35,6 +35,7 @@ import {
   Clock,
   MessageSquare,
 } from "lucide-react";
+import Image from "next/image";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,7 @@ type BuyerRequest = {
   urgency: string | null;
   responseCount: number;
   createdAt: Date;
+  thumbnailUrl?: string | null;
 };
 
 // ─── Respond Dialog ───────────────────────────────────────────────────────────
@@ -244,6 +246,18 @@ function RequestBoardCard({
     <Card>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
+          {request.thumbnailUrl && (
+            <div className="relative w-14 h-14 rounded-md overflow-hidden border bg-muted shrink-0">
+              <Image
+                src={request.thumbnailUrl}
+                alt=""
+                fill
+                sizes="56px"
+                className="object-cover"
+                loading="lazy"
+              />
+            </div>
+          )}
           <div className="flex-1 min-w-0 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-semibold truncate">

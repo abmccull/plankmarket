@@ -12,8 +12,9 @@ import {
   buyerRequests,
   buyerRequestResponses,
   notifications,
+  media,
 } from "../db/schema";
-import { and, eq, sql, desc, asc } from "drizzle-orm";
+import { and, eq, sql, desc, asc, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -108,6 +109,14 @@ export const buyerRequestRouter = createTRPCRouter({
         });
       }
 
+      // Link uploaded media to this request
+      if (input.mediaIds && input.mediaIds.length > 0) {
+        await ctx.db
+          .update(media)
+          .set({ buyerRequestId: request.id })
+          .where(inArray(media.id, input.mediaIds));
+      }
+
       return request;
     }),
 
@@ -175,13 +184,19 @@ export const buyerRequestRouter = createTRPCRouter({
         });
       }
 
-      // Fetch responses since this buyer owns the request
-      const responses = await ctx.db.query.buyerRequestResponses.findMany({
-        where: eq(buyerRequestResponses.requestId, input.requestId),
-        orderBy: desc(buyerRequestResponses.createdAt),
-      });
+      // Fetch responses and media
+      const [responses, requestMedia] = await Promise.all([
+        ctx.db.query.buyerRequestResponses.findMany({
+          where: eq(buyerRequestResponses.requestId, input.requestId),
+          orderBy: desc(buyerRequestResponses.createdAt),
+        }),
+        ctx.db.query.media.findMany({
+          where: eq(media.buyerRequestId, input.requestId),
+          orderBy: (media, { asc }) => [asc(media.sortOrder)],
+        }),
+      ]);
 
-      return { ...request, responses };
+      return { ...request, responses, media: requestMedia };
     }),
 
   /**
@@ -454,6 +469,13 @@ export const buyerRequestRouter = createTRPCRouter({
           orderBy,
           limit: input.limit,
           offset,
+          with: {
+            media: {
+              columns: { id: true, url: true },
+              orderBy: (media, { asc }) => [asc(media.sortOrder)],
+              limit: 1,
+            },
+          },
         }),
         ctx.db
           .select({ count: sql<number>`cast(count(*) as integer)` })
@@ -463,8 +485,15 @@ export const buyerRequestRouter = createTRPCRouter({
 
       const total = countResult[0]?.count ?? 0;
 
+      // Flatten media into a thumbnailUrl for card display
+      const itemsWithThumbnail = items.map((item) => ({
+        ...item,
+        thumbnailUrl: item.media?.[0]?.url ?? null,
+        media: undefined,
+      }));
+
       return {
-        items,
+        items: itemsWithThumbnail,
         total,
         page: input.page,
         limit: input.limit,

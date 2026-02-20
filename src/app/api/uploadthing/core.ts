@@ -59,6 +59,45 @@ export const ourFileRouter = {
         size: file.size,
       };
     }),
+  buyerRequestImageUploader: f({
+    image: {
+      maxFileSize: "4MB",
+      maxFileCount: 5,
+    },
+  })
+    .middleware(async () => {
+      const supabase = await createClient();
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (!authUser) {
+        throw new Error("Unauthorized - You must be logged in to upload images");
+      }
+
+      const dbUser = await db.query.users.findFirst({
+        where: eq(users.authId, authUser.id),
+      });
+
+      if (!dbUser) {
+        throw new Error("User not found in database");
+      }
+
+      if (dbUser.role !== "buyer" && dbUser.role !== "admin") {
+        throw new Error("Forbidden - Only buyers can upload request reference images");
+      }
+
+      return { userId: dbUser.id };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      console.log("Buyer request upload complete for userId:", metadata.userId);
+      return {
+        url: file.url,
+        key: file.key,
+        name: file.name,
+        size: file.size,
+      };
+    }),
 } satisfies FileRouter;
 
 export type OurFileRouter = typeof ourFileRouter;

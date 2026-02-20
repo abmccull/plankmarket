@@ -63,6 +63,7 @@ export const createBuyerRequestSchema = z.object({
   urgency: z
     .enum(["asap", "2_weeks", "4_weeks", "flexible"])
     .default("flexible"),
+  mediaIds: z.array(z.string().uuid()).max(5).optional(),
 });
 
 export const updateBuyerRequestSchema = z.object({

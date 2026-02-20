@@ -185,6 +185,10 @@ export const mediaRelations = relations(media, ({ one }) => ({
     fields: [media.listingId],
     references: [listings.id],
   }),
+  buyerRequest: one(buyerRequests, {
+    fields: [media.buyerRequestId],
+    references: [buyerRequests.id],
+  }),
 }));
 
 export const ordersRelations = relations(orders, ({ one, many }) => ({
@@ -406,6 +410,7 @@ export const buyerRequestsRelations = relations(buyerRequests, ({ one, many }) =
     relationName: "buyerRequests",
   }),
   responses: many(buyerRequestResponses),
+  media: many(media),
 }));
 
 export const buyerRequestResponsesRelations = relations(

@@ -1,8 +1,9 @@
 import {
   createTRPCRouter,
   sellerProcedure,
+  buyerProcedure,
 } from "../trpc";
-import { media, listings } from "../db/schema";
+import { media, listings, buyerRequests } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -157,5 +158,80 @@ export const uploadRouter = createTRPCRouter({
       });
 
       return items;
+    }),
+
+  // Record uploaded media for buyer requests
+  recordBuyerUpload: buyerProcedure
+    .input(
+      z.object({
+        buyerRequestId: z.string().uuid().optional(),
+        files: z.array(
+          z.object({
+            url: z.string().url(),
+            key: z.string(),
+            fileName: z.string(),
+            fileSize: z.number(),
+            mimeType: z.string().optional(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.buyerRequestId) {
+        const request = await ctx.db.query.buyerRequests.findFirst({
+          where: and(
+            eq(buyerRequests.id, input.buyerRequestId),
+            eq(buyerRequests.buyerId, ctx.user.id)
+          ),
+          columns: { id: true },
+        });
+        if (!request) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only upload media to your own requests",
+          });
+        }
+      }
+
+      const records = await ctx.db
+        .insert(media)
+        .values(
+          input.files.map((file, index) => ({
+            buyerRequestId: input.buyerRequestId ?? null,
+            url: file.url,
+            key: file.key,
+            fileName: file.fileName,
+            fileSize: file.fileSize,
+            mimeType: file.mimeType,
+            sortOrder: index,
+          }))
+        )
+        .returning();
+
+      return records;
+    }),
+
+  // Delete buyer request media — with ownership check
+  deleteBuyerMedia: buyerProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const mediaRecord = await ctx.db.query.media.findFirst({
+        where: eq(media.id, input.id),
+        with: {
+          buyerRequest: {
+            columns: { buyerId: true },
+          },
+        },
+      });
+
+      if (!mediaRecord || mediaRecord.buyerRequest?.buyerId !== ctx.user.id) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Media not found",
+        });
+      }
+
+      await ctx.db.delete(media).where(eq(media.id, input.id));
+      return { success: true };
     }),
 });

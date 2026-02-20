@@ -23,7 +23,9 @@ import {
   ExternalLink,
   MapPin,
   Clock,
+  ImageIcon,
 } from "lucide-react";
+import Image from "next/image";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -384,6 +386,37 @@ export default function BuyerRequestDetailPage({
           </CardHeader>
           <CardContent>
             <p className="text-sm whitespace-pre-line">{req.notes}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reference Photos */}
+      {req.media && req.media.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ImageIcon className="h-5 w-5" aria-hidden="true" />
+              Reference Photos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {req.media.map((img: { id: string; url: string; fileName?: string | null }) => (
+                <div
+                  key={img.id}
+                  className="relative aspect-square rounded-lg overflow-hidden border bg-muted"
+                >
+                  <Image
+                    src={img.url}
+                    alt={img.fileName || "Reference photo"}
+                    fill
+                    sizes="(max-width: 640px) 50vw, 33vw"
+                    className="object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
