@@ -107,6 +107,8 @@ export function Header() {
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Clear tRPC cache so next login doesn't see stale data
+    await utils.invalidate();
     useAuthStore.getState().logout();
     router.push("/");
     router.refresh();

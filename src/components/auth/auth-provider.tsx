@@ -108,6 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         sessionStart.current = Date.now();
         setLoading(true);
         try {
+          // Invalidate all cached tRPC data from previous session
+          await utils.invalidate();
           const result = await utils.auth.getSession.fetch();
           if (result.isAuthenticated && result.user) {
             setUser(result.user);
@@ -121,6 +123,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } else if (event === "SIGNED_OUT") {
         broadcastLogout();
+        // Clear all cached tRPC data so next login starts fresh
+        await utils.invalidate();
         setUser(null);
         setLoading(false);
       }

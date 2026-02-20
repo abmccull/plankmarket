@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { trpc } from "@/lib/trpc/client";
 import { SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/logo";
@@ -36,9 +37,13 @@ export function MobileNav() {
   const router = useRouter();
   const pathname = usePathname();
 
+  const utils = trpc.useUtils();
+
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Clear tRPC cache so next login doesn't see stale data
+    await utils.invalidate();
     useAuthStore.getState().logout();
     router.push("/");
     router.refresh();
