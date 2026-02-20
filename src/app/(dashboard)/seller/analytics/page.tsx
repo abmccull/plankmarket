@@ -1,304 +1,490 @@
 "use client";
 
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useCallback } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { StatsCard } from "@/components/dashboard/stats-card";
-import Image from "next/image";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { PromotionBadge } from "@/components/promotions/promotion-badge";
+import { DateRangeSelector } from "@/components/analytics/date-range-selector";
+import { ChartCard } from "@/components/analytics/chart-card";
+import { AreaChart } from "@/components/analytics/area-chart";
+import { BarChart } from "@/components/analytics/bar-chart";
+import { DonutChart } from "@/components/analytics/donut-chart";
+import { MetricRow } from "@/components/analytics/metric-row";
+import { TopListingsTable } from "@/components/analytics/top-listings-table";
+import { ReviewCard } from "@/components/shared/review-card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { BarChart3, Eye, Package, DollarSign, Loader2, Rocket, Clock, XCircle } from "lucide-react";
-import type { PromotionTier } from "@/types";
+import type { Period } from "@/lib/validators/analytics";
+import {
+  DollarSign,
+  ShoppingCart,
+  Eye,
+  TrendingUp,
+  Package,
+  Ruler,
+  Clock,
+  MessageSquare,
+  Star,
+  Percent,
+} from "lucide-react";
+
+function calcTrend(current: number, previous: number): { value: number; label: string } {
+  if (previous === 0) return { value: current > 0 ? 100 : 0, label: "vs prev period" };
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return { value: pct, label: "vs prev period" };
+}
+
+function formatMaterialType(mt: string) {
+  return mt.replace(/_/g, " ").replace(/\blvp\b/i, "LVP").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function ChartSkeleton({ height = 300 }: { height?: number }) {
+  return <Skeleton className="w-full rounded-lg" style={{ height }} />;
+}
 
 export default function SellerAnalyticsPage() {
-  const { data: listingStats, isLoading: listingsLoading } =
-    trpc.listing.getSellerStats.useQuery();
-  const { data: orderStats, isLoading: ordersLoading } =
-    trpc.order.getSellerOrderStats.useQuery();
-  const { data: promotions, isLoading: promotionsLoading } =
-    trpc.promotion.getMyPromotions.useQuery({ page: 1, limit: 10 });
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
 
-  const utils = trpc.useUtils();
-  const cancelMutation = trpc.promotion.cancel.useMutation({
-    onSuccess: () => {
-      utils.promotion.getMyPromotions.invalidate();
+  const tab = (searchParams.get("tab") ?? "overview") as string;
+  const period = (searchParams.get("period") ?? "30d") as Period;
+
+  const setParams = useCallback(
+    (updates: Record<string, string>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(updates)) {
+        params.set(key, value);
+      }
+      router.replace(`${pathname}?${params.toString()}`);
     },
-  });
-
-  // eslint-disable-next-line react-hooks/purity
-  const now = Date.now();
-  const isLoading = listingsLoading || ordersLoading;
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const totalListings =
-    listingStats?.reduce((sum, s) => sum + s.count, 0) ?? 0;
-  const totalViews =
-    listingStats?.reduce((sum, s) => sum + s.totalViews, 0) ?? 0;
-  const totalOrders =
-    orderStats?.reduce((sum, s) => sum + s.count, 0) ?? 0;
-  const totalRevenue =
-    orderStats?.reduce((sum, s) => sum + s.totalRevenue, 0) ?? 0;
-  const deliveredRevenue =
-    orderStats?.find((s) => s.status === "delivered")?.totalRevenue ?? 0;
+    [searchParams, router, pathname]
+  );
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground mt-1">
-          Track your performance and revenue
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Analytics</h1>
+          <p className="text-muted-foreground mt-1">
+            Track your performance and revenue
+          </p>
+        </div>
+        <DateRangeSelector
+          value={period}
+          onChange={(p) => setParams({ period: p })}
+        />
       </div>
 
+      <Tabs value={tab} onValueChange={(t) => setParams({ tab: t })}>
+        <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="revenue">Revenue</TabsTrigger>
+          <TabsTrigger value="inventory">Inventory</TabsTrigger>
+          <TabsTrigger value="offers">Offers</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <OverviewTab period={period} />
+        </TabsContent>
+
+        <TabsContent value="revenue" className="space-y-6">
+          <RevenueTab period={period} />
+        </TabsContent>
+
+        <TabsContent value="inventory" className="space-y-6">
+          <InventoryTab period={period} />
+        </TabsContent>
+
+        <TabsContent value="offers" className="space-y-6">
+          <OffersTab period={period} />
+        </TabsContent>
+
+        <TabsContent value="reviews" className="space-y-6">
+          <ReviewsTab period={period} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+/* ─── Overview Tab ─── */
+function OverviewTab({ period }: { period: Period }) {
+  const { data, isLoading } = trpc.analytics.overview.useQuery({ period });
+
+  if (isLoading) return <LoadingKPIs count={4} />;
+  if (!data) return null;
+
+  const { kpis, timeSeries, ordersByStatus } = data;
+  const revenueTrend = calcTrend(kpis.revenue, kpis.prevRevenue);
+  const ordersTrend = calcTrend(kpis.orders, kpis.prevOrders);
+
+  return (
+    <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          title="Total Listings"
-          value={formatNumber(totalListings)}
-          icon={Package}
+          title="Revenue"
+          value={formatCurrency(kpis.revenue)}
+          icon={DollarSign}
+          trend={revenueTrend}
+          accentColor="secondary"
+        />
+        <StatsCard
+          title="Orders"
+          value={formatNumber(kpis.orders)}
+          icon={ShoppingCart}
+          trend={ordersTrend}
+          accentColor="primary"
         />
         <StatsCard
           title="Total Views"
-          value={formatNumber(totalViews)}
+          value={formatNumber(kpis.views)}
           icon={Eye}
+          accentColor="accent"
         />
         <StatsCard
-          title="Total Orders"
-          value={formatNumber(totalOrders)}
-          icon={BarChart3}
-        />
-        <StatsCard
-          title="Total Revenue"
-          value={formatCurrency(totalRevenue)}
-          icon={DollarSign}
+          title="Conversion Rate"
+          value={`${kpis.conversionRate}%`}
+          icon={TrendingUp}
+          accentColor="warning"
         />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Listings by Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {listingStats?.map((stat) => (
-                <div
-                  key={stat.status}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`h-3 w-3 rounded-full ${
-                        stat.status === "active"
-                          ? "bg-emerald-500"
-                          : stat.status === "sold"
-                            ? "bg-primary"
-                            : stat.status === "expired"
-                              ? "bg-amber-500"
-                              : "bg-muted-foreground"
-                      }`}
-                    />
-                    <span className="text-sm capitalize">{stat.status}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-medium">{stat.count}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      ({formatNumber(stat.totalViews)} views)
-                    </span>
-                  </div>
-                </div>
-              )) ?? (
-                <p className="text-sm text-muted-foreground">No data yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Revenue Over Time">
+          <AreaChart
+            data={timeSeries}
+            dataKey="revenue"
+            formatValue={(v) => formatCurrency(v)}
+          />
+        </ChartCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Revenue by Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {orderStats?.map((stat) => (
-                <div
-                  key={stat.status}
-                  className="flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`h-3 w-3 rounded-full ${
-                        stat.status === "delivered"
-                          ? "bg-emerald-500"
-                          : stat.status === "shipped"
-                            ? "bg-blue-500"
-                            : stat.status === "cancelled"
-                              ? "bg-red-500"
-                              : "bg-amber-500"
-                      }`}
-                    />
-                    <span className="text-sm capitalize">{stat.status}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-sm font-medium">
-                      {formatCurrency(stat.totalRevenue)}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-2">
-                      ({stat.count} orders)
-                    </span>
-                  </div>
-                </div>
-              )) ?? (
-                <p className="text-sm text-muted-foreground">No data yet</p>
-              )}
-            </div>
+        <ChartCard title="Orders by Status">
+          <BarChart
+            data={ordersByStatus.map((s) => ({
+              name: s.status,
+              value: s.count,
+            }))}
+          />
+        </ChartCard>
+      </div>
+    </>
+  );
+}
 
-            {totalRevenue > 0 && (
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex justify-between text-sm">
-                  <span className="font-medium">Completed Revenue</span>
-                  <span className="font-bold text-primary">
-                    {formatCurrency(deliveredRevenue)}
+/* ─── Revenue Tab ─── */
+function RevenueTab({ period }: { period: Period }) {
+  const { data, isLoading } = trpc.analytics.revenue.useQuery({ period });
+
+  if (isLoading) return <LoadingKPIs count={3} />;
+  if (!data) return null;
+
+  const { kpis, byMaterialType, byOrderStatus, timeSeries } = data;
+
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatsCard
+          title="Total Revenue"
+          value={formatCurrency(kpis.totalRevenue)}
+          icon={DollarSign}
+          accentColor="secondary"
+        />
+        <StatsCard
+          title="Avg Order Value"
+          value={formatCurrency(kpis.avgOrderValue)}
+          icon={ShoppingCart}
+          accentColor="primary"
+        />
+        <StatsCard
+          title="Shipping Margin"
+          value={formatCurrency(kpis.shippingMargin)}
+          icon={Package}
+          accentColor="accent"
+        />
+      </div>
+
+      <ChartCard title="Revenue Over Time">
+        <AreaChart
+          data={timeSeries}
+          dataKey="revenue"
+          formatValue={(v) => formatCurrency(v)}
+        />
+      </ChartCard>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Revenue by Material Type">
+          <BarChart
+            data={byMaterialType.map((m) => ({
+              name: formatMaterialType(m.materialType),
+              value: m.revenue,
+            }))}
+            layout="horizontal"
+            formatValue={(v) => formatCurrency(v)}
+          />
+        </ChartCard>
+
+        <ChartCard title="Revenue by Order Status">
+          <div className="space-y-3">
+            {byOrderStatus.map((s) => (
+              <div key={s.status} className="flex items-center justify-between">
+                <span className="text-sm capitalize">{s.status}</span>
+                <div className="text-right">
+                  <span className="text-sm font-medium">
+                    {formatCurrency(s.revenue)}
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    ({s.count} orders)
                   </span>
                 </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        </ChartCard>
+      </div>
+    </>
+  );
+}
+
+/* ─── Inventory Tab ─── */
+function InventoryTab({ period }: { period: Period }) {
+  const { data, isLoading } = trpc.analytics.inventory.useQuery({ period });
+
+  if (isLoading) return <LoadingKPIs count={3} />;
+  if (!data) return null;
+
+  const { kpis, byStatus, topViewed } = data;
+
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatsCard
+          title="Active Listings"
+          value={formatNumber(kpis.activeListings)}
+          icon={Package}
+          accentColor="primary"
+        />
+        <StatsCard
+          title="Total Sqft Available"
+          value={formatNumber(kpis.totalSqFtAvailable)}
+          icon={Ruler}
+          accentColor="accent"
+        />
+        <StatsCard
+          title="Avg Days on Market"
+          value={`${kpis.avgDaysOnMarket}d`}
+          icon={Clock}
+          accentColor="warning"
+        />
       </div>
 
-      {/* Promotions Section */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Rocket className="h-5 w-5" />
-              Active Promotions
-            </CardTitle>
-            {promotions && (
-              <span className="text-sm text-muted-foreground">
-                {promotions.items.filter(
-                  (p) =>
-                    p.isActive && new Date(p.expiresAt) > new Date()
-                ).length}{" "}
-                active
-              </span>
-            )}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Listings by Status">
+          <DonutChart
+            data={byStatus.map((s) => ({
+              name: s.status,
+              value: s.count,
+            }))}
+          />
+        </ChartCard>
+
+        <ChartCard title="Top Listings by Views">
+          <BarChart
+            data={topViewed.slice(0, 10).map((l) => ({
+              name: l.title.length > 25 ? l.title.slice(0, 25) + "..." : l.title,
+              value: l.viewsCount,
+            }))}
+            layout="horizontal"
+            height={Math.max(200, topViewed.length * 35)}
+          />
+        </ChartCard>
+      </div>
+
+      <ChartCard title="All Listings">
+        <TopListingsTable listings={topViewed} />
+      </ChartCard>
+    </>
+  );
+}
+
+/* ─── Offers Tab ─── */
+function OffersTab({ period }: { period: Period }) {
+  const { data, isLoading } = trpc.analytics.offers.useQuery({ period });
+
+  if (isLoading) return <LoadingKPIs count={4} />;
+  if (!data) return null;
+
+  const { kpis, byStatus, timeSeries, topNegotiated } = data;
+
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatsCard
+          title="Offers Received"
+          value={formatNumber(kpis.totalOffers)}
+          icon={MessageSquare}
+          accentColor="primary"
+        />
+        <StatsCard
+          title="Accepted"
+          value={formatNumber(kpis.accepted)}
+          icon={ShoppingCart}
+          accentColor="secondary"
+        />
+        <StatsCard
+          title="Acceptance Rate"
+          value={`${kpis.acceptanceRate}%`}
+          icon={Percent}
+          accentColor="accent"
+        />
+        <StatsCard
+          title="Avg Discount"
+          value={`${kpis.avgDiscount}%`}
+          icon={TrendingUp}
+          accentColor="warning"
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Offer Funnel">
+          <DonutChart
+            data={byStatus.map((s) => ({
+              name: s.status,
+              value: s.count,
+            }))}
+          />
+        </ChartCard>
+
+        <ChartCard title="Offers Over Time">
+          <AreaChart data={timeSeries} dataKey="count" />
+        </ChartCard>
+      </div>
+
+      {topNegotiated.length > 0 && (
+        <ChartCard title="Most Negotiated Listings">
+          <div className="space-y-3">
+            {topNegotiated.map((l) => (
+              <div key={l.listingId} className="flex items-center justify-between py-1.5">
+                <a
+                  href={`/listings/${l.slug ?? l.listingId}`}
+                  className="text-sm font-medium hover:text-primary transition-colors truncate max-w-[250px]"
+                >
+                  {l.title}
+                </a>
+                <div className="text-right text-sm">
+                  <span className="font-medium">{l.offerCount} offers</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    avg {Math.round(l.avgRounds * 10) / 10} rounds
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
-        </CardHeader>
-        <CardContent>
-          {promotionsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : !promotions || promotions.items.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Rocket className="mx-auto h-8 w-8 mb-2 opacity-50" />
-              <p className="text-sm">No promotions yet</p>
-              <p className="text-xs mt-1">
-                Boost your active listings to get more views
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {promotions.items.map((promo) => {
-                const isActive =
-                  promo.isActive &&
-                  new Date(promo.expiresAt) > new Date();
-                const remainingMs =
-                  new Date(promo.expiresAt).getTime() - now;
-                const remainingDays = Math.max(
-                  0,
-                  Math.ceil(remainingMs / (1000 * 60 * 60 * 24))
-                );
+        </ChartCard>
+      )}
+    </>
+  );
+}
 
-                return (
-                  <div
-                    key={promo.id}
-                    className="flex items-center gap-4 rounded-lg border p-3"
-                  >
-                    {/* Thumbnail */}
-                    <div className="h-12 w-12 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                      {promo.listing.media?.[0] ? (
-                        <Image
-                          src={promo.listing.media[0].url}
-                          alt={promo.listing.title}
-                          width={48}
-                          height={48}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <Package className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
+/* ─── Reviews Tab ─── */
+function ReviewsTab({ period }: { period: Period }) {
+  const { data, isLoading } = trpc.analytics.reviews.useQuery({ period });
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">
-                          {promo.listing.title}
-                        </span>
-                        <PromotionBadge
-                          tier={promo.tier as PromotionTier}
-                        />
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                        <span>{formatCurrency(promo.pricePaid)} paid</span>
-                        <span>
-                          {promo.durationDays} day
-                          {promo.durationDays !== 1 ? "s" : ""}
-                        </span>
-                        {isActive && (
-                          <span className="flex items-center gap-1 text-emerald-600">
-                            <Clock className="h-3 w-3" />
-                            {remainingDays}d remaining
-                          </span>
-                        )}
-                        {!isActive && promo.cancelledAt && (
-                          <span className="text-red-500">Cancelled</span>
-                        )}
-                        {!isActive && !promo.cancelledAt && (
-                          <span className="text-muted-foreground">
-                            Expired
-                          </span>
-                        )}
-                        <span>
-                          <Eye className="inline h-3 w-3 mr-0.5" />
-                          {promo.listing.viewsCount}
-                        </span>
-                      </div>
-                    </div>
+  if (isLoading) return <LoadingKPIs count={3} />;
+  if (!data) return null;
 
-                    {/* Actions */}
-                    {isActive && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive shrink-0"
-                        onClick={() =>
-                          cancelMutation.mutate({
-                            promotionId: promo.id,
-                          })
-                        }
-                        disabled={cancelMutation.isPending}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" />
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+  const { kpis, subRatings, ratingDistribution, recentReviews } = data;
+
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatsCard
+          title="Average Rating"
+          value={kpis.avgRating.toFixed(1)}
+          icon={Star}
+          accentColor="warning"
+        />
+        <StatsCard
+          title="Total Reviews"
+          value={formatNumber(kpis.totalReviews)}
+          icon={MessageSquare}
+          accentColor="primary"
+        />
+        <StatsCard
+          title="Response Rate"
+          value={`${kpis.responseRate}%`}
+          icon={Percent}
+          accentColor="accent"
+        />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartCard title="Rating Distribution">
+          <BarChart
+            data={ratingDistribution.map((r) => ({
+              name: `${r.rating} star${r.rating !== 1 ? "s" : ""}`,
+              value: r.count,
+            }))}
+            color="hsl(38 92% 50%)"
+          />
+        </ChartCard>
+
+        <ChartCard title="Sub-Rating Averages">
+          <BarChart
+            data={[
+              { name: "Communication", value: subRatings.communication },
+              { name: "Accuracy", value: subRatings.accuracy },
+              { name: "Shipping", value: subRatings.shipping },
+            ]}
+            layout="horizontal"
+            formatValue={(v) => v.toFixed(1)}
+            height={150}
+          />
+        </ChartCard>
+      </div>
+
+      {recentReviews.length > 0 && (
+        <ChartCard title="Recent Reviews">
+          <div className="space-y-4">
+            {recentReviews.map((r) => (
+              <ReviewCard
+                key={r.id}
+                reviewerName={r.reviewerName}
+                reviewerAvatar={r.reviewerAvatar}
+                date={new Date(r.date)}
+                rating={r.rating}
+                title={r.title ?? undefined}
+                comment={r.comment}
+                subRatings={r.subRatings}
+                sellerResponse={
+                  r.sellerResponse
+                    ? { message: r.sellerResponse.message, date: new Date(r.sellerResponse.date) }
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        </ChartCard>
+      )}
+    </>
+  );
+}
+
+/* ─── Loading State ─── */
+function LoadingKPIs({ count }: { count: number }) {
+  return (
+    <div className="space-y-6">
+      <div className={`grid gap-4 md:grid-cols-${count > 3 ? "2 lg:grid-cols-4" : count}`}>
+        {Array.from({ length: count }).map((_, i) => (
+          <Skeleton key={i} className="h-[120px] rounded-xl" />
+        ))}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <ChartSkeleton />
+        <ChartSkeleton />
+      </div>
     </div>
   );
 }

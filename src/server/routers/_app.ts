@@ -20,6 +20,7 @@ import { buyerRequestRouter } from "./buyer-request";
 import { matchingRouter } from "./matching";
 import { listingAssistantRouter } from "./listing-assistant";
 import { crmRouter } from "./crm";
+import { analyticsRouter } from "./analytics";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -43,6 +44,7 @@ export const appRouter = createTRPCRouter({
   matching: matchingRouter,
   listingAssistant: listingAssistantRouter,
   crm: crmRouter,
+  analytics: analyticsRouter,
 });
 
 export type AppRouter = typeof appRouter;

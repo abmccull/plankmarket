@@ -9,6 +9,8 @@ import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AreaChart } from "@/components/analytics/area-chart";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Package,
   Eye,
@@ -19,13 +21,22 @@ import {
   ArrowRight,
   MapPin,
   SlidersHorizontal,
+  BarChart3,
 } from "lucide-react";
+
+function calcTrend(current: number, previous: number): { value: number; label: string } {
+  if (previous === 0) return { value: current > 0 ? 100 : 0, label: "vs prev 30d" };
+  const pct = Math.round(((current - previous) / previous) * 100);
+  return { value: pct, label: "vs prev 30d" };
+}
 
 export default function SellerDashboardPage() {
   const { data: listingStats, isLoading: listingsLoading } =
     trpc.listing.getSellerStats.useQuery();
   const { data: orderStats, isLoading: ordersLoading } =
     trpc.order.getSellerOrderStats.useQuery();
+  const { data: analyticsData } =
+    trpc.analytics.overview.useQuery({ period: "30d" });
   const { data: recommendedRequestsData } =
     trpc.matching.recommendedRequests.useQuery();
 
@@ -49,6 +60,14 @@ export default function SellerDashboardPage() {
     orderStats?.reduce((sum, s) => sum + s.totalRevenue, 0) ?? 0;
   const pendingOrders =
     orderStats?.find((s) => s.status === "pending")?.count ?? 0;
+
+  // Trend calculations from analytics data
+  const revenueTrend = analyticsData
+    ? calcTrend(analyticsData.kpis.revenue, analyticsData.kpis.prevRevenue)
+    : undefined;
+  const ordersTrend = analyticsData
+    ? calcTrend(analyticsData.kpis.orders, analyticsData.kpis.prevOrders)
+    : undefined;
 
   return (
     <div className="space-y-8">
@@ -81,14 +100,47 @@ export default function SellerDashboardPage() {
           value={formatCurrency(totalRevenue)}
           icon={DollarSign}
           accentColor="secondary"
+          trend={revenueTrend}
         />
         <StatsCard
           title="Pending Orders"
           value={formatNumber(pendingOrders)}
           icon={ShoppingCart}
           accentColor="warning"
+          trend={ordersTrend}
         />
       </div>
+
+      {/* Mini Revenue Chart + Analytics Link */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <BarChart3 className="h-4 w-4" />
+              30-Day Revenue
+            </CardTitle>
+            <Link href="/seller/analytics">
+              <Button variant="ghost" size="sm">
+                View detailed analytics <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {analyticsData?.timeSeries ? (
+            <AreaChart
+              data={analyticsData.timeSeries}
+              dataKey="revenue"
+              height={200}
+              formatValue={(v) => formatCurrency(v)}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-sm text-muted-foreground">
+              No revenue data yet
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-xl border bg-card p-6">
