@@ -918,6 +918,7 @@ export default function PreferencesPage() {
       }
       // Invalidate so the query refetches on next visit
       utils.preferences.get.invalidate();
+      utils.auth.getOnboardingProgress.invalidate();
 
       if (mode === "wizard") {
         celebrateMilestone("Preferences Saved!", "You'll now see personalized recommendations based on your preferences.");
