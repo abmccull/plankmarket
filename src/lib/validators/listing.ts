@@ -91,6 +91,8 @@ export const listingFormSchema = z.object({
   palletLength: z.number().positive("Pallet length is required").max(120, "Maximum 120 inches"),
   palletWidth: z.number().positive("Pallet width is required").max(120, "Maximum 120 inches"),
   palletHeight: z.number().positive("Pallet height is required").max(120, "Maximum 120 inches"),
+  nmfcCode: z.string().max(20).optional(),
+  freightClass: z.string().max(10).optional(),
 
   locationCity: z.string().max(100).optional(),
   locationState: z.string().length(2, "State must be 2 characters").optional(),
@@ -214,7 +216,7 @@ export const listingFilterSchema = z.object({
     ])
     .default("date_newest"),
   page: z.number().int().positive().default(1),
-  limit: z.number().int().positive().max(100).default(24),
+  limit: z.number().int().positive().max(250).default(24),
 });
 
 export const csvListingRowSchema = z.object({
@@ -244,6 +246,8 @@ export const csvListingRowSchema = z.object({
   palletLength: z.coerce.number().positive("Pallet length is required"),
   palletWidth: z.coerce.number().positive("Pallet width is required"),
   palletHeight: z.coerce.number().positive("Pallet height is required"),
+  nmfcCode: z.string().max(20).optional(),
+  freightClass: z.string().max(10).optional(),
 });
 
 export type ListingFormInput = z.infer<typeof listingFormSchema>;

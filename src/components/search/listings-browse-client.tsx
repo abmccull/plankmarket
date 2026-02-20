@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ListingCard } from "@/components/search/listing-card";
+import { ListingTableView } from "@/components/search/listing-table-view";
 import { FacetedFilters } from "@/components/search/faceted-filters";
 import { SponsoredCarousel } from "@/components/promotions/sponsored-carousel";
 import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
@@ -103,6 +104,9 @@ export function ListingsBrowseClient({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
+  const GRID_LIMITS = ["12", "24", "48"];
+  const LIST_LIMITS = ["50", "100", "250"];
+
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>) => {
       const params = new URLSearchParams(rawSearchParams.toString());
@@ -120,6 +124,19 @@ export function ListingsBrowseClient({
       router.push(`/listings?${params.toString()}`);
     },
     [router, rawSearchParams]
+  );
+
+  const handleViewModeChange = useCallback(
+    (mode: "grid" | "list") => {
+      setViewMode(mode);
+      const currentLimit = String(initialParams.limit);
+      if (mode === "list" && GRID_LIMITS.includes(currentLimit)) {
+        updateParams({ limit: "50" });
+      } else if (mode === "grid" && LIST_LIMITS.includes(currentLimit)) {
+        updateParams({ limit: "24" });
+      }
+    },
+    [initialParams.limit, updateParams]
   );
 
   const handleSearchChange = useCallback(
@@ -209,9 +226,19 @@ export function ListingsBrowseClient({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="12">Show 12</SelectItem>
-              <SelectItem value="24">Show 24</SelectItem>
-              <SelectItem value="48">Show 48</SelectItem>
+              {viewMode === "grid" ? (
+                <>
+                  <SelectItem value="12">Show 12</SelectItem>
+                  <SelectItem value="24">Show 24</SelectItem>
+                  <SelectItem value="48">Show 48</SelectItem>
+                </>
+              ) : (
+                <>
+                  <SelectItem value="50">Show 50</SelectItem>
+                  <SelectItem value="100">Show 100</SelectItem>
+                  <SelectItem value="250">Show 250</SelectItem>
+                </>
+              )}
             </SelectContent>
           </Select>
           <Select
@@ -237,7 +264,7 @@ export function ListingsBrowseClient({
                 "h-8 w-8 rounded-r-none",
                 viewMode === "grid" && "bg-accent"
               )}
-              onClick={() => setViewMode("grid")}
+              onClick={() => handleViewModeChange("grid")}
               aria-label="Grid view"
               aria-pressed={viewMode === "grid"}
             >
@@ -250,7 +277,7 @@ export function ListingsBrowseClient({
                 "h-8 w-8 rounded-l-none",
                 viewMode === "list" && "bg-accent"
               )}
-              onClick={() => setViewMode("list")}
+              onClick={() => handleViewModeChange("list")}
               aria-label="List view"
               aria-pressed={viewMode === "list"}
             >
@@ -306,18 +333,15 @@ export function ListingsBrowseClient({
             </div>
           ) : (
             <>
-              <div
-                className={cn(
-                  "grid gap-4 stagger-grid",
-                  viewMode === "grid"
-                    ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                    : "grid-cols-1"
-                )}
-              >
-                {initialData.items.map((listing) => (
-                  <ListingCard key={listing.id} listing={listing} />
-                ))}
-              </div>
+              {viewMode === "list" ? (
+                <ListingTableView items={initialData.items} />
+              ) : (
+                <div className="grid gap-4 stagger-grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {initialData.items.map((listing) => (
+                    <ListingCard key={listing.id} listing={listing} />
+                  ))}
+                </div>
+              )}
 
               {/* Crawlable Pagination with Link elements */}
               {initialData.totalPages > 1 && (
