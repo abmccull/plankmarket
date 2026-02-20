@@ -66,20 +66,15 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      // Get listing freight data
-      const {
-        palletWeight,
-        palletLength,
-        palletWidth,
-        palletHeight,
-        freightClass,
-        totalPallets,
-        sqFtPerBox,
-        boxesPerPallet,
-        locationZip,
-      } = listing;
+      // Get listing freight data, with manual overrides as fallback
+      const palletWeight = listing.palletWeight ?? input.overridePalletWeight;
+      const palletLength = listing.palletLength ?? input.overridePalletLength;
+      const palletWidth = listing.palletWidth ?? input.overridePalletWidth;
+      const palletHeight = listing.palletHeight ?? input.overridePalletHeight;
+      const locationZip = listing.locationZip ?? input.overrideOriginZip;
+      const { freightClass, nmfcCode, totalPallets, sqFtPerBox, boxesPerPallet } = listing;
 
-      // Defensive check: if pallet data is missing, throw PRECONDITION_FAILED error
+      // Check if required freight data is still missing after overrides
       if (
         !palletWeight ||
         !palletLength ||
@@ -90,7 +85,7 @@ export const shippingRouter = createTRPCRouter({
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message:
-            "Listing does not have complete freight information. Please contact the seller.",
+            "Listing does not have complete freight information. Please fill in the missing shipping details.",
         });
       }
 
@@ -119,6 +114,7 @@ export const shippingRouter = createTRPCRouter({
         isHazardous: false,
         isUsed: false,
         isMachinery: false,
+        ...(nmfcCode ? { nmfcItemCode: nmfcCode } : {}),
       }));
 
       let ratesResponse;

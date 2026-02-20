@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Loader2, Truck, AlertCircle } from "lucide-react";
 
 export interface SelectedShippingQuote {
@@ -17,13 +20,20 @@ export interface SelectedShippingQuote {
   quoteExpiresAt: string;
 }
 
+interface ManualFreightData {
+  originZip: string;
+  palletWeight: number;
+  palletLength: number;
+  palletWidth: number;
+  palletHeight: number;
+}
+
 interface ShippingQuoteSelectorProps {
   listingId: string;
   destinationZip: string;
   quantitySqFt: number;
   selectedQuote: SelectedShippingQuote | null;
   onSelectQuote: (quote: SelectedShippingQuote) => void;
-  onShippingUnavailable?: () => void;
 }
 
 export default function ShippingQuoteSelector({
@@ -32,24 +42,31 @@ export default function ShippingQuoteSelector({
   quantitySqFt,
   selectedQuote,
   onSelectQuote,
-  onShippingUnavailable,
 }: ShippingQuoteSelectorProps) {
+  const [manualData, setManualData] = useState<ManualFreightData | null>(null);
+
+  const queryInput = {
+    listingId,
+    destinationZip,
+    quantitySqFt,
+    ...(manualData && {
+      overrideOriginZip: manualData.originZip,
+      overridePalletWeight: manualData.palletWeight,
+      overridePalletLength: manualData.palletLength,
+      overridePalletWidth: manualData.palletWidth,
+      overridePalletHeight: manualData.palletHeight,
+    }),
+  };
+
   const {
     data: quotes,
     isLoading,
     isError,
     error,
     refetch,
-  } = trpc.shipping.getQuotes.useQuery(
-    {
-      listingId,
-      destinationZip,
-      quantitySqFt,
-    },
-    {
-      enabled: destinationZip.length >= 5,
-    }
-  );
+  } = trpc.shipping.getQuotes.useQuery(queryInput, {
+    enabled: destinationZip.length >= 5,
+  });
 
   if (destinationZip.length < 5) {
     return null;
@@ -77,37 +94,16 @@ export default function ShippingQuoteSelector({
   if (isError) {
     const isPreconditionFailed =
       error?.data?.code === "PRECONDITION_FAILED" ||
-      error?.message?.includes("freight information");
+      error?.message?.includes("freight information") ||
+      error?.message?.includes("shipping details");
 
-    if (isPreconditionFailed && onShippingUnavailable) {
+    if (isPreconditionFailed) {
       return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              Shipping
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center gap-4 py-6">
-              <AlertCircle className="h-8 w-8 text-muted-foreground" />
-              <div className="text-center space-y-1">
-                <p className="text-sm font-medium">
-                  Freight shipping is not set up for this listing
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  You can proceed without a shipping quote. The seller will arrange shipping after purchase and contact you with details.
-                </p>
-              </div>
-              <Button
-                onClick={onShippingUnavailable}
-                aria-label="Continue without shipping quote"
-              >
-                Continue Without Shipping Quote
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <ManualFreightForm
+          onSubmit={(data) => {
+            setManualData(data);
+          }}
+        />
       );
     }
 
@@ -231,6 +227,128 @@ export default function ShippingQuoteSelector({
             );
           })}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Manual freight entry form shown when listing lacks shipping data */
+function ManualFreightForm({
+  onSubmit,
+}: {
+  onSubmit: (data: ManualFreightData) => void;
+}) {
+  const [originZip, setOriginZip] = useState("");
+  const [palletWeight, setPalletWeight] = useState("1500");
+  const [palletLength, setPalletLength] = useState("48");
+  const [palletWidth, setPalletWidth] = useState("40");
+  const [palletHeight, setPalletHeight] = useState("48");
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationError(null);
+
+    if (!originZip || originZip.length < 5) {
+      setValidationError("Origin ZIP is required");
+      return;
+    }
+
+    const weight = parseFloat(palletWeight);
+    const length = parseFloat(palletLength);
+    const width = parseFloat(palletWidth);
+    const height = parseFloat(palletHeight);
+
+    if (!weight || !length || !width || !height) {
+      setValidationError("All pallet dimensions are required");
+      return;
+    }
+
+    onSubmit({
+      originZip,
+      palletWeight: weight,
+      palletLength: length,
+      palletWidth: width,
+      palletHeight: height,
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Truck className="h-5 w-5" />
+          Shipping Details Required
+        </CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          This listing is missing freight information. Enter the shipping details
+          below to get carrier quotes. Contact the seller if you&apos;re unsure.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="originZip">Origin ZIP (seller&apos;s location)</Label>
+            <Input
+              id="originZip"
+              placeholder="90210"
+              value={originZip}
+              onChange={(e) => setOriginZip(e.target.value)}
+              maxLength={10}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="palletWeight">Pallet Weight (lbs)</Label>
+              <Input
+                id="palletWeight"
+                type="number"
+                value={palletWeight}
+                onChange={(e) => setPalletWeight(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="palletLength">Length (in)</Label>
+              <Input
+                id="palletLength"
+                type="number"
+                value={palletLength}
+                onChange={(e) => setPalletLength(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="palletWidth">Width (in)</Label>
+              <Input
+                id="palletWidth"
+                type="number"
+                value={palletWidth}
+                onChange={(e) => setPalletWidth(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="palletHeight">Height (in)</Label>
+              <Input
+                id="palletHeight"
+                type="number"
+                value={palletHeight}
+                onChange={(e) => setPalletHeight(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Standard pallet: 48&quot; x 40&quot; x 48&quot;, ~1,500 lbs. Adjust based on this order.
+          </p>
+
+          {validationError && (
+            <p className="text-sm text-destructive">{validationError}</p>
+          )}
+
+          <Button type="submit" className="w-full">
+            Get Shipping Quotes
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );
