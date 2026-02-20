@@ -256,7 +256,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
 
             {/* Actions */}
             {isOwnListing ? (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-3">
                 <Link href={`/seller/listings/${listing.id}/edit`}>
                   <Button className="w-full" size="lg">
                     Edit Listing

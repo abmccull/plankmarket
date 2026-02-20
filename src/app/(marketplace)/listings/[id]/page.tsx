@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { notFound, redirect, RedirectType } from "next/navigation";
 import type { Metadata } from "next";
-import Image from "next/image";
 import { createServerCaller } from "@/lib/trpc/server";
 import {
   formatCurrency,
@@ -9,9 +8,10 @@ import {
 } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, Shield, Truck } from "lucide-react";
+import { Shield, Truck } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { ListingDetailClient } from "@/components/listings/listing-detail-client";
+import { ImageGallery } from "@/components/listings/image-gallery";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const materialLabels: Record<string, string> = {
@@ -33,6 +33,16 @@ const conditionLabels: Record<string, string> = {
   remnants: "Remnants",
   closeout: "Closeout",
   other: "Other",
+};
+
+const certificationLabels: Record<string, string> = {
+  floorscore: "FloorScore",
+  greenguard: "GreenGuard",
+  greenguard_gold: "GreenGuard Gold",
+  fsc: "FSC",
+  carb2: "CARB2",
+  leed: "LEED",
+  nauf: "NAUF",
 };
 
 const finishLabels: Record<string, string> = {
@@ -165,43 +175,7 @@ async function ListingContent({ id }: { id: string }) {
           {/* Main Content - 2 columns (SERVER RENDERED) */}
           <div className="lg:col-span-2 space-y-6">
             {/* Image Gallery */}
-            <div className="aspect-[16/9] bg-muted rounded-xl overflow-hidden relative">
-              {listing.media?.[0] ? (
-                <Image
-                  src={listing.media[0].url}
-                  alt={listing.title}
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 66vw"
-                  className="object-cover"
-                  priority
-                />
-              ) : (
-                <div className="h-full w-full flex items-center justify-center">
-                  <Package className="h-16 w-16 text-muted-foreground/50" />
-                </div>
-              )}
-            </div>
-
-            {/* Image thumbnails */}
-            {listing.media && listing.media.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-2">
-                {listing.media.map((img, i) => (
-                  <div
-                    key={img.id}
-                    className="h-20 w-20 rounded-md bg-muted overflow-hidden shrink-0 relative"
-                  >
-                    <Image
-                      src={img.url}
-                      alt={`${listing.title} ${i + 1}`}
-                      fill
-                      sizes="80px"
-                      className="object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
+            <ImageGallery media={listing.media} title={listing.title} />
 
             {/* Title and badges */}
             <div>
@@ -310,7 +284,7 @@ async function ListingContent({ id }: { id: string }) {
                     {(listing.certifications as string[]).map((cert) => (
                       <Badge key={cert} variant="secondary">
                         <Shield className="mr-1 h-3 w-3" />
-                        {cert.toUpperCase()}
+                        {certificationLabels[cert] || cert.replace(/_/g, " ")}
                       </Badge>
                     ))}
                   </div>
