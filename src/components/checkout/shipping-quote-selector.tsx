@@ -23,6 +23,7 @@ interface ShippingQuoteSelectorProps {
   quantitySqFt: number;
   selectedQuote: SelectedShippingQuote | null;
   onSelectQuote: (quote: SelectedShippingQuote) => void;
+  onShippingUnavailable?: () => void;
 }
 
 export default function ShippingQuoteSelector({
@@ -31,6 +32,7 @@ export default function ShippingQuoteSelector({
   quantitySqFt,
   selectedQuote,
   onSelectQuote,
+  onShippingUnavailable,
 }: ShippingQuoteSelectorProps) {
   const {
     data: quotes,
@@ -73,6 +75,42 @@ export default function ShippingQuoteSelector({
   }
 
   if (isError) {
+    const isPreconditionFailed =
+      error?.data?.code === "PRECONDITION_FAILED" ||
+      error?.message?.includes("freight information");
+
+    if (isPreconditionFailed && onShippingUnavailable) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Shipping
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-center gap-4 py-6">
+              <AlertCircle className="h-8 w-8 text-muted-foreground" />
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium">
+                  Freight shipping is not set up for this listing
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  You can proceed without a shipping quote. The seller will arrange shipping after purchase and contact you with details.
+                </p>
+              </div>
+              <Button
+                onClick={onShippingUnavailable}
+                aria-label="Continue without shipping quote"
+              >
+                Continue Without Shipping Quote
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
     return (
       <Card>
         <CardHeader>

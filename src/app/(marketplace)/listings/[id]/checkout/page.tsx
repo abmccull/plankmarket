@@ -50,6 +50,7 @@ export default function CheckoutPage() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [selectedQuote, setSelectedQuote] = useState<SelectedShippingQuote | null>(null);
+  const [shippingSkipped, setShippingSkipped] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<SavedAddressOption>("new");
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
@@ -149,9 +150,9 @@ export default function CheckoutPage() {
     }
   };
 
-  // Handle "Continue to Payment" — create order with shipping quote
+  // Handle "Continue to Payment" — create order with shipping quote (or without if skipped)
   const handleContinueToPayment = async () => {
-    if (!selectedQuote) {
+    if (!selectedQuote && !shippingSkipped) {
       toast.error("Please select a shipping option to continue.");
       return;
     }
@@ -159,15 +160,17 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
     try {
       const formData = getValues();
-      // Create the order with shipping fields
+      // Create the order — include shipping fields only if a quote was selected
       const order = await createOrder.mutateAsync({
         ...formData,
-        selectedQuoteId: String(selectedQuote.quoteId),
-        selectedCarrier: selectedQuote.carrierName,
-        carrierRate: selectedQuote.carrierRate,
-        shippingPrice: selectedQuote.shippingPrice,
-        estimatedTransitDays: selectedQuote.transitDays,
-        quoteExpiresAt: selectedQuote.quoteExpiresAt,
+        ...(selectedQuote && {
+          selectedQuoteId: String(selectedQuote.quoteId),
+          selectedCarrier: selectedQuote.carrierName,
+          carrierRate: selectedQuote.carrierRate,
+          shippingPrice: selectedQuote.shippingPrice,
+          estimatedTransitDays: selectedQuote.transitDays,
+          quoteExpiresAt: selectedQuote.quoteExpiresAt,
+        }),
       });
       setOrderId(order.id);
 
@@ -483,22 +486,43 @@ export default function CheckoutPage() {
                 quantitySqFt={quantitySqFt}
                 selectedQuote={selectedQuote}
                 onSelectQuote={setSelectedQuote}
+                onShippingUnavailable={() => {
+                  setShippingSkipped(true);
+                  setSelectedQuote(null);
+                }}
               />
 
-              <Button
-                type="button"
-                className="w-full"
-                size="lg"
-                disabled={!selectedQuote || isSubmitting}
-                onClick={handleContinueToPayment}
-              >
-                {isSubmitting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <ShieldCheck className="mr-2 h-4 w-4" />
-                )}
-                Continue to Payment
-              </Button>
+              {shippingSkipped ? (
+                <Button
+                  type="button"
+                  className="w-full"
+                  size="lg"
+                  disabled={isSubmitting}
+                  onClick={handleContinueToPayment}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                  )}
+                  Continue to Payment
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="w-full"
+                  size="lg"
+                  disabled={!selectedQuote || isSubmitting}
+                  onClick={handleContinueToPayment}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                  )}
+                  Continue to Payment
+                </Button>
+              )}
             </>
           )}
 
