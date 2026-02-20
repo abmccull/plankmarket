@@ -167,7 +167,12 @@ export default function NewBuyerRequestPage() {
   const [form, setForm] = useState<FormState>(defaultForm);
   const [specsOpen, setSpecsOpen] = useState(false);
 
-  const createMutation = trpc.buyerRequest.create.useMutation();
+  const utils = trpc.useUtils();
+  const createMutation = trpc.buyerRequest.create.useMutation({
+    onSuccess: () => {
+      utils.buyerRequest.getMyRequests.invalidate();
+    },
+  });
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
