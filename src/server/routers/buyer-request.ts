@@ -5,6 +5,7 @@ import {
 } from "../trpc";
 import {
   createBuyerRequestSchema,
+  updateBuyerRequestSchema,
   createResponseSchema,
   buyerRequestFilterSchema,
 } from "@/lib/validators/buyer-request";
@@ -237,6 +238,92 @@ export const buyerRequestRouter = createTRPCRouter({
         .returning();
 
       return updated;
+    }),
+
+  /**
+   * Update a buyer request (notes + urgency).
+   * Only allowed on open/matched requests.
+   */
+  update: buyerProcedure
+    .input(updateBuyerRequestSchema)
+    .mutation(async ({ ctx, input }) => {
+      const request = await ctx.db.query.buyerRequests.findFirst({
+        where: eq(buyerRequests.id, input.id),
+      });
+
+      if (!request) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Request not found",
+        });
+      }
+
+      if (request.buyerId !== ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only edit your own requests",
+        });
+      }
+
+      if (request.status !== "open" && request.status !== "matched") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot edit a closed or expired request",
+        });
+      }
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if (input.notes !== undefined) updates.notes = input.notes;
+      if (input.urgency !== undefined) updates.urgency = input.urgency;
+
+      const [updated] = await ctx.db
+        .update(buyerRequests)
+        .set(updates)
+        .where(eq(buyerRequests.id, input.id))
+        .returning();
+
+      return updated;
+    }),
+
+  /**
+   * Delete a buyer request and its associated responses.
+   */
+  delete: buyerProcedure
+    .input(z.object({ requestId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const request = await ctx.db.query.buyerRequests.findFirst({
+        where: eq(buyerRequests.id, input.requestId),
+      });
+
+      if (!request) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Request not found",
+        });
+      }
+
+      if (request.buyerId !== ctx.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You can only delete your own requests",
+        });
+      }
+
+      // Unlink media, delete responses, then delete request
+      await ctx.db
+        .update(media)
+        .set({ buyerRequestId: null })
+        .where(eq(media.buyerRequestId, input.requestId));
+
+      await ctx.db
+        .delete(buyerRequestResponses)
+        .where(eq(buyerRequestResponses.requestId, input.requestId));
+
+      await ctx.db
+        .delete(buyerRequests)
+        .where(eq(buyerRequests.id, input.requestId));
+
+      return { success: true };
     }),
 
   /**

@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import {
   Card,
@@ -13,6 +14,34 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -24,6 +53,9 @@ import {
   MapPin,
   Clock,
   ImageIcon,
+  Pencil,
+  XOctagon,
+  Trash2,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -174,8 +206,13 @@ export default function BuyerRequestDetailPage({
   params: Promise<{ requestId: string }>;
 }) {
   const { requestId } = use(params);
+  const router = useRouter();
   const [actingResponseId, setActingResponseId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editNotes, setEditNotes] = useState("");
+  const [editUrgency, setEditUrgency] = useState("flexible");
 
+  const utils = trpc.useUtils();
   const {
     data: req,
     isLoading,
@@ -187,6 +224,34 @@ export default function BuyerRequestDetailPage({
 
   const acceptMutation = trpc.buyerRequest.acceptResponse.useMutation();
   const declineMutation = trpc.buyerRequest.declineResponse.useMutation();
+
+  const closeMutation = trpc.buyerRequest.close.useMutation({
+    onSuccess: () => {
+      toast.success("Request closed");
+      refetch();
+      utils.buyerRequest.getMyRequests.invalidate();
+    },
+    onError: () => toast.error("Failed to close request"),
+  });
+
+  const deleteMutation = trpc.buyerRequest.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Request deleted");
+      utils.buyerRequest.getMyRequests.invalidate();
+      router.push("/buyer/requests");
+    },
+    onError: () => toast.error("Failed to delete request"),
+  });
+
+  const updateMutation = trpc.buyerRequest.update.useMutation({
+    onSuccess: () => {
+      toast.success("Request updated");
+      setEditOpen(false);
+      refetch();
+      utils.buyerRequest.getMyRequests.invalidate();
+    },
+    onError: () => toast.error("Failed to update request"),
+  });
 
   const handleAccept = async (responseId: string) => {
     setActingResponseId(responseId);
@@ -214,6 +279,13 @@ export default function BuyerRequestDetailPage({
     }
   };
 
+  const openEditDialog = () => {
+    if (!req) return;
+    setEditNotes(req.notes ?? "");
+    setEditUrgency(req.urgency ?? "flexible");
+    setEditOpen(true);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -234,6 +306,7 @@ export default function BuyerRequestDetailPage({
   }
 
   const responses: ResponseItem[] = req.responses ?? [];
+  const isEditable = req.status === "open" || req.status === "matched";
 
   // Access specs from the nested specs object
   const specs = req.specs as
@@ -270,6 +343,162 @@ export default function BuyerRequestDetailPage({
           {req.status}
         </Badge>
       </div>
+
+      {/* Action buttons */}
+      {isEditable && (
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={openEditDialog}>
+            <Pencil className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+            Edit
+          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <XOctagon className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+                Close Request
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Close this request?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Sellers will no longer be able to respond. You can still view responses you&apos;ve already received.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => closeMutation.mutate({ requestId })}
+                  disabled={closeMutation.isPending}
+                >
+                  {closeMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  Close Request
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this request?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete the request and all seller responses. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteMutation.mutate({ requestId })}
+                  disabled={deleteMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleteMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
+
+      {/* Delete for closed/expired requests too */}
+      {!isEditable && (
+        <div className="flex items-center gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this request?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete the request and all seller responses. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteMutation.mutate({ requestId })}
+                  disabled={deleteMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deleteMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Request</DialogTitle>
+            <DialogDescription>
+              Update the urgency or notes on your request.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="edit-urgency">Urgency</Label>
+              <Select value={editUrgency} onValueChange={setEditUrgency}>
+                <SelectTrigger id="edit-urgency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asap">ASAP</SelectItem>
+                  <SelectItem value="2_weeks">2 Weeks</SelectItem>
+                  <SelectItem value="4_weeks">4 Weeks</SelectItem>
+                  <SelectItem value="flexible">Flexible</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea
+                id="edit-notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Additional notes for sellers..."
+                rows={4}
+                maxLength={1000}
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {editNotes.length}/1000
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                updateMutation.mutate({
+                  id: requestId,
+                  urgency: editUrgency as "asap" | "2_weeks" | "4_weeks" | "flexible",
+                  notes: editNotes || undefined,
+                })
+              }
+              disabled={updateMutation.isPending}
+            >
+              {updateMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Request Details */}
       <Card>
