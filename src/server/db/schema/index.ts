@@ -110,6 +110,9 @@ export type {
   NewListingDraftAi,
 } from "./listing-drafts-ai";
 
+export { shippingAddresses } from "./shipping-addresses";
+export type { ShippingAddress, NewShippingAddress } from "./shipping-addresses";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -132,6 +135,7 @@ import { userPreferences } from "./user-preferences";
 import { buyerRequests, buyerRequestResponses } from "./buyer-requests";
 import { sellerBuyerTags, sellerBuyerNotes, followups } from "./crm";
 import { listingDraftsAi } from "./listing-drafts-ai";
+import { shippingAddresses } from "./shipping-addresses";
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   listings: many(listings),
@@ -165,6 +169,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   sellerBuyerNotes: many(sellerBuyerNotes, { relationName: "sellerNotes" }),
   sellerFollowups: many(followups, { relationName: "sellerFollowups" }),
   listingDrafts: many(listingDraftsAi),
+  shippingAddresses: many(shippingAddresses),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -476,5 +481,12 @@ export const listingDraftsAiRelations = relations(listingDraftsAi, ({ one }) => 
   appliedToListing: one(listings, {
     fields: [listingDraftsAi.appliedToListingId],
     references: [listings.id],
+  }),
+}));
+
+export const shippingAddressesRelations = relations(shippingAddresses, ({ one }) => ({
+  user: one(users, {
+    fields: [shippingAddresses.userId],
+    references: [users.id],
   }),
 }));

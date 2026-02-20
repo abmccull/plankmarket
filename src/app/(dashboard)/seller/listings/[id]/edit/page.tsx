@@ -708,16 +708,16 @@ export default function EditListingPage() {
             <Separator className="my-4" />
 
             <div className="space-y-2">
-              <Label htmlFor="buyNowPrice">Buy Now Price ($, optional)</Label>
+              <Label htmlFor="buyNowPrice">Buy Now Price per Sq Ft ($, optional)</Label>
               <Input
                 id="buyNowPrice"
                 type="number"
                 step="0.01"
-                placeholder="6000.00"
+                placeholder="4.25"
                 {...register("buyNowPrice", { valueAsNumber: true })}
               />
               <p className="text-xs text-muted-foreground">
-                Set a fixed price for immediate purchase of the entire lot
+                Buy now price per square foot. Leave blank to disable instant purchase.
               </p>
             </div>
 

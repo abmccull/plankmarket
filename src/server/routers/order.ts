@@ -8,7 +8,7 @@ import {
   createOrderSchema,
   updateOrderStatusSchema,
 } from "@/lib/validators/order";
-import { orders, listings } from "../db/schema";
+import { orders, listings, shippingAddresses } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -59,11 +59,15 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
-        // Validate quantity
-        if (listing.moq && input.quantitySqFt < listing.moq) {
+        // Validate quantity — convert MOQ to sq ft if specified in pallets
+        const moqSqFt = listing.moqUnit === "pallets" && listing.moq
+          ? listing.moq * (listing.sqFtPerBox ?? 20) * (listing.boxesPerPallet ?? 30)
+          : (listing.moq ?? 0);
+
+        if (moqSqFt > 0 && input.quantitySqFt < moqSqFt) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `Minimum order quantity is ${listing.moq} sq ft`,
+            message: `Minimum order quantity is ${moqSqFt} sq ft`,
           });
         }
 
@@ -72,6 +76,18 @@ export const orderRouter = createTRPCRouter({
             code: "BAD_REQUEST",
             message: `Maximum available quantity is ${listing.totalSqFt} sq ft`,
           });
+        }
+
+        // Validate box-size multiples
+        if (listing.sqFtPerBox && listing.sqFtPerBox > 0) {
+          const remainder = input.quantitySqFt % listing.sqFtPerBox;
+          // Allow small floating-point tolerance
+          if (remainder > 0.01 && (listing.sqFtPerBox - remainder) > 0.01) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Quantity must be a multiple of ${listing.sqFtPerBox} sq ft (box size)`,
+            });
+          }
         }
 
         // Prevent self-purchase
@@ -131,11 +147,8 @@ export const orderRouter = createTRPCRouter({
             : undefined;
         }
 
-        // Calculate pricing using originalTotalSqFt for stable buyNowPrice calculation
-        const originalSqFt = listing.originalTotalSqFt ?? listing.totalSqFt;
-        const pricePerSqFt = listing.buyNowPrice
-          ? listing.buyNowPrice / originalSqFt
-          : listing.askPricePerSqFt;
+        // buyNowPrice is already stored as per-sq-ft
+        const pricePerSqFt = listing.buyNowPrice ?? listing.askPricePerSqFt;
         const subtotal =
           Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
         const buyerFee = calculateBuyerFee(subtotal);
@@ -203,6 +216,34 @@ export const orderRouter = createTRPCRouter({
 
         return newOrder;
       });
+
+      // Auto-save shipping address if it doesn't exist (fire-and-forget)
+      (async () => {
+        try {
+          const existing = await ctx.db.query.shippingAddresses.findFirst({
+            where: and(
+              eq(shippingAddresses.userId, ctx.user.id),
+              eq(shippingAddresses.address, input.shippingAddress),
+              eq(shippingAddresses.zip, input.shippingZip)
+            ),
+          });
+          if (!existing) {
+            await ctx.db.insert(shippingAddresses).values({
+              userId: ctx.user.id,
+              label: `${input.shippingCity}, ${input.shippingState}`,
+              name: input.shippingName,
+              address: input.shippingAddress,
+              city: input.shippingCity,
+              state: input.shippingState,
+              zip: input.shippingZip,
+              phone: input.shippingPhone ?? null,
+              isDefault: false,
+            });
+          }
+        } catch (err) {
+          console.error("Failed to auto-save shipping address:", err);
+        }
+      })();
 
       // Send order confirmation email (fire-and-forget, outside transaction)
       sendOrderConfirmationEmail({

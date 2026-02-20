@@ -33,6 +33,7 @@ import Image from "next/image";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 type CheckoutStep = "address" | "shipping" | "payment";
+type SavedAddressOption = "new" | string; // "new" or address id
 
 const STEPS: { key: CheckoutStep; label: string }[] = [
   { key: "address", label: "Address" },
@@ -49,6 +50,7 @@ export default function CheckoutPage() {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [selectedQuote, setSelectedQuote] = useState<SelectedShippingQuote | null>(null);
+  const [selectedAddressId, setSelectedAddressId] = useState<SavedAddressOption>("new");
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
     id: listingId,
@@ -71,6 +73,7 @@ export default function CheckoutPage() {
     reset,
     trigger,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<CreateOrderInput>({
     resolver: zodResolver(createOrderSchema),
@@ -86,6 +89,47 @@ export default function CheckoutPage() {
       reset({ listingId, quantitySqFt: listing.totalSqFt });
     }
   }, [listing, listingId, reset]);
+
+  // Fetch saved addresses
+  const { data: savedAddresses } = trpc.shippingAddress.list.useQuery();
+
+  // Pre-select default address when addresses load
+  useEffect(() => {
+    if (savedAddresses && savedAddresses.length > 0) {
+      const defaultAddr = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0];
+      if (defaultAddr) {
+        setSelectedAddressId(defaultAddr.id);
+        setValue("shippingName", defaultAddr.name);
+        setValue("shippingAddress", defaultAddr.address);
+        setValue("shippingCity", defaultAddr.city);
+        setValue("shippingState", defaultAddr.state);
+        setValue("shippingZip", defaultAddr.zip);
+        if (defaultAddr.phone) setValue("shippingPhone", defaultAddr.phone);
+      }
+    }
+  }, [savedAddresses, setValue]);
+
+  const handleAddressSelect = (addressId: SavedAddressOption) => {
+    setSelectedAddressId(addressId);
+    if (addressId === "new") {
+      setValue("shippingName", "");
+      setValue("shippingAddress", "");
+      setValue("shippingCity", "");
+      setValue("shippingState", "");
+      setValue("shippingZip", "");
+      setValue("shippingPhone", "");
+      return;
+    }
+    const addr = savedAddresses?.find((a) => a.id === addressId);
+    if (addr) {
+      setValue("shippingName", addr.name);
+      setValue("shippingAddress", addr.address);
+      setValue("shippingCity", addr.city);
+      setValue("shippingState", addr.state);
+      setValue("shippingZip", addr.zip);
+      if (addr.phone) setValue("shippingPhone", addr.phone);
+    }
+  };
 
   const quantitySqFt = watch("quantitySqFt") || listing?.totalSqFt || 0;
   const shippingZip = watch("shippingZip") || "";
@@ -164,10 +208,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const originalSqFt = listing.originalTotalSqFt ?? listing.totalSqFt;
-  const pricePerSqFt = listing.buyNowPrice
-    ? listing.buyNowPrice / originalSqFt
-    : listing.askPricePerSqFt;
+  const pricePerSqFt = listing.buyNowPrice ?? listing.askPricePerSqFt;
   const subtotal = Math.round(quantitySqFt * pricePerSqFt * 100) / 100;
   const buyerFee = calculateBuyerFee(subtotal);
   const shippingCost = selectedQuote?.shippingPrice ?? 0;
@@ -253,16 +294,33 @@ export default function CheckoutPage() {
                       const moqDisplay = moqUnit === "pallets" && listing.moq
                         ? `${listing.moq} pallet${listing.moq !== 1 ? "s" : ""} (~${formatSqFt(moqSqFt)})`
                         : listing.moq ? formatSqFt(listing.moq) : null;
+                      const boxSize = listing.sqFtPerBox;
+                      const boxCount = boxSize && quantitySqFt > 0
+                        ? Math.round(quantitySqFt / boxSize)
+                        : null;
                       return (
                         <>
                           <Input
                             id="quantitySqFt"
                             type="number"
-                            step="0.01"
+                            step={boxSize || "0.01"}
                             min={moqSqFt}
                             max={listing.totalSqFt}
                             defaultValue={listing.totalSqFt}
                             {...register("quantitySqFt", { valueAsNumber: true })}
+                            onBlur={(e) => {
+                              if (boxSize && boxSize > 0) {
+                                const raw = parseFloat(e.target.value);
+                                if (!isNaN(raw) && raw > 0) {
+                                  const snapped = Math.ceil(raw / boxSize) * boxSize;
+                                  const clamped = Math.min(
+                                    Math.max(snapped, moqSqFt),
+                                    listing.totalSqFt
+                                  );
+                                  setValue("quantitySqFt", clamped);
+                                }
+                              }
+                            }}
                             aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : undefined}
                             aria-invalid={!!errors.quantitySqFt}
                           />
@@ -274,6 +332,9 @@ export default function CheckoutPage() {
                           <p className="text-xs text-muted-foreground">
                             Available: {formatSqFt(listing.totalSqFt)}
                             {moqDisplay && ` | Min order: ${moqDisplay}`}
+                            {boxSize && boxCount !== null && (
+                              <> | Sold in boxes of {boxSize} sq ft. {boxCount} box{boxCount !== 1 ? "es" : ""} ({formatSqFt(quantitySqFt)})</>
+                            )}
                           </p>
                         </>
                       );
@@ -290,6 +351,24 @@ export default function CheckoutPage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {savedAddresses && savedAddresses.length > 0 && (
+                    <div className="space-y-2">
+                      <Label htmlFor="savedAddress">Saved Addresses</Label>
+                      <select
+                        id="savedAddress"
+                        value={selectedAddressId}
+                        onChange={(e) => handleAddressSelect(e.target.value as SavedAddressOption)}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {savedAddresses.map((addr) => (
+                          <option key={addr.id} value={addr.id}>
+                            {addr.label} — {addr.name}, {addr.city}, {addr.state} {addr.zip}
+                          </option>
+                        ))}
+                        <option value="new">Enter new address</option>
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="shippingName">Full Name / Business</Label>
                     <Input

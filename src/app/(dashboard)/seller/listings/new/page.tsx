@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,6 +35,7 @@ import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PhotoUpload } from "@/components/listings/photo-upload";
 import { WIDTH_OPTIONS, THICKNESS_OPTIONS, getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
+import { getFreightDefaults, FREIGHT_CLASS_OPTIONS } from "@/lib/constants/freight-defaults";
 import { OnboardingTip } from "@/components/ui/onboarding-tip";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -150,6 +151,32 @@ export default function CreateListingPage() {
   });
 
   const watchedValues = watch();
+
+  // Auto-populate NMFC code and freight class when material type changes
+  const prevMaterialTypeRef = useRef(watchedValues.materialType);
+  useEffect(() => {
+    const prev = prevMaterialTypeRef.current;
+    const curr = watchedValues.materialType;
+    if (curr === prev) return;
+
+    const prevDefaults = getFreightDefaults(prev);
+    const currDefaults = getFreightDefaults(curr);
+    prevMaterialTypeRef.current = curr;
+
+    // Only auto-fill if current values are empty or match the previous material type's defaults
+    const currentNmfc = watchedValues.nmfcCode;
+    const currentFreight = watchedValues.freightClass;
+
+    const nmfcIsDefault = !currentNmfc || currentNmfc === prevDefaults?.nmfcCode;
+    const freightIsDefault = !currentFreight || currentFreight === prevDefaults?.freightClass;
+
+    if (nmfcIsDefault) {
+      setValue("nmfcCode", currDefaults?.nmfcCode ?? "");
+    }
+    if (freightIsDefault) {
+      setValue("freightClass", currDefaults?.freightClass ?? "");
+    }
+  }, [watchedValues.materialType, watchedValues.nmfcCode, watchedValues.freightClass, setValue]);
 
   const handleNext = async () => {
     updateFormData(watchedValues);
@@ -624,6 +651,41 @@ export default function CreateListingPage() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nmfcCode">NMFC Code</Label>
+                  <Input
+                    id="nmfcCode"
+                    placeholder="e.g., 37860"
+                    {...register("nmfcCode")}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Auto-filled from material type. Override if needed.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Freight Class</Label>
+                  <Select
+                    value={watchedValues.freightClass || ""}
+                    onValueChange={(v) => setValue("freightClass", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select freight class" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FREIGHT_CLASS_OPTIONS.map((fc) => (
+                        <SelectItem key={fc} value={fc}>
+                          {fc}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Auto-filled from material type. Override if needed.
+                  </p>
+                </div>
+              </div>
+
               <Separator className="my-4" />
 
               <div className="space-y-2">
@@ -752,17 +814,17 @@ export default function CreateListingPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="buyNowPrice">
-                  Buy Now Price ($, optional)
+                  Buy Now Price per Sq Ft ($, optional)
                 </Label>
                 <Input
                   id="buyNowPrice"
                   type="number"
                   step="0.01"
-                  placeholder="6000.00"
+                  placeholder="4.25"
                   {...register("buyNowPrice", { valueAsNumber: true })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Set a fixed price for immediate purchase of the entire lot
+                  Buy now price per square foot. Leave blank to disable instant purchase.
                 </p>
               </div>
 

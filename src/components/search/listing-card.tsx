@@ -8,6 +8,7 @@ import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import {
   formatCurrency,
   formatSqFt,
+  formatPricePerSqFt,
 } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { MapPin, Eye, Heart, Package } from "lucide-react";
@@ -121,7 +122,7 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
           <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
             {listing.buyNowPrice && (
               <Badge className="text-xs bg-secondary text-secondary-foreground">
-                Buy Now
+                Buy Now {formatPricePerSqFt(listing.buyNowPrice)}
               </Badge>
             )}
             {statusBadge && (

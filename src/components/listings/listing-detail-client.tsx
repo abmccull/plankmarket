@@ -285,7 +285,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     onClick={handleBuyNowClick}
                   >
                     <Button variant="secondary" className="w-full tabular-nums" size="lg">
-                      Buy Now - {formatCurrency(listing.buyNowPrice)}
+                      Buy Now - {formatPricePerSqFt(listing.buyNowPrice)}
                     </Button>
                   </Link>
                 ) : !listing.allowOffers ? (
