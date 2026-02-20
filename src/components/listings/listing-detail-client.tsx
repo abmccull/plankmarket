@@ -72,6 +72,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   const [showPaymentNotReadyDialog, setShowPaymentNotReadyDialog] = useState(false);
   const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
   const [isContactingLoading, setIsContactingLoading] = useState(false);
+  const [viewingAsBuyer, setViewingAsBuyer] = useState(false);
 
   const { data: sellerReputation } = trpc.review.getUserReputation.useQuery(
     { userId: listing.sellerId },
@@ -171,7 +172,8 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   };
 
   // Check if current user is the seller
-  const isOwnListing = user && listing?.sellerId === user.id;
+  const isOwner = user && listing?.sellerId === user.id;
+  const isOwnListing = isOwner && !viewingAsBuyer;
 
   const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
   const buyerFee = calculateBuyerFee(lotValue);
@@ -260,7 +262,12 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     Edit Listing
                   </Button>
                 </Link>
-                <Button variant="outline" className="w-full" size="lg" disabled>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  size="lg"
+                  onClick={() => setViewingAsBuyer(true)}
+                >
                   View as Buyer
                 </Button>
               </div>
@@ -333,6 +340,17 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     )}
                   </Button>
                 </div>
+
+                {viewingAsBuyer && (
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    size="sm"
+                    onClick={() => setViewingAsBuyer(false)}
+                  >
+                    Back to Seller View
+                  </Button>
+                )}
               </div>
             )}
 

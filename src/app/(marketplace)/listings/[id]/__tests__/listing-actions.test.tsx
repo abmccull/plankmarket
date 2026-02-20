@@ -345,14 +345,14 @@ describe.skip("ListingDetailPage - Contact Seller & Make Offer Actions", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("shows View as Buyer button (disabled)", () => {
+    it("shows View as Buyer button (enabled)", () => {
       render(<ListingDetailPage />);
 
       const viewAsButton = screen.getByRole("button", {
         name: /View as Buyer/i,
       });
       expect(viewAsButton).toBeInTheDocument();
-      expect(viewAsButton).toBeDisabled();
+      expect(viewAsButton).toBeEnabled();
     });
   });
 
