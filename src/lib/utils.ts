@@ -68,6 +68,10 @@ export function calculateSellerFee(price: number): number {
   return Math.round(price * 0.02 * 100) / 100; // 2% seller fee
 }
 
+export function calculateStripeFee(totalCharge: number): number {
+  return Math.round((totalCharge * 0.029 + 0.30) * 100) / 100; // Stripe 2.9% + $0.30
+}
+
 export function calculateTotalWithFees(price: number): number {
   return price + calculateBuyerFee(price);
 }

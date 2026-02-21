@@ -44,7 +44,8 @@ export const orders = pgTable(
     buyerFee: money("buyer_fee").notNull(), // 3%
     sellerFee: money("seller_fee").notNull(), // 2%
     totalPrice: money("total_price").notNull(), // subtotal + buyerFee
-    sellerPayout: money("seller_payout").notNull(), // subtotal - sellerFee
+    stripeProcessingFee: money("stripe_processing_fee").default(0).notNull(), // estimated Stripe 2.9% + $0.30, deducted from seller
+    sellerPayout: money("seller_payout").notNull(), // subtotal - sellerFee - stripeProcessingFee
 
     // Payment
     stripePaymentIntentId: varchar("stripe_payment_intent_id", {

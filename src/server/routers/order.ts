@@ -12,7 +12,7 @@ import { orders, listings, shippingAddresses } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { calculateBuyerFee, calculateSellerFee } from "@/lib/utils";
+import { calculateBuyerFee, calculateSellerFee, calculateStripeFee } from "@/lib/utils";
 import { nanoid } from "nanoid";
 import { sendOrderConfirmationEmail } from "@/lib/email/send";
 import { inngest } from "@/lib/inngest/client";
@@ -155,7 +155,8 @@ export const orderRouter = createTRPCRouter({
         const sellerFee = calculateSellerFee(subtotal);
         const shippingPrice = verifiedShippingPrice; // Use verified value
         const totalPrice = Math.round((subtotal + buyerFee + shippingPrice) * 100) / 100;
-        const sellerPayout = Math.round((subtotal - sellerFee) * 100) / 100;
+        const stripeProcessingFee = calculateStripeFee(totalPrice);
+        const sellerPayout = Math.round((subtotal - sellerFee - stripeProcessingFee) * 100) / 100;
 
         // Create the order within the transaction
         const [newOrder] = await tx
@@ -170,6 +171,7 @@ export const orderRouter = createTRPCRouter({
             subtotal,
             buyerFee,
             sellerFee,
+            stripeProcessingFee,
             totalPrice,
             sellerPayout,
             shippingName: input.shippingName,
