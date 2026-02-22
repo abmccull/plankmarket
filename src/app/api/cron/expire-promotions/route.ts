@@ -22,12 +22,21 @@ export async function GET(req: NextRequest) {
   const now = new Date();
 
   // Find expired but still marked active
-  const stalePromotions = await db.query.listingPromotions.findMany({
-    where: and(
-      eq(listingPromotions.isActive, true),
-      sql`${listingPromotions.expiresAt} < ${now}`
-    ),
-  });
+  let stalePromotions;
+  try {
+    stalePromotions = await db.query.listingPromotions.findMany({
+      where: and(
+        eq(listingPromotions.isActive, true),
+        sql`${listingPromotions.expiresAt} < ${now}`
+      ),
+    });
+  } catch (err) {
+    console.error("Failed to query stale promotions:", err);
+    return NextResponse.json(
+      { error: "Database query failed", details: String(err) },
+      { status: 500 }
+    );
+  }
 
   if (stalePromotions.length === 0) {
     return NextResponse.json({ expired: 0, refunded: 0 });
