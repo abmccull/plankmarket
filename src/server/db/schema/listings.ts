@@ -126,7 +126,8 @@ export const listings = pgTable(
     palletLength: real("pallet_length"), // inches
     palletWidth: real("pallet_width"), // inches
     palletHeight: real("pallet_height"), // inches
-    freightClass: varchar("freight_class", { length: 10 }), // auto-calculated via Priority1
+    nmfcCode: varchar("nmfc_code", { length: 20 }),
+    freightClass: varchar("freight_class", { length: 10 }),
     locationCity: varchar("location_city", { length: 100 }),
     locationState: varchar("location_state", { length: 2 }),
     locationZip: varchar("location_zip", { length: 10 }),

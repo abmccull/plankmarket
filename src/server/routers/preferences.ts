@@ -11,7 +11,6 @@ const BUYER_CORE_FIELDS: Array<keyof typeof userPreferences.$inferSelect> = [
   "preferredZip",
   "preferredRadiusMiles",
   "preferredMaterialTypes",
-  "preferredUseCase",
   "priceMaxPerSqFt",
   "preferredShippingMode",
   "urgency",

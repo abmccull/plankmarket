@@ -50,7 +50,10 @@ export const searchRouter = createTRPCRouter({
       z.object({
         id: z.string().uuid(),
         name: z.string().min(1).max(255).optional(),
+        filters: listingFilterSchema.optional(),
         alertEnabled: z.boolean().optional(),
+        alertFrequency: z.enum(["instant", "daily", "weekly"]).optional(),
+        alertChannels: z.array(z.enum(["in_app", "email"])).min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -67,8 +70,14 @@ export const searchRouter = createTRPCRouter({
 
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
       if (input.name !== undefined) updateData.name = input.name;
+      if (input.filters !== undefined)
+        updateData.filters = input.filters as SearchFilters;
       if (input.alertEnabled !== undefined)
         updateData.alertEnabled = input.alertEnabled;
+      if (input.alertFrequency !== undefined)
+        updateData.alertFrequency = input.alertFrequency;
+      if (input.alertChannels !== undefined)
+        updateData.alertChannels = input.alertChannels;
 
       const [updated] = await ctx.db
         .update(savedSearches)

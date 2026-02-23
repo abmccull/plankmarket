@@ -29,6 +29,8 @@ export interface RateQuoteItem {
   isHazardous: boolean;
   isUsed: boolean;
   isMachinery: boolean;
+  nmfcItemCode?: string | null;
+  nmfcSubCode?: string | null;
 }
 
 export interface RatesRequest {

@@ -129,6 +129,7 @@ export const shipmentDispatch = inngest.createFunction(
               isStackable: false,
               isHazardous: false,
               isUsed: false,
+              ...(listing.nmfcCode ? { nmfcItemCode: listing.nmfcCode } : {}),
             },
           ],
           pickupWindow: {

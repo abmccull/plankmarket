@@ -20,6 +20,14 @@ export const savedSearches = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     filters: jsonb("filters").$type<SearchFilters>().notNull(),
     alertEnabled: boolean("alert_enabled").default(true).notNull(),
+    alertFrequency: varchar("alert_frequency", { length: 20 })
+      .default("instant")
+      .notNull()
+      .$type<"instant" | "daily" | "weekly">(),
+    alertChannels: jsonb("alert_channels")
+      .$type<("in_app" | "email")[]>()
+      .default(["email"])
+      .notNull(),
     lastAlertAt: timestamp("last_alert_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

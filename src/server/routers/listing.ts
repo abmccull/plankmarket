@@ -13,6 +13,7 @@ import zipcodes from "zipcodes";
 import { priority1 } from "@/server/services/priority1";
 import { redis } from "@/lib/redis/client";
 import { slugify } from "@/lib/utils";
+import { getFreightDefaults } from "@/lib/constants/freight-defaults";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
@@ -62,8 +63,8 @@ export const listingRouter = createTRPCRouter({
           .where(inArray(media.id, mediaIds));
       }
 
-      // Auto-calculate freight class from Priority1 (non-fatal)
-      if (listingData.palletWeight && listingData.palletLength && listingData.palletWidth && listingData.palletHeight) {
+      // Only call Priority1 for freight class if seller didn't provide one
+      if (!listingData.freightClass && listingData.palletWeight && listingData.palletLength && listingData.palletWidth && listingData.palletHeight) {
         priority1.getSuggestedClass({
           totalWeight: listingData.palletWeight,
           length: listingData.palletLength,
@@ -105,10 +106,17 @@ export const listingRouter = createTRPCRouter({
             }
           }
 
+          // Apply freight defaults from material type if not explicitly provided
+          const freightDefaults = getFreightDefaults(row.materialType);
+          const nmfcCode = row.nmfcCode ?? freightDefaults?.nmfcCode;
+          const freightClass = row.freightClass ?? freightDefaults?.freightClass;
+
           const [listing] = await tx
             .insert(listings)
             .values({
               ...row,
+              nmfcCode,
+              freightClass,
               sellerId: ctx.user.id,
               status: "draft",
               originalTotalSqFt: row.totalSqFt,
@@ -132,9 +140,10 @@ export const listingRouter = createTRPCRouter({
         return results;
       });
 
-      // Fire-and-forget freight class calculations
+      // Fire-and-forget freight class calculations (only for rows without a freight class)
       for (const row of input.rows) {
-        if (row.palletWeight && row.palletLength && row.palletWidth && row.palletHeight) {
+        const rowFreightClass = row.freightClass ?? getFreightDefaults(row.materialType)?.freightClass;
+        if (!rowFreightClass && row.palletWeight && row.palletLength && row.palletWidth && row.palletHeight) {
           const listing = createdListings.find((l) => l.title === row.title);
           if (listing) {
             priority1.getSuggestedClass({
@@ -250,10 +259,10 @@ export const listingRouter = createTRPCRouter({
         .where(eq(listings.id, input.id))
         .returning();
 
-      // Auto-calculate freight class from Priority1 (non-fatal)
-      // If pallet dimensions are being updated, recalculate freight class
-      if (updateData.palletWeight || updateData.palletLength || updateData.palletWidth || updateData.palletHeight) {
-        // Get current values for any fields not being updated
+      // Only call Priority1 for freight class if seller didn't provide one in this update
+      // and the listing doesn't already have a seller-provided freight class
+      const hasFreightClass = updateData.freightClass || (updated?.freightClass && !updateData.palletWeight && !updateData.palletLength && !updateData.palletWidth && !updateData.palletHeight);
+      if (!hasFreightClass && (updateData.palletWeight || updateData.palletLength || updateData.palletWidth || updateData.palletHeight)) {
         const currentValues = {
           palletWeight: updateData.palletWeight ?? existing.palletWeight,
           palletLength: updateData.palletLength ?? existing.palletLength,
@@ -261,7 +270,6 @@ export const listingRouter = createTRPCRouter({
           palletHeight: updateData.palletHeight ?? existing.palletHeight,
         };
 
-        // Only recalculate if all dimensions are present
         if (currentValues.palletWeight && currentValues.palletLength && currentValues.palletWidth && currentValues.palletHeight) {
           priority1.getSuggestedClass({
             totalWeight: currentValues.palletWeight,

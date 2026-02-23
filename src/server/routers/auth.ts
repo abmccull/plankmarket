@@ -189,7 +189,7 @@ export const authRouter = createTRPCRouter({
     const prefs = await ctx.db.query.userPreferences.findFirst({
       where: eq(userPreferences.userId, user.id),
     });
-    const preferencesSet = !!prefs?.profileComplete;
+    const preferencesSet = !!prefs;
 
     if (role === "seller") {
       // Seller-specific checks
