@@ -2,7 +2,7 @@ import { env } from "@/env";
 
 // Base configuration
 const PRIORITY1_BASE_URL = "https://api.priority1.com";
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 30000;
 
 // ============================================================================
 // Request Types

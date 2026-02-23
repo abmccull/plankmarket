@@ -133,10 +133,11 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      // Apply 15% margin and map to ShippingQuote[]
-      const quotes: ShippingQuote[] = ratesResponse.rateQuotes.map((quote) => {
+      // Apply 25% margin and build internal quotes with carrierRate
+      const SHIPPING_MARGIN = 1.25;
+      const allQuotes = ratesResponse.rateQuotes.map((quote) => {
         const carrierRate = quote.rateQuoteDetail.total;
-        const shippingPrice = Math.round(carrierRate * 1.15 * 100) / 100;
+        const shippingPrice = Math.round(carrierRate * SHIPPING_MARGIN * 100) / 100;
 
         return {
           quoteId: quote.id,
@@ -150,14 +151,32 @@ export const shippingRouter = createTRPCRouter({
         };
       });
 
-      // Sort by shippingPrice ascending
-      quotes.sort((a, b) => a.shippingPrice - b.shippingPrice);
+      // Select top 3: cheapest, fastest, and best value middle option
+      const byPrice = [...allQuotes].sort((a, b) => a.shippingPrice - b.shippingPrice);
+      const bySpeed = [...allQuotes].sort((a, b) => a.transitDays - b.transitDays || a.shippingPrice - b.shippingPrice);
 
-      // Cache each quote in Redis with 30-minute TTL
-      // This enables server-side verification during order creation
+      const selectedMap = new Map<number, typeof allQuotes[0]>();
+
+      // 1. Cheapest option
+      if (byPrice[0]) selectedMap.set(byPrice[0].quoteId, byPrice[0]);
+
+      // 2. Fastest option (if different from cheapest)
+      if (bySpeed[0]) selectedMap.set(bySpeed[0].quoteId, bySpeed[0]);
+
+      // 3. Fill remaining slot(s) with next best by price that isn't already selected
+      for (const q of byPrice) {
+        if (selectedMap.size >= 3) break;
+        if (!selectedMap.has(q.quoteId)) selectedMap.set(q.quoteId, q);
+      }
+
+      const topQuotes = Array.from(selectedMap.values())
+        .sort((a, b) => a.shippingPrice - b.shippingPrice);
+
+      // Cache ALL quotes in Redis (not just top 3) for server-side verification
+      // This enables order creation to verify any selected quote
       try {
         await Promise.all(
-          quotes.map((quote) =>
+          allQuotes.map((quote) =>
             redis.set(
               `shipping-quote:${quote.quoteId}`,
               JSON.stringify({
@@ -179,6 +198,8 @@ export const shippingRouter = createTRPCRouter({
         console.error("Failed to cache shipping quotes in Redis:", error);
       }
 
+      // Return top 3 quotes WITHOUT carrierRate (internal cost stays server-side)
+      const quotes: ShippingQuote[] = topQuotes.map(({ carrierRate: _, ...q }) => q);
       return quotes;
     }),
 

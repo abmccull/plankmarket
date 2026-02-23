@@ -14,7 +14,6 @@ export interface SelectedShippingQuote {
   carrierName: string;
   carrierScac: string;
   shippingPrice: number;
-  carrierRate: number;
   transitDays: number;
   estimatedDelivery: string;
   quoteExpiresAt: string;

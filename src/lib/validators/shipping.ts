@@ -16,8 +16,7 @@ export interface ShippingQuote {
   quoteId: number; // Priority1 rateQuote.id
   carrierName: string;
   carrierScac: string;
-  shippingPrice: number; // carrier rate + 15% margin (what buyer pays)
-  carrierRate: number; // Priority1's raw rate
+  shippingPrice: number; // what buyer pays (carrier rate + margin)
   transitDays: number;
   estimatedDelivery: string; // ISO date string
   quoteExpiresAt: string; // ISO date string

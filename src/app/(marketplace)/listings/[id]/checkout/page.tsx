@@ -164,7 +164,6 @@ export default function CheckoutPage() {
         ...formData,
         selectedQuoteId: String(selectedQuote.quoteId),
         selectedCarrier: selectedQuote.carrierName,
-        carrierRate: selectedQuote.carrierRate,
         shippingPrice: selectedQuote.shippingPrice,
         estimatedTransitDays: selectedQuote.transitDays,
         quoteExpiresAt: selectedQuote.quoteExpiresAt,
