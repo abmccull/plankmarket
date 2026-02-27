@@ -188,7 +188,8 @@ const enforceSeller = t.middleware(({ ctx, next }) => {
   if (ctx.user.role !== "admin" && ctx.user.verificationStatus !== "verified") {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "Your account is pending verification",
+      message:
+        "Seller verification required. Complete verification at /seller/verification before creating listings.",
     });
   }
   return next({
@@ -246,10 +247,35 @@ const enforceBuyer = t.middleware(({ ctx, next }) => {
       message: "Only buyers can perform this action",
     });
   }
+  return next({
+    ctx: {
+      authUser: ctx.authUser,
+      user: ctx.user,
+    },
+  });
+});
+
+export const buyerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceBuyer);
+
+// Buyer-only + verified (for transactional checkout/payment operations)
+const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {
+  if (!ctx.authUser || !ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in",
+    });
+  }
+  if (ctx.user.role !== "buyer" && ctx.user.role !== "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only buyers can perform this action",
+    });
+  }
   if (ctx.user.role !== "admin" && ctx.user.verificationStatus !== "verified") {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "Your account is pending verification",
+      message:
+        "Buyer verification required before checkout. Complete verification at /buyer/settings.",
     });
   }
   return next({
@@ -260,7 +286,10 @@ const enforceBuyer = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const buyerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceBuyer);
+export const verifiedBuyerProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceRateLimit)
+  .use(enforceVerifiedBuyer);
 
 // Admin-only middleware
 const enforceAdmin = t.middleware(({ ctx, next }) => {
@@ -336,9 +365,8 @@ const enforceContentPolicy = t.middleware(async ({ ctx, next }) => {
   return next();
 });
 
-// Messaging procedure — verified + content policy enforcement
+// Messaging procedure — authenticated + content policy enforcement
 export const messagingProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceRateLimit)
-  .use(enforceVerified)
   .use(enforceContentPolicy);

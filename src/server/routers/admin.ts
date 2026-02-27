@@ -7,6 +7,7 @@ import { priority1 } from "@/server/services/priority1";
 import { inngest } from "@/lib/inngest/client";
 import { sendVerificationApprovedEmail, sendVerificationRejectedEmail, sendRefundEmail } from "@/lib/email/send";
 import { processOrderRefund } from "@/server/services/refund";
+import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 import type { TrackingEvent } from "@/server/db/schema";
 
 /**
@@ -470,6 +471,8 @@ export const adminRouter = createTRPCRouter({
         totalGmv: sql<number>`coalesce(sum(subtotal), 0)`,
         totalBuyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
         totalSellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+        totalSellerStripeFees: sql<number>`coalesce(sum(seller_stripe_fee), 0)`,
+        totalPlatformStripeFees: sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
         platformRevenue: sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
         totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
         avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
@@ -495,6 +498,8 @@ export const adminRouter = createTRPCRouter({
         gmv: sql<number>`coalesce(sum(subtotal), 0)`,
         buyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
         sellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+        sellerStripeFees: sql<number>`coalesce(sum(seller_stripe_fee), 0)`,
+        platformStripeFees: sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
       })
       .from(orders)
       .where(
@@ -615,6 +620,9 @@ export const adminRouter = createTRPCRouter({
           subtotal: true,
           buyerFee: true,
           sellerFee: true,
+          stripeProcessingFee: true,
+          sellerStripeFee: true,
+          platformStripeFee: true,
           totalPrice: true,
           sellerPayout: true,
           status: true,
@@ -887,6 +895,12 @@ export const adminRouter = createTRPCRouter({
         .update(orders)
         .set(updateData)
         .where(eq(orders.id, input.orderId));
+
+      await releaseReservedInventory({
+        db: ctx.db,
+        orderId: input.orderId,
+        reason: "admin_force_cancelled_before_delivery",
+      });
 
       // Notify both buyer and seller
       await ctx.db.insert(notifications).values([

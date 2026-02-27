@@ -14,6 +14,7 @@ export const getShippingQuotesSchema = z.object({
 
 export interface ShippingQuote {
   quoteId: number; // Priority1 rateQuote.id
+  quoteToken: string; // opaque server-issued token bound to checkout context
   carrierName: string;
   carrierScac: string;
   shippingPrice: number; // what buyer pays (carrier rate + margin)

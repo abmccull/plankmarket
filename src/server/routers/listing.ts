@@ -2,7 +2,6 @@ import {
   createTRPCRouter,
   publicProcedure,
   sellerProcedure,
-  sellerOrPendingProcedure,
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema, csvListingRowSchema } from "@/lib/validators/listing";
 import { listings, media, notifications } from "../db/schema";
@@ -17,7 +16,7 @@ import { getFreightDefaults } from "@/lib/constants/freight-defaults";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
-  create: sellerOrPendingProcedure
+  create: sellerProcedure
     .input(listingFormSchema)
     .mutation(async ({ ctx, input }) => {
       const { mediaIds, ...listingData } = input;
@@ -40,7 +39,7 @@ export const listingRouter = createTRPCRouter({
         .values({
           ...listingData,
           sellerId: ctx.user.id,
-          status: ctx.user.verificationStatus === "verified" || ctx.user.role === "admin" ? "active" : "draft",
+          status: "active",
           originalTotalSqFt: listingData.totalSqFt,
           locationLat,
           locationLng,
@@ -85,7 +84,7 @@ export const listingRouter = createTRPCRouter({
     }),
 
   // Bulk create listings from CSV data
-  bulkCreate: sellerOrPendingProcedure
+  bulkCreate: sellerProcedure
     .input(z.object({ rows: z.array(csvListingRowSchema).min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const batchId = crypto.randomUUID();
@@ -350,6 +349,16 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
+      const canViewNonActiveListing =
+        !!ctx.user &&
+        (ctx.user.role === "admin" || ctx.user.id === listing.sellerId);
+      if (listing.status !== "active" && !canViewNonActiveListing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
       // Increment view count with Redis deduplication (fire-and-forget, non-fatal)
       (async () => {
         try {
@@ -405,6 +414,16 @@ export const listingRouter = createTRPCRouter({
       });
 
       if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      const canViewNonActiveListing =
+        !!ctx.user &&
+        (ctx.user.role === "admin" || ctx.user.id === listing.sellerId);
+      if (listing.status !== "active" && !canViewNonActiveListing) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Listing not found",

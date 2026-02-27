@@ -3,6 +3,7 @@ import {
   protectedProcedure,
   buyerProcedure,
   sellerProcedure,
+  verifiedBuyerProcedure,
 } from "../trpc";
 import {
   createOrderSchema,
@@ -12,12 +13,13 @@ import { orders, listings, shippingAddresses } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { calculateBuyerFee, calculateSellerFee, calculateStripeFee } from "@/lib/utils";
+import { calculateOrderFees } from "@/lib/fees";
 import { nanoid } from "nanoid";
 import { sendOrderConfirmationEmail } from "@/lib/email/send";
 import { inngest } from "@/lib/inngest/client";
 import { redis } from "@/lib/redis/client";
 import { maskUserForOrder } from "@/lib/contact-masking";
+import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
@@ -34,9 +36,29 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   refunded: [],
 };
 
+const cachedQuoteSchema = z.object({
+  quoteId: z.number().int().optional(),
+  quoteToken: z.string().optional(),
+  carrierRate: z.number(),
+  shippingPrice: z.number(),
+  carrierName: z.string(),
+  carrierScac: z.string().optional(),
+  transitDays: z.number().int().optional(),
+  estimatedDelivery: z.string().optional(),
+  quoteExpiresAt: z.string().optional(),
+  listingId: z.string().uuid(),
+  buyerId: z.string().uuid().optional(),
+  quantitySqFt: z.number().positive().optional(),
+  destinationZip: z.string().optional(),
+});
+
+function normalizeZip(zip: string): string {
+  return zip.trim().slice(0, 5);
+}
+
 export const orderRouter = createTRPCRouter({
   // Create a new order (Buy Now) — wrapped in a transaction with row locking
-  create: buyerProcedure
+  create: verifiedBuyerProcedure
     .input(createOrderSchema)
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.transaction(async (tx) => {
@@ -105,12 +127,12 @@ export const orderRouter = createTRPCRouter({
         let verifiedShippingMargin = 0;
         let verifiedSelectedCarrier = input.selectedCarrier;
         let verifiedEstimatedTransitDays = input.estimatedTransitDays;
+        let verifiedQuoteId: string | undefined;
         let quoteExpiresAt: Date | undefined;
 
-        if (input.selectedQuoteId) {
-          // Fetch cached quote from Redis
+        if (input.selectedQuoteToken) {
           const cachedQuote = await redis.get(
-            `shipping-quote:${input.selectedQuoteId}`
+            `shipping-quote-token:${input.selectedQuoteToken}`,
           );
 
           if (!cachedQuote) {
@@ -121,13 +143,20 @@ export const orderRouter = createTRPCRouter({
             });
           }
 
-          // Parse the cached quote
-          const quote =
+          const rawQuote =
             typeof cachedQuote === "string"
               ? JSON.parse(cachedQuote)
               : cachedQuote;
+          const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
+          if (!parsedQuote.success) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Shipping quote is invalid. Please request shipping options again.",
+            });
+          }
 
-          // Verify the quote is for the correct listing
+          const quote = parsedQuote.data;
           if (quote.listingId !== input.listingId) {
             throw new TRPCError({
               code: "BAD_REQUEST",
@@ -135,7 +164,105 @@ export const orderRouter = createTRPCRouter({
             });
           }
 
-          // Use SERVER-SIDE values instead of client-provided values
+          if (quote.buyerId && quote.buyerId !== ctx.user.id) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Shipping quote does not belong to this buyer.",
+            });
+          }
+
+          if (
+            typeof quote.quantitySqFt === "number" &&
+            Math.abs(quote.quantitySqFt - input.quantitySqFt) > 0.01
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Shipping quote does not match the selected quantity.",
+            });
+          }
+
+          if (
+            quote.destinationZip &&
+            normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Shipping quote destination does not match the shipping ZIP.",
+            });
+          }
+
+          // Consume token immediately to prevent replay.
+          await redis.del(`shipping-quote-token:${input.selectedQuoteToken}`);
+
+          verifiedQuoteId = quote.quoteId ? String(quote.quoteId) : undefined;
+          verifiedShippingPrice = quote.shippingPrice;
+          verifiedCarrierRate = quote.carrierRate;
+          verifiedShippingMargin =
+            Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
+          verifiedSelectedCarrier = quote.carrierName;
+          verifiedEstimatedTransitDays = quote.transitDays;
+          quoteExpiresAt = quote.quoteExpiresAt
+            ? new Date(quote.quoteExpiresAt)
+            : undefined;
+        } else if (input.selectedQuoteId) {
+          // Deprecated fallback path for short-lived older clients.
+          const cachedQuote = await redis.get(`shipping-quote:${input.selectedQuoteId}`);
+          if (!cachedQuote) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Shipping quote has expired. Please select a new shipping option.",
+            });
+          }
+
+          const rawQuote =
+            typeof cachedQuote === "string"
+              ? JSON.parse(cachedQuote)
+              : cachedQuote;
+          const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
+          if (!parsedQuote.success) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Shipping quote is invalid. Please request shipping options again.",
+            });
+          }
+          const quote = parsedQuote.data;
+
+          if (quote.listingId !== input.listingId) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Shipping quote does not match the selected listing.",
+            });
+          }
+          if (quote.buyerId && quote.buyerId !== ctx.user.id) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Shipping quote does not belong to this buyer.",
+            });
+          }
+          if (
+            typeof quote.quantitySqFt === "number" &&
+            Math.abs(quote.quantitySqFt - input.quantitySqFt) > 0.01
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Shipping quote does not match the selected quantity.",
+            });
+          }
+          if (
+            quote.destinationZip &&
+            normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Shipping quote destination does not match the shipping ZIP.",
+            });
+          }
+
+          verifiedQuoteId = input.selectedQuoteId;
           verifiedShippingPrice = quote.shippingPrice;
           verifiedCarrierRate = quote.carrierRate;
           verifiedShippingMargin =
@@ -151,12 +278,8 @@ export const orderRouter = createTRPCRouter({
         const pricePerSqFt = listing.buyNowPrice ?? listing.askPricePerSqFt;
         const subtotal =
           Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
-        const buyerFee = calculateBuyerFee(subtotal);
-        const sellerFee = calculateSellerFee(subtotal);
         const shippingPrice = verifiedShippingPrice; // Use verified value
-        const totalPrice = Math.round((subtotal + buyerFee + shippingPrice) * 100) / 100;
-        const stripeProcessingFee = calculateStripeFee(totalPrice);
-        const sellerPayout = Math.round((subtotal - sellerFee - stripeProcessingFee) * 100) / 100;
+        const feeBreakdown = calculateOrderFees(subtotal, shippingPrice);
 
         // Create the order within the transaction
         const [newOrder] = await tx
@@ -169,11 +292,13 @@ export const orderRouter = createTRPCRouter({
             quantitySqFt: input.quantitySqFt,
             pricePerSqFt,
             subtotal,
-            buyerFee,
-            sellerFee,
-            stripeProcessingFee,
-            totalPrice,
-            sellerPayout,
+            buyerFee: feeBreakdown.buyerFee,
+            sellerFee: feeBreakdown.sellerFee,
+            stripeProcessingFee: feeBreakdown.totalStripeFee,
+            sellerStripeFee: feeBreakdown.sellerStripeFee,
+            platformStripeFee: feeBreakdown.platformStripeFee,
+            totalPrice: feeBreakdown.totalCharge,
+            sellerPayout: feeBreakdown.sellerPayout,
             shippingName: input.shippingName,
             shippingAddress: input.shippingAddress,
             shippingCity: input.shippingCity,
@@ -182,8 +307,8 @@ export const orderRouter = createTRPCRouter({
             shippingPhone: input.shippingPhone,
             // Priority1 shipping fields (if buyer selected a shipping quote)
             // Use VERIFIED values from Redis cache, not client input
-            ...(input.selectedQuoteId && {
-              selectedQuoteId: input.selectedQuoteId,
+            ...(verifiedQuoteId && {
+              selectedQuoteId: verifiedQuoteId,
               selectedCarrier: verifiedSelectedCarrier,
               carrierRate: verifiedCarrierRate,
               shippingPrice: verifiedShippingPrice,
@@ -548,11 +673,23 @@ export const orderRouter = createTRPCRouter({
           break;
       }
 
-      const [updated] = await ctx.db
-        .update(orders)
-        .set(updateData)
-        .where(eq(orders.id, input.orderId))
-        .returning();
+      const [updated] = await ctx.db.transaction(async (tx) => {
+        const [nextOrder] = await tx
+          .update(orders)
+          .set(updateData)
+          .where(eq(orders.id, input.orderId))
+          .returning();
+
+        if (input.status === "cancelled") {
+          await releaseReservedInventory({
+            db: tx,
+            orderId: input.orderId,
+            reason: "seller_cancelled_before_delivery",
+          });
+        }
+
+        return [nextOrder];
+      });
 
       // Fire Inngest event for escrow release on shipment pickup
       if (input.status === "shipped") {

@@ -4,6 +4,10 @@ import { env } from "@/env";
 const PRIORITY1_BASE_URL = "https://api.priority1.com";
 const REQUEST_TIMEOUT_MS = 30000;
 
+function isDryRun(): boolean {
+  return env.PRIORITY1_DRY_RUN === "true";
+}
+
 // ============================================================================
 // Request Types
 // ============================================================================
@@ -293,32 +297,148 @@ async function getRates(request: RatesRequest): Promise<RatesResponse> {
 }
 
 /**
- * Dispatch a shipment with a carrier
+ * Dispatch a shipment with a carrier.
+ * In dry-run mode, returns mock data instead of creating a real dispatch.
  */
 async function dispatch(request: DispatchRequest): Promise<DispatchResponse> {
+  if (isDryRun()) {
+    const mockId = 99000 + Math.floor(Math.random() * 1000);
+    const bolNumber = `DRY-RUN-BOL-${Math.floor(Math.random() * 100000)}`;
+    console.log(`[Priority1 DRY-RUN] dispatch() → mock shipment ${mockId}, BOL ${bolNumber}`);
+    return {
+      id: mockId,
+      shipmentIdentifiers: [
+        { type: "BILL_OF_LADING", value: bolNumber, primaryForType: true },
+        { type: "PRO_NUMBER", value: `DRY-${mockId}`, primaryForType: true },
+        { type: "SHIPMENT_ID", value: String(mockId), primaryForType: true },
+      ],
+      capacityProviderBolUrl: `https://dry-run.local/bol/${bolNumber}.pdf`,
+      capacityProviderPalletLabelUrl: `https://dry-run.local/label/${mockId}.pdf`,
+      capacityProviderPalletLabelExtendedUrl: null,
+      capacityProviderPalletLabelsUrl: null,
+      pickupNote: request.pickupNote ?? null,
+      estimatedDeliveryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+      infoMessages: [{ severity: "INFO", text: "DRY-RUN: No real shipment was created", source: "local" }],
+    };
+  }
   return priority1Fetch<DispatchResponse>("/v2/ltl/shipments/dispatch", request);
 }
 
 /**
- * Get shipment status by identifier (BOL, PRO number, or shipment ID)
+ * Get shipment status by identifier (BOL, PRO number, or shipment ID).
+ * In dry-run mode, simulates progression: dispatched → in_transit → delivered.
  */
 async function getStatus(request: StatusRequest): Promise<StatusResponse> {
+  if (isDryRun()) {
+    const now = Date.now();
+    // Simulate status based on current time — cycle every 10 minutes for easy testing
+    const minutesSinceEpoch = Math.floor(now / 60000);
+    const phase = minutesSinceEpoch % 10;
+
+    let status: string;
+    let statusReason: string;
+    const trackingStatuses: TrackingStatus[] = [];
+    const baseTime = new Date(now - 2 * 60 * 60 * 1000);
+
+    if (phase < 3) {
+      status = "Dispatched";
+      statusReason = "Shipment dispatched, awaiting carrier pickup";
+      trackingStatuses.push({
+        timeStamp: baseTime.toISOString(),
+        city: "Salt Lake City", state: "UT", postalCode: "84101",
+        status: "Dispatched", statusReason: "Shipment dispatched to carrier",
+      });
+    } else if (phase < 7) {
+      status = "InTransit";
+      statusReason = "Shipment in transit";
+      trackingStatuses.push(
+        {
+          timeStamp: baseTime.toISOString(),
+          city: "Salt Lake City", state: "UT", postalCode: "84101",
+          status: "Dispatched", statusReason: "Shipment dispatched to carrier",
+        },
+        {
+          timeStamp: new Date(baseTime.getTime() + 60 * 60 * 1000).toISOString(),
+          city: "Salt Lake City", state: "UT", postalCode: "84101",
+          status: "PickedUp", statusReason: "Picked up by carrier",
+        },
+        {
+          timeStamp: new Date(now - 30 * 60 * 1000).toISOString(),
+          city: "Denver", state: "CO", postalCode: "80202",
+          status: "InTransit", statusReason: "In transit to destination",
+        },
+      );
+    } else {
+      status = "Delivered";
+      statusReason = "Shipment delivered";
+      trackingStatuses.push(
+        {
+          timeStamp: baseTime.toISOString(),
+          city: "Salt Lake City", state: "UT", postalCode: "84101",
+          status: "Dispatched", statusReason: "Shipment dispatched to carrier",
+        },
+        {
+          timeStamp: new Date(baseTime.getTime() + 60 * 60 * 1000).toISOString(),
+          city: "Salt Lake City", state: "UT", postalCode: "84101",
+          status: "PickedUp", statusReason: "Picked up by carrier",
+        },
+        {
+          timeStamp: new Date(baseTime.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+          city: "Denver", state: "CO", postalCode: "80202",
+          status: "InTransit", statusReason: "In transit to destination",
+        },
+        {
+          timeStamp: new Date(now - 10 * 60 * 1000).toISOString(),
+          city: "Portland", state: "OR", postalCode: "97201",
+          status: "Delivered", statusReason: "Delivered to consignee",
+        },
+      );
+    }
+
+    console.log(`[Priority1 DRY-RUN] getStatus(${request.identifierValue}) → ${status}`);
+    return {
+      shipments: [{
+        id: parseInt(request.identifierValue) || 99000,
+        carrierCode: "DRY-CARRIER",
+        carrierName: "Dry Run Freight Co.",
+        status,
+        actualPickupDate: phase >= 3 ? baseTime.toISOString() : null,
+        actualDeliveryDate: phase >= 7 ? new Date(now - 10 * 60 * 1000).toISOString() : null,
+        shipmentIdentifiers: [
+          { type: request.identifierType, value: request.identifierValue, primaryForType: true },
+        ],
+        trackingStatuses,
+        totalCost: 0,
+      }],
+    };
+  }
   return priority1Fetch<StatusResponse>("/v2/ltl/shipments/status", request);
 }
 
 /**
- * Cancel a shipment by ID
+ * Cancel a shipment by ID.
+ * In dry-run mode, no-op.
  */
 async function cancel(request: CancelRequest): Promise<void> {
+  if (isDryRun()) {
+    console.log(`[Priority1 DRY-RUN] cancel(${request.id}) → no-op`);
+    return;
+  }
   await priority1Fetch<void>("/v2/ltl/shipments/cancel", request);
 }
 
 /**
- * Get shipment documents (BOL, delivery receipt)
+ * Get shipment documents (BOL, delivery receipt).
+ * In dry-run mode, returns a placeholder URL.
  */
 async function getDocuments(
   request: DocumentsRequest
 ): Promise<DocumentsResponse> {
+  if (isDryRun()) {
+    const id = request.bolNumber ?? request.proNumber ?? "unknown";
+    console.log(`[Priority1 DRY-RUN] getDocuments(${request.shipmentImageTypeId}, ${id}) → placeholder`);
+    return { imageUrl: `https://dry-run.local/documents/${request.shipmentImageTypeId}/${id}.pdf` };
+  }
   return priority1Fetch<DocumentsResponse>("/v2/ltl/shipments/images", request);
 }
 

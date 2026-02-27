@@ -1,5 +1,9 @@
 import { createTRPCRouter, publicProcedure, protectedProcedure, rateLimitedPublicProcedure } from "../trpc";
-import { registerSchema, updateProfileSchema } from "@/lib/validators/auth";
+import {
+  registerSchema,
+  submitVerificationSchema,
+  updateProfileSchema,
+} from "@/lib/validators/auth";
 import { users, listings, savedSearches, orders, userPreferences } from "../db/schema";
 import { eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -8,6 +12,99 @@ import { env } from "@/env";
 import zipcodes from "zipcodes";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { inngest } from "@/lib/inngest/client";
+import { validateVerificationDocUrl } from "@/server/services/verification-doc-url";
+
+function triggerVerificationWebhook(userId: string): void {
+  try {
+    const webhookSecret = process.env.VERIFICATION_WEBHOOK_SECRET;
+    if (!webhookSecret) return;
+
+    fetch(`${env.NEXT_PUBLIC_APP_URL}/api/webhooks/verify-business`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-webhook-secret": webhookSecret,
+      },
+      body: JSON.stringify({ userId }),
+    }).catch((err) => {
+      console.error("Failed to trigger AI verification webhook:", err);
+    });
+  } catch {
+    // Don't block user flow if webhook dispatch fails
+  }
+}
+
+type VerificationSubmission = z.infer<typeof submitVerificationSchema>;
+
+async function submitVerificationForUser(params: {
+  db: typeof import("@/server/db").db;
+  user: {
+    id: string;
+    role: string;
+    verificationStatus: string;
+  };
+  input: VerificationSubmission;
+}) {
+  const { db, user, input } = params;
+
+  if (user.role !== "buyer" && user.role !== "seller") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Only buyer and seller accounts can submit verification",
+    });
+  }
+
+  if (user.verificationStatus === "pending") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Your verification request is already under review",
+    });
+  }
+
+  const normalizedWebsite = input.businessWebsite?.trim() || null;
+  if (user.role === "seller" && !normalizedWebsite) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Business website is required for seller verification",
+    });
+  }
+
+  const urlValidation = validateVerificationDocUrl(input.verificationDocUrl);
+  if (!urlValidation.ok) {
+    console.warn("Rejected verification document URL at submission", {
+      userId: user.id,
+      role: user.role,
+      verificationDocUrl: input.verificationDocUrl,
+      reason: urlValidation.reason,
+    });
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: urlValidation.reason ?? "Invalid verification document URL",
+    });
+  }
+
+  const [updated] = await db
+    .update(users)
+    .set({
+      einTaxId: input.einTaxId,
+      businessWebsite: normalizedWebsite,
+      verificationDocUrl: input.verificationDocUrl,
+      businessAddress: input.businessAddress,
+      businessCity: input.businessCity,
+      businessState: input.businessState,
+      businessZip: input.businessZip,
+      verificationStatus: "pending",
+      verificationRequestedAt: new Date(),
+      verificationNotes: null,
+      verified: false,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, user.id))
+    .returning();
+
+  triggerVerificationWebhook(user.id);
+  return updated;
+}
 
 export const authRouter = createTRPCRouter({
   // Register a new user (creates DB record after Supabase auth signup)
@@ -67,17 +164,7 @@ export const authRouter = createTRPCRouter({
           zipCode: input.zipCode,
           lat,
           lng,
-          // Business verification fields
-          einTaxId: input.einTaxId,
-          businessWebsite: input.businessWebsite,
-          verificationDocUrl: input.verificationDocUrl,
-          businessAddress: input.businessAddress,
-          businessCity: input.businessCity,
-          businessState: input.businessState,
-          businessZip: input.businessZip,
-          // Set verification to pending
-          verificationStatus: "pending",
-          verificationRequestedAt: new Date(),
+          verificationStatus: "unverified",
           verified: false,
         })
         .returning();
@@ -103,25 +190,6 @@ export const authRouter = createTRPCRouter({
       }).catch((err) => {
         console.error("Failed to trigger onboarding drip:", err);
       });
-
-      // Trigger async AI verification via internal webhook (fire-and-forget)
-      try {
-        const webhookSecret = process.env.VERIFICATION_WEBHOOK_SECRET;
-        if (webhookSecret) {
-          fetch(`${env.NEXT_PUBLIC_APP_URL}/api/webhooks/verify-business`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-webhook-secret": webhookSecret,
-            },
-            body: JSON.stringify({ userId: newUser!.id }),
-          }).catch((err) => {
-            console.error("Failed to trigger AI verification webhook:", err);
-          });
-        }
-      } catch {
-        // Don't block registration if webhook fails
-      }
 
       return {
         user: newUser,
@@ -283,11 +351,20 @@ export const authRouter = createTRPCRouter({
       return user;
     }),
 
+  // Submit verification documents (account-first flow)
+  submitVerification: protectedProcedure
+    .input(submitVerificationSchema)
+    .mutation(async ({ ctx, input }) => {
+      return submitVerificationForUser({
+        db: ctx.db,
+        user: ctx.user,
+        input,
+      });
+    }),
+
   // Resubmit verification (for rejected users)
   resubmitVerification: protectedProcedure
-    .input(z.object({
-      verificationDocUrl: z.string().url().optional(),
-    }))
+    .input(submitVerificationSchema.partial())
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.verificationStatus !== "rejected") {
         throw new TRPCError({
@@ -296,36 +373,29 @@ export const authRouter = createTRPCRouter({
         });
       }
 
-      const [updated] = await ctx.db
-        .update(users)
-        .set({
-          verificationStatus: "pending",
-          verificationRequestedAt: new Date(),
-          ...(input.verificationDocUrl && { verificationDocUrl: input.verificationDocUrl }),
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, ctx.user.id))
-        .returning();
+      const mergedSubmission: VerificationSubmission = {
+        einTaxId: input.einTaxId ?? ctx.user.einTaxId ?? "",
+        businessWebsite: input.businessWebsite ?? ctx.user.businessWebsite ?? "",
+        verificationDocUrl:
+          input.verificationDocUrl ?? ctx.user.verificationDocUrl ?? "",
+        businessAddress: input.businessAddress ?? ctx.user.businessAddress ?? "",
+        businessCity: input.businessCity ?? ctx.user.businessCity ?? "",
+        businessState: input.businessState ?? ctx.user.businessState ?? "",
+        businessZip: input.businessZip ?? ctx.user.businessZip ?? "",
+      };
 
-      // Re-trigger AI verification webhook (fire-and-forget)
-      try {
-        const webhookSecret = process.env.VERIFICATION_WEBHOOK_SECRET;
-        if (webhookSecret) {
-          fetch(`${env.NEXT_PUBLIC_APP_URL}/api/webhooks/verify-business`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-webhook-secret": webhookSecret,
-            },
-            body: JSON.stringify({ userId: ctx.user.id }),
-          }).catch((err) => {
-            console.error("Failed to trigger AI verification webhook:", err);
-          });
-        }
-      } catch {
-        // Don't block resubmission if webhook fails
+      const parsed = submitVerificationSchema.safeParse(mergedSubmission);
+      if (!parsed.success) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: parsed.error.issues[0]?.message ?? "Invalid verification submission",
+        });
       }
 
-      return updated;
+      return submitVerificationForUser({
+        db: ctx.db,
+        user: ctx.user,
+        input: parsed.data,
+      });
     }),
 });

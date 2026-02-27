@@ -11,6 +11,7 @@ import { Loader2, Truck, AlertCircle } from "lucide-react";
 
 export interface SelectedShippingQuote {
   quoteId: number;
+  quoteToken: string;
   carrierName: string;
   carrierScac: string;
   shippingPrice: number;
@@ -174,7 +175,7 @@ export default function ShippingQuoteSelector({
 
             return (
               <button
-                key={quote.quoteId}
+                key={quote.quoteToken}
                 type="button"
                 onClick={() => onSelectQuote(quote)}
                 className={`w-full text-left rounded-lg border-2 p-4 transition-all hover:bg-accent hover:border-accent-foreground/20 ${

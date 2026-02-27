@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { validateVerificationDocUrl } from "@/server/services/verification-doc-url";
 
 interface VerificationResult {
   score: number; // 0-100 confidence
@@ -43,8 +44,21 @@ function sanitizeForPrompt(input: string): string {
 async function fetchImageAsBase64(
   url: string,
 ): Promise<{ base64: string; mediaType: string } | null> {
+  const validation = validateVerificationDocUrl(url);
+  if (!validation.ok || !validation.parsedUrl) {
+    console.warn("Blocked verification document URL", {
+      url,
+      reason: validation.reason,
+      source: "ai-verification",
+    });
+    return null;
+  }
+
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
   try {
-    const response = await fetch(url, {
+    const response = await fetch(validation.parsedUrl.toString(), {
+      redirect: "error",
       headers: {
         "User-Agent": "PlankMarket-VerificationBot/1.0",
       },
@@ -54,12 +68,41 @@ async function fetchImageAsBase64(
       return null;
     }
 
-    const contentType = response.headers.get("content-type");
+    const contentType = response.headers.get("content-type")?.toLowerCase();
     if (!contentType?.startsWith("image/")) {
       return null;
     }
 
-    const buffer = await response.arrayBuffer();
+    const contentLengthHeader = response.headers.get("content-length");
+    if (
+      contentLengthHeader &&
+      Number.parseInt(contentLengthHeader, 10) > MAX_IMAGE_BYTES
+    ) {
+      return null;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return null;
+    }
+
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_IMAGE_BYTES) {
+        return null;
+      }
+
+      chunks.push(Buffer.from(value));
+    }
+
+    const buffer = Buffer.concat(chunks, totalBytes);
     const base64 = Buffer.from(buffer).toString("base64");
 
     // Map content type to Anthropic's supported media types

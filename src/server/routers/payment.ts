@@ -3,6 +3,7 @@ import {
   publicProcedure,
   protectedProcedure,
   verifiedProcedure,
+  verifiedBuyerProcedure,
   sellerProcedure,
 } from "../trpc";
 import { orders, users, notifications } from "../db/schema";
@@ -33,65 +34,134 @@ export const paymentRouter = createTRPCRouter({
       return { ready: seller.stripeOnboardingComplete };
     }),
 
-  // Create a payment intent for an order
-  createPaymentIntent: verifiedProcedure
+  // Create (or reuse) a payment intent for an order
+  createPaymentIntent: verifiedBuyerProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const order = await ctx.db.query.orders.findFirst({
-        where: eq(orders.id, input.orderId),
-        with: {
-          seller: true,
-        },
+      return ctx.db.transaction(async (tx) => {
+        const orderRows = await tx
+          .select({
+            id: orders.id,
+            orderNumber: orders.orderNumber,
+            buyerId: orders.buyerId,
+            sellerId: orders.sellerId,
+            totalPrice: orders.totalPrice,
+            status: orders.status,
+            paymentStatus: orders.paymentStatus,
+            stripePaymentIntentId: orders.stripePaymentIntentId,
+            sellerStripeAccountId: users.stripeAccountId,
+          })
+          .from(orders)
+          .innerJoin(users, eq(users.id, orders.sellerId))
+          .where(eq(orders.id, input.orderId))
+          .for("update");
+
+        const order = orderRows[0];
+        if (!order) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Order not found",
+          });
+        }
+
+        if (order.buyerId !== ctx.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only pay for your own orders",
+          });
+        }
+
+        if (order.status !== "pending") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Order cannot be paid in "${order.status}" status`,
+          });
+        }
+
+        if (
+          order.paymentStatus === "succeeded" ||
+          order.paymentStatus === "refunded" ||
+          order.paymentStatus === "partially_refunded"
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This order has already been paid",
+          });
+        }
+
+        if (!order.sellerStripeAccountId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Seller has not completed payment setup",
+          });
+        }
+
+        const reusableStatuses = new Set([
+          "requires_payment_method",
+          "requires_confirmation",
+          "requires_action",
+          "processing",
+        ]);
+
+        if (order.stripePaymentIntentId) {
+          const existingIntent = await stripe.paymentIntents.retrieve(
+            order.stripePaymentIntentId,
+          );
+
+          if (existingIntent.status === "succeeded") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Payment has already been completed for this order",
+            });
+          }
+
+          if (reusableStatuses.has(existingIntent.status)) {
+            if (!existingIntent.client_secret) {
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Existing payment intent has no client secret",
+              });
+            }
+
+            return {
+              clientSecret: existingIntent.client_secret,
+              paymentIntentId: existingIntent.id,
+            };
+          }
+        }
+
+        // Create Stripe PaymentIntent — funds stay on platform for escrow.
+        // Seller payout is transferred separately after shipment pickup.
+        const paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount: Math.round(Number(order.totalPrice) * 100),
+            currency: "usd",
+            metadata: {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              buyerId: order.buyerId,
+              sellerId: order.sellerId,
+            },
+          },
+          {
+            idempotencyKey: `order-payment-intent:${order.id}`,
+          },
+        );
+
+        await tx
+          .update(orders)
+          .set({
+            stripePaymentIntentId: paymentIntent.id,
+            paymentStatus: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, order.id));
+
+        return {
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+        };
       });
-
-      if (!order) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Order not found",
-        });
-      }
-
-      if (order.buyerId !== ctx.user.id) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You can only pay for your own orders",
-        });
-      }
-
-      if (!order.seller.stripeAccountId) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Seller has not completed payment setup",
-        });
-      }
-
-      // Create Stripe PaymentIntent — funds stay on platform for escrow.
-      // Seller payout is transferred separately via escrow-auto-release after shipment pickup.
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(order.totalPrice * 100), // Convert to cents
-        currency: "usd",
-        metadata: {
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          buyerId: order.buyerId,
-          sellerId: order.sellerId,
-        },
-      });
-
-      // Save payment intent ID to order
-      await ctx.db
-        .update(orders)
-        .set({
-          stripePaymentIntentId: paymentIntent.id,
-          paymentStatus: "pending",
-          updatedAt: new Date(),
-        })
-        .where(eq(orders.id, input.orderId));
-
-      return {
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-      };
     }),
 
   // Get payment status for an order

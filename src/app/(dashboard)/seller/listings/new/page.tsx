@@ -219,15 +219,21 @@ export default function CreateListingPage() {
       const listing = await createMutation.mutateAsync(listingData);
       celebrateMilestone(
         "Listing Created!",
-        user?.verificationStatus === "verified"
-          ? "Your listing is now live on PlankMarket!"
-          : "Your draft has been saved. It will go live after verification."
+        "Your listing is now live on PlankMarket!"
       );
       reset();
       router.push(`/listings/${listing.id}`);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to create listing";
+      if (
+        typeof message === "string" &&
+        message.includes("/seller/verification")
+      ) {
+        toast.error("Verification is required before creating listings.");
+        router.push("/seller/verification");
+        return;
+      }
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -1120,13 +1126,15 @@ export default function CreateListingPage() {
 
         {/* Navigation */}
         <div className="mt-6">
-          {currentStep === 6 && user?.verificationStatus !== "verified" && user?.role !== "admin" && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900 px-4 py-3 mb-4">
-              <p className="text-sm text-blue-800 dark:text-blue-200">
-                Your listing will be saved as a draft and published automatically once your business is verified.
-              </p>
-            </div>
-          )}
+          {currentStep === 6 &&
+            user?.verificationStatus !== "verified" &&
+            user?.role !== "admin" && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 px-4 py-3 mb-4">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  Verification is required before creating listings. Complete verification to continue.
+                </p>
+              </div>
+            )}
           <div className="flex items-center justify-between">
             <Button
               type="button"
@@ -1144,13 +1152,18 @@ export default function CreateListingPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  (user?.verificationStatus !== "verified" &&
+                    user?.role !== "admin")
+                }
+              >
                 {isSubmitting && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                {user?.verificationStatus === "verified" || user?.role === "admin"
-                  ? "Publish Listing"
-                  : "Save as Draft"}
+                Publish Listing
               </Button>
             )}
           </div>

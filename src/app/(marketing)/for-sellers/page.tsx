@@ -31,16 +31,17 @@ import {
   Clock,
   Database,
   Percent,
+  Timer,
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Sell Surplus Flooring B2B — Liquidate Faster, Recover More | PlankMarket",
+  title: "Sell Surplus Flooring B2B — Move Closeouts Before the Margin Disappears | PlankMarket",
   description:
-    "PlankMarket is the dedicated B2B marketplace for flooring manufacturers, distributors, and wholesalers to move overstock, discontinued, and closeout inventory. 2% commission, no listing fees.",
+    "Your closeout flooring is losing value right now. PlankMarket connects manufacturers and distributors with verified retailers to liquidate surplus inventory fast. 2% seller fee. No listing costs.",
   openGraph: {
-    title: "Sell Surplus Flooring B2B | PlankMarket",
+    title: "Your Surplus Flooring Is Depreciating. Move It on PlankMarket.",
     description:
-      "Move overstock, discontinued, and closeout flooring inventory to verified buyers across all 50 states. 2% commission only on completed sales — no listing fees, no monthly costs.",
+      "The B2B marketplace built for flooring liquidation. Verified buyers across all 50 states. 2% commission only on completed sales. 3-5 day payouts.",
     type: "website",
   },
 };
@@ -50,141 +51,141 @@ export const revalidate = 3600;
 const PAIN_POINTS = [
   {
     icon: Warehouse,
-    title: "Warehouse space isn't free — and overstock fills it fast.",
+    title: "Warehouse space has a price tag. Your surplus is running up the tab.",
     description:
-      "You're paying per square foot to store inventory that isn't moving. A 5,000 sq ft lot of discontinued engineered oak sitting on pallets for six months isn't just lost revenue — it's active overhead. That rack space has a price tag, and it compounds every week the inventory stays.",
+      "A 5,000 sq ft lot of discontinued engineered oak sitting on pallets for six months is not an asset. It is active overhead. Rack space, insurance, climate control, property tax allocation — those costs compound every week the inventory stays. You are paying to store product that is not generating revenue.",
   },
   {
     icon: PackageX,
-    title: "Your sales channels weren't built for liquidation.",
+    title: "Your sales channels were built to sell active lines. Not liquidate closeouts.",
     description:
-      "Your wholesale accounts don't want last year's closeout SKUs. Your reps are focused on active product lines. And posting lots on general classifieds or calling around to liquidators means weeks of low-ball offers, no-shows, and time your team doesn't have. You need a channel built specifically for surplus flooring.",
+      "Your wholesale accounts do not want last year's discontinued SKUs. Your reps are focused on current product lines and commission targets. Posting lots on general classifieds brings weeks of low-ball offers, no-shows, and tire-kickers. You need a channel purpose-built for surplus flooring — not a workaround.",
   },
   {
     icon: TrendingDown,
-    title: "Capital tied up in inventory is capital you can't use.",
+    title: "$200K in overstock looks like an asset on paper. It is not working for you.",
     description:
-      "That $200,000 in overstock sitting in your warehouse looks like an asset on paper — but it's not working for you. Every month it doesn't move, depreciation and storage eat into your recovery. The longer it sits, the less you'll get for it.",
+      "Capital locked in surplus inventory is capital you cannot deploy. No new product buys. No warehouse improvements. No growth spending. And every month that inventory does not move, depreciation and carrying costs shrink your recovery. The math gets worse, not better.",
   },
   {
     icon: UserX,
-    title: "Unverified buyers waste everyone's time.",
+    title: "Unverified inquiries are the most expensive time sink in liquidation.",
     description:
-      "Posting on open marketplaces brings in hobbyists, flippers, and low-ball offers from people who aren't serious buyers. You field inquiries for weeks, share detailed photos and specs, and then the deal falls apart. You need access to verified flooring professionals with real purchasing budgets and the intent to close.",
+      "You field the inquiry. Share detailed specs and photos. Answer follow-up questions. Schedule a call. Then the buyer disappears, counters at 30 cents on the dollar, or turns out to be a hobbyist who wanted five boxes, not five pallets. Hours gone. No sale. You need buyers who have been vetted before they reach you.",
   },
 ] as const;
 
 const VALUE_PROPS = [
   {
     number: "01",
-    title: "Reach a network of verified flooring buyers across all 50 states.",
+    title: "A verified buyer network that is actively sourcing surplus flooring.",
     description:
-      "PlankMarket's buyer network consists exclusively of verified businesses — flooring contractors, retail stores, builders, and purchasing managers — who have registered specifically to source surplus inventory. They're not browsing casually. They have projects to fill and budgets to spend.",
+      "Every buyer on PlankMarket has completed business verification — EIN confirmation, document review, admin approval. These are flooring contractors, retail stores, builders, and purchasing managers who registered specifically to source closeout and overstock inventory. They are not browsing. They have projects to fill and budgets allocated.",
     detail:
-      "Buyers set up saved search alerts for specific products. When your lot matches their criteria, they're notified immediately — driving faster inquiries from buyers who already want what you're selling.",
+      "Buyers set up saved search alerts for specific materials, species, grades, and conditions. When your lot matches, they are notified immediately. Your inventory reaches the right buyer the day it goes live — not after weeks of outreach.",
   },
   {
     number: "02",
-    title: "List in minutes. Our AI does the heavy lifting.",
+    title: "List a lot in under five minutes. The AI handles the description.",
     description:
-      "PlankMarket's AI-assisted listing tool drafts your product description from the specs you enter — material type, dimensions, condition, lot size. Upload your photos, set your price, review the draft, and publish. No copywriting, no formatting, no hours of admin work per lot.",
+      "Enter your specs — material type, species, dimensions, grade, condition, lot size. Upload photos. Set your price. PlankMarket's AI drafts a complete listing description from your inputs. Review the draft, adjust if needed, and publish. That is it. No copywriting. No formatting. No admin bottleneck.",
     detail:
-      "AI-powered listing creation, up to 20 photos per listing, and 44 flooring-specific fields ensure your lots are presented with the detail buyers need to commit — which means faster, more confident offers.",
+      "44 flooring-specific data fields. Up to 20 photos per listing. CSV bulk upload for high-volume sellers managing large inventories. Your team lists faster, which means your inventory hits the market faster, which means the depreciation clock stops sooner.",
   },
   {
     number: "03",
-    title: "Get paid fast. No cash flow surprises.",
+    title: "Funds in your bank 3-5 days after carrier pickup. No invoices to chase.",
     description:
-      "Buyers pay through Stripe at checkout. Your funds are held securely until the carrier picks up the shipment — then payment is released to your Stripe Connect account automatically. No chasing invoices, no net-30 terms, no collections calls.",
+      "Buyers pay through Stripe at checkout. Funds are held in escrow until the carrier picks up the shipment. Once pickup is confirmed, payment releases automatically to your Stripe Connect account. No net-30 terms. No collections calls. No accounts receivable friction.",
     detail:
-      "Funds typically arrive in your bank within 3–5 business days after carrier pickup. Your seller dashboard shows real-time earnings, payout status, and full transaction history.",
+      "Your seller dashboard shows real-time earnings, payout status, and full transaction history. You see exactly when funds clear — no guesswork, no follow-up calls.",
   },
 ] as const;
 
 const STEPS = [
   {
     number: "1",
-    title: "Register and complete business verification.",
+    title: "Register and verify your business.",
     description:
-      "Create a seller account with your business name, EIN, and company details. Our team reviews applications within 1–3 business days. Verified status is displayed on your listings — it builds buyer trust and accelerates deals.",
+      "Create a seller account with your business name, EIN, and company details. Our team reviews applications within 1-3 business days. Verified status displays on every listing you publish — it builds buyer confidence and moves deals faster.",
   },
   {
     number: "2",
     title: "List your surplus inventory.",
     description:
-      "Use our step-by-step listing flow. Enter material specs, upload up to 20 photos, set your asking price, and choose whether to accept offers or Buy Now only. Our AI drafts your listing description — you review and publish.",
+      "Enter material specs, upload up to 20 photos, set your asking price. Choose whether to accept offers, Buy Now only, or both. The AI drafts your listing description — you review and publish. Five minutes per lot, not thirty.",
   },
   {
     number: "3",
-    title: "Negotiate and close.",
+    title: "Negotiate and close on-platform.",
     description:
-      "Buyers can purchase at your listed price or submit an offer. You accept, counter, or decline — all within the platform. Once a deal is agreed, the buyer pays via Stripe and your order appears in your seller dashboard.",
+      "Buyers purchase at your listed price or submit an offer. You accept, counter, or decline — all within PlankMarket. Once a deal is agreed, the buyer pays through Stripe and the order appears in your dashboard.",
   },
   {
     number: "4",
     title: "Ship it. Get paid.",
     description:
-      "Coordinate LTL freight through the platform's integrated carrier network. Once the carrier picks up the shipment, payment is automatically released. Funds arrive in your bank within 3–5 business days.",
+      "Coordinate freight through the platform. Once the carrier picks up the shipment, payment releases automatically. Funds arrive in your bank within 3-5 business days. The inventory is gone. The capital is back.",
   },
 ] as const;
 
 const FEATURES = [
   {
     icon: Zap,
-    title: "AI-Powered Listing Creation",
+    title: "AI-Assisted Listing Creation",
     description:
-      "Enter your specs and let the AI draft a complete, detailed listing description. Reduce listing time from 30 minutes to under 5. Publish faster, move inventory faster.",
+      "Enter your specs. The AI drafts a complete, detailed listing description. What used to take 30 minutes per lot now takes under five. Your inventory gets to market the same day it gets cleared for liquidation.",
   },
   {
     icon: Camera,
     title: "Up to 20 Photos Per Listing",
     description:
-      "Upload high-resolution photos showing material, finish, texture, packaging, and condition. Detailed visual documentation reduces buyer hesitation, drives higher offer rates, and reduces post-sale disputes.",
+      "Upload high-resolution photos showing material, finish, texture, packaging, and condition. Detailed visual documentation reduces buyer hesitation and drives higher offer rates. Fewer questions. Faster closes.",
   },
   {
     icon: Users,
     title: "Verified Buyer Network",
     description:
-      "Every buyer on PlankMarket has completed business verification. You're dealing with flooring professionals, contractors, retailers, and builders — not tire-kickers or flippers. Serious buyers close faster.",
+      "Every buyer has completed business verification — EIN, documentation, admin approval. You are dealing with flooring contractors, retailers, builders, and purchasing managers. Serious buyers with real budgets who close faster.",
   },
   {
     icon: MessageSquare,
-    title: "Built-In Messaging and Offer Negotiation",
+    title: "On-Platform Messaging and Negotiation",
     description:
-      "All communication happens on-platform. Buyers can ask questions via direct messaging or submit offers through the built-in negotiation tool. Identity masking protects contact information until an order is placed — keeping deals on the platform.",
+      "Buyers ask questions via direct messaging or submit offers through the built-in negotiation tool. Contact information stays masked until an order is placed. All communication in one place — no scattered email threads.",
   },
   {
     icon: CreditCard,
-    title: "Secure Stripe Payments with Escrow",
+    title: "Stripe Payments with Escrow Protection",
     description:
-      "Buyers pay via Stripe at checkout. Funds are held in escrow until carrier pickup is confirmed — then automatically released to your Stripe Connect account. No net terms, no payment chasing, no wire transfer friction.",
+      "Buyers pay via Stripe at checkout. Funds hold in escrow until carrier pickup is confirmed, then release automatically to your Stripe Connect account. No net terms. No wire transfer friction. No payment chasing.",
   },
   {
     icon: BarChart2,
     title: "Seller Dashboard and Analytics",
     description:
-      "Track active listings, pending orders, completed sales, and total revenue in one place. Monitor offer activity, respond to inquiries, and manage your inventory portfolio from a single dashboard.",
+      "Track active listings, pending orders, completed sales, and total revenue in one view. Monitor offer activity, respond to inquiries, and manage your inventory portfolio from a single dashboard.",
   },
 ] as const;
 
 const TESTIMONIALS = [
   {
     quote:
-      "We had 18,000 sq ft of discontinued engineered hickory taking up three rack bays for almost a year. Listed it on PlankMarket on a Tuesday — had four offers by Friday and it was sold and scheduled for pickup the following week. That's faster than anything our sales team had managed in months.",
+      "We had 18,000 sq ft of discontinued engineered hickory taking up three rack bays for almost a year. Listed it on PlankMarket on a Tuesday — had four offers by Friday and it was sold and scheduled for pickup the following week. That is faster than anything our sales team had managed in months.",
     name: "Kevin M.",
     role: "Inventory Manager",
     company: "Regional flooring distributor, Texas",
   },
   {
     quote:
-      "The AI listing tool is the part I wasn't expecting to care about — but it saves my team real time. We have closeouts cycling through constantly and listing each one used to be a full admin task. Now we upload photos, enter the specs, review the draft, and publish. It's genuinely quick.",
+      "The AI listing tool is the part I was not expecting to care about — but it saves my team real time. We have closeouts cycling through constantly and listing each one used to be a full admin task. Now we upload photos, enter the specs, review the draft, and publish. Five minutes, done.",
     name: "Sandra L.",
     role: "Operations Director",
     company: "Flooring manufacturer, Southeast US",
   },
   {
     quote:
-      "The verified buyer network is worth it on its own. I was spending hours responding to inquiries from people who weren't serious. Every buyer on PlankMarket has been through verification — they're actual businesses with actual projects. Conversations move to offers much faster.",
+      "The verified buyer network is worth it on its own. I was spending hours responding to inquiries from people who were not serious. Every buyer on PlankMarket has been through verification — they are actual businesses with actual projects. Conversations move to offers much faster.",
     name: "Tom H.",
     role: "Owner",
     company: "Flooring wholesale and distribution, Midwest",
@@ -195,26 +196,26 @@ const STATS = [
   {
     icon: Percent,
     value: "2%",
-    label: "Seller commission",
-    detail: "Only on completed sales. No listing fees.",
+    label: "Seller fee",
+    detail: "Only on completed sales. Zero listing costs.",
   },
   {
     icon: Clock,
-    value: "3–5 days",
-    label: "Typical payout timeline",
-    detail: "After carrier pickup",
+    value: "3-5 days",
+    label: "Payout timeline",
+    detail: "Funds in your bank after carrier pickup",
   },
   {
     icon: Database,
     value: "44",
-    label: "Data fields per listing",
-    detail: "Flooring-specific spec fields for buyer confidence",
+    label: "Flooring-specific data fields",
+    detail: "Buyers get the detail they need to commit",
   },
   {
     icon: Globe,
     value: "All 50",
-    label: "States covered",
-    detail: "Access to verified buyers coast to coast",
+    label: "US states covered",
+    detail: "Verified buyers coast to coast",
   },
 ] as const;
 
@@ -230,17 +231,17 @@ const ALTERNATIVES = [
   {
     label: "Traditional liquidators",
     detail:
-      "Typically pay 30–50 cents on the dollar for your inventory — a fraction of what you'd recover through direct sale.",
+      "Pay 30-50 cents on the dollar for your inventory. You are leaving recovery on the table to avoid the hassle of selling direct.",
   },
   {
     label: "Freight brokers and middlemen",
     detail:
-      "Add markup layers, provide no buyer network, and give you no visibility into the transaction.",
+      "Add markup layers, provide no buyer network, and give you zero visibility into the end transaction.",
   },
   {
     label: "Open classifieds or general marketplaces",
     detail:
-      "No flooring-specific tooling, no verified buyers, no freight integration, no payment protection.",
+      "No flooring-specific tooling, no verified buyers, no freight integration, no payment protection. You spend more time filtering than selling.",
   },
 ] as const;
 
@@ -248,27 +249,27 @@ const FAQS = [
   {
     question: "What types of inventory can I list?",
     answer:
-      "You can list any surplus, overstock, discontinued, or closeout flooring inventory across six material categories: hardwood, engineered wood, laminate, vinyl/LVP, bamboo, and tile. Supported conditions include new overstock, discontinued lines, closeouts, factory seconds, remnants, customer returns, and slightly damaged inventory — as long as condition is accurately described and documented.",
+      "Any surplus, overstock, discontinued, or closeout flooring inventory across six material categories: hardwood, engineered wood, laminate, vinyl/LVP, bamboo, and tile. Supported conditions include new overstock, discontinued lines, closeouts, factory seconds, remnants, customer returns, and slightly damaged inventory — as long as condition is accurately described and documented with photos.",
   },
   {
     question: "How does business verification work?",
     answer:
-      "When you register as a seller, you submit your business name, EIN, company details, and supporting documentation. Our team reviews your application — including AI-assisted document and website analysis — and typically completes verification within 1–3 business days. Verified status appears on your listings and increases buyer confidence.",
+      "When you register, you submit your business name, EIN, company details, and supporting documentation. Our team reviews your application — including AI-assisted document and website analysis — and typically completes verification within 1-3 business days. Verified status appears on your listings and increases buyer confidence.",
   },
   {
     question: "Can I set a minimum lot size or split lots?",
     answer:
-      "Yes. When creating a listing, you can specify whether the lot must be sold as a whole or if you're willing to split. You can also set a minimum order quantity. Buyers will see these terms on the listing before making an offer.",
+      "Yes. When creating a listing, you specify whether the lot must be sold as a whole or if you are willing to split. You can set a minimum order quantity. Buyers see these terms on the listing before making an offer.",
   },
   {
     question: "When do I get paid?",
     answer:
-      "Once the carrier picks up your shipment, payment is automatically released from escrow and transferred to your connected Stripe account. Funds are typically available in your bank within 3–5 business days of pickup. You can view real-time payout status in your seller dashboard.",
+      "Once the carrier picks up your shipment, payment releases automatically from escrow to your connected Stripe account. Funds are typically available in your bank within 3-5 business days of pickup. Your seller dashboard shows real-time payout status.",
   },
   {
     question: "What if a buyer disputes the order?",
     answer:
-      "Buyers have 48 hours after delivery to open a dispute, supported by photo evidence and delivery receipt notes. Our support team mediates the dispute. Freight damage must be noted on the Bill of Lading at time of delivery. If no dispute is filed within 5 business days of delivery, the transaction closes automatically and your funds are confirmed.",
+      "Buyers have 48 hours after delivery to open a dispute, supported by photo evidence and delivery receipt notes. Our support team mediates. Freight damage must be noted on the Bill of Lading at time of delivery. If no dispute is filed within 5 business days of delivery, the transaction closes automatically and funds are confirmed.",
   },
   {
     question: "Is there a limit to how many lots I can list?",
@@ -280,7 +281,7 @@ const FAQS = [
 export default function ForSellersPage() {
   return (
     <>
-      {/* ── Section 1: Hero ── */}
+      {/* ── Section 1: Hero — The Depreciation Clock ── */}
       <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20 md:py-32">
         {/* Wood grain texture overlay */}
         <div
@@ -314,11 +315,11 @@ export default function ForSellersPage() {
           <div className="mx-auto max-w-5xl">
             {/* Two-column layout: photo left, copy right */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-              {/* Hero image — stack of wooden planks */}
+              {/* Hero image */}
               <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg order-last lg:order-first">
                 <Image
                   src="https://images.unsplash.com/photo-1681752972950-6229ca099fbc?w=800&q=80&fit=crop"
-                  alt="Stacked wooden flooring planks ready for liquidation"
+                  alt="Stacked wooden flooring planks in warehouse ready for liquidation"
                   fill
                   className="object-cover"
                   priority
@@ -328,16 +329,16 @@ export default function ForSellersPage() {
 
               <div className="text-center lg:text-left">
                 <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-                  Liquidate Faster. Recover More.
+                  B2B Flooring Liquidation
                 </Badge>
                 <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
-                  Your Surplus Flooring Has a Buyer.{" "}
+                  Your Closeout Inventory Is{" "}
                   <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                    Find Them Here.
+                    Losing Value Right Now.
                   </span>
                 </h1>
                 <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto lg:mx-0">
-                  PlankMarket is the dedicated B2B marketplace where flooring manufacturers, distributors, and retailers move overstock, discontinued, and closeout inventory — directly to verified buyers who are actively looking for it.
+                  Every week surplus flooring sits in a warehouse, carrying costs eat margin and the product moves closer to obsolete. PlankMarket is the fastest path from excess inventory to verified buyer — before the recovery window closes.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                   <Link href="/register?role=seller">
@@ -345,7 +346,7 @@ export default function ForSellersPage() {
                       size="xl"
                       variant="gold"
                     >
-                      List Your First Lot Free
+                      List Your Surplus Inventory
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </Link>
@@ -360,15 +361,15 @@ export default function ForSellersPage() {
                 <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
                     <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Verified buyers only — no tire-kickers</span>
+                    <span>Verified buyers only</span>
                   </div>
                   <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
                     <CreditCard className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Stripe payments, funds held securely until pickup</span>
+                    <span>Stripe escrow — funds held until pickup</span>
                   </div>
                   <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
                     <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>2% commission, no listing fees, no monthly costs</span>
+                    <span>2% fee only on completed sales</span>
                   </div>
                 </div>
               </div>
@@ -377,14 +378,23 @@ export default function ForSellersPage() {
         </div>
       </section>
 
-      {/* ── Section 2: Problem Agitation ── */}
+      {/* ── Section 2: Problem Agitation — The Cost of Inaction ── */}
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
+          <div className="text-center mb-4">
+            <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
+              <Timer className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              The Depreciation Clock
+            </Badge>
+          </div>
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Every day that surplus sits,{" "}
-              <span className="text-primary">it&apos;s costing you.</span>
+            <h2 className="font-display text-3xl sm:text-4xl max-w-3xl mx-auto">
+              Every day that surplus sits in your warehouse,{" "}
+              <span className="text-primary">the recovery shrinks.</span>
             </h2>
+            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+              Carrying costs do not pause. Depreciation does not wait. The flooring market moves on. Here is what inaction actually costs.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto stagger-grid">
             {PAIN_POINTS.map((point) => (
@@ -399,18 +409,28 @@ export default function ForSellersPage() {
               </Card>
             ))}
           </div>
+
+          {/* Bridge to solution */}
+          <div className="max-w-2xl mx-auto mt-12 text-center">
+            <p className="text-muted-foreground text-lg leading-relaxed">
+              The longer surplus sits, the less you recover. The question is not <em>whether</em> to liquidate — it is <em>how fast</em> you can get it in front of the right buyers.
+            </p>
+          </div>
         </div>
       </section>
 
-      {/* ── Section 3: Solution ── */}
+      {/* ── Section 3: Solution — PlankMarket as the Fastest Path ── */}
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto text-center mb-16">
             <Badge variant="outline" className="mb-4 border-secondary text-secondary">
-              The Solution
+              The Fastest Path to Verified Buyer
             </Badge>
-            <p className="text-xl text-muted-foreground leading-relaxed">
-              PlankMarket was built specifically to solve the surplus flooring problem — a dedicated channel that connects your inventory to verified buyers who are ready to purchase, with the tools to make the process fast and friction-free.
+            <h2 className="font-display text-3xl sm:text-4xl">
+              PlankMarket was built to stop the depreciation clock.
+            </h2>
+            <p className="mt-4 text-xl text-muted-foreground leading-relaxed">
+              A dedicated liquidation channel that connects your surplus inventory to verified flooring buyers who are actively looking for it. No brokers. No middlemen. No wasted time.
             </p>
           </div>
 
@@ -418,15 +438,15 @@ export default function ForSellersPage() {
           <div className="relative max-w-4xl mx-auto mb-16 h-56 rounded-2xl overflow-hidden shadow-elevation-md">
             <Image
               src="https://images.unsplash.com/photo-1422246654994-34520d5a0340?w=1200&q=80&fit=crop"
-              alt="Brown wood planks stacked in a warehouse, representing surplus flooring inventory"
+              alt="Stacked wood planks in a warehouse representing surplus flooring inventory"
               fill
               className="object-cover"
               loading="lazy"
             />
             <div className="absolute inset-0 bg-gradient-to-r from-secondary/40 to-transparent" aria-hidden="true" />
             <div className="absolute inset-0 flex items-center px-10 relative z-10">
-              <p className="text-white font-display text-2xl max-w-xs drop-shadow-lg">
-                Turn warehouse space into working capital.
+              <p className="text-white font-display text-2xl max-w-sm drop-shadow-lg">
+                Turn warehouse dead weight into working capital. In days, not months.
               </p>
             </div>
           </div>
@@ -462,8 +482,11 @@ export default function ForSellersPage() {
               For Sellers
             </Badge>
             <h2 className="font-display text-3xl sm:text-4xl">
-              From listing to payout in four steps.
+              From surplus to sold in four steps.
             </h2>
+            <p className="mt-4 text-muted-foreground text-lg max-w-xl mx-auto">
+              No onboarding calls. No account managers. Register, list, sell, get paid.
+            </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto stagger-grid">
             {STEPS.map((step) => (
@@ -484,10 +507,13 @@ export default function ForSellersPage() {
           <div className="text-center mt-10">
             <Link href="/register?role=seller">
               <Button size="xl" variant="gold">
-                Get Started Free
+                Create Your Seller Account
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Free to register. No listing fees. No monthly costs.
+            </p>
           </div>
         </div>
       </section>
@@ -496,9 +522,12 @@ export default function ForSellersPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Every tool your team needs to move inventory efficiently.
+            <h2 className="font-display text-3xl sm:text-4xl max-w-2xl mx-auto">
+              Built for the way flooring professionals actually liquidate inventory.
             </h2>
+            <p className="mt-4 text-muted-foreground text-lg max-w-xl mx-auto">
+              Not a generic marketplace with flooring bolted on. Every feature was designed around how this industry moves surplus.
+            </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto stagger-grid">
             {FEATURES.map((feature) => (
@@ -516,12 +545,12 @@ export default function ForSellersPage() {
         </div>
       </section>
 
-      {/* ── Section 6: Social Proof ── */}
+      {/* ── Section 6: Social Proof + Stats ── */}
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
             <h2 className="font-display text-3xl sm:text-4xl">
-              Sellers who stopped sitting on surplus.
+              Sellers who stopped paying to store inventory that was not selling.
             </h2>
           </div>
 
@@ -583,10 +612,10 @@ export default function ForSellersPage() {
               Transparent Pricing
             </Badge>
             <h2 className="font-display text-3xl sm:text-4xl">
-              2% on what you sell. Zero on what you don&apos;t.
+              2% on completed sales. Zero on everything else.
             </h2>
             <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              No listing fees. No monthly subscription. Pay 2% only when a sale completes.
+              No listing fees. No monthly subscription. No setup costs. You pay 2% when inventory sells. If it does not sell, you pay nothing.
             </p>
           </div>
 
@@ -598,9 +627,9 @@ export default function ForSellersPage() {
                 <Badge variant="outline" className="w-fit border-primary text-primary mb-1">
                   Example Transaction
                 </Badge>
-                <CardTitle className="font-display text-xl">$12,000 listed price</CardTitle>
+                <CardTitle className="font-display text-xl">$12,000 lot of engineered hickory</CardTitle>
                 <CardDescription>
-                  PlankMarket charges a 2% commission on completed sales. That commission covers access to the buyer network, payment processing infrastructure, buyer verification, dispute mediation, messaging tools, freight coordination, and platform support. You pay nothing to list, nothing monthly, and nothing on inventory that doesn&apos;t sell.
+                  The 2% seller fee covers access to the verified buyer network, payment processing, buyer verification, dispute mediation, messaging tools, and platform support. You pay nothing to list. Nothing monthly. Nothing on inventory that does not sell.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -611,8 +640,8 @@ export default function ForSellersPage() {
                   </div>
                   <Separator />
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">Seller commission (2%)</span>
-                    <span className="text-sm text-muted-foreground">−$240</span>
+                    <span className="text-sm text-muted-foreground">Seller fee (2%)</span>
+                    <span className="text-sm text-muted-foreground">-$240</span>
                   </div>
                   <div className="flex justify-between items-center py-2 px-3 bg-primary/5 border border-primary/20 rounded-lg">
                     <span className="text-sm font-semibold">Your payout</span>
@@ -624,7 +653,7 @@ export default function ForSellersPage() {
                     <span className="text-sm text-muted-foreground">$12,360</span>
                   </div>
                   <p className="text-xs text-muted-foreground pt-1">
-                    Buyer pays listed price + 3% buyer fee — separate from your payout. Transferred to your Stripe Connect account.
+                    Buyer pays listed price + 3% buyer fee. Your payout transfers to your Stripe Connect account within 3-5 business days of carrier pickup.
                   </p>
                 </div>
               </CardContent>
@@ -635,7 +664,7 @@ export default function ForSellersPage() {
               {/* Alternatives */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="font-display text-base">Compared to alternatives</CardTitle>
+                  <CardTitle className="font-display text-base">Compare that to the alternatives</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {ALTERNATIVES.map((alt) => (
@@ -653,7 +682,7 @@ export default function ForSellersPage() {
               {/* No hidden fees */}
               <Card className="bg-secondary/5 border-secondary/20">
                 <CardHeader className="pb-3">
-                  <CardTitle className="font-display text-base text-secondary">No hidden fees — ever</CardTitle>
+                  <CardTitle className="font-display text-base text-secondary">No hidden fees. Period.</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
@@ -681,14 +710,14 @@ export default function ForSellersPage() {
                 </div>
                 <div>
                   <CardDescription className="text-foreground">
-                    High-volume sellers with large inventories or frequent transactions may be eligible for reduced commission rates. Contact our partnerships team at{" "}
+                    Moving large inventories or liquidating on a recurring schedule? High-volume sellers may qualify for reduced commission rates. Contact our partnerships team at{" "}
                     <a
                       href="mailto:partnerships@plankmarket.com"
                       className="text-primary underline-offset-2 hover:underline font-medium"
                     >
                       partnerships@plankmarket.com
                     </a>{" "}
-                    to discuss custom pricing.
+                    to discuss custom pricing and CSV bulk upload access.
                   </CardDescription>
                 </div>
               </CardHeader>
@@ -736,7 +765,7 @@ export default function ForSellersPage() {
         </div>
       </section>
 
-      {/* ── Section 9: Final CTA ── */}
+      {/* ── Section 9: Final CTA — The Clock Is Running ── */}
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 md:p-16 text-white relative overflow-hidden">
@@ -770,12 +799,15 @@ export default function ForSellersPage() {
 
             <div className="text-center relative z-10">
               <h2 className="font-display text-3xl sm:text-4xl md:text-5xl mb-6">
-                Your surplus is sitting.
+                The margin on that surplus is shrinking.
                 <br />
-                Your buyers are waiting.
+                <span className="text-white/90">Every day it sits, it shrinks more.</span>
               </h2>
+              <p className="text-white/80 mb-4 max-w-2xl mx-auto text-lg leading-relaxed">
+                That discontinued engineered hardwood in bay 7. The LVP closeout on pallets in the back. The overstock oak that has been there since last quarter. It is all losing value while it waits.
+              </p>
               <p className="text-white/80 mb-10 max-w-xl mx-auto text-lg leading-relaxed">
-                Every day your overstock stays in the warehouse is a day it&apos;s costing you. List your first lot free today and put that inventory in front of verified buyers across all 50 states.
+                List it today. Get it in front of verified buyers across all 50 states. Stop the clock.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/register?role=seller">
@@ -783,13 +815,13 @@ export default function ForSellersPage() {
                     size="xl"
                     variant="gold"
                   >
-                    Create Your Seller Account Free
+                    Create Your Seller Account
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
               </div>
               <p className="mt-6 text-white/60 text-sm">
-                No listing fees. No monthly cost. Pay 2% only when you sell.
+                No listing fees. No monthly cost. 2% only when inventory sells.
               </p>
             </div>
           </div>

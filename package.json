@@ -15,7 +15,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "email:dev": "email dev --dir src/emails",
-    "db:seed": "SKIP_ENV_VALIDATION=1 npx tsx scripts/seed.ts"
+    "db:seed": "SKIP_ENV_VALIDATION=1 npx tsx scripts/seed.ts",
+    "inngest:dev": "npx inngest-cli@latest dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -53,10 +54,10 @@
     "@supabase/supabase-js": "^2.95.3",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-table": "^8.21.3",
-    "@trpc/client": "^11.0.0",
-    "@trpc/next": "^11.0.0",
-    "@trpc/react-query": "^11.0.0",
-    "@trpc/server": "^11.0.0",
+    "@trpc/client": "^11.10.0",
+    "@trpc/next": "^11.10.0",
+    "@trpc/react-query": "^11.10.0",
+    "@trpc/server": "^11.10.0",
     "@types/papaparse": "^5.5.2",
     "@uploadthing/react": "^7.3.3",
     "@upstash/ratelimit": "^2.0.8",

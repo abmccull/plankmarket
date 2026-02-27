@@ -44,8 +44,10 @@ export const orders = pgTable(
     buyerFee: money("buyer_fee").notNull(), // 3%
     sellerFee: money("seller_fee").notNull(), // 2%
     totalPrice: money("total_price").notNull(), // subtotal + buyerFee
-    stripeProcessingFee: money("stripe_processing_fee").default(0).notNull(), // estimated Stripe 2.9% + $0.30, deducted from seller
-    sellerPayout: money("seller_payout").notNull(), // subtotal - sellerFee - stripeProcessingFee
+    stripeProcessingFee: money("stripe_processing_fee").default(0).notNull(), // total Stripe processing cost for full buyer charge
+    sellerStripeFee: money("seller_stripe_fee").default(0).notNull(), // seller's share: 2.9% * subtotal + $0.30
+    platformStripeFee: money("platform_stripe_fee").default(0).notNull(), // platform-absorbed processing share
+    sellerPayout: money("seller_payout").notNull(), // subtotal - sellerFee - sellerStripeFee
 
     // Payment
     stripePaymentIntentId: varchar("stripe_payment_intent_id", {
@@ -91,6 +93,7 @@ export const orders = pgTable(
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    inventoryReleasedAt: timestamp("inventory_released_at", { withTimezone: true }),
 
     // Refund tracking
     refundedAt: timestamp("refunded_at", { withTimezone: true }),

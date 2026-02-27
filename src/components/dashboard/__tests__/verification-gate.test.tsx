@@ -2,11 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { VerificationGate } from "../verification-gate";
 import { useAuthStore } from "@/lib/stores/auth-store";
 
-// Mock the auth store
 vi.mock("@/lib/stores/auth-store");
 const mockUseAuthStore = vi.mocked(useAuthStore);
 
-// Mock tRPC to avoid "Unable to find tRPC Context" error
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
     auth: {
@@ -17,12 +15,6 @@ vi.mock("@/lib/trpc/client", () => ({
   },
 }));
 
-// Mock next/navigation
-vi.mock("next/navigation", () => ({
-  usePathname: vi.fn().mockReturnValue("/dashboard"),
-}));
-
-// Mock celebrate utility
 vi.mock("@/lib/utils/celebrate", () => ({
   celebrateMilestone: vi.fn(),
 }));
@@ -36,10 +28,10 @@ describe("VerificationGate", () => {
     mockUseAuthStore.mockReturnValue({
       user: {
         id: "1",
-        email: "test@example.com",
-        name: "Test User",
+        email: "buyer@example.com",
+        name: "Buyer",
         role: "buyer",
-        businessName: "Test Business",
+        businessName: "Buyer Inc",
         avatarUrl: null,
         verified: true,
         verificationStatus: "verified",
@@ -56,20 +48,23 @@ describe("VerificationGate", () => {
     render(
       <VerificationGate>
         <div>Dashboard Content</div>
-      </VerificationGate>
+      </VerificationGate>,
     );
 
     expect(screen.getByText("Dashboard Content")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Verification Required for Transactions"),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders children for admin users regardless of verification status", () => {
+  it("shows pending banner and still renders children", () => {
     mockUseAuthStore.mockReturnValue({
       user: {
         id: "1",
-        email: "admin@example.com",
-        name: "Admin User",
-        role: "admin",
-        businessName: "Admin Business",
+        email: "seller@example.com",
+        name: "Seller",
+        role: "seller",
+        businessName: "Seller Inc",
         avatarUrl: null,
         verified: false,
         verificationStatus: "pending",
@@ -85,91 +80,24 @@ describe("VerificationGate", () => {
 
     render(
       <VerificationGate>
-        <div>Admin Dashboard</div>
-      </VerificationGate>
-    );
-
-    expect(screen.getByText("Admin Dashboard")).toBeInTheDocument();
-  });
-
-  it("shows pending review screen for pending verification status", () => {
-    mockUseAuthStore.mockReturnValue({
-      user: {
-        id: "1",
-        email: "test@example.com",
-        name: "Test User",
-        role: "seller",
-        businessName: "Test Business",
-        avatarUrl: null,
-        verified: false,
-        verificationStatus: "pending",
-        stripeOnboardingComplete: false,
-        zipCode: "75001",
-      },
-      isAuthenticated: true,
-      isLoading: false,
-      setUser: vi.fn(),
-      setLoading: vi.fn(),
-      logout: vi.fn(),
-    });
-
-    render(
-      <VerificationGate>
-        <div>Dashboard Content</div>
-      </VerificationGate>
+        <div>Seller Dashboard</div>
+      </VerificationGate>,
     );
 
     expect(
-      screen.getByText("Your Business Verification is Under Review")
+      screen.getByText(/verification pending/i),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/usually verified within minutes/i)
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Dashboard Content")).not.toBeInTheDocument();
+    expect(screen.getByText("Seller Dashboard")).toBeInTheDocument();
   });
 
-  it("shows rejected screen for rejected verification status", () => {
+  it("shows verification CTA for unverified buyers and renders children", () => {
     mockUseAuthStore.mockReturnValue({
       user: {
         id: "1",
-        email: "test@example.com",
-        name: "Test User",
-        role: "seller",
-        businessName: "Test Business",
-        avatarUrl: null,
-        verified: false,
-        verificationStatus: "rejected",
-        stripeOnboardingComplete: false,
-        zipCode: "75001",
-      },
-      isAuthenticated: true,
-      isLoading: false,
-      setUser: vi.fn(),
-      setLoading: vi.fn(),
-      logout: vi.fn(),
-    });
-
-    render(
-      <VerificationGate>
-        <div>Dashboard Content</div>
-      </VerificationGate>
-    );
-
-    expect(
-      screen.getByText("Your Business Verification Was Not Approved")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Contact Support")).toBeInTheDocument();
-    expect(screen.queryByText("Dashboard Content")).not.toBeInTheDocument();
-  });
-
-  it("shows unverified screen for unverified status", () => {
-    mockUseAuthStore.mockReturnValue({
-      user: {
-        id: "1",
-        email: "test@example.com",
-        name: "Test User",
+        email: "buyer@example.com",
+        name: "Buyer",
         role: "buyer",
-        businessName: "Test Business",
+        businessName: "Buyer Inc",
         avatarUrl: null,
         verified: false,
         verificationStatus: "unverified",
@@ -185,66 +113,30 @@ describe("VerificationGate", () => {
 
     render(
       <VerificationGate>
-        <div>Dashboard Content</div>
-      </VerificationGate>
+        <div>Buyer Dashboard</div>
+      </VerificationGate>,
     );
 
     expect(
-      screen.getByText("Complete Your Business Verification")
+      screen.getByText("Verification Required for Transactions"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Complete Verification")).toBeInTheDocument();
-    expect(screen.queryByText("Dashboard Content")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /submit buyer verification/i }),
+    ).toHaveAttribute("href", "/buyer/settings");
+    expect(screen.getByText("Buyer Dashboard")).toBeInTheDocument();
   });
 
-  it("renders nothing when loading", () => {
-    mockUseAuthStore.mockReturnValue({
-      user: null,
-      isAuthenticated: false,
-      isLoading: true,
-      setUser: vi.fn(),
-      setLoading: vi.fn(),
-      logout: vi.fn(),
-    });
-
-    const { container } = render(
-      <VerificationGate>
-        <div>Dashboard Content</div>
-      </VerificationGate>
-    );
-
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("renders nothing when no user", () => {
-    mockUseAuthStore.mockReturnValue({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-      setUser: vi.fn(),
-      setLoading: vi.fn(),
-      logout: vi.fn(),
-    });
-
-    const { container } = render(
-      <VerificationGate>
-        <div>Dashboard Content</div>
-      </VerificationGate>
-    );
-
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("has proper ARIA attributes for pending state", () => {
+  it("shows verification CTA for rejected sellers and renders children", () => {
     mockUseAuthStore.mockReturnValue({
       user: {
         id: "1",
-        email: "test@example.com",
-        name: "Test User",
+        email: "seller@example.com",
+        name: "Seller",
         role: "seller",
-        businessName: "Test Business",
+        businessName: "Seller Inc",
         avatarUrl: null,
         verified: false,
-        verificationStatus: "pending",
+        verificationStatus: "rejected",
         stripeOnboardingComplete: false,
         zipCode: "75001",
       },
@@ -257,13 +149,14 @@ describe("VerificationGate", () => {
 
     render(
       <VerificationGate>
-        <div>Dashboard Content</div>
-      </VerificationGate>
+        <div>Seller Dashboard</div>
+      </VerificationGate>,
     );
 
-    // Check that decorative icons have aria-hidden (SVGs with aria-hidden)
-    const container = screen.getByText("Your Business Verification is Under Review").closest("div")!;
-    const svgs = container.parentElement!.querySelectorAll("svg[aria-hidden='true']");
-    expect(svgs.length).toBeGreaterThan(0);
+    expect(screen.getByText("Verification Rejected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /submit seller verification/i }),
+    ).toHaveAttribute("href", "/seller/verification");
+    expect(screen.getByText("Seller Dashboard")).toBeInTheDocument();
   });
 });

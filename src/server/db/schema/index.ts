@@ -113,6 +113,12 @@ export type {
 export { shippingAddresses } from "./shipping-addresses";
 export type { ShippingAddress, NewShippingAddress } from "./shipping-addresses";
 
+export { stripeWebhookEvents } from "./stripe-webhook-events";
+export type {
+  StripeWebhookEvent,
+  NewStripeWebhookEvent,
+} from "./stripe-webhook-events";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { db } from "@/server/db";
-import { orders, users, listings, listingPromotions, disputes, notifications } from "@/server/db/schema";
+import {
+  orders,
+  users,
+  listings,
+  listingPromotions,
+  disputes,
+  notifications,
+  stripeWebhookEvents,
+} from "@/server/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { env } from "@/env";
 import { inngest } from "@/lib/inngest/client";
+import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-01-28.clover" as const,
@@ -36,6 +45,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const insertedEvents = await db
+      .insert(stripeWebhookEvents)
+      .values({
+        id: event.id,
+        eventType: event.type,
+      })
+      .onConflictDoNothing()
+      .returning({ id: stripeWebhookEvents.id });
+
+    if (insertedEvents.length === 0) {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+
     switch (event.type) {
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
@@ -81,7 +103,7 @@ export async function POST(req: NextRequest) {
           // Order payment succeeded
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            await db
+            const [updatedOrder] = await db
               .update(orders)
               .set({
                 paymentStatus: "succeeded",
@@ -89,15 +111,23 @@ export async function POST(req: NextRequest) {
                 confirmedAt: new Date(),
                 updatedAt: new Date(),
               })
-              .where(eq(orders.id, orderId));
+              .where(
+                and(
+                  eq(orders.id, orderId),
+                  sql`${orders.paymentStatus} <> 'succeeded'`,
+                ),
+              )
+              .returning({ id: orders.id });
 
-            // Fire order/paid event for shipment auto-dispatch
-            inngest.send({
-              name: "order/paid",
-              data: { orderId },
-            }).catch((err) => {
-              console.error("Failed to send order/paid event:", err);
-            });
+            if (updatedOrder) {
+              // Fire order/paid event once for shipment auto-dispatch
+              inngest.send({
+                name: "order/paid",
+                data: { orderId },
+              }).catch((err) => {
+                console.error("Failed to send order/paid event:", err);
+              });
+            }
           }
         }
         break;
@@ -121,13 +151,22 @@ export async function POST(req: NextRequest) {
           // Order payment failed
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            await db
+            const [failedOrder] = await db
               .update(orders)
               .set({
                 paymentStatus: "failed",
                 updatedAt: new Date(),
               })
-              .where(eq(orders.id, orderId));
+              .where(eq(orders.id, orderId))
+              .returning({ id: orders.id });
+
+            if (failedOrder) {
+              await releaseReservedInventory({
+                db,
+                orderId,
+                reason: "payment_intent.payment_failed",
+              });
+            }
           }
         }
         break;
@@ -399,14 +438,23 @@ export async function POST(req: NextRequest) {
         } else {
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            await db
+            const [cancelledOrder] = await db
               .update(orders)
               .set({
                 paymentStatus: "failed",
                 status: "cancelled",
                 updatedAt: new Date(),
               })
-              .where(eq(orders.id, orderId));
+              .where(eq(orders.id, orderId))
+              .returning({ id: orders.id });
+
+            if (cancelledOrder) {
+              await releaseReservedInventory({
+                db,
+                orderId,
+                reason: "payment_intent.canceled",
+              });
+            }
           }
         }
         break;

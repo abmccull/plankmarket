@@ -31,12 +31,21 @@ import { toast } from "sonner";
 // Tests
 // ---------------------------------------------------------------------------
 describe("celebrateMilestone", () => {
+  const originalFlag = process.env.ENABLE_CONFETTI_IN_TESTS;
+  const originalGetContext = HTMLCanvasElement.prototype.getContext;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.ENABLE_CONFETTI_IN_TESTS = "1";
+    HTMLCanvasElement.prototype.getContext = vi
+      .fn()
+      .mockReturnValue({} as CanvasRenderingContext2D);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    process.env.ENABLE_CONFETTI_IN_TESTS = originalFlag;
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
   });
 
   it("should call toast.success with the provided title and description", () => {

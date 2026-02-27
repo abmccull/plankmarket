@@ -15,6 +15,8 @@ export const createOrderSchema = z.object({
       message: "Please enter a valid phone number",
     })
     .optional(),
+  selectedQuoteToken: z.string().min(1).optional(),
+  // Deprecated fallback for short-lived backward compatibility
   selectedQuoteId: z.string().optional(),
   selectedCarrier: z.string().optional(),
   shippingPrice: z.number().optional(),

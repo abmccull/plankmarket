@@ -103,15 +103,17 @@ export async function POST(request: NextRequest) {
     const updateData: {
       aiVerificationScore: number;
       aiVerificationNotes: string;
-      verificationStatus?: "verified" | "pending";
-      verified?: boolean;
+      verificationStatus: "verified" | "pending";
+      verified: boolean;
     } = {
       aiVerificationScore: verificationResult.score,
       aiVerificationNotes: JSON.stringify(verificationResult),
+      verificationStatus: "pending",
+      verified: false,
     };
 
-    // Auto-approve if score >= 90
-    if (verificationResult.score >= 90) {
+    // Auto-approve only when model marks approved
+    if (verificationResult.approved) {
       updateData.verificationStatus = "verified";
       updateData.verified = true;
     }
@@ -168,7 +170,7 @@ export async function POST(request: NextRequest) {
         userId,
         score: verificationResult.score,
         approved: verificationResult.approved,
-        status: updateData.verificationStatus || "pending",
+        status: updateData.verificationStatus,
       },
       { status: 200 },
     );

@@ -141,6 +141,8 @@ function OverviewTab() {
         <KpiCard title="Avg Order Value" value={formatCurrency(Number(summary.avgOrderValue))} icon={ShoppingCart} />
         <KpiCard title="Buyer Fees" value={formatCurrency(Number(summary.totalBuyerFees))} icon={Receipt} />
         <KpiCard title="Seller Fees" value={formatCurrency(Number(summary.totalSellerFees))} icon={CreditCard} />
+        <KpiCard title="Seller Stripe Fees" value={formatCurrency(Number(summary.totalSellerStripeFees))} icon={CreditCard} />
+        <KpiCard title="Platform Stripe Fees" value={formatCurrency(Number(summary.totalPlatformStripeFees))} icon={Wallet} />
         <KpiCard title="Total Payouts" value={formatCurrency(Number(summary.totalPayouts))} icon={Wallet} />
       </div>
 
@@ -423,6 +425,8 @@ function TransactionsTab() {
                   <TableHead className="text-right">Subtotal</TableHead>
                   <TableHead className="text-right">Buyer Fee</TableHead>
                   <TableHead className="text-right">Seller Fee</TableHead>
+                  <TableHead className="text-right">Seller Stripe Fee</TableHead>
+                  <TableHead className="text-right">Platform Stripe Fee</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-right">Seller Payout</TableHead>
                   <TableHead>Status</TableHead>
@@ -461,6 +465,12 @@ function TransactionsTab() {
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
                       {formatCurrency(Number(tx.sellerFee))}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {formatCurrency(Number(tx.sellerStripeFee))}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {formatCurrency(Number(tx.platformStripeFee))}
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium tabular-nums">
                       {formatCurrency(Number(tx.totalPrice))}

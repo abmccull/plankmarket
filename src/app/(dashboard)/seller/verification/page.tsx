@@ -1,5 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  submitVerificationSchema,
+  type SubmitVerificationInput,
+} from "@/lib/validators/auth";
 import {
   Card,
   CardContent,
@@ -9,32 +16,62 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  CheckCircle2,
-  Clock,
-  XCircle,
-  AlertCircle,
-  Loader2,
-} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { CheckCircle2, Clock, Loader2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc/client";
 import { getErrorMessage } from "@/lib/utils";
 import { useAuthStore } from "@/lib/stores/auth-store";
-import { trpc } from "@/lib/trpc/client";
-import Link from "next/link";
 
 export default function SellerVerificationPage() {
   const { user } = useAuthStore();
   const utils = trpc.useUtils();
+  const { data: profile } = trpc.auth.getProfile.useQuery();
+
+  const submitMutation = trpc.auth.submitVerification.useMutation({
+    onSuccess: () => {
+      toast.success("Verification submitted successfully.");
+      void Promise.all([
+        utils.auth.getSession.invalidate(),
+        utils.auth.getProfile.invalidate(),
+      ]);
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
 
   const resubmitMutation = trpc.auth.resubmitVerification.useMutation({
     onSuccess: () => {
-      toast.success("Verification resubmitted successfully!");
-      utils.auth.getSession.invalidate();
+      toast.success("Verification resubmitted.");
+      void Promise.all([
+        utils.auth.getSession.invalidate(),
+        utils.auth.getProfile.invalidate(),
+      ]);
     },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+    onError: (error) => toast.error(getErrorMessage(error)),
   });
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<SubmitVerificationInput>({
+    resolver: zodResolver(submitVerificationSchema),
+  });
+
+  useEffect(() => {
+    if (!profile) return;
+    reset({
+      einTaxId: profile.einTaxId ?? "",
+      businessWebsite: profile.businessWebsite ?? "",
+      verificationDocUrl: profile.verificationDocUrl ?? "",
+      businessAddress: profile.businessAddress ?? "",
+      businessCity: profile.businessCity ?? "",
+      businessState: profile.businessState ?? "",
+      businessZip: profile.businessZip ?? "",
+    });
+  }, [profile, reset]);
 
   if (!user) {
     return (
@@ -45,56 +82,41 @@ export default function SellerVerificationPage() {
   }
 
   const status = user.verificationStatus;
+  const isSubmitting = submitMutation.isPending || resubmitMutation.isPending;
+
+  const onSubmit = async (values: SubmitVerificationInput) => {
+    if (status === "rejected") {
+      await resubmitMutation.mutateAsync(values);
+      return;
+    }
+    await submitMutation.mutateAsync(values);
+  };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Seller Verification</h1>
         <p className="text-muted-foreground mt-1">
-          Verify your business to build trust with buyers
+          Submit your business verification to create listings.
         </p>
       </div>
 
-      {/* Unverified State */}
-      {status === "unverified" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Get Verified</CardTitle>
-            <CardDescription>
-              Submit your business documents to become a verified seller.
-              Verification is typically completed during registration.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg bg-muted/50 p-4 space-y-2">
-              <h3 className="font-medium text-sm">Why get verified?</h3>
-              <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-                <li>Build trust with potential buyers</li>
-                <li>Increase visibility in search results</li>
-                <li>Display a verified badge on your listings</li>
-                <li>Access to priority support</li>
-              </ul>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Verification Status</CardTitle>
+              <CardDescription>
+                Sellers must be approved before listing inventory.
+              </CardDescription>
             </div>
-            <div className="mt-4">
-              <Button asChild>
-                <Link href="/seller/settings">Complete Business Info</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Pending State */}
-      {status === "pending" && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Verification Under Review</CardTitle>
-                <CardDescription>
-                  Your verification request is being processed
-                </CardDescription>
-              </div>
+            {status === "verified" && (
+              <Badge className="bg-green-50 text-green-700 border-green-200">
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                Verified
+              </Badge>
+            )}
+            {status === "pending" && (
               <Badge
                 variant="outline"
                 className="bg-yellow-50 text-yellow-700 border-yellow-200"
@@ -102,84 +124,8 @@ export default function SellerVerificationPage() {
                 <Clock className="h-3 w-3 mr-1" />
                 Pending
               </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-900">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm text-blue-900 dark:text-blue-100">
-                    Usually verified within minutes
-                  </p>
-                  <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                    Our AI verification system reviews your submission automatically.
-                    This page will update when your verification is complete.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-muted/50 p-4">
-              <p className="text-sm font-medium mb-2">While you wait, you can:</p>
-              <ul className="text-sm text-muted-foreground space-y-1 ml-4 list-disc">
-                <li><Link href="/seller/settings" className="text-primary hover:underline">Complete your profile</Link></li>
-                <li><Link href="/preferences" className="text-primary hover:underline">Set your preferences</Link></li>
-                <li><Link href="/seller/stripe-onboarding" className="text-primary hover:underline">Connect Stripe</Link></li>
-                <li><Link href="/seller/listings/new" className="text-primary hover:underline">Draft a listing</Link></li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Verified State */}
-      {status === "verified" && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Your Account is Verified</CardTitle>
-                <CardDescription>
-                  You are now a verified seller on PlankMarket
-                </CardDescription>
-              </div>
-              <Badge className="bg-green-50 text-green-700 border-green-200">
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                Verified
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg bg-green-50 dark:bg-green-950/20 p-4 border border-green-200 dark:border-green-900">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm text-green-900 dark:text-green-100">
-                    Verification Complete
-                  </p>
-                  <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                    Your verified badge will appear on all your listings and
-                    profile. Buyers will see you as a trusted seller.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Rejected State */}
-      {status === "rejected" && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Verification Not Approved</CardTitle>
-                <CardDescription>
-                  Your verification request was not approved
-                </CardDescription>
-              </div>
+            )}
+            {status === "rejected" && (
               <Badge
                 variant="outline"
                 className="bg-red-50 text-red-700 border-red-200"
@@ -187,42 +133,100 @@ export default function SellerVerificationPage() {
                 <XCircle className="h-3 w-3 mr-1" />
                 Rejected
               </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg bg-red-50 dark:bg-red-950/20 p-4 border border-red-200 dark:border-red-900">
-              <div className="flex items-start gap-3">
-                <XCircle className="h-5 w-5 text-red-600 dark:text-red-500 mt-0.5" />
-                <div>
-                  <p className="font-medium text-sm text-red-900 dark:text-red-100">
-                    Reason for rejection
-                  </p>
-                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">
-                    The submitted documents did not meet our verification requirements.
-                    Please ensure all documents are clear, valid, and match your business information.
-                  </p>
+            )}
+            {status === "unverified" && (
+              <Badge variant="outline">Unverified</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {status === "verified" && (
+            <p className="text-sm text-muted-foreground">
+              Your account is verified and can create listings.
+            </p>
+          )}
+          {status === "pending" && (
+            <p className="text-sm text-muted-foreground">
+              Your submission is under review. You can keep exploring the dashboard
+              while verification is processed.
+            </p>
+          )}
+          {status !== "verified" && status !== "pending" && (
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="einTaxId">EIN / Tax ID</Label>
+                <Input id="einTaxId" placeholder="12-3456789" {...register("einTaxId")} />
+                {errors.einTaxId && (
+                  <p className="text-sm text-destructive">{errors.einTaxId.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="businessWebsite">Business Website</Label>
+                <Input
+                  id="businessWebsite"
+                  type="url"
+                  placeholder="https://yourcompany.com"
+                  {...register("businessWebsite")}
+                />
+                {errors.businessWebsite && (
+                  <p className="text-sm text-destructive">{errors.businessWebsite.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="verificationDocUrl">Verification Document URL</Label>
+                <Input
+                  id="verificationDocUrl"
+                  type="url"
+                  placeholder="https://storage.example.com/documents/license.jpg"
+                  {...register("verificationDocUrl")}
+                />
+                {errors.verificationDocUrl && (
+                  <p className="text-sm text-destructive">{errors.verificationDocUrl.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="businessAddress">Business Address</Label>
+                <Input id="businessAddress" {...register("businessAddress")} />
+                {errors.businessAddress && (
+                  <p className="text-sm text-destructive">{errors.businessAddress.message}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="businessCity">City</Label>
+                  <Input id="businessCity" {...register("businessCity")} />
+                  {errors.businessCity && (
+                    <p className="text-sm text-destructive">{errors.businessCity.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="businessState">State</Label>
+                  <Input id="businessState" maxLength={2} {...register("businessState")} />
+                  {errors.businessState && (
+                    <p className="text-sm text-destructive">{errors.businessState.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="businessZip">ZIP</Label>
+                  <Input id="businessZip" {...register("businessZip")} />
+                  {errors.businessZip && (
+                    <p className="text-sm text-destructive">{errors.businessZip.message}</p>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={() => resubmitMutation.mutate({})}
-                disabled={resubmitMutation.isPending}
-                className="flex-1"
-              >
-                {resubmitMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                Resubmit Verification
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {status === "rejected" ? "Resubmit Verification" : "Submit Verification"}
               </Button>
-              <Button variant="outline" className="flex-1" asChild>
-                <Link href="/support">Contact Support</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </form>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

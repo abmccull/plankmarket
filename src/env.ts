@@ -16,7 +16,9 @@ export const env = createEnv({
     INNGEST_SIGNING_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
     VERIFICATION_WEBHOOK_SECRET: z.string().min(1).optional(),
+    VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1).optional(),
     PRIORITY1_API_KEY: z.string().min(1).optional(),
+    PRIORITY1_DRY_RUN: z.string().optional(),
     CRON_SECRET: z.string().min(1).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
@@ -45,7 +47,9 @@ export const env = createEnv({
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
     VERIFICATION_WEBHOOK_SECRET: process.env.VERIFICATION_WEBHOOK_SECRET,
+    VERIFICATION_DOC_ALLOWED_HOSTS: process.env.VERIFICATION_DOC_ALLOWED_HOSTS,
     PRIORITY1_API_KEY: process.env.PRIORITY1_API_KEY,
+    PRIORITY1_DRY_RUN: process.env.PRIORITY1_DRY_RUN,
     CRON_SECRET: process.env.CRON_SECRET,
     NODE_ENV: process.env.NODE_ENV,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,

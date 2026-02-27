@@ -36,6 +36,7 @@ yarn-error.log*
 
 # drizzle
 /drizzle/*.sql
+!/drizzle/0010_fee_verification_hardening.sql
 
 # scripts with hardcoded credentials
 scripts/test-stripe-e2e.ts

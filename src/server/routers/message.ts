@@ -1,7 +1,6 @@
 import {
   createTRPCRouter,
   protectedProcedure,
-  verifiedProcedure,
   messagingProcedure,
 } from "../trpc";
 import {
@@ -17,7 +16,7 @@ import { logContentViolation } from "@/server/services/content-moderation";
 
 export const messageRouter = createTRPCRouter({
   // Get or create a conversation for a listing
-  getOrCreateConversation: verifiedProcedure
+  getOrCreateConversation: protectedProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Get the listing to determine seller

@@ -20,8 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import {
   formatCurrency,
   formatSqFt,
-  calculateBuyerFee,
 } from "@/lib/utils";
+import { calculateOrderFees } from "@/lib/fees";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, ShieldCheck, Package, Check, Truck } from "lucide-react";
 import { StripeProvider } from "@/components/checkout/stripe-provider";
@@ -162,6 +162,7 @@ export default function CheckoutPage() {
       // Create the order with shipping fields
       const order = await createOrder.mutateAsync({
         ...formData,
+        selectedQuoteToken: selectedQuote.quoteToken,
         selectedQuoteId: String(selectedQuote.quoteId),
         selectedCarrier: selectedQuote.carrierName,
         shippingPrice: selectedQuote.shippingPrice,
@@ -185,6 +186,16 @@ export default function CheckoutPage() {
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to create order";
+
+      if (
+        typeof message === "string" &&
+        message.includes("/buyer/settings")
+      ) {
+        toast.error("Please complete verification before checkout.");
+        router.push("/buyer/settings");
+        return;
+      }
+
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -209,9 +220,10 @@ export default function CheckoutPage() {
 
   const pricePerSqFt = listing.buyNowPrice ?? listing.askPricePerSqFt;
   const subtotal = Math.round(quantitySqFt * pricePerSqFt * 100) / 100;
-  const buyerFee = calculateBuyerFee(subtotal);
   const shippingCost = selectedQuote?.shippingPrice ?? 0;
-  const total = Math.round((subtotal + buyerFee + shippingCost) * 100) / 100;
+  const feeBreakdown = calculateOrderFees(subtotal, shippingCost);
+  const buyerFee = feeBreakdown.buyerFee;
+  const total = feeBreakdown.totalCharge;
 
   const stepIndex = STEPS.findIndex((s) => s.key === currentStep);
 
@@ -554,7 +566,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Buyer fee (3%)
+                    Buyer fee (3% on inventory + shipping)
                   </span>
                   <span>{formatCurrency(buyerFee)}</span>
                 </div>

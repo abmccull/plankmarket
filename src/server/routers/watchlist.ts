@@ -1,7 +1,6 @@
 import {
   createTRPCRouter,
-  protectedProcedure,
-  verifiedProcedure,
+  buyerProcedure,
 } from "../trpc";
 import { watchlist, listings, offers, orders } from "../db/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
@@ -18,7 +17,7 @@ type BuyerStatus =
 
 export const watchlistRouter = createTRPCRouter({
   // Add to watchlist
-  add: verifiedProcedure
+  add: buyerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Check if already watchlisted
@@ -51,7 +50,7 @@ export const watchlistRouter = createTRPCRouter({
     }),
 
   // Remove from watchlist
-  remove: verifiedProcedure
+  remove: buyerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
@@ -75,7 +74,7 @@ export const watchlistRouter = createTRPCRouter({
     }),
 
   // Check if listing is watchlisted
-  isWatchlisted: protectedProcedure
+  isWatchlisted: buyerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const item = await ctx.db.query.watchlist.findFirst({
@@ -89,7 +88,7 @@ export const watchlistRouter = createTRPCRouter({
     }),
 
   // Get user's watchlist
-  getMyWatchlist: protectedProcedure
+  getMyWatchlist: buyerProcedure
     .input(
       z.object({
         page: z.number().int().positive().default(1),

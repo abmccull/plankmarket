@@ -13,6 +13,7 @@ import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { redis } from "@/lib/redis/client";
+import { randomUUID } from "crypto";
 
 /**
  * Calculate next business day (skip weekends) for pickup date
@@ -141,6 +142,7 @@ export const shippingRouter = createTRPCRouter({
 
         return {
           quoteId: quote.id,
+          quoteToken: randomUUID(),
           carrierName: quote.carrierName,
           carrierScac: quote.carrierCode,
           shippingPrice,
@@ -177,20 +179,46 @@ export const shippingRouter = createTRPCRouter({
       try {
         await Promise.all(
           allQuotes.map((quote) =>
-            redis.set(
-              `shipping-quote:${quote.quoteId}`,
-              JSON.stringify({
-                carrierRate: quote.carrierRate,
-                shippingPrice: quote.shippingPrice,
-                carrierName: quote.carrierName,
-                carrierScac: quote.carrierScac,
-                transitDays: quote.transitDays,
-                estimatedDelivery: quote.estimatedDelivery,
-                quoteExpiresAt: quote.quoteExpiresAt,
-                listingId: input.listingId,
-              }),
-              { ex: 1800 } // 30 minutes TTL
-            )
+            Promise.all([
+              redis.set(
+                `shipping-quote-token:${quote.quoteToken}`,
+                JSON.stringify({
+                  quoteId: quote.quoteId,
+                  quoteToken: quote.quoteToken,
+                  carrierRate: quote.carrierRate,
+                  shippingPrice: quote.shippingPrice,
+                  carrierName: quote.carrierName,
+                  carrierScac: quote.carrierScac,
+                  transitDays: quote.transitDays,
+                  estimatedDelivery: quote.estimatedDelivery,
+                  quoteExpiresAt: quote.quoteExpiresAt,
+                  listingId: input.listingId,
+                  buyerId: ctx.user.id,
+                  quantitySqFt: input.quantitySqFt,
+                  destinationZip: input.destinationZip,
+                }),
+                { ex: 1800 }, // 30 minutes TTL
+              ),
+              // Deprecated fallback path for older clients still posting selectedQuoteId.
+              redis.set(
+                `shipping-quote:${quote.quoteId}`,
+                JSON.stringify({
+                  quoteId: quote.quoteId,
+                  carrierRate: quote.carrierRate,
+                  shippingPrice: quote.shippingPrice,
+                  carrierName: quote.carrierName,
+                  carrierScac: quote.carrierScac,
+                  transitDays: quote.transitDays,
+                  estimatedDelivery: quote.estimatedDelivery,
+                  quoteExpiresAt: quote.quoteExpiresAt,
+                  listingId: input.listingId,
+                  buyerId: ctx.user.id,
+                  quantitySqFt: input.quantitySqFt,
+                  destinationZip: input.destinationZip,
+                }),
+                { ex: 1800 },
+              ),
+            ])
           )
         );
       } catch (error) {
@@ -199,7 +227,16 @@ export const shippingRouter = createTRPCRouter({
       }
 
       // Return top 3 quotes WITHOUT carrierRate (internal cost stays server-side)
-      const quotes: ShippingQuote[] = topQuotes.map(({ carrierRate: _, ...q }) => q);
+      const quotes: ShippingQuote[] = topQuotes.map((quote) => ({
+        quoteId: quote.quoteId,
+        quoteToken: quote.quoteToken,
+        carrierName: quote.carrierName,
+        carrierScac: quote.carrierScac,
+        shippingPrice: quote.shippingPrice,
+        transitDays: quote.transitDays,
+        estimatedDelivery: quote.estimatedDelivery,
+        quoteExpiresAt: quote.quoteExpiresAt,
+      }));
       return quotes;
     }),
 

@@ -24,13 +24,13 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "For Buyers — Source Premium Flooring Below Wholesale | PlankMarket",
+  title: "For Buyers — Closeout Flooring Your Competitors Miss | PlankMarket",
   description:
-    "PlankMarket connects flooring contractors, retailers, and builders to verified sellers with overstock, closeout, and discontinued flooring inventory — at 30–60% below standard wholesale prices.",
+    "Source first-quality closeout and surplus flooring at 30-60% below wholesale. 44 data fields per listing. Verified sellers. Integrated LTL freight. 3% buyer fee, no subscription.",
   openGraph: {
-    title: "Stop Calling Around. Source Premium Flooring in One Place.",
+    title: "The Closeout Inventory Your Competitors Never See.",
     description:
-      "Browse hundreds of surplus flooring lots from verified manufacturers and distributors. Transparent pricing, full specs, integrated freight. Free to join.",
+      "First-quality surplus flooring from verified manufacturers and distributors. 30-60% below wholesale. Browse lots now.",
     url: "https://plankmarket.com/for-buyers",
   },
 };
@@ -79,27 +79,28 @@ export default function ForBuyersPage() {
                   B2B Flooring Marketplace
                 </Badge>
                 <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
-                  Stop Calling Around.{" "}
+                  The Inventory Your Competitors{" "}
                   <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                    Source Premium Flooring in One Place.
+                    Never See.
                   </span>
                 </h1>
                 <p className="mt-6 text-lg text-muted-foreground">
-                  PlankMarket connects flooring contractors, retailers, and builders
-                  directly to verified manufacturers and distributors selling
-                  overstock, closeout, and discontinued inventory — at 30–60% below
-                  standard wholesale prices.
+                  Manufacturers and distributors sit on closeout flooring they
+                  need to move. First-quality hardwood, engineered, LVP. 30-60%
+                  below wholesale. Most retailers never hear about these lots.
+                  PlankMarket puts them in one place, with full specs, verified
+                  sellers, and transparent pricing.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                   <Link href="/listings">
                     <Button size="xl" variant="gold">
-                      Browse Inventory
+                      Browse Closeout Lots
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
                   <Link href="/register?role=buyer">
                     <Button size="xl" variant="outline">
-                      Free Buyer Account
+                      Create Free Buyer Account
                     </Button>
                   </Link>
                 </div>
@@ -108,15 +109,15 @@ export default function ForBuyersPage() {
                 <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
                     <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Verified sellers</span>
+                    <span>Every seller verified</span>
                   </div>
                   <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
                     <Layers className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>6 categories, 50 states</span>
+                    <span>44 data fields per listing</span>
                   </div>
                   <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
                     <Lock className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Stripe buyer protection</span>
+                    <span>Stripe escrow protection</span>
                   </div>
                 </div>
               </div>
@@ -142,30 +143,34 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl sm:text-4xl">
-              You already know how this goes.
+              You already know how this week goes.
             </h2>
+            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+              Monday morning. You need 4,000 sq ft of engineered oak for a
+              mid-rise project. Here is what happens next.
+            </p>
           </div>
           <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto stagger-grid">
             {[
               {
-                title: "The phone-around game wastes your week.",
+                title: "Two days on the phone. The lot sold yesterday.",
                 description:
-                  "You need 4,000 sq ft of engineered oak for a mid-rise project. So you spend two days calling distributors, leaving voicemails, and chasing quotes — only to find out the lot you wanted sold yesterday. There's no central place to see what's actually available and what it costs.",
+                  "You call six distributors. Leave four voicemails. Chase three quotes. By Wednesday, the lot you wanted is gone. There is no central place to see what is available and what it costs. So you start over.",
               },
               {
-                title: '"Great deal" turns into a quality nightmare.',
+                title: "You bought blind. It showed up wrong.",
                 description:
-                  "You bought a pallet of closeout LVP from a contact's contact. It arrived short by 300 sq ft, the dye lots didn't match, and there were no photos or specs to reference in the dispute. When you buy outside a structured marketplace, you have no recourse.",
+                  "A contact's contact had a pallet of closeout LVP at a good price. No photos. No spec sheet. It arrived 300 sq ft short with mismatched dye lots. Buying outside a structured marketplace means no recourse when things go sideways.",
               },
               {
-                title: "Pricing is a black box.",
+                title: "Five distributors. Five prices. Zero transparency.",
                 description:
-                  "Call five distributors for the same product and you'll get five different prices — none of them posted publicly. There's no baseline, no transparency, and no way to know if you're getting a fair deal or being taken advantage of because you asked first.",
+                  "Same product. Same condition. Five different quotes, none posted publicly. No baseline to compare against. You have no way to know if you are getting a fair price or paying more because you asked first.",
               },
               {
-                title: "Good lots are gone before you hear about them.",
+                title: "The best lots go to buyers who are already plugged in.",
                 description:
-                  "Surplus flooring moves fast. The best overstock — mill-direct hardwood, discontinued premium LVP, name-brand engineered clearouts — gets picked up by buyers who are already plugged into the right networks. If you're not in that network, you're always a step behind.",
+                  "Mill-direct hardwood. Discontinued premium LVP. Name-brand engineered closeouts. Surplus flooring moves fast, and the best inventory gets picked up by buyers connected to the right networks. If you are not in that network, you are always a step behind.",
               },
             ].map((pain) => (
               <Card
@@ -190,10 +195,18 @@ export default function ForBuyersPage() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto text-center mb-14">
-            <p className="text-lg text-muted-foreground leading-relaxed">
-              There&apos;s a better way to source. PlankMarket puts the entire
-              surplus flooring market in one place, with transparent pricing,
-              verified sellers, and everything you need to buy with confidence.
+            <h2 className="font-display text-3xl sm:text-4xl">
+              One marketplace. Every surplus lot.{" "}
+              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                Your sourcing advantage.
+              </span>
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+              PlankMarket aggregates closeout, overstock, and discontinued
+              flooring from verified manufacturers and distributors into a
+              single marketplace. Transparent pricing on every lot. Full specs.
+              Integrated freight. The surplus inventory your competitors are
+              still chasing by phone is already listed here.
             </p>
           </div>
 
@@ -209,7 +222,7 @@ export default function ForBuyersPage() {
             <div className="absolute inset-0 bg-gradient-to-r from-primary/30 to-transparent" aria-hidden="true" />
             <div className="absolute inset-0 flex items-center px-10 relative z-10">
               <p className="text-white font-display text-2xl max-w-xs drop-shadow-lg">
-                Premium flooring. Better prices.
+                First-quality flooring. Below-wholesale pricing.
               </p>
             </div>
           </div>
@@ -222,19 +235,18 @@ export default function ForBuyersPage() {
               </div>
               <div>
                 <h3 className="font-display text-xl mb-2">
-                  One marketplace for all surplus flooring inventory.
+                  See what is available right now. Not after six phone calls.
                 </h3>
                 <p className="text-muted-foreground text-base leading-relaxed mb-3">
-                  Stop calling distributors one by one. Browse hundreds of lots
-                  — hardwood, engineered, laminate, LVP, bamboo, tile — from
-                  verified manufacturers and distributors across all 50 states.
-                  Filter by material, species, square footage, condition, price,
-                  and location.
+                  Browse hundreds of surplus lots from verified sellers across
+                  all 50 states. Hardwood, engineered, laminate, LVP, bamboo,
+                  tile. Filter by material, species, grade, square footage,
+                  condition, price, and location.
                 </p>
                 <p className="text-sm text-primary font-medium">
-                  Set saved search alerts and get notified the moment a matching
-                  lot is listed. The best inventory goes fast — alerts give you
-                  a real head start.
+                  Set saved search alerts. Get notified the moment a matching
+                  lot is listed. Surplus moves fast. Alerts put you first in
+                  line.
                 </p>
               </div>
             </div>
@@ -246,17 +258,17 @@ export default function ForBuyersPage() {
               </div>
               <div>
                 <h3 className="font-display text-xl mb-2">
-                  Every listing is fully documented. No surprises.
+                  44 data fields. Up to 20 photos. Know exactly what you are buying.
                 </h3>
                 <p className="text-muted-foreground text-base leading-relaxed mb-3">
-                  PlankMarket requires detailed specs on every listing: material
-                  type, species, dimensions, grade, finish, condition, pallet
-                  count, and up to 20 high-resolution photos. You see exactly
-                  what you&apos;re buying before you commit.
+                  Every listing includes material type, species, dimensions,
+                  grade, finish, condition, pallet count, and high-resolution
+                  photos. More detail than any broker call or classified ad will
+                  give you.
                 </p>
                 <p className="text-sm text-primary font-medium">
-                  44 flooring-specific data fields per listing — more detail
-                  than any general marketplace or broker call will ever give you.
+                  No surprises at delivery. You see the product, the specs, and
+                  the condition label before you commit a dollar.
                 </p>
               </div>
             </div>
@@ -268,18 +280,17 @@ export default function ForBuyersPage() {
               </div>
               <div>
                 <h3 className="font-display text-xl mb-2">
-                  Verified sellers. Secure payment. Real buyer protection.
+                  Every seller verified. Every payment protected.
                 </h3>
                 <p className="text-muted-foreground text-base leading-relaxed mb-3">
-                  Every seller on PlankMarket undergoes business verification —
-                  EIN verification, document review, and admin approval — before
-                  listing a single lot. Payments are processed via Stripe and
-                  held in escrow until the carrier picks up your order.
+                  Every seller on PlankMarket undergoes business verification.
+                  EIN verification, document review, and admin approval before
+                  they list a single lot. Payments are processed via Stripe
+                  and held in escrow until the carrier picks up your order.
                 </p>
                 <p className="text-sm text-primary font-medium">
-                  If something goes wrong, our dispute resolution team steps in.
-                  Buyers have 48 hours post-delivery to report damage or
-                  shortage, with photo documentation.
+                  48-hour post-delivery dispute window with photo evidence.
+                  Our support team mediates and protects your purchase.
                 </p>
               </div>
             </div>
@@ -292,10 +303,10 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <Badge variant="outline" className="mb-4">
-              Simple Process
+              How It Works
             </Badge>
             <h2 className="font-display text-3xl sm:text-4xl">
-              Four steps from search to delivery.
+              Search to delivery in four steps.
             </h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto stagger-grid">
@@ -304,25 +315,25 @@ export default function ForBuyersPage() {
                 step: "1",
                 title: "Create your free buyer account.",
                 description:
-                  "Register with your business information. Business verification keeps the marketplace professional — only verified businesses can buy and sell. Approval typically takes 1–3 business days.",
+                  "Register with your business information. Business verification keeps the marketplace professional. Only verified businesses buy and sell. Approval typically takes 1-3 business days.",
               },
               {
                 step: "2",
-                title: "Browse or search for the inventory you need.",
+                title: "Search, filter, and set alerts.",
                 description:
-                  "Use advanced filters to narrow by material, species, condition, lot size, price per sq ft, and seller location. Save searches and set alerts so you never miss a matching lot.",
+                  "Filter by material, species, condition, lot size, price per sq ft, and seller location. Save your searches. Set alerts so you never miss a matching lot.",
               },
               {
                 step: "3",
-                title: "Make an offer or buy at the listed price.",
+                title: "Buy at the listed price or make an offer.",
                 description:
-                  "Found the right lot? Buy now at the listed price or use the built-in offer tool to negotiate directly with the seller. All communication stays on-platform — no sharing contact information until your order is placed.",
+                  "Found the right lot? Buy now or use the built-in offer tool to negotiate directly with the seller. All communication stays on-platform with a full audit trail.",
               },
               {
                 step: "4",
-                title: "Pay securely and track your freight shipment.",
+                title: "Pay securely and track your freight.",
                 description:
-                  "Check out via Stripe. Your payment is held in escrow. Once the seller ships your order via LTL freight, you get a tracking number and can follow delivery through your buyer dashboard. Your funds are only released to the seller after carrier pickup is confirmed.",
+                  "Check out via Stripe. Payment is held in escrow. Once the seller ships via LTL freight, you get a tracking number and follow delivery through your buyer dashboard. Funds release to the seller only after carrier pickup is confirmed.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -348,46 +359,49 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl sm:text-4xl">
-              Built for buyers who move fast and buy smart.
+              Built for buyers who source at volume.
             </h2>
+            <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+              Every feature exists because buyers told us what slows them down.
+            </p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto stagger-grid">
             {[
               {
                 icon: Search,
-                title: "Advanced Search and Filtering",
+                title: "Advanced Filtering Across 20+ Dimensions",
                 description:
-                  "Filter listings across 20+ dimensions — material type, wood species, plank width, finish, condition, sq ft range, price per sq ft, seller state, and more. Find exactly what you need without scrolling through irrelevant inventory.",
+                  "Material type, wood species, plank width, finish, condition, square footage range, price per sq ft, seller state. Find the lot you need without scrolling through irrelevant inventory.",
               },
               {
                 icon: Bell,
                 title: "Saved Search Alerts",
                 description:
-                  "Set up alerts for specific products and get an email the moment a matching lot is listed. If you're looking for 3,000+ sq ft of white oak engineered in Grade A condition, you'll know the second it hits the marketplace.",
+                  "Looking for 3,000+ sq ft of white oak engineered in Grade A condition? Set an alert. You get an email the second a matching lot is listed. First to know, first to buy.",
               },
               {
                 icon: FileText,
-                title: "Full Listing Specs — 44 Data Fields",
+                title: "44 Flooring-Specific Data Fields",
                 description:
-                  "Every listing includes material type, species, manufacturer, dimensions, plank width, wear layer, grade, condition, reason for surplus, pallet count, and up to 20 photos. You have everything you need to make a confident purchasing decision without a phone call.",
+                  "Material type, species, manufacturer, dimensions, plank width, wear layer, grade, condition, reason for surplus, pallet count, and up to 20 photos. Make a confident purchasing decision without picking up the phone.",
               },
               {
                 icon: MessageSquare,
                 title: "Built-In Offer and Negotiation",
                 description:
-                  "Don't want to pay the asking price? Submit an offer. The seller can accept, counter, or decline. All negotiation happens on-platform with a full audit trail — no side deals, no ambiguity.",
+                  "Submit an offer. The seller can accept, counter, or decline. All negotiation happens on-platform with a full audit trail. No side deals. No ambiguity about what was agreed.",
               },
               {
                 icon: Truck,
-                title: "Integrated LTL Freight with Real-Time Tracking",
+                title: "Integrated LTL Freight with Tracking",
                 description:
-                  "Freight quotes are generated at checkout based on your delivery address, pallet weight, and dimensions. Select a carrier rate, pay once, and track your shipment through delivery — all inside PlankMarket.",
+                  "Freight quotes generated at checkout based on your delivery address, pallet weight, and dimensions. Select a carrier rate, pay once, and track your shipment through delivery. All inside PlankMarket.",
               },
               {
                 icon: Shield,
-                title: "Buyer Protection and Dispute Resolution",
+                title: "Escrow Payment and Dispute Resolution",
                 description:
-                  "Payments are held in escrow until carrier pickup is confirmed. Buyers have 48 hours post-delivery to report damage or shortages with photo evidence. Our support team mediates disputes and protects your purchase.",
+                  "Payments held in escrow until carrier pickup is confirmed. 48-hour post-delivery window to report damage or shortages with photo evidence. Our support team mediates and protects your purchase.",
               },
             ].map((feature) => (
               <Card key={feature.title} className="card-hover-lift">
@@ -413,7 +427,7 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl sm:text-4xl">
-              Buyers who found a better way to source.
+              Buyers who stopped calling around.
             </h2>
           </div>
 
@@ -429,14 +443,14 @@ export default function ForBuyersPage() {
               },
               {
                 quote:
-                  "The listing detail is what sold me. Every lot has photos, specs, pallet dimensions, and a clear condition description. I know exactly what's arriving before I pay for it. Haven't had a single surprise shipment since I switched.",
+                  "The listing detail is what sold me. Every lot has photos, specs, pallet dimensions, and a clear condition description. I know exactly what is arriving before I pay for it. Have not had a single surprise shipment since I switched.",
                 name: "Diane R.",
                 role: "Owner",
                 company: "Flooring retail store, Midwest",
               },
               {
                 quote:
-                  "We build 80–100 units a year and flooring is a major cost line. PlankMarket has become a consistent sourcing channel for us — especially for engineered hardwood and LVP. The verified sellers give our procurement team confidence, and the freight integration saves a ton of back-and-forth.",
+                  "We build 80-100 units a year and flooring is a major cost line. PlankMarket has become a consistent sourcing channel for us — especially for engineered hardwood and LVP. The verified sellers give our procurement team confidence, and the freight integration saves a ton of back-and-forth.",
                 name: "James W.",
                 role: "VP of Procurement",
                 company: "Residential home builder, Mid-Atlantic region",
@@ -478,18 +492,10 @@ export default function ForBuyersPage() {
               <dl className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
                 <div>
                   <dt className="font-display text-3xl tabular-nums">
-                    30–60%
+                    30-60%
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
-                    Typical savings below standard wholesale prices
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-display text-3xl tabular-nums">
-                    20
-                  </dt>
-                  <dd className="text-sm opacity-80 mt-1">
-                    Photos required on every listing for full visual documentation
+                    Below standard wholesale on surplus lots
                   </dd>
                 </div>
                 <div>
@@ -497,7 +503,15 @@ export default function ForBuyersPage() {
                     44
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
-                    Flooring-specific data fields captured on every listing
+                    Flooring-specific data fields per listing
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-display text-3xl tabular-nums">
+                    20
+                  </dt>
+                  <dd className="text-sm opacity-80 mt-1">
+                    Photos per listing for full visual documentation
                   </dd>
                 </div>
                 <div>
@@ -505,7 +519,7 @@ export default function ForBuyersPage() {
                     All 50
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
-                    States covered — nationwide inventory from verified US sellers
+                    States covered by verified US sellers
                   </dd>
                 </div>
               </dl>
@@ -523,16 +537,13 @@ export default function ForBuyersPage() {
                 Transparent Pricing
               </Badge>
               <h2 className="font-display text-3xl sm:text-4xl">
-                One fee. No surprises.
+                3% on completed purchases. Nothing else.
               </h2>
-              <p className="mt-4 text-xl font-semibold text-primary">
-                You pay 3% on top of the listed price. That&apos;s it.
-              </p>
-              <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
-                The 3% buyer fee covers payment processing, buyer protection,
-                dispute resolution, platform support, and freight coordination
-                tools. There are no membership fees, no listing access fees, and
-                no charges to browse.
+              <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
+                No subscription fees. No listing access fees. No charges to
+                browse. The 3% buyer fee covers payment processing, escrow
+                protection, dispute resolution, platform support, and freight
+                coordination tools.
               </p>
             </div>
 
@@ -577,7 +588,7 @@ export default function ForBuyersPage() {
               {/* Comparison */}
               <div className="space-y-4">
                 <h3 className="font-display text-lg">
-                  Compared to alternatives
+                  Compare that to the alternatives.
                 </h3>
                 <div className="space-y-3">
                   <div className="rounded-xl border border-border bg-card p-4">
@@ -585,8 +596,8 @@ export default function ForBuyersPage() {
                       Traditional brokers
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Charge 8–15% commission, provide no transparent pricing,
-                      and add weeks to the process.
+                      8-15% commission. No transparent pricing. Weeks added to
+                      the process. You pay more and wait longer.
                     </p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-4">
@@ -594,25 +605,26 @@ export default function ForBuyersPage() {
                       Calling distributors directly
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      No central visibility, inconsistent pricing, and no buyer
-                      protection on side deals.
+                      No central visibility into available inventory. Inconsistent
+                      pricing. No buyer protection if the order goes wrong.
                     </p>
                   </div>
                   <div className="rounded-xl border border-border bg-card p-4">
                     <p className="font-semibold text-sm mb-1">
-                      General marketplaces (eBay, Craigslist)
+                      General marketplaces
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Unverified sellers, no flooring-specific specs, no freight
-                      integration, no dispute resolution for commercial freight.
+                      Unverified sellers. No flooring-specific specs. No freight
+                      integration. No dispute resolution for commercial freight
+                      orders.
                     </p>
                   </div>
                 </div>
 
                 <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
                   <p className="text-sm font-medium text-amber-900">
-                    No subscription. No listing access fees. No renewal charges.
-                    You pay 3% only when you complete a purchase.
+                    You pay 3% only when you complete a purchase. Browse, search,
+                    set alerts, and negotiate for free.
                   </p>
                 </div>
               </div>
@@ -627,7 +639,7 @@ export default function ForBuyersPage() {
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="font-display text-3xl sm:text-4xl">
-                Frequently asked questions
+                Common questions from buyers.
               </h2>
             </div>
             <div className="space-y-4">
@@ -635,32 +647,37 @@ export default function ForBuyersPage() {
                 {
                   question: "Who can buy on PlankMarket?",
                   answer:
-                    "PlankMarket is a B2B marketplace for flooring professionals. To buy, you need to create an account and complete business verification — your business name, contact information, and EIN are reviewed and approved by our team, typically within 1–3 business days. This keeps the marketplace professional and ensures you're dealing with verified sellers.",
+                    "PlankMarket is a B2B marketplace for flooring professionals. Retailers, contractors, and builders. To buy, you need to create an account and complete business verification. Your business name, contact information, and EIN are reviewed and approved by our team, typically within 1-3 business days.",
                 },
                 {
-                  question: "What types of flooring are available?",
+                  question: "What types of flooring are listed?",
                   answer:
-                    "PlankMarket lists overstock, closeout, discontinued, and surplus inventory across six categories: hardwood, engineered wood, laminate, vinyl/LVP, bamboo, and tile. Inventory includes new overstock, discontinued lines, factory seconds, remnants, customer returns, and slightly damaged lots clearly marked and described.",
+                    "Overstock, closeout, discontinued, and surplus inventory across six categories: hardwood, engineered wood, laminate, vinyl/LVP, bamboo, and tile. Conditions include new overstock, discontinued lines, factory seconds, remnants, and customer returns. Every lot is clearly labeled with its condition.",
                 },
                 {
                   question: "Can I negotiate on price?",
                   answer:
-                    "Yes. Every listing supports direct offers. Submit your offer, and the seller can accept, counter, or decline — all within a 48-hour response window. The offer history is visible to both parties throughout the negotiation.",
+                    "Yes. Every listing supports direct offers. Submit your offer and the seller can accept, counter, or decline within a 48-hour response window. The full offer history is visible to both parties throughout the negotiation.",
                 },
                 {
-                  question: "How does shipping work?",
+                  question: "How does freight work?",
                   answer:
-                    "PlankMarket uses integrated LTL freight. When you check out, you enter your delivery address and we generate freight quotes from our carrier network. You select a rate, and the freight cost is added to your order. The seller ships via LTL, and you can track the shipment in real time through your buyer dashboard.",
+                    "PlankMarket uses integrated LTL freight. At checkout, you enter your delivery address and we generate freight quotes from our carrier network based on pallet weight and dimensions. You select a rate, the freight cost is added to your order, and you can track the shipment in real time through your buyer dashboard.",
                 },
                 {
-                  question: "What happens if my order arrives damaged or short?",
+                  question: "What if my order arrives damaged or short?",
                   answer:
-                    "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team will mediate the claim. Payments are held in escrow until carrier pickup, providing an additional layer of protection.",
+                    "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team mediates the claim. Payments are held in escrow until carrier pickup, providing an additional layer of protection.",
                 },
                 {
-                  question: "Is my payment information secure?",
+                  question: "Is my payment secure?",
                   answer:
-                    "Yes. All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses worldwide. PlankMarket never stores your payment card information. Your funds are held in escrow after payment and only released to the seller once carrier pickup is confirmed.",
+                    "All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses. PlankMarket never stores your payment card information. Funds are held in escrow after payment and only released to the seller once carrier pickup is confirmed.",
+                },
+                {
+                  question: "How is this different from buying through a broker?",
+                  answer:
+                    "Brokers charge 8-15% commission, control what inventory you see, and add weeks to the process. On PlankMarket, you see every available lot from every verified seller, with transparent pricing and a 3% buyer fee. You contact sellers directly. You negotiate directly. No middleman.",
                 },
               ].map((faq, index) => (
                 <details
@@ -721,12 +738,13 @@ export default function ForBuyersPage() {
 
             <div className="text-center relative z-10">
               <h2 className="font-display text-3xl mb-4 sm:text-4xl">
-                The best lots sell in days. Start sourcing smarter today.
+                Surplus flooring moves fast. The best lots sell in days.
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
-                Create your free buyer account and access hundreds of verified
-                surplus flooring lots — with transparent pricing, full specs, and
-                integrated freight.
+                Create your free buyer account and start sourcing closeout
+                inventory from verified sellers. Full specs. Transparent
+                pricing. Integrated freight. While your competitors are still
+                dialing distributors.
               </p>
               <Link href="/register?role=buyer">
                 <Button
@@ -738,7 +756,7 @@ export default function ForBuyersPage() {
                 </Button>
               </Link>
               <p className="mt-5 text-sm text-white/60">
-                No subscription fees. Browse free. Pay 3% only when you buy.
+                No subscription. Browse free. Pay 3% only when you buy.
               </p>
             </div>
           </div>

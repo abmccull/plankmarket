@@ -29,6 +29,7 @@ interface MockQueryReturn {
 const mockQuotes = [
   {
     quoteId: 1,
+    quoteToken: "token-1",
     carrierName: "FedEx Freight",
     carrierScac: "FXFE",
     shippingPrice: 250.0,
@@ -38,6 +39,7 @@ const mockQuotes = [
   },
   {
     quoteId: 2,
+    quoteToken: "token-2",
     carrierName: "Old Dominion",
     carrierScac: "ODFL",
     shippingPrice: 285.0,
@@ -47,6 +49,7 @@ const mockQuotes = [
   },
   {
     quoteId: 3,
+    quoteToken: "token-3",
     carrierName: "XPO Logistics",
     carrierScac: "XPOL",
     shippingPrice: 320.0,
