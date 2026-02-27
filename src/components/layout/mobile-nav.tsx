@@ -24,6 +24,7 @@ import {
   LogOut,
   User,
   Shield,
+  HelpCircle,
 } from "lucide-react";
 
 interface NavItem {
@@ -52,11 +53,18 @@ export function MobileNav() {
   // Define navigation items based on user role
   const getNavItems = (): NavItem[] => {
     if (!isAuthenticated || !user) {
+      const isLandingPage = pathname === "/";
       return [
         { title: "Browse Listings", href: "/listings", icon: Search },
         { title: "How It Works", href: "/how-it-works", icon: LayoutDashboard },
         { title: "Pricing", href: "/pricing", icon: CreditCard },
-        { title: "For Sellers", href: "/for-sellers", icon: Package },
+        ...(isLandingPage
+          ? [
+              { title: "Buyers", href: "/for-buyers", icon: ShoppingCart },
+              { title: "Sellers", href: "/for-sellers", icon: Package },
+              { title: "FAQ", href: "/faq", icon: HelpCircle },
+            ]
+          : [{ title: "For Sellers", href: "/for-sellers", icon: Package }]),
         { title: "Login", href: "/login", icon: User },
         { title: "Register", href: "/register", icon: User },
       ];

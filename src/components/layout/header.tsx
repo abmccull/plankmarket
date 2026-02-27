@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getDashboardPath } from "@/lib/auth/roles";
 import { formatRelativeTime, truncate } from "@/lib/utils";
 import { getNotificationHref } from "@/lib/utils/notification-href";
@@ -41,6 +41,8 @@ import { getNotificationHref } from "@/lib/utils/notification-href";
 export function Header() {
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
+  const isLandingPage = pathname === "/";
 
   // Notification data - only fetch when authenticated
   const { data: unreadData } = trpc.notification.getUnreadCount.useQuery(
@@ -136,7 +138,28 @@ export function Header() {
           >
             Pricing
           </Link>
-          {isAuthenticated && user?.role === "seller" ? (
+          {isLandingPage ? (
+            <>
+              <Link
+                href="/for-buyers"
+                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Buyers
+              </Link>
+              <Link
+                href="/for-sellers"
+                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Sellers
+              </Link>
+              <Link
+                href="/faq"
+                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                FAQ
+              </Link>
+            </>
+          ) : isAuthenticated && user?.role === "seller" ? (
             <>
               <Link
                 href="/seller-guide"
