@@ -74,7 +74,24 @@ export default function CheckoutPage() {
     }
   }, [listing, listingId, router]);
 
+  // Validate offer status and expiry when offer data loads
+  useEffect(() => {
+    if (!offerId || !offer) return;
+
+    if (offer.status !== "accepted") {
+      toast.error("This offer is no longer available for checkout.");
+      router.push(`/offers/${offerId}`);
+      return;
+    }
+
+    if (offer.expiresAt && new Date(offer.expiresAt) < new Date()) {
+      toast.error("This offer has expired.");
+      router.push(`/offers/${offerId}`);
+    }
+  }, [offer, offerId, router]);
+
   const createOrder = trpc.order.create.useMutation();
+  const createOrderFromOffer = trpc.order.createFromOffer.useMutation();
   const createPaymentIntent = trpc.payment.createPaymentIntent.useMutation();
 
   const {
@@ -177,19 +194,32 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
     try {
       const formData = getValues();
-      // Create the order with shipping fields
-      // TODO: When order.createFromOffer is implemented on the backend,
-      // use it here for offer-based checkouts to pass the offerId and
-      // have the server validate the offer price server-side.
-      const order = await createOrder.mutateAsync({
-        ...formData,
+      const shippingQuoteFields = {
         selectedQuoteToken: selectedQuote.quoteToken,
         selectedQuoteId: String(selectedQuote.quoteId),
         selectedCarrier: selectedQuote.carrierName,
         shippingPrice: selectedQuote.shippingPrice,
         estimatedTransitDays: selectedQuote.transitDays,
         quoteExpiresAt: selectedQuote.quoteExpiresAt,
-      });
+      };
+
+      // Use createFromOffer for accepted-offer checkouts so the
+      // server validates the offer price server-side.
+      const order = isOfferCheckout
+        ? await createOrderFromOffer.mutateAsync({
+            offerId: offerId!,
+            shippingName: formData.shippingName,
+            shippingAddress: formData.shippingAddress,
+            shippingCity: formData.shippingCity,
+            shippingState: formData.shippingState,
+            shippingZip: formData.shippingZip,
+            shippingPhone: formData.shippingPhone,
+            ...shippingQuoteFields,
+          })
+        : await createOrder.mutateAsync({
+            ...formData,
+            ...shippingQuoteFields,
+          });
       setOrderId(order.id);
 
       // Create payment intent
@@ -293,6 +323,7 @@ export default function CheckoutPage() {
                 year: "numeric",
                 hour: "numeric",
                 minute: "2-digit",
+                timeZoneName: "short",
               })}
             </p>
           )}
@@ -563,7 +594,7 @@ export default function CheckoutPage() {
                 type="button"
                 className="w-full"
                 size="lg"
-                disabled={!selectedQuote || isSubmitting}
+                disabled={!selectedQuote || isSubmitting || createOrderFromOffer.isPending}
                 onClick={handleContinueToPayment}
               >
                 {isSubmitting ? (

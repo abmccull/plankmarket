@@ -446,8 +446,8 @@ export const offerRouter = createTRPCRouter({
         return updatedOffer;
       });
 
-      // Fire Inngest event for accepted offer processing
-      await inngest.send({
+      // Fire Inngest event for accepted offer processing (fire-and-forget)
+      inngest.send({
         name: "offer/accepted",
         data: {
           offerId: input.offerId,
@@ -455,10 +455,13 @@ export const offerRouter = createTRPCRouter({
           sellerId: offer.sellerId,
           listingId: offer.listingId,
           listingTitle: offer.listing.title,
-          acceptedPrice,
-          quantitySqFt: offer.quantitySqFt,
+          acceptedPrice: `$${Number(acceptedPrice).toFixed(2)}/sq ft`,
+          quantity: `${Number(offer.quantitySqFt).toLocaleString()} sq ft`,
+          estimatedTotal: `$${(Number(acceptedPrice) * Number(offer.quantitySqFt)).toFixed(2)}`,
           expiresAt: expiresAt.toISOString(),
         },
+      }).catch((err) => {
+        console.error("Failed to send offer/accepted event:", err);
       });
 
       // Notify the other party

@@ -407,6 +407,8 @@ export const orderRouter = createTRPCRouter({
       let verifiedEstimatedTransitDays = input.estimatedTransitDays;
       let verifiedQuoteId: string | undefined;
       let quoteExpiresAt: Date | undefined;
+      let quoteListingId: string | undefined;
+      let quoteQuantitySqFt: number | undefined;
 
       if (input.selectedQuoteToken) {
         const cachedQuote = await redis.get(
@@ -467,6 +469,8 @@ export const orderRouter = createTRPCRouter({
         quoteExpiresAt = quote.quoteExpiresAt
           ? new Date(quote.quoteExpiresAt)
           : undefined;
+        quoteListingId = quote.listingId;
+        quoteQuantitySqFt = quote.quantitySqFt;
       } else if (input.selectedQuoteId) {
         // Deprecated fallback path
         const cachedQuote = await redis.get(`shipping-quote:${input.selectedQuoteId}`);
@@ -522,6 +526,8 @@ export const orderRouter = createTRPCRouter({
         quoteExpiresAt = quote.quoteExpiresAt
           ? new Date(quote.quoteExpiresAt)
           : undefined;
+        quoteListingId = quote.listingId;
+        quoteQuantitySqFt = quote.quantitySqFt;
       }
 
       const order = await ctx.db.transaction(async (tx) => {
@@ -574,6 +580,21 @@ export const orderRouter = createTRPCRouter({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "This offer has expired. Please negotiate a new offer.",
+          });
+        }
+
+        // Validate shipping quote matches the offer's listing and quantity
+        if (quoteListingId && quoteListingId !== offer.listingId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Shipping quote does not match this listing.",
+          });
+        }
+
+        if (typeof quoteQuantitySqFt === "number" && Math.abs(Number(quoteQuantitySqFt) - Number(offer.quantitySqFt)) > 0.01) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Shipping quote quantity does not match the offer.",
           });
         }
 
