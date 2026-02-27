@@ -140,6 +140,13 @@ export const authRouter = createTRPCRouter({
         });
       }
 
+      // Set app_metadata.role using service role client (server-writable only, not client-mutable)
+      const { createServiceClient } = await import("@/lib/supabase/server");
+      const serviceClient = await createServiceClient();
+      await serviceClient.auth.admin.updateUserById(authData.user.id, {
+        app_metadata: { role: input.role },
+      });
+
       // Geo-lookup from ZIP code
       let lat: number | undefined;
       let lng: number | undefined;
@@ -202,6 +209,18 @@ export const authRouter = createTRPCRouter({
     return ctx.user;
   }),
 
+  // Get verification-specific fields for form pre-fill (excluded from ctx.user for security)
+  getVerificationData: protectedProcedure.query(async ({ ctx }) => {
+    const data = await ctx.db.query.users.findFirst({
+      where: eq(users.id, ctx.user.id),
+      columns: {
+        einTaxId: true,
+        verificationDocUrl: true,
+      },
+    });
+    return data ?? { einTaxId: null, verificationDocUrl: null };
+  }),
+
   // Update user profile
   updateProfile: protectedProcedure
     .input(updateProfileSchema)
@@ -209,7 +228,14 @@ export const authRouter = createTRPCRouter({
       const [updated] = await ctx.db
         .update(users)
         .set({
-          ...input,
+          name: input.name,
+          phone: input.phone,
+          businessName: input.businessName,
+          businessAddress: input.businessAddress,
+          businessCity: input.businessCity,
+          businessState: input.businessState,
+          businessZip: input.businessZip,
+          avatarUrl: input.avatarUrl,
           updatedAt: new Date(),
         })
         .where(eq(users.id, ctx.user.id))
@@ -373,11 +399,20 @@ export const authRouter = createTRPCRouter({
         });
       }
 
+      // Fetch sensitive fields directly from DB (excluded from ctx.user for security)
+      const fullUser = await ctx.db.query.users.findFirst({
+        where: eq(users.id, ctx.user.id),
+        columns: {
+          einTaxId: true,
+          verificationDocUrl: true,
+        },
+      });
+
       const mergedSubmission: VerificationSubmission = {
-        einTaxId: input.einTaxId ?? ctx.user.einTaxId ?? "",
+        einTaxId: input.einTaxId ?? fullUser?.einTaxId ?? "",
         businessWebsite: input.businessWebsite ?? ctx.user.businessWebsite ?? "",
         verificationDocUrl:
-          input.verificationDocUrl ?? ctx.user.verificationDocUrl ?? "",
+          input.verificationDocUrl ?? fullUser?.verificationDocUrl ?? "",
         businessAddress: input.businessAddress ?? ctx.user.businessAddress ?? "",
         businessCity: input.businessCity ?? ctx.user.businessCity ?? "",
         businessState: input.businessState ?? ctx.user.businessState ?? "",

@@ -36,6 +36,7 @@ export default function BuyerSettingsPage() {
   const utils = trpc.useUtils();
 
   const { data: profile } = trpc.auth.getProfile.useQuery();
+  const { data: verificationData } = trpc.auth.getVerificationData.useQuery();
   const updateProfile = trpc.auth.updateProfile.useMutation();
   const submitVerification = trpc.auth.submitVerification.useMutation({
     onSuccess: () => {
@@ -118,15 +119,15 @@ export default function BuyerSettingsPage() {
   useEffect(() => {
     if (!profile) return;
     resetVerification({
-      einTaxId: profile.einTaxId ?? "",
+      einTaxId: verificationData?.einTaxId ?? "",
       businessWebsite: profile.businessWebsite ?? "",
-      verificationDocUrl: profile.verificationDocUrl ?? "",
+      verificationDocUrl: verificationData?.verificationDocUrl ?? "",
       businessAddress: profile.businessAddress ?? "",
       businessCity: profile.businessCity ?? "",
       businessState: profile.businessState ?? "",
       businessZip: profile.businessZip ?? "",
     });
-  }, [profile, resetVerification]);
+  }, [profile, verificationData, resetVerification]);
 
   const onSubmit = async (data: UpdateProfileInput) => {
     setIsSubmitting(true);

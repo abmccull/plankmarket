@@ -147,7 +147,10 @@ export const adminRouter = createTRPCRouter({
         .where(whereClause);
 
       return {
-        users: usersList,
+        users: usersList.map((u) => ({
+          ...u,
+          einTaxId: u.einTaxId ? `**-***${u.einTaxId.slice(-4)}` : null,
+        })),
         total: count,
         page: input.page,
         limit: input.limit,
@@ -319,7 +322,10 @@ export const adminRouter = createTRPCRouter({
       orderBy: [asc(users.verificationRequestedAt)], // FIFO - oldest first
     });
 
-    return pendingUsers;
+    return pendingUsers.map((u) => ({
+      ...u,
+      einTaxId: u.einTaxId ? `**-***${u.einTaxId.slice(-4)}` : null,
+    }));
   }),
 
   // Update verification status

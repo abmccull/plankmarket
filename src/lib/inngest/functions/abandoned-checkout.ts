@@ -5,6 +5,7 @@ import { listings } from "@/server/db/schema/listings";
 import { users } from "@/server/db/schema/users";
 import { eq } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { escapeHtml } from "@/lib/utils";
 
 interface CheckoutStartedEvent {
   data: {
@@ -67,13 +68,13 @@ export const abandonedCheckout = inngest.createFunction(
           await resend.emails.send({
             from: "PlankMarket <noreply@plankmarket.com>",
             to: buyer[0].email,
-            subject: `Complete your purchase of ${listing[0].title}`,
+            subject: `Complete your purchase of ${escapeHtml(listing[0].title)}`,
             html: `
-              <p>Hi ${buyer[0].name},</p>
-              <p>You started checkout for <strong>${listing[0].title}</strong> but didn't complete your purchase.</p>
+              <p>Hi ${escapeHtml(buyer[0].name ?? "")},</p>
+              <p>You started checkout for <strong>${escapeHtml(listing[0].title)}</strong> but didn't complete your purchase.</p>
               <p><strong>Order Details:</strong></p>
               <ul>
-                <li>Material: ${listing[0].materialType}</li>
+                <li>Material: ${escapeHtml(listing[0].materialType)}</li>
                 <li>Quantity: ${checkoutData.quantitySqFt} sq ft</li>
                 <li>Price: $${listing[0].askPricePerSqFt}/sq ft</li>
                 <li>Total: $${checkoutData.totalPrice.toFixed(2)}</li>

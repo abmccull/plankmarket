@@ -4,6 +4,7 @@ import { listings } from "@/server/db/schema/listings";
 import { users } from "@/server/db/schema/users";
 import { eq, and, lte, gte } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { escapeHtml } from "@/lib/utils";
 
 export const listingExpiryWarning = inngest.createFunction(
   { id: "listing-expiry-warning", name: "Send Listing Expiry Warnings" },
@@ -48,10 +49,10 @@ export const listingExpiryWarning = inngest.createFunction(
           await resend.emails.send({
             from: "PlankMarket <noreply@plankmarket.com>",
             to: listing.sellerEmail,
-            subject: `Your listing "${listing.listingTitle}" expires in 7 days`,
+            subject: `Your listing "${escapeHtml(listing.listingTitle)}" expires in 7 days`,
             html: `
-              <p>Hi ${listing.sellerName},</p>
-              <p>Your listing "<strong>${listing.listingTitle}</strong>" will expire in 7 days on ${listing.expiresAt ? new Date(listing.expiresAt).toLocaleDateString() : "soon"}.</p>
+              <p>Hi ${escapeHtml(listing.sellerName ?? "")},</p>
+              <p>Your listing "<strong>${escapeHtml(listing.listingTitle)}</strong>" will expire in 7 days on ${listing.expiresAt ? new Date(listing.expiresAt).toLocaleDateString() : "soon"}.</p>
               <p>To keep your listing active:</p>
               <ul>
                 <li><a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/seller/listings/${listing.listingId}/edit">Edit and republish your listing</a></li>

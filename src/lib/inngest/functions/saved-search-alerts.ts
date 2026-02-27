@@ -7,6 +7,7 @@ import { users } from "@/server/db/schema/users";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
 import { filtersToSearchParams } from "@/lib/utils/search-filters";
+import { escapeHtml } from "@/lib/utils";
 import type { SearchFilters } from "@/types";
 
 const FREQUENCY_INTERVALS: Record<string, number> = {
@@ -123,18 +124,18 @@ export const savedSearchAlerts = inngest.createFunction(
             await resend.emails.send({
               from: "PlankMarket <noreply@plankmarket.com>",
               to: search.userEmail,
-              subject: `${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} match "${search.name}"`,
+              subject: `${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} match "${escapeHtml(search.name)}"`,
               html: `
-                <p>Hi ${search.userName},</p>
-                <p>We found ${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} that match your saved search "${search.name}":</p>
+                <p>Hi ${escapeHtml(search.userName ?? "")},</p>
+                <p>We found ${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""} that match your saved search "${escapeHtml(search.name)}":</p>
                 <ul>
                   ${matchingListings
                     .map(
                       (listing) => `
                     <li>
-                      <strong>${listing.title}</strong><br/>
+                      <strong>${escapeHtml(listing.title)}</strong><br/>
                       $${listing.askPricePerSqFt}/sq ft • ${listing.totalSqFt} sq ft<br/>
-                      ${listing.materialType} • ${listing.condition} • ${listing.locationState}
+                      ${escapeHtml(listing.materialType)} • ${escapeHtml(listing.condition ?? "")} • ${escapeHtml(listing.locationState ?? "")}
                       <br/>
                       <a href="${appUrl}/listings/${listing.id}">View Listing</a>
                     </li>
@@ -153,7 +154,7 @@ export const savedSearchAlerts = inngest.createFunction(
               userId: search.userId,
               type: "listing_match",
               title: `${matchingListings.length} new match${matchingListings.length > 1 ? "es" : ""}`,
-              message: `Your saved search "${search.name}" has ${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""}.`,
+              message: `Your saved search "${escapeHtml(search.name)}" has ${matchingListings.length} new listing${matchingListings.length > 1 ? "s" : ""}.`,
               data: {
                 savedSearchId: search.id,
                 matchingListingIds: matchingListings.map((l) => l.id),

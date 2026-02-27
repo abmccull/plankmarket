@@ -36,6 +36,12 @@ const nextConfig: NextConfig = {
         headers: [
           {
             key: "Content-Security-Policy",
+            // SECURITY NOTE: 'unsafe-eval' and 'unsafe-inline' in script-src are required by:
+            // - Stripe.js (Connect embedded components require unsafe-inline for injected styles)
+            // - PostHog (requires unsafe-eval for feature flags and session replay)
+            // - hCaptcha (inline script injection)
+            // TODO: Migrate to nonce-based CSP when Next.js nonce support is stable
+            //       (track: https://github.com/vercel/next.js/discussions/54907)
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.stripe.com https://connect-js.stripe.com https://us.i.posthog.com https://*.hcaptcha.com https://hcaptcha.com",

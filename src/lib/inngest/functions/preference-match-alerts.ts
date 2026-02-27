@@ -6,6 +6,7 @@ import { notifications } from "@/server/db/schema/notifications";
 import { users } from "@/server/db/schema/users";
 import { eq, and, sql } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { escapeHtml } from "@/lib/utils";
 
 export const preferenceMatchAlerts = inngest.createFunction(
   {
@@ -126,7 +127,7 @@ export const preferenceMatchAlerts = inngest.createFunction(
               userId: buyer.userId,
               type: "listing_match",
               title: "New listing matches your preferences",
-              message: `A new ${listing.materialType.replace("_", " ")} listing "${listing.title}" is available for $${Number(listing.askPricePerSqFt).toFixed(2)}/sq ft.`,
+              message: `A new ${escapeHtml(listing.materialType.replace("_", " "))} listing "${escapeHtml(listing.title)}" is available for $${Number(listing.askPricePerSqFt).toFixed(2)}/sq ft.`,
               data: {
                 listingId: listing.id,
                 listingSlug: listing.slug,
@@ -147,18 +148,18 @@ export const preferenceMatchAlerts = inngest.createFunction(
             await resend.emails.send({
               from: "PlankMarket <noreply@plankmarket.com>",
               to: buyer.buyerEmail,
-              subject: `New listing matches your preferences: ${listing.title}`,
+              subject: `New listing matches your preferences: ${escapeHtml(listing.title)}`,
               html: `
-                <p>Hi ${buyer.buyerName},</p>
+                <p>Hi ${escapeHtml(buyer.buyerName ?? "")},</p>
                 <p>A new listing that matches your material preferences just went live on PlankMarket.</p>
                 <table style="border-collapse:collapse;width:100%;max-width:480px;">
                   <tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Listing</td>
-                    <td style="padding:8px 0;">${listing.title}</td>
+                    <td style="padding:8px 0;">${escapeHtml(listing.title)}</td>
                   </tr>
                   <tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Material Type</td>
-                    <td style="padding:8px 0;">${listing.materialType.replace(/_/g, " ")}</td>
+                    <td style="padding:8px 0;">${escapeHtml(listing.materialType.replace(/_/g, " "))}</td>
                   </tr>
                   <tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Price</td>
@@ -172,7 +173,7 @@ export const preferenceMatchAlerts = inngest.createFunction(
                     listing.locationState
                       ? `<tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Location</td>
-                    <td style="padding:8px 0;">${listing.locationCity ? `${listing.locationCity}, ` : ""}${listing.locationState}${listing.locationZip ? ` ${listing.locationZip}` : ""}</td>
+                    <td style="padding:8px 0;">${listing.locationCity ? `${escapeHtml(listing.locationCity)}, ` : ""}${escapeHtml(listing.locationState ?? "")}${listing.locationZip ? ` ${escapeHtml(listing.locationZip)}` : ""}</td>
                   </tr>`
                       : ""
                   }
@@ -180,7 +181,7 @@ export const preferenceMatchAlerts = inngest.createFunction(
                     listing.condition
                       ? `<tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Condition</td>
-                    <td style="padding:8px 0;">${listing.condition.replace(/_/g, " ")}</td>
+                    <td style="padding:8px 0;">${escapeHtml(listing.condition.replace(/_/g, " "))}</td>
                   </tr>`
                       : ""
                   }

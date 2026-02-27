@@ -15,7 +15,7 @@ import {
   notifications,
   media,
 } from "../db/schema";
-import { and, eq, sql, desc, asc, inArray } from "drizzle-orm";
+import { and, eq, sql, desc, asc, inArray, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -110,12 +110,17 @@ export const buyerRequestRouter = createTRPCRouter({
         });
       }
 
-      // Link uploaded media to this request
+      // Link uploaded media to this request (only unclaimed media)
       if (input.mediaIds && input.mediaIds.length > 0) {
         await ctx.db
           .update(media)
           .set({ buyerRequestId: request.id })
-          .where(inArray(media.id, input.mediaIds));
+          .where(
+            and(
+              inArray(media.id, input.mediaIds),
+              isNull(media.buyerRequestId),
+            )
+          );
       }
 
       return request;

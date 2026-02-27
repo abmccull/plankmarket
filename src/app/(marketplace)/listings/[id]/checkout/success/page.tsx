@@ -31,6 +31,18 @@ export default function CheckoutSuccessPage() {
     { enabled: !!order }
   );
 
+  // Strip sensitive Stripe parameters from browser URL to prevent exposure
+  // in browser history, server logs, and referrer headers.
+  // Values are already captured above via useSearchParams() before removal.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("payment_intent_client_secret") || url.searchParams.has("payment_intent")) {
+      url.searchParams.delete("payment_intent_client_secret");
+      url.searchParams.delete("payment_intent");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
   const celebratedRef = useRef(false);
   useEffect(() => {
     if (myOrders?.total === 1 && !celebratedRef.current) {

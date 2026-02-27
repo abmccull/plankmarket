@@ -5,6 +5,7 @@ import { notifications } from "@/server/db/schema/notifications";
 import { users } from "@/server/db/schema/users";
 import { eq, and, lte } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { escapeHtml } from "@/lib/utils";
 
 export const followupReminders = inngest.createFunction(
   { id: "followup-reminders", name: "Send Followup Reminder Notifications" },
@@ -67,8 +68,8 @@ export const followupReminders = inngest.createFunction(
             );
 
             const notificationMessage = buyerName
-              ? `Your followup "${followup.title}" with ${buyerName} was due on ${dueDate}.`
-              : `Your followup "${followup.title}" was due on ${dueDate}.`;
+              ? `Your followup "${escapeHtml(followup.title)}" with ${escapeHtml(buyerName)} was due on ${dueDate}.`
+              : `Your followup "${escapeHtml(followup.title)}" was due on ${dueDate}.`;
 
             // Create in-app notification for the seller
             try {
@@ -101,20 +102,20 @@ export const followupReminders = inngest.createFunction(
               await resend.emails.send({
                 from: "PlankMarket <noreply@plankmarket.com>",
                 to: followup.sellerEmail,
-                subject: `Followup reminder: ${followup.title}`,
+                subject: `Followup reminder: ${escapeHtml(followup.title)}`,
                 html: `
-                  <p>Hi ${followup.sellerName},</p>
+                  <p>Hi ${escapeHtml(followup.sellerName ?? "")},</p>
                   <p>This is a reminder about a followup that is due.</p>
                   <table style="border-collapse:collapse;width:100%;max-width:480px;">
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Followup</td>
-                      <td style="padding:8px 0;">${followup.title}</td>
+                      <td style="padding:8px 0;">${escapeHtml(followup.title)}</td>
                     </tr>
                     ${
                       buyerName
                         ? `<tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Buyer</td>
-                      <td style="padding:8px 0;">${buyerName}</td>
+                      <td style="padding:8px 0;">${escapeHtml(buyerName)}</td>
                     </tr>`
                         : ""
                     }

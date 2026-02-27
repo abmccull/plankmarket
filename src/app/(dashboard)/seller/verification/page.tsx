@@ -28,6 +28,7 @@ export default function SellerVerificationPage() {
   const { user } = useAuthStore();
   const utils = trpc.useUtils();
   const { data: profile } = trpc.auth.getProfile.useQuery();
+  const { data: verificationData } = trpc.auth.getVerificationData.useQuery();
 
   const submitMutation = trpc.auth.submitVerification.useMutation({
     onSuccess: () => {
@@ -63,15 +64,15 @@ export default function SellerVerificationPage() {
   useEffect(() => {
     if (!profile) return;
     reset({
-      einTaxId: profile.einTaxId ?? "",
+      einTaxId: verificationData?.einTaxId ?? "",
       businessWebsite: profile.businessWebsite ?? "",
-      verificationDocUrl: profile.verificationDocUrl ?? "",
+      verificationDocUrl: verificationData?.verificationDocUrl ?? "",
       businessAddress: profile.businessAddress ?? "",
       businessCity: profile.businessCity ?? "",
       businessState: profile.businessState ?? "",
       businessZip: profile.businessZip ?? "",
     });
-  }, [profile, reset]);
+  }, [profile, verificationData, reset]);
 
   if (!user) {
     return (

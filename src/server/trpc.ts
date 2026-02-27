@@ -21,6 +21,34 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
   if (authUser) {
     const result = await db.query.users.findFirst({
       where: eq(users.authId, authUser.id),
+      columns: {
+        id: true,
+        authId: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        businessName: true,
+        businessAddress: true,
+        businessCity: true,
+        businessState: true,
+        businessZip: true,
+        avatarUrl: true,
+        stripeAccountId: true,
+        stripeOnboardingComplete: true,
+        verified: true,
+        active: true,
+        verificationStatus: true,
+        verificationRequestedAt: true,
+        verificationNotes: true,
+        businessWebsite: true,
+        zipCode: true,
+        createdAt: true,
+        updatedAt: true,
+        // Excluded for security:
+        // einTaxId, aiVerificationScore, aiVerificationNotes,
+        // verificationDocUrl, lat, lng
+      },
     });
     dbUser = result ?? null;
   }
