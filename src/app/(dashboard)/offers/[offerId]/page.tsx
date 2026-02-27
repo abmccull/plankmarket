@@ -24,6 +24,7 @@ import { OfferStatusBadge } from "@/components/offers/offer-status-badge";
 import { OfferTimeline } from "@/components/offers/offer-timeline";
 import { CounterOfferForm } from "@/components/offers/counter-offer-form";
 import { formatCurrency, formatSqFt, getErrorMessage } from "@/lib/utils";
+import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 import {
   ArrowLeft,
   ExternalLink,
@@ -31,6 +32,10 @@ import {
   Loader2,
   AlertCircle,
   Ban,
+  CheckCircle2,
+  Clock,
+  ShoppingCart,
+  FileText,
 } from "lucide-react";
 import { StarRating } from "@/components/shared/star-rating";
 import { toast } from "sonner";
@@ -125,8 +130,12 @@ export default function OfferDetailPage() {
     isBuyer && (offer.status === "pending" || offer.status === "countered");
 
   // Determine current price
-  const currentPrice = offer.counterPricePerSqFt || offer.offerPricePerSqFt;
+  const currentPrice = offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
   const currentTotal = currentPrice * offer.quantitySqFt;
+
+  // Accepted offer checkout state
+  const isAcceptedForBuyer = offer.status === "accepted" && isBuyer;
+  const hasOrder = !!offer.orderId;
 
   const handleCounter = async (data: {
     pricePerSqFt: number;
@@ -195,12 +204,10 @@ export default function OfferDetailPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Link
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            href={`/listings/${(offer as any).listing.id}`}
+            href={`/listings/${offer.listing.id}`}
             className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
           >
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {(offer as any).listing.title}
+            {offer.listing.title}
             <ExternalLink className="h-3 w-3" />
           </Link>
           <span className="text-muted-foreground">•</span>
@@ -211,6 +218,66 @@ export default function OfferDetailPage() {
           </span>
         </div>
       </div>
+
+      {/* Accepted offer banner for buyer */}
+      {isAcceptedForBuyer && !hasOrder && (
+        <div className="rounded-lg border-2 border-green-500 bg-green-50 p-4 dark:bg-green-950/30">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" aria-hidden="true" />
+            <p className="font-semibold text-green-800 dark:text-green-300">
+              Offer Accepted!
+            </p>
+          </div>
+          <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+            Complete your purchase to secure this deal.
+            {offer.expiresAt && (
+              <>
+                {" "}
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3 w-3" aria-hidden="true" />
+                  Complete checkout by{" "}
+                  {new Date(offer.expiresAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </>
+            )}
+          </p>
+          <Link
+            href={`/listings/${offer.listingId}/checkout?offerId=${offer.id}`}
+            className="inline-block mt-3"
+          >
+            <Button className="bg-green-600 hover:bg-green-700 text-white">
+              <ShoppingCart className="mr-2 h-4 w-4" aria-hidden="true" />
+              Complete Checkout
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {/* Order link when checkout is complete */}
+      {hasOrder && (
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+            <p className="font-medium">
+              Order has been placed for this offer.
+            </p>
+          </div>
+          <Link
+            href={`/orders/${offer.orderId}`}
+            className="inline-block mt-2"
+          >
+            <Button variant="outline" size="sm">
+              View Order
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* Your turn banner */}
       {isYourTurn && (
@@ -244,8 +311,7 @@ export default function OfferDetailPage() {
                       Buyer {isBuyer && "(You)"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {(offer as any).buyer.businessName || (offer as any).buyer.name}
+                      {getAnonymousDisplayName(offer.buyer)}
                     </p>
                     <ReputationBadge reputation={buyerReputation} />
                   </div>
@@ -259,8 +325,7 @@ export default function OfferDetailPage() {
                       Seller {isSeller && "(You)"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                      {(offer as any).seller.businessName || (offer as any).seller.name}
+                      {getAnonymousDisplayName(offer.seller)}
                     </p>
                     <ReputationBadge reputation={sellerReputation} />
                   </div>
@@ -306,8 +371,7 @@ export default function OfferDetailPage() {
               <CardTitle>Negotiation Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              <OfferTimeline events={(offer as any).events} currentUserId={user?.id || ""} />
+              <OfferTimeline events={offer.events} currentUserId={user?.id || ""} />
             </CardContent>
           </Card>
         </div>
@@ -383,7 +447,20 @@ export default function OfferDetailPage() {
                 </>
               )}
 
-              {!canAct && !canWithdraw && (
+              {/* Accepted offer: show checkout CTA in sidebar too */}
+              {isAcceptedForBuyer && !hasOrder && !canAct && (
+                <Link
+                  href={`/listings/${offer.listingId}/checkout?offerId=${offer.id}`}
+                  className="block"
+                >
+                  <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                    <ShoppingCart className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Complete Checkout
+                  </Button>
+                </Link>
+              )}
+
+              {!canAct && !canWithdraw && !(isAcceptedForBuyer && !hasOrder) && (
                 <div className="text-sm text-muted-foreground text-center py-4">
                   {offer.status === "accepted" && "This offer has been accepted"}
                   {offer.status === "rejected" && "This offer has been rejected"}
@@ -393,6 +470,16 @@ export default function OfferDetailPage() {
                     !isYourTurn &&
                     "Waiting for the other party to respond"}
                 </div>
+              )}
+
+              {/* Order link in sidebar */}
+              {hasOrder && (
+                <Link href={`/orders/${offer.orderId}`} className="block">
+                  <Button variant="outline" className="w-full">
+                    <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
+                    View Order
+                  </Button>
+                </Link>
               )}
             </CardContent>
           </Card>

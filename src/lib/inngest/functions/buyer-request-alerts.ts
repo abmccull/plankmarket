@@ -5,6 +5,7 @@ import { userPreferences } from "@/server/db/schema/user-preferences";
 import { users } from "@/server/db/schema/users";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { resend } from "@/lib/email/client";
+import { escapeHtml } from "@/lib/utils";
 
 export const buyerRequestAlerts = inngest.createFunction(
   { id: "buyer-request-alerts", name: "Send Buyer Request Alerts to Sellers" },
@@ -59,9 +60,9 @@ export const buyerRequestAlerts = inngest.createFunction(
               and(
                 eq(userPreferences.role, "seller"),
                 // Filter sellers whose typicalMaterialTypes array intersects with request materialTypes
-                sql`${userPreferences.typicalMaterialTypes} ?| ${sql.raw(
-                  `ARRAY[${requestMaterialTypes.map((m) => `'${m}'`).join(",")}]`
-                )}`
+                sql`${userPreferences.typicalMaterialTypes} ?| array[${sql.join(
+                  requestMaterialTypes.map((m) => sql`${m}`), sql`, `
+                )}]::text[]`
               )
             );
 
@@ -81,16 +82,16 @@ export const buyerRequestAlerts = inngest.createFunction(
                 to: seller.sellerEmail,
                 subject: `New buyer request matching your inventory: ${request.title}`,
                 html: `
-                  <p>Hi ${seller.sellerName},</p>
+                  <p>Hi ${escapeHtml(seller.sellerName ?? "")},</p>
                   <p>A buyer just posted a new request that matches your inventory on PlankMarket.</p>
                   <table style="border-collapse:collapse;width:100%;max-width:480px;">
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Request</td>
-                      <td style="padding:8px 0;">${request.title}</td>
+                      <td style="padding:8px 0;">${escapeHtml(request.title)}</td>
                     </tr>
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Material Types</td>
-                      <td style="padding:8px 0;">${requestMaterialTypes.join(", ")}</td>
+                      <td style="padding:8px 0;">${escapeHtml(requestMaterialTypes.join(", "))}</td>
                     </tr>
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Square Footage Needed</td>
@@ -104,17 +105,17 @@ export const buyerRequestAlerts = inngest.createFunction(
                     </tr>
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Destination ZIP</td>
-                      <td style="padding:8px 0;">${request.destinationZip}</td>
+                      <td style="padding:8px 0;">${escapeHtml(request.destinationZip ?? "")}</td>
                     </tr>
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Urgency</td>
-                      <td style="padding:8px 0;">${urgencyLabel[request.urgency] ?? request.urgency}</td>
+                      <td style="padding:8px 0;">${escapeHtml(urgencyLabel[request.urgency] ?? request.urgency)}</td>
                     </tr>
                     ${
                       request.notes
                         ? `<tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Buyer Notes</td>
-                      <td style="padding:8px 0;">${request.notes}</td>
+                      <td style="padding:8px 0;">${escapeHtml(request.notes)}</td>
                     </tr>`
                         : ""
                     }

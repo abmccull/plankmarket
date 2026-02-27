@@ -7,9 +7,10 @@ import {
 } from "../trpc";
 import {
   createOrderSchema,
+  createOrderFromOfferSchema,
   updateOrderStatusSchema,
 } from "@/lib/validators/order";
-import { orders, listings, shippingAddresses } from "../db/schema";
+import { orders, listings, offers, shippingAddresses } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -262,6 +263,9 @@ export const orderRouter = createTRPCRouter({
             });
           }
 
+          // Consume token to prevent replay attacks (matches primary path behavior)
+          await redis.del(`shipping-quote:${input.selectedQuoteId}`);
+
           verifiedQuoteId = input.selectedQuoteId;
           verifiedShippingPrice = quote.shippingPrice;
           verifiedCarrierRate = quote.carrierRate;
@@ -384,6 +388,341 @@ export const orderRouter = createTRPCRouter({
         buyerFee: `${order.buyerFee}`,
         total: `${order.totalPrice}`,
         orderId: order.id,
+      }).catch((err) => {
+        console.error("Failed to send order confirmation email:", err);
+      });
+
+      return order;
+    }),
+
+  // Create an order from an accepted offer
+  createFromOffer: verifiedBuyerProcedure
+    .input(createOrderFromOfferSchema)
+    .mutation(async ({ ctx, input }) => {
+      // Verify shipping quote from server-side cache (same pattern as Buy Now)
+      let verifiedShippingPrice = 0;
+      let verifiedCarrierRate = 0;
+      let verifiedShippingMargin = 0;
+      let verifiedSelectedCarrier = input.selectedCarrier;
+      let verifiedEstimatedTransitDays = input.estimatedTransitDays;
+      let verifiedQuoteId: string | undefined;
+      let quoteExpiresAt: Date | undefined;
+
+      if (input.selectedQuoteToken) {
+        const cachedQuote = await redis.get(
+          `shipping-quote-token:${input.selectedQuoteToken}`,
+        );
+
+        if (!cachedQuote) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Shipping quote has expired. Please select a new shipping option.",
+          });
+        }
+
+        const rawQuote =
+          typeof cachedQuote === "string"
+            ? JSON.parse(cachedQuote)
+            : cachedQuote;
+        const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
+        if (!parsedQuote.success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Shipping quote is invalid. Please request shipping options again.",
+          });
+        }
+
+        const quote = parsedQuote.data;
+
+        if (quote.buyerId && quote.buyerId !== ctx.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Shipping quote does not belong to this buyer.",
+          });
+        }
+
+        if (
+          quote.destinationZip &&
+          normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Shipping quote destination does not match the shipping ZIP.",
+          });
+        }
+
+        // Consume token immediately to prevent replay
+        await redis.del(`shipping-quote-token:${input.selectedQuoteToken}`);
+
+        verifiedQuoteId = quote.quoteId ? String(quote.quoteId) : undefined;
+        verifiedShippingPrice = quote.shippingPrice;
+        verifiedCarrierRate = quote.carrierRate;
+        verifiedShippingMargin =
+          Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
+        verifiedSelectedCarrier = quote.carrierName;
+        verifiedEstimatedTransitDays = quote.transitDays;
+        quoteExpiresAt = quote.quoteExpiresAt
+          ? new Date(quote.quoteExpiresAt)
+          : undefined;
+      } else if (input.selectedQuoteId) {
+        // Deprecated fallback path
+        const cachedQuote = await redis.get(`shipping-quote:${input.selectedQuoteId}`);
+        if (!cachedQuote) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Shipping quote has expired. Please select a new shipping option.",
+          });
+        }
+
+        const rawQuote =
+          typeof cachedQuote === "string"
+            ? JSON.parse(cachedQuote)
+            : cachedQuote;
+        const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
+        if (!parsedQuote.success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Shipping quote is invalid. Please request shipping options again.",
+          });
+        }
+        const quote = parsedQuote.data;
+
+        if (quote.buyerId && quote.buyerId !== ctx.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Shipping quote does not belong to this buyer.",
+          });
+        }
+        if (
+          quote.destinationZip &&
+          normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Shipping quote destination does not match the shipping ZIP.",
+          });
+        }
+
+        // Consume token to prevent replay
+        await redis.del(`shipping-quote:${input.selectedQuoteId}`);
+
+        verifiedQuoteId = input.selectedQuoteId;
+        verifiedShippingPrice = quote.shippingPrice;
+        verifiedCarrierRate = quote.carrierRate;
+        verifiedShippingMargin =
+          Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
+        verifiedSelectedCarrier = quote.carrierName;
+        verifiedEstimatedTransitDays = quote.transitDays;
+        quoteExpiresAt = quote.quoteExpiresAt
+          ? new Date(quote.quoteExpiresAt)
+          : undefined;
+      }
+
+      const order = await ctx.db.transaction(async (tx) => {
+        // Lock offer row with FOR UPDATE
+        const [offer] = await tx
+          .select()
+          .from(offers)
+          .where(eq(offers.id, input.offerId))
+          .for("update");
+
+        if (!offer) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Offer not found",
+          });
+        }
+
+        // Validate offer belongs to this buyer
+        if (offer.buyerId !== ctx.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "You can only create orders from your own offers",
+          });
+        }
+
+        // Validate offer status
+        if (offer.status !== "accepted") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only accepted offers can be converted to orders",
+          });
+        }
+
+        // Validate no order already created from this offer
+        if (offer.orderId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "An order has already been created from this offer",
+          });
+        }
+
+        // Validate offer has not expired
+        if (offer.expiresAt && new Date() > offer.expiresAt) {
+          // Auto-expire the offer
+          await tx
+            .update(offers)
+            .set({ status: "expired", updatedAt: new Date() })
+            .where(eq(offers.id, input.offerId));
+
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This offer has expired. Please negotiate a new offer.",
+          });
+        }
+
+        // Lock listing row with FOR UPDATE
+        const [listing] = await tx
+          .select()
+          .from(listings)
+          .where(
+            and(
+              eq(listings.id, offer.listingId),
+              eq(listings.status, "active")
+            )
+          )
+          .for("update");
+
+        if (!listing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Listing not found or no longer available",
+          });
+        }
+
+        // Validate sufficient quantity
+        if (offer.quantitySqFt > listing.totalSqFt) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Insufficient inventory. Only ${listing.totalSqFt} sq ft available.`,
+          });
+        }
+
+        // Determine accepted price from offer
+        const pricePerSqFt = offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
+        const subtotal =
+          Math.round(offer.quantitySqFt * pricePerSqFt * 100) / 100;
+        const shippingPrice = verifiedShippingPrice;
+        const feeBreakdown = calculateOrderFees(subtotal, shippingPrice);
+
+        // Create the order with offerId linked
+        const [newOrder] = await tx
+          .insert(orders)
+          .values({
+            orderNumber: generateOrderNumber(),
+            buyerId: ctx.user.id,
+            sellerId: offer.sellerId,
+            listingId: offer.listingId,
+            offerId: offer.id,
+            quantitySqFt: offer.quantitySqFt,
+            pricePerSqFt,
+            subtotal,
+            buyerFee: feeBreakdown.buyerFee,
+            sellerFee: feeBreakdown.sellerFee,
+            stripeProcessingFee: feeBreakdown.totalStripeFee,
+            sellerStripeFee: feeBreakdown.sellerStripeFee,
+            platformStripeFee: feeBreakdown.platformStripeFee,
+            totalPrice: feeBreakdown.totalCharge,
+            sellerPayout: feeBreakdown.sellerPayout,
+            shippingName: input.shippingName,
+            shippingAddress: input.shippingAddress,
+            shippingCity: input.shippingCity,
+            shippingState: input.shippingState,
+            shippingZip: input.shippingZip,
+            shippingPhone: input.shippingPhone,
+            // Priority1 shipping fields (verified from Redis cache)
+            ...(verifiedQuoteId && {
+              selectedQuoteId: verifiedQuoteId,
+              selectedCarrier: verifiedSelectedCarrier,
+              carrierRate: verifiedCarrierRate,
+              shippingPrice: verifiedShippingPrice,
+              shippingMargin: verifiedShippingMargin,
+              estimatedTransitDays: verifiedEstimatedTransitDays,
+              quoteExpiresAt,
+            }),
+            status: "pending",
+            escrowStatus: "held",
+          })
+          .returning();
+
+        // Link the order back to the offer
+        await tx
+          .update(offers)
+          .set({
+            orderId: newOrder!.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(offers.id, offer.id));
+
+        // Update listing inventory (same as Buy Now flow)
+        if (offer.quantitySqFt >= listing.totalSqFt) {
+          await tx
+            .update(listings)
+            .set({
+              status: "sold",
+              soldAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(listings.id, listing.id));
+        } else {
+          await tx
+            .update(listings)
+            .set({
+              totalSqFt: listing.totalSqFt - offer.quantitySqFt,
+              updatedAt: new Date(),
+            })
+            .where(eq(listings.id, listing.id));
+        }
+
+        return newOrder;
+      });
+
+      // Auto-save shipping address if it doesn't exist (fire-and-forget)
+      (async () => {
+        try {
+          const existing = await ctx.db.query.shippingAddresses.findFirst({
+            where: and(
+              eq(shippingAddresses.userId, ctx.user.id),
+              eq(shippingAddresses.address, input.shippingAddress),
+              eq(shippingAddresses.zip, input.shippingZip)
+            ),
+          });
+          if (!existing) {
+            await ctx.db.insert(shippingAddresses).values({
+              userId: ctx.user.id,
+              label: `${input.shippingCity}, ${input.shippingState}`,
+              name: input.shippingName,
+              address: input.shippingAddress,
+              city: input.shippingCity,
+              state: input.shippingState,
+              zip: input.shippingZip,
+              phone: input.shippingPhone ?? null,
+              isDefault: false,
+            });
+          }
+        } catch (err) {
+          console.error("Failed to auto-save shipping address:", err);
+        }
+      })();
+
+      // Send order confirmation email (fire-and-forget)
+      sendOrderConfirmationEmail({
+        to: ctx.user.email,
+        buyerName: ctx.user.name,
+        orderNumber: order!.orderNumber,
+        listingTitle: "Order",
+        quantity: `${order!.quantitySqFt}`,
+        pricePerSqFt: `${order!.pricePerSqFt}`,
+        subtotal: `${order!.subtotal}`,
+        buyerFee: `${order!.buyerFee}`,
+        total: `${order!.totalPrice}`,
+        orderId: order!.id,
       }).catch((err) => {
         console.error("Failed to send order confirmation email:", err);
       });

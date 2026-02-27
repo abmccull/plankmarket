@@ -181,10 +181,7 @@ export async function POST(request: NextRequest) {
       {
         error: {
           code: "INTERNAL_ERROR",
-          message:
-            error instanceof Error
-              ? error.message
-              : "An unexpected error occurred",
+          message: "An unexpected error occurred during verification",
         },
       },
       { status: 500 },

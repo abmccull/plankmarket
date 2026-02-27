@@ -48,8 +48,10 @@ export const ourFileRouter = {
     .onUploadComplete(async ({ metadata, file }) => {
       // This runs after upload completes on the server
       // We return the file info so the client can save it to the database
-      console.log("Upload complete for userId:", metadata.userId);
-      console.log("File URL:", file.url);
+      if (process.env.NODE_ENV === "development") {
+        console.log("Upload complete for userId:", metadata.userId);
+        console.log("File URL:", file.url);
+      }
 
       // Return data to be available in client-side onClientUploadComplete
       return {
@@ -90,7 +92,9 @@ export const ourFileRouter = {
       return { userId: dbUser.id };
     })
     .onUploadComplete(async ({ metadata, file }) => {
-      console.log("Buyer request upload complete for userId:", metadata.userId);
+      if (process.env.NODE_ENV === "development") {
+        console.log("Buyer request upload complete for userId:", metadata.userId);
+      }
       return {
         url: file.url,
         key: file.key,

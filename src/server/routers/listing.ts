@@ -5,7 +5,7 @@ import {
 } from "../trpc";
 import { listingFormSchema, listingFilterSchema, csvListingRowSchema } from "@/lib/validators/listing";
 import { listings, media, notifications } from "../db/schema";
-import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or } from "drizzle-orm";
+import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import zipcodes from "zipcodes";
@@ -54,12 +54,17 @@ export const listingRouter = createTRPCRouter({
         .set({ slug })
         .where(eq(listings.id, listing.id));
 
-      // Link uploaded media to the listing
+      // Link uploaded media to the listing (only unclaimed media)
       if (mediaIds && mediaIds.length > 0) {
         await ctx.db
           .update(media)
           .set({ listingId: listing.id })
-          .where(inArray(media.id, mediaIds));
+          .where(
+            and(
+              inArray(media.id, mediaIds),
+              isNull(media.listingId),
+            )
+          );
       }
 
       // Only call Priority1 for freight class if seller didn't provide one

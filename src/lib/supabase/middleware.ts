@@ -56,6 +56,14 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Redirect non-admin authenticated users away from admin routes
+  if (pathname.startsWith("/admin") && user) {
+    const role = user.user_metadata?.role as string | undefined;
+    if (role !== "admin") {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
   // Redirect authenticated users away from auth pages (use role-aware path)
   if (isAuthPage && user) {
     const url = request.nextUrl.clone();

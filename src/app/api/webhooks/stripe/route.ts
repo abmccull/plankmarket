@@ -445,7 +445,13 @@ export async function POST(req: NextRequest) {
                 status: "cancelled",
                 updatedAt: new Date(),
               })
-              .where(eq(orders.id, orderId))
+              .where(
+                and(
+                  eq(orders.id, orderId),
+                  sql`${orders.paymentStatus} NOT IN ('succeeded', 'refunded', 'partially_refunded')`,
+                  sql`${orders.status} IN ('pending', 'confirmed')`,
+                )
+              )
               .returning({ id: orders.id });
 
             if (cancelledOrder) {

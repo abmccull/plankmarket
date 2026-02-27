@@ -5,39 +5,10 @@ import { OfferStatusBadge } from "./offer-status-badge";
 import { formatCurrency, formatSqFt, formatRelativeTime } from "@/lib/utils";
 import { ArrowRight, AlertCircle } from "lucide-react";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
-
-type OfferStatus = "pending" | "countered" | "accepted" | "rejected" | "withdrawn" | "expired";
+import type { OfferListItem } from "@/lib/types/offer";
 
 interface OfferCardProps {
-  offer: {
-    id: string;
-    status: OfferStatus;
-    currentRound: number;
-    offerPricePerSqFt: number;
-    counterPricePerSqFt: number | null;
-    quantitySqFt: number;
-    totalPrice: number;
-    lastActorId: string | null;
-    updatedAt: Date;
-    listing: {
-      id: string;
-      title: string;
-    };
-    buyer: {
-      id: string;
-      name: string;
-      role: string;
-      businessCity: string | null;
-      businessState: string | null;
-    };
-    seller: {
-      id: string;
-      name: string;
-      role: string;
-      businessCity: string | null;
-      businessState: string | null;
-    };
-  };
+  offer: OfferListItem;
   currentUserId: string;
   userRole: "buyer" | "seller";
 }
@@ -52,7 +23,7 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
   const otherPartyName = getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState, name: otherParty.name, businessCity: otherParty.businessCity });
 
   // Determine current price (counter if available, else offer)
-  const currentPrice = offer.counterPricePerSqFt || offer.offerPricePerSqFt;
+  const currentPrice = offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
   const currentTotal = currentPrice * offer.quantitySqFt;
 
   return (

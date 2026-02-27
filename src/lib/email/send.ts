@@ -1,6 +1,7 @@
 import { resend } from "./client";
 import WelcomeEmail from "@/emails/welcome";
 import OrderConfirmationEmail from "@/emails/order-confirmation";
+import OfferAcceptedEmail from "@/emails/offer-accepted";
 import VerificationApprovedEmail from "@/emails/verification-approved";
 import VerificationRejectedEmail from "@/emails/verification-rejected";
 import OnboardingNudgeEmail, {
@@ -60,6 +61,32 @@ export async function sendOrderConfirmationEmail(params: {
       buyerFee: params.buyerFee,
       total: params.total,
       orderUrl,
+    }),
+  });
+}
+
+export async function sendOfferAcceptedEmail(params: {
+  to: string;
+  buyerName: string;
+  listingTitle: string;
+  acceptedPrice: string;
+  quantity: string;
+  estimatedTotal: string;
+  checkoutUrl: string;
+  expiresAt: string;
+}) {
+  return resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `Offer Accepted - ${params.listingTitle}`,
+    react: React.createElement(OfferAcceptedEmail, {
+      buyerName: params.buyerName,
+      listingTitle: params.listingTitle,
+      acceptedPrice: params.acceptedPrice,
+      quantity: params.quantity,
+      estimatedTotal: params.estimatedTotal,
+      checkoutUrl: params.checkoutUrl,
+      expiresAt: params.expiresAt,
     }),
   });
 }

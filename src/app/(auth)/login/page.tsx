@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
 import { getDashboardPath } from "@/lib/auth/roles";
+import { sanitizeRedirectPath } from "@/lib/auth/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,7 +30,7 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect");
+  const redirect = sanitizeRedirectPath(searchParams.get("redirect"), null);
   const utils = trpc.useUtils();
 
   const {
@@ -59,7 +60,7 @@ function LoginForm() {
       if (session.isAuthenticated && session.user) {
         useAuthStore.getState().setUser(session.user);
         toast.success("Signed in successfully");
-        router.push(redirect || getDashboardPath(session.user.role));
+        router.push(redirect ?? getDashboardPath(session.user.role));
         router.refresh();
       } else {
         toast.error("Account not found. Please register first.");

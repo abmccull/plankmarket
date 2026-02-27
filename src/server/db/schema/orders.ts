@@ -11,6 +11,7 @@ import {
 import { money } from "../custom-types";
 import { users } from "./users";
 import { listings } from "./listings";
+import { offers } from "./offers";
 
 export const orderStatusEnum = pgEnum("order_status", [
   "pending",
@@ -36,6 +37,9 @@ export const orders = pgTable(
     listingId: uuid("listing_id")
       .references(() => listings.id, { onDelete: "restrict" })
       .notNull(),
+
+    // Offer link (nullable — only set when order originates from an accepted offer)
+    offerId: uuid("offer_id").references(() => offers.id, { onDelete: "set null" }),
 
     // Quantity & pricing (using exact numeric type to avoid floating-point errors)
     quantitySqFt: money("quantity_sq_ft").notNull(),

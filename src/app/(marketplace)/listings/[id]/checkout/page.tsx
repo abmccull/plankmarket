@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createOrderSchema, type CreateOrderInput } from "@/lib/validators/order";
@@ -17,13 +17,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   formatCurrency,
   formatSqFt,
 } from "@/lib/utils";
 import { calculateOrderFees } from "@/lib/fees";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, ShieldCheck, Package, Check, Truck } from "lucide-react";
+import { ArrowLeft, Loader2, ShieldCheck, Package, Check, Truck, CheckCircle2, Clock } from "lucide-react";
 import { StripeProvider } from "@/components/checkout/stripe-provider";
 import { StripePaymentForm } from "@/components/checkout/stripe-payment-form";
 import ShippingQuoteSelector, {
@@ -44,7 +45,10 @@ const STEPS: { key: CheckoutStep; label: string }[] = [
 export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const listingId = params.id as string;
+  const offerId = searchParams.get("offerId");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>("address");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
@@ -55,6 +59,12 @@ export default function CheckoutPage() {
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
     id: listingId,
   });
+
+  // Fetch offer details when offerId is present
+  const { data: offer, isLoading: isOfferLoading } = trpc.offer.getOfferById.useQuery(
+    { offerId: offerId! },
+    { enabled: !!offerId }
+  );
 
   // Check seller payment readiness
   useEffect(() => {
@@ -83,12 +93,20 @@ export default function CheckoutPage() {
     },
   });
 
+  // Determine offer-based overrides
+  const isOfferCheckout = !!offerId && !!offer;
+  const offerPrice = offer
+    ? (offer.counterPricePerSqFt ?? offer.offerPricePerSqFt)
+    : null;
+  const offerQuantity = offer?.quantitySqFt ?? null;
+
   // Reset form defaults when listing data loads
   useEffect(() => {
     if (listing) {
-      reset({ listingId, quantitySqFt: listing.totalSqFt });
+      const quantity = offerQuantity ?? listing.totalSqFt;
+      reset({ listingId, quantitySqFt: quantity });
     }
-  }, [listing, listingId, reset]);
+  }, [listing, listingId, reset, offerQuantity]);
 
   // Fetch saved addresses
   const { data: savedAddresses } = trpc.shippingAddress.list.useQuery();
@@ -131,7 +149,7 @@ export default function CheckoutPage() {
     }
   };
 
-  const quantitySqFt = watch("quantitySqFt") || listing?.totalSqFt || 0;
+  const quantitySqFt = watch("quantitySqFt") || (isOfferCheckout ? offerQuantity : null) || listing?.totalSqFt || 0;
   const shippingZip = watch("shippingZip") || "";
 
   // Handle "Continue to Shipping" — validate address fields
@@ -160,6 +178,9 @@ export default function CheckoutPage() {
     try {
       const formData = getValues();
       // Create the order with shipping fields
+      // TODO: When order.createFromOffer is implemented on the backend,
+      // use it here for offer-based checkouts to pass the offerId and
+      // have the server validate the offer price server-side.
       const order = await createOrder.mutateAsync({
         ...formData,
         selectedQuoteToken: selectedQuote.quoteToken,
@@ -202,7 +223,7 @@ export default function CheckoutPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || (offerId && isOfferLoading)) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -218,7 +239,10 @@ export default function CheckoutPage() {
     );
   }
 
-  const pricePerSqFt = listing.buyNowPrice ?? listing.askPricePerSqFt;
+  // Use offer price if checking out from an accepted offer, otherwise listing price
+  const pricePerSqFt = isOfferCheckout && offerPrice !== null
+    ? offerPrice
+    : (listing.buyNowPrice ?? listing.askPricePerSqFt);
   const subtotal = Math.round(quantitySqFt * pricePerSqFt * 100) / 100;
   const shippingCost = selectedQuote?.shippingPrice ?? 0;
   const feeBreakdown = calculateOrderFees(subtotal, shippingCost);
@@ -246,6 +270,37 @@ export default function CheckoutPage() {
       </Button>
 
       <h1 className="text-2xl font-bold mb-4">Checkout</h1>
+
+      {/* Accepted Offer banner */}
+      {isOfferCheckout && (
+        <div className="rounded-lg border-2 border-green-500 bg-green-50 p-4 mb-6 dark:bg-green-950/30">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" aria-hidden="true" />
+            <p className="font-semibold text-green-800 dark:text-green-300">
+              Completing checkout for accepted offer
+            </p>
+            <Badge variant="secondary" className="ml-auto bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+              Accepted Offer
+            </Badge>
+          </div>
+          {offer?.expiresAt && (
+            <p className="text-sm text-green-700 dark:text-green-400 mt-1 flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Payment due by{" "}
+              {new Date(offer.expiresAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          )}
+          <div className="mt-2 text-sm text-green-700 dark:text-green-400">
+            Price: {formatCurrency(pricePerSqFt)}/sq ft | Quantity: {formatSqFt(quantitySqFt)} | Total: {formatCurrency(subtotal)}
+          </div>
+        </div>
+      )}
 
       {/* Progress indicator */}
       <div className="flex items-center gap-2 mb-8">
@@ -317,9 +372,11 @@ export default function CheckoutPage() {
                             step={boxSize || "0.01"}
                             min={moqSqFt}
                             max={listing.totalSqFt}
-                            defaultValue={listing.totalSqFt}
+                            defaultValue={isOfferCheckout && offerQuantity ? offerQuantity : listing.totalSqFt}
+                            disabled={isOfferCheckout}
                             {...register("quantitySqFt", { valueAsNumber: true })}
                             onBlur={(e) => {
+                              if (isOfferCheckout) return;
                               if (boxSize && boxSize > 0) {
                                 const raw = parseFloat(e.target.value);
                                 if (!isNaN(raw) && raw > 0) {
@@ -332,7 +389,7 @@ export default function CheckoutPage() {
                                 }
                               }
                             }}
-                            aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : undefined}
+                            aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : isOfferCheckout ? "quantitySqFt-locked" : undefined}
                             aria-invalid={!!errors.quantitySqFt}
                           />
                           {errors.quantitySqFt && (
@@ -340,13 +397,19 @@ export default function CheckoutPage() {
                               {errors.quantitySqFt.message}
                             </p>
                           )}
-                          <p className="text-xs text-muted-foreground">
-                            Available: {formatSqFt(listing.totalSqFt)}
-                            {moqDisplay && ` | Min order: ${moqDisplay}`}
-                            {boxSize && boxCount !== null && (
-                              <> | Sold in boxes of {boxSize} sq ft. {boxCount} box{boxCount !== 1 ? "es" : ""} ({formatSqFt(quantitySqFt)})</>
-                            )}
-                          </p>
+                          {isOfferCheckout ? (
+                            <p id="quantitySqFt-locked" className="text-xs text-muted-foreground">
+                              Quantity is locked to accepted offer amount: {formatSqFt(offerQuantity ?? 0)}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Available: {formatSqFt(listing.totalSqFt)}
+                              {moqDisplay && ` | Min order: ${moqDisplay}`}
+                              {boxSize && boxCount !== null && (
+                                <> | Sold in boxes of {boxSize} sq ft. {boxCount} box{boxCount !== 1 ? "es" : ""} ({formatSqFt(quantitySqFt)})</>
+                              )}
+                            </p>
+                          )}
                         </>
                       );
                     })()}
@@ -552,6 +615,12 @@ export default function CheckoutPage() {
                   </p>
                 </div>
               </div>
+
+              {isOfferCheckout && (
+                <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">
+                  Accepted Offer Price
+                </Badge>
+              )}
 
               <Separator />
 

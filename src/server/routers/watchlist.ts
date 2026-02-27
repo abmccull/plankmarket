@@ -20,57 +20,60 @@ export const watchlistRouter = createTRPCRouter({
   add: buyerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // Check if already watchlisted
-      const existing = await ctx.db.query.watchlist.findFirst({
-        where: and(
-          eq(watchlist.userId, ctx.user.id),
-          eq(watchlist.listingId, input.listingId)
-        ),
+      return await ctx.db.transaction(async (tx) => {
+        const [item] = await tx
+          .insert(watchlist)
+          .values({
+            userId: ctx.user.id,
+            listingId: input.listingId,
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (item) {
+          // Only increment if the insert actually created a new row
+          await tx
+            .update(listings)
+            .set({ watchlistCount: sql`${listings.watchlistCount} + 1` })
+            .where(eq(listings.id, input.listingId));
+        }
+
+        return item ?? (await tx.query.watchlist.findFirst({
+          where: and(
+            eq(watchlist.userId, ctx.user.id),
+            eq(watchlist.listingId, input.listingId)
+          ),
+        }))!;
       });
-
-      if (existing) {
-        return existing;
-      }
-
-      const [item] = await ctx.db
-        .insert(watchlist)
-        .values({
-          userId: ctx.user.id,
-          listingId: input.listingId,
-        })
-        .returning();
-
-      // Increment watchlist count on listing
-      await ctx.db
-        .update(listings)
-        .set({ watchlistCount: sql`${listings.watchlistCount} + 1` })
-        .where(eq(listings.id, input.listingId));
-
-      return item;
     }),
 
   // Remove from watchlist
   remove: buyerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db
-        .delete(watchlist)
-        .where(
-          and(
-            eq(watchlist.userId, ctx.user.id),
-            eq(watchlist.listingId, input.listingId)
+      return await ctx.db.transaction(async (tx) => {
+        const [deleted] = await tx
+          .delete(watchlist)
+          .where(
+            and(
+              eq(watchlist.userId, ctx.user.id),
+              eq(watchlist.listingId, input.listingId)
+            )
           )
-        );
+          .returning();
 
-      // Decrement watchlist count on listing
-      await ctx.db
-        .update(listings)
-        .set({
-          watchlistCount: sql`greatest(${listings.watchlistCount} - 1, 0)`,
-        })
-        .where(eq(listings.id, input.listingId));
+        if (deleted) {
+          // Only decrement if a row was actually deleted
+          await tx
+            .update(listings)
+            .set({
+              watchlistCount: sql`greatest(${listings.watchlistCount} - 1, 0)`,
+            })
+            .where(eq(listings.id, input.listingId));
+        }
 
-      return { success: true };
+        return { success: true };
+      });
     }),
 
   // Check if listing is watchlisted

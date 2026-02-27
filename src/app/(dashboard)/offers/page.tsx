@@ -81,8 +81,7 @@ export default function OffersPage() {
               {data?.offers.map((offer) => (
                 <OfferCard
                   key={offer.id}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  offer={offer as any}
+                  offer={offer}
                   currentUserId={user?.id || ""}
                   userRole={getUserRole(offer)}
                 />

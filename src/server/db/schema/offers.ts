@@ -55,6 +55,9 @@ export const offers = pgTable(
     message: text("message"),
     counterMessage: text("counter_message"),
 
+    // Order link (nullable, no FK to avoid circular reference — set when buyer converts offer to order)
+    orderId: uuid("order_id"),
+
     // Expiration — null means no expiration (offers don't expire unless a counter sets a deadline)
     expiresAt: timestamp("expires_at", { withTimezone: true }),
 

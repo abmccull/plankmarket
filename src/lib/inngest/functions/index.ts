@@ -9,6 +9,7 @@ import { preferenceMatchAlerts } from "./preference-match-alerts";
 import { followupReminders } from "./followup-reminders";
 import { onboardingDrip } from "./onboarding-drip";
 import { firstListingCongrats, firstPurchaseCongrats } from "./milestone-emails";
+import { offerAccepted } from "./offer-accepted";
 
 export const functions = [
   savedSearchAlerts,
@@ -23,4 +24,5 @@ export const functions = [
   onboardingDrip,
   firstListingCongrats,
   firstPurchaseCongrats,
+  offerAccepted,
 ];

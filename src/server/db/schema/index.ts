@@ -217,6 +217,10 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.listingId],
     references: [listings.id],
   }),
+  offer: one(offers, {
+    fields: [orders.offerId],
+    references: [offers.id],
+  }),
   reviews: many(reviews),
   dispute: one(disputes, {
     fields: [orders.id],
@@ -310,6 +314,10 @@ export const offersRelations = relations(offers, ({ one, many }) => ({
     fields: [offers.sellerId],
     references: [users.id],
     relationName: "sellerOffers",
+  }),
+  order: one(orders, {
+    fields: [offers.orderId],
+    references: [orders.id],
   }),
   events: many(offerEvents),
 }));
