@@ -13,7 +13,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex flex-1">
       {/* Branded left panel — desktop only */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         {/* Real wood planks photography */}
@@ -50,7 +50,7 @@ export default function AuthLayout({
         <Link href="/" className="lg:hidden mb-8">
           <Logo variant="full" size="lg" />
         </Link>
-        <main id="main-content" className="w-full max-w-md">
+        <main className="w-full max-w-md">
           {children}
         </main>
       </div>

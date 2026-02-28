@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { DM_Serif_Display } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { Providers } from "@/providers";
+import { Header } from "@/components/layout/header";
+import { Footer } from "@/components/layout/footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -88,7 +90,15 @@ export default function RootLayout({
         <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded focus:shadow-lg focus:outline-2 focus:outline-offset-2">
           Skip to main content
         </a>
-        <Providers>{children}</Providers>
+        <Providers>
+          <div className="flex min-h-screen flex-col">
+            <Header />
+            <div id="main-content" className="flex flex-1 flex-col">
+              {children}
+            </div>
+            <Footer />
+          </div>
+        </Providers>
         <Analytics />
       </body>
     </html>

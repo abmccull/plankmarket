@@ -59,7 +59,7 @@ export default function TermsOfServicePage() {
       title: "Eligibility",
       content: (
         <p className="text-sm text-muted-foreground">
-          You must be at least 18 years old and have the legal capacity to enter into contracts to use PlankMarket. By registering an account, you represent and warrant that you meet these eligibility requirements. You also represent that you are acting on behalf of a legitimate business entity with authority to bind that entity to these terms.
+          You must be at least 18 years old and have the legal capacity to enter into contracts to use PlankMarket. By registering an account, you represent and warrant that you meet these eligibility requirements. You also represent that you are acting on behalf of a legitimate business entity with authority to bind that entity to these terms. Buyers may register and browse before verification, but must be approved before placing orders. Sellers may register and explore before verification, but must be approved before creating listings.
         </p>
       ),
     },
@@ -119,10 +119,11 @@ export default function TermsOfServicePage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">PlankMarket charges the following fees:</p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 3% of the transaction subtotal, added to the buyer&apos;s total at checkout</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Commission:</strong> 2% of the transaction subtotal, deducted from seller payout</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Payment Processing:</strong> Standard payment processing fees (approximately 2.9% + $0.30 per card transaction) are charged by our payment processor and deducted from seller payouts</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping:</strong> Shipping costs are determined by carrier rates and are the buyer&apos;s responsibility unless otherwise agreed</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 3% of the combined inventory subtotal plus shipping, added to the buyer&apos;s total at checkout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Commission:</strong> 2% of the inventory subtotal, deducted from seller payout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Processing Fee:</strong> 2.9% + $0.30 calculated on inventory subtotal only and deducted from seller payout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Platform Processing Share:</strong> PlankMarket absorbs processing costs attributable to shipping and any remaining processor share not assigned to seller</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping Charge:</strong> Shipping costs are determined by carrier rates and charged to the buyer unless otherwise agreed</li>
           </ul>
           <p className="text-sm text-muted-foreground">
             All fees are subject to change with 30 days notice. Fees are non-refundable except as required by law or as explicitly stated in our refund policy.
@@ -176,7 +177,7 @@ export default function TermsOfServicePage() {
       content: (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            <strong>Shipping Responsibility:</strong> Unless otherwise agreed between buyer and seller, the buyer is responsible for shipping costs. PlankMarket may facilitate shipping quotes and booking through integrated freight carriers.
+            <strong>Shipping Responsibility:</strong> Unless otherwise agreed between buyer and seller, the buyer is responsible for carrier shipping charges. PlankMarket may facilitate shipping quotes and booking through integrated freight carriers. PlankMarket may absorb payment processor costs related to the shipping portion of the order.
           </p>
           <p className="text-sm text-muted-foreground">
             <strong>Packaging Requirements:</strong> Sellers must ensure all materials are properly palletized, banded, and stretch-wrapped for LTL freight shipment. Inadequate packaging that results in damage during transit is the seller&apos;s responsibility.
@@ -397,7 +398,7 @@ export default function TermsOfServicePage() {
               Please read these terms carefully before using PlankMarket. By accessing our platform, you agree to be bound by these terms.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Last Updated: February 13, 2026
+              Last Updated: February 28, 2026
             </p>
           </div>
         </div>

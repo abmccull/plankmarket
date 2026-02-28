@@ -47,6 +47,7 @@ export default function PrivacyPolicyPage() {
             <h4 className="font-semibold text-sm mb-2">Information You Provide</h4>
             <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Registration info (name, email, business information, phone number)</li>
+              <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Verification data you submit (EIN/tax ID, business website, business address details, and document URLs)</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Listing details (product details, images, location)</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Transaction info (billing information, shipping address)</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Communications (messages, support requests)</li>
@@ -85,6 +86,7 @@ export default function PrivacyPolicyPage() {
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Respond to your comments, questions, and support requests</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Monitor and analyze usage patterns and trends</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Detect, prevent, and address fraud and security issues</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Review and process account verification requests and approval status for checkout/listing eligibility</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Personalize your experience and show relevant listings</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Send marketing communications (with your consent)</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Comply with legal obligations and enforce our terms</li>
@@ -108,6 +110,7 @@ export default function PrivacyPolicyPage() {
             <h4 className="font-semibold text-sm mb-2">With Service Providers</h4>
             <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Payment processing and fraud detection</li>
+              <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Identity and business verification support services</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Cloud hosting and data storage</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Email delivery and communication services</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Analytics and performance monitoring</li>
@@ -222,6 +225,7 @@ export default function PrivacyPolicyPage() {
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Legal and regulatory compliance</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Dispute resolution and fraud prevention</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Enforcing our agreements</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Verification, payment, and transaction recordkeeping obligations</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Backup and disaster recovery purposes</li>
           </ul>
         </div>
@@ -312,7 +316,7 @@ export default function PrivacyPolicyPage() {
               At PlankMarket, we take your privacy seriously. This policy explains how we collect, use, disclose, and safeguard your information.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Last Updated: February 13, 2026
+              Last Updated: February 28, 2026
             </p>
           </div>
         </div>
