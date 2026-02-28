@@ -62,9 +62,13 @@ function RegisterForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Create Your Account</CardTitle>
+        <CardTitle className="text-2xl">
+          {selectedRole === "seller" ? "Create Your Seller Account" : "Create Your Buyer Account"}
+        </CardTitle>
         <CardDescription>
-          Join PlankMarket and start exploring listings
+          {selectedRole === "seller"
+            ? "List your surplus inventory after business verification"
+            : "Browse and source closeout flooring immediately"}
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -218,7 +222,7 @@ function RegisterForm() {
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create Account
+            {selectedRole === "seller" ? "Create Seller Account" : "Create Buyer Account"}
           </Button>
           <p className="text-xs text-center text-muted-foreground">
             By creating an account, you agree to our{" "}

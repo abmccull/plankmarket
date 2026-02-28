@@ -82,9 +82,9 @@ export default function HowItWorksPage() {
               {
                 icon: ShoppingCart,
                 step: "2",
-                title: "Get Instant Quotes",
+                title: "See Clear Pricing",
                 description:
-                  "Every listing displays clear pricing with no hidden fees. View price per square foot, total lot size, and available quantity. All sellers are verified businesses.",
+                  "Every listing displays transparent pricing with no hidden fees. View price per square foot, total lot size, and available quantity. All sellers are verified businesses.",
               },
               {
                 icon: CreditCard,
@@ -98,7 +98,7 @@ export default function HowItWorksPage() {
                 step: "4",
                 title: "Receive Your Order",
                 description:
-                  "Track your order status through your dashboard. Inspect materials upon delivery and note any issues on the delivery receipt. Payment is automatically released to the seller when the carrier picks up the shipment.",
+                  "Track your order status through your dashboard. Inspect materials upon delivery and note any issues on the delivery receipt. You have 48 hours after delivery to report damage or shortages with photo evidence.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -151,16 +151,16 @@ export default function HowItWorksPage() {
               {
                 icon: ShoppingCart,
                 step: "3",
-                title: "Receive Orders",
+                title: "Receive Orders or Offers",
                 description:
-                  "Get notified immediately when a buyer places an order. Review details and coordinate shipping through our messaging system. Buyers pay upfront securely.",
+                  "Get notified immediately when a buyer places an order or submits an offer. Accept, counter, or decline — all on-platform. Buyers pay securely through Stripe.",
               },
               {
                 icon: BarChart3,
                 step: "4",
                 title: "Ship & Get Paid",
                 description:
-                  "Coordinate freight pickup through PlankMarket. Mark orders as shipped with tracking info. Payment is automatically released to your Stripe account when the carrier picks up the shipment, with funds in your bank within 3-5 business days.",
+                  "Coordinate freight pickup through PlankMarket. Mark orders as shipped with tracking info. Payment releases to your Stripe account when the carrier picks up the shipment, with funds typically in your bank within 3-5 business days.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -225,6 +225,44 @@ export default function HowItWorksPage() {
                   </div>
                   <CardTitle className="font-display">{item.title}</CardTitle>
                   <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Shipping & Freight */}
+      <section className="py-20 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <Badge variant="outline" className="mb-4">Shipping & Freight</Badge>
+            <h2 className="font-display text-3xl">
+              How freight works on PlankMarket
+            </h2>
+          </div>
+          <div className="max-w-3xl mx-auto space-y-4">
+            {[
+              {
+                question: "Who arranges freight?",
+                answer:
+                  "PlankMarket provides integrated LTL freight quotes at checkout. Buyers enter their delivery address and select a carrier rate. The seller coordinates the pickup from their warehouse.",
+              },
+              {
+                question: "When is shipping quoted?",
+                answer:
+                  "Freight quotes are generated at checkout based on the buyer's delivery address, pallet weight, and dimensions. The shipping cost is shown before payment and added separately from the inventory subtotal.",
+              },
+              {
+                question: "Can the seller arrange their own freight?",
+                answer:
+                  "In some cases, sellers and buyers may coordinate freight directly. Contact the seller via on-platform messaging to discuss logistics before placing your order.",
+              },
+            ].map((item) => (
+              <Card key={item.question} className="card-hover-lift">
+                <CardHeader>
+                  <CardTitle className="text-base font-semibold">{item.question}</CardTitle>
+                  <CardDescription>{item.answer}</CardDescription>
                 </CardHeader>
               </Card>
             ))}

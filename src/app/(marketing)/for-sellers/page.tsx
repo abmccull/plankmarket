@@ -22,7 +22,6 @@ import {
   BarChart2,
   CheckCircle2,
   XCircle,
-  Quote,
   Warehouse,
   PackageX,
   TrendingDown,
@@ -41,7 +40,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Your Surplus Flooring Is Depreciating. Move It on PlankMarket.",
     description:
-      "The B2B marketplace built for flooring liquidation. Verified buyers across all 50 states. 2% commission only on completed sales. 3-5 day payouts.",
+      "The B2B marketplace built for flooring liquidation. Verified buyers nationwide. 2% commission only on completed sales. Fast payouts.",
     type: "website",
   },
 };
@@ -80,7 +79,7 @@ const VALUE_PROPS = [
     number: "01",
     title: "A verified buyer network that is actively sourcing surplus flooring.",
     description:
-      "Every buyer on PlankMarket has completed business verification — EIN confirmation, document review, admin approval. These are flooring contractors, retail stores, builders, and purchasing managers who registered specifically to source closeout and overstock inventory. They are not browsing. They have projects to fill and budgets allocated.",
+      "Every buyer who transacts on PlankMarket has completed business verification — EIN confirmation, document review, admin approval. These are flooring contractors, retail stores, builders, and purchasing managers who registered specifically to source closeout and overstock inventory. They are not browsing. They have projects to fill and budgets allocated.",
     detail:
       "Buyers set up saved search alerts for specific materials, species, grades, and conditions. When your lot matches, they are notified immediately. Your inventory reaches the right buyer the day it goes live — not after weeks of outreach.",
   },
@@ -94,11 +93,11 @@ const VALUE_PROPS = [
   },
   {
     number: "03",
-    title: "Funds in your bank 3-5 days after carrier pickup. No invoices to chase.",
+    title: "Funds in your bank typically 3-5 days after carrier pickup. No invoices to chase.",
     description:
-      "Buyers pay through Stripe at checkout. Funds are held in escrow until the carrier picks up the shipment. Once pickup is confirmed, payment releases automatically to your Stripe Connect account. No net-30 terms. No collections calls. No accounts receivable friction.",
+      "Buyers pay through Stripe at checkout. Funds are held securely until the carrier picks up the shipment. Once pickup is confirmed, payment releases automatically to your Stripe Connect account. No net-30 terms. No collections calls. No accounts receivable friction.",
     detail:
-      "Your seller dashboard shows real-time earnings, payout status, and full transaction history. You see exactly when funds clear — no guesswork, no follow-up calls.",
+      "Buyers have a 48-hour post-delivery window to report damage or shortages with photo evidence. If no dispute is filed, the transaction closes and funds are confirmed. Your seller dashboard shows real-time earnings, payout status, and full transaction history.",
   },
 ] as const;
 
@@ -125,7 +124,7 @@ const STEPS = [
     number: "4",
     title: "Ship it. Get paid.",
     description:
-      "Coordinate freight through the platform. Once the carrier picks up the shipment, payment releases automatically. Funds arrive in your bank within 3-5 business days. The inventory is gone. The capital is back.",
+      "Coordinate freight through the platform. Once the carrier picks up the shipment, payment releases automatically. Funds typically arrive in your bank within 3-5 business days. The inventory is gone. The capital is back.",
   },
 ] as const;
 
@@ -156,9 +155,9 @@ const FEATURES = [
   },
   {
     icon: CreditCard,
-    title: "Stripe Payments with Escrow Protection",
+    title: "Stripe Payments with Secure Payment Hold",
     description:
-      "Buyers pay via Stripe at checkout. Funds hold in escrow until carrier pickup is confirmed, then release automatically to your Stripe Connect account. No net terms. No wire transfer friction. No payment chasing.",
+      "Buyers pay via Stripe at checkout. Funds are held securely until carrier pickup is confirmed, then release automatically to your Stripe Connect account. No net terms. No wire transfer friction. No payment chasing.",
   },
   {
     icon: BarChart2,
@@ -168,27 +167,30 @@ const FEATURES = [
   },
 ] as const;
 
-const TESTIMONIALS = [
+const SELLER_PERSONAS = [
   {
-    quote:
-      "We had 18,000 sq ft of discontinued engineered hickory taking up three rack bays for almost a year. Listed it on PlankMarket on a Tuesday — had four offers by Friday and it was sold and scheduled for pickup the following week. That is faster than anything our sales team had managed in months.",
-    name: "Kevin M.",
-    role: "Inventory Manager",
-    company: "Regional flooring distributor, Texas",
+    icon: Warehouse,
+    title: "Manufacturers Clearing Overstock",
+    description:
+      "Discontinued SKUs and production overruns eating warehouse space. List them on PlankMarket and reach verified buyers who buy at volume — without disrupting your primary wholesale channels.",
   },
   {
-    quote:
-      "The AI listing tool is the part I was not expecting to care about — but it saves my team real time. We have closeouts cycling through constantly and listing each one used to be a full admin task. Now we upload photos, enter the specs, review the draft, and publish. Five minutes, done.",
-    name: "Sandra L.",
-    role: "Operations Director",
-    company: "Flooring manufacturer, Southeast US",
+    icon: PackageX,
+    title: "Distributors Liquidating Discontinued Lines",
+    description:
+      "Last year's product lines are not generating revenue. Stop paying to store inventory that is not moving. PlankMarket connects you to buyers actively sourcing surplus flooring.",
   },
   {
-    quote:
-      "The verified buyer network is worth it on its own. I was spending hours responding to inquiries from people who were not serious. Every buyer on PlankMarket has been through verification — they are actual businesses with actual projects. Conversations move to offers much faster.",
-    name: "Tom H.",
-    role: "Owner",
-    company: "Flooring wholesale and distribution, Midwest",
+    icon: TrendingDown,
+    title: "Retailers Moving Surplus Inventory",
+    description:
+      "Showroom changes, cancelled orders, leftover project stock. Recover capital from inventory your local market cannot absorb. Sell to verified buyers nationwide.",
+  },
+  {
+    icon: Globe,
+    title: "Wholesalers Recovering Capital",
+    description:
+      "Capital locked in slow-moving inventory is capital you cannot deploy. List unlimited lots with no insertion fees and turn dead stock into working capital in days, not months.",
   },
 ] as const;
 
@@ -213,8 +215,8 @@ const STATS = [
   },
   {
     icon: Globe,
-    value: "All 50",
-    label: "US states covered",
+    value: "Nationwide",
+    label: "US coverage",
     detail: "Verified buyers coast to coast",
   },
 ] as const;
@@ -264,12 +266,12 @@ const FAQS = [
   {
     question: "When do I get paid?",
     answer:
-      "Once the carrier picks up your shipment, payment releases automatically from escrow to your connected Stripe account. Funds are typically available in your bank within 3-5 business days of pickup. Your seller dashboard shows real-time payout status.",
+      "Seller payouts release when the carrier picks up the shipment. Buyers have a 48-hour window after delivery to report damage, shortages, or quality issues with photo evidence. If no dispute is filed within 5 business days of delivery, the transaction closes automatically. Funds are typically available in your bank within 3-5 business days of pickup.",
   },
   {
     question: "What if a buyer disputes the order?",
     answer:
-      "Buyers have 48 hours after delivery to open a dispute, supported by photo evidence and delivery receipt notes. Our support team mediates. Freight damage must be noted on the Bill of Lading at time of delivery. If no dispute is filed within 5 business days of delivery, the transaction closes automatically and funds are confirmed.",
+      "Buyers have a 48-hour window after delivery to report damage, shortages, or quality issues with photo evidence. Freight damage must be noted on the Bill of Lading at time of delivery. Our support team mediates all disputes. If no dispute is filed within 5 business days of delivery, the transaction closes automatically and funds are confirmed.",
   },
   {
     question: "Is there a limit to how many lots I can list?",
@@ -365,7 +367,7 @@ export default function ForSellersPage() {
                   </div>
                   <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
                     <CreditCard className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Stripe escrow — funds held until pickup</span>
+                    <span>Secure payment hold — funds held until pickup</span>
                   </div>
                   <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
                     <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
@@ -550,25 +552,24 @@ export default function ForSellersPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
             <h2 className="font-display text-3xl sm:text-4xl">
-              Sellers who stopped paying to store inventory that was not selling.
+              Who PlankMarket is built for.
             </h2>
+            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
+              If you have surplus flooring that is not moving through your usual channels, PlankMarket was built for you.
+            </p>
           </div>
 
-          {/* Testimonials */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-5xl mx-auto mb-16 stagger-grid">
-            {TESTIMONIALS.map((t) => (
-              <Card key={t.name} className="card-hover-lift flex flex-col">
-                <CardContent className="pt-6 flex flex-col h-full">
-                  <Quote className="h-6 w-6 text-primary/30 mb-4 shrink-0" aria-hidden="true" />
-                  <blockquote className="text-sm text-muted-foreground leading-relaxed flex-1 italic">
-                    &ldquo;{t.quote}&rdquo;
-                  </blockquote>
-                  <div className="mt-6 pt-4 border-t border-border">
-                    <p className="font-semibold text-sm">{t.name}</p>
-                    <p className="text-xs text-muted-foreground">{t.role}</p>
-                    <p className="text-xs text-muted-foreground">{t.company}</p>
+          {/* Seller Personas */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto mb-16 stagger-grid">
+            {SELLER_PERSONAS.map((persona) => (
+              <Card key={persona.title} className="card-hover-lift">
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
+                    <persona.icon className="h-6 w-6 text-primary" aria-hidden="true" />
                   </div>
-                </CardContent>
+                  <CardTitle className="font-display text-base leading-snug">{persona.title}</CardTitle>
+                  <CardDescription className="text-sm leading-relaxed">{persona.description}</CardDescription>
+                </CardHeader>
               </Card>
             ))}
           </div>
@@ -644,7 +645,7 @@ export default function ForSellersPage() {
                     <span className="text-sm text-muted-foreground">-$240</span>
                   </div>
                   <div className="flex justify-between items-center py-2 px-3 bg-primary/5 border border-primary/20 rounded-lg">
-                    <span className="text-sm font-semibold">Your payout</span>
+                    <span className="text-sm font-semibold">Your gross payout (before Stripe fees)</span>
                     <span className="text-sm font-bold text-primary">$11,760</span>
                   </div>
                   <Separator />
@@ -653,7 +654,7 @@ export default function ForSellersPage() {
                     <span className="text-sm text-muted-foreground">$12,360</span>
                   </div>
                   <p className="text-xs text-muted-foreground pt-1">
-                    Buyer pays listed price + 3% buyer fee. Your payout transfers to your Stripe Connect account within 3-5 business days of carrier pickup.
+                    Buyer pays listed price + 3% buyer fee. Stripe processing fees (~2.9% + $0.30) are deducted by Stripe before payout. Your net payout transfers to your Stripe Connect account typically within 3-5 business days of carrier pickup.
                   </p>
                 </div>
               </CardContent>
@@ -807,7 +808,7 @@ export default function ForSellersPage() {
                 That discontinued engineered hardwood in bay 7. The LVP closeout on pallets in the back. The overstock oak that has been there since last quarter. It is all losing value while it waits.
               </p>
               <p className="text-white/80 mb-10 max-w-xl mx-auto text-lg leading-relaxed">
-                List it today. Get it in front of verified buyers across all 50 states. Stop the clock.
+                List it today. Get it in front of verified buyers nationwide. Stop the clock.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/register?role=seller">

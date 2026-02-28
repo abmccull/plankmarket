@@ -19,13 +19,12 @@ import {
   Clock,
   DollarSign,
   Users,
-  Star,
 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "PlankMarket — B2B Closeout Flooring Marketplace",
   description:
-    "Your closeout flooring is losing value right now. PlankMarket is the fastest path from surplus inventory to verified buyer. Move overstock, discontinued, and closeout flooring across all 50 states.",
+    "Your closeout flooring is losing value right now. PlankMarket is the fastest path from surplus inventory to verified buyer. Move overstock, discontinued, and closeout flooring nationwide.",
 };
 
 export const revalidate = 3600;
@@ -93,7 +92,8 @@ export default function HomePage() {
               Every week surplus flooring sits in a warehouse, carrying costs
               eat into your margin and the product moves closer to obsolete.
               PlankMarket is the fastest path from excess inventory to verified
-              buyer, before the margin disappears.
+              buyer — and the best way for contractors and retailers to source
+              closeout flooring before the good lots are gone.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/register?role=seller">
@@ -117,7 +117,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
                 <TrendingDown className="h-4 w-4" aria-hidden="true" />
-                <span>30-60% Below Wholesale</span>
+                <span>Closeout Pricing From Verified Sellers</span>
               </div>
               <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
                 <Truck className="h-4 w-4" aria-hidden="true" />
@@ -297,9 +297,9 @@ export default function HomePage() {
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed">
                 3% buyer fee. 2% seller fee. No listing fees, no
-                subscriptions, no hidden charges. Payments through Stripe with
-                escrow protection. Seller payouts in 3-5 business days after
-                carrier pickup.
+                subscriptions, no hidden charges. Payments processed through
+                Stripe. Seller payouts typically arrive within 3-5 business
+                days after carrier pickup.
               </p>
             </div>
           </div>
@@ -315,72 +315,130 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── Social Proof ──────────────────────────────────────────────── */}
+      {/* ─── How a Transaction Works ─────────────────────────────────── */}
+      <section className="py-16 border-b border-border">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-10">
+            <Badge variant="outline" className="mb-4">
+              How It Works
+            </Badge>
+            <h2 className="font-display text-3xl sm:text-4xl">
+              From listing to payout in four steps.
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">
+            {[
+              { step: "1", title: "List", description: "Seller uploads specs, photos, and sets a price." },
+              { step: "2", title: "Offer or Buy", description: "Buyer purchases at listed price or negotiates an offer." },
+              { step: "3", title: "Ship", description: "Seller coordinates freight pickup through the platform." },
+              { step: "4", title: "Get Paid", description: "Payment releases to seller after carrier pickup." },
+            ].map((item) => (
+              <div key={item.step} className="text-center">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center mx-auto mb-3 font-bold text-lg">
+                  {item.step}
+                </div>
+                <h3 className="font-display text-lg mb-1">{item.title}</h3>
+                <p className="text-sm text-muted-foreground">{item.description}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center mt-8">
+            <Link href="/how-it-works">
+              <Button variant="outline" size="sm">
+                See the full process
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Every Listing Includes ───────────────────────────────────── */}
+      <section className="py-16 bg-muted/20">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-10">
+              <h2 className="font-display text-2xl sm:text-3xl">
+                Every listing includes
+              </h2>
+              <p className="mt-3 text-muted-foreground">
+                Buyers see full detail on every lot before making a decision.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {[
+                "Material type & species",
+                "Plank dimensions",
+                "Grade & condition",
+                "Square footage",
+                "Price per sq ft",
+                "Up to 20 photos",
+                "Pallet count & weight",
+                "Seller verification badge",
+              ].map((item) => (
+                <div key={item} className="flex items-center gap-2 text-sm">
+                  <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Who PlankMarket Is Built For ────────────────────────────── */}
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
             <h2 className="font-display text-3xl sm:text-4xl">
-              What flooring professionals are saying.
+              Who PlankMarket is built for.
             </h2>
+            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
+              A dedicated marketplace for the professionals who make, move, and install flooring.
+            </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto stagger-grid">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto stagger-grid">
             {[
               {
-                quote:
-                  "We had 18,000 sq ft of discontinued engineered hickory taking up three rack bays for almost a year. Listed it on PlankMarket on a Tuesday, had four offers by Friday, and it was sold and scheduled for pickup the following week. Faster than anything our sales team managed in months.",
-                name: "Kevin M.",
-                role: "Inventory Manager",
-                company: "Regional flooring distributor, Texas",
+                icon: Store,
+                title: "Manufacturers",
+                description:
+                  "Clear overstock and discontinued lines without disrupting your primary sales channels. Reach verified buyers who buy at volume.",
               },
               {
-                quote:
-                  "I used to spend half my Monday morning calling distributors to check availability. Now I open PlankMarket, filter for what I need, and have a quote submitted before lunch. Found a 6,200 sq ft lot of prefinished white oak last month, well below what I would have paid through my usual channels.",
-                name: "Marcus T.",
-                role: "Purchasing Manager",
-                company: "Regional flooring contractor, Southeast US",
+                icon: Users,
+                title: "Distributors",
+                description:
+                  "Liquidate surplus inventory and recover capital tied up in slow-moving SKUs. List unlimited lots with no insertion fees.",
               },
               {
-                quote:
-                  "The verified buyer network is worth it on its own. I was spending hours responding to inquiries from people who were not serious. Every buyer on PlankMarket has been through verification. Conversations move to offers much faster.",
-                name: "Tom H.",
-                role: "Owner",
-                company:
-                  "Flooring wholesale and distribution, Midwest",
+                icon: ShoppingCart,
+                title: "Retailers & Contractors",
+                description:
+                  "Source closeout flooring for projects at below-channel pricing. Full specs and photos on every lot — no blind buys.",
               },
-            ].map((testimonial) => (
+              {
+                icon: Truck,
+                title: "Builders & Purchasing Teams",
+                description:
+                  "Consolidate sourcing in one marketplace. Set alerts for the materials you need and buy with integrated freight quotes.",
+              },
+            ].map((persona) => (
               <Card
-                key={testimonial.name}
-                className="card-hover-lift flex flex-col"
+                key={persona.title}
+                className="card-hover-lift"
               >
-                <CardHeader className="flex-1">
-                  {/* Star rating */}
-                  <div
-                    className="flex gap-0.5 mb-3"
-                    aria-label="5 out of 5 stars"
-                  >
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className="h-4 w-4 fill-amber-400 text-amber-400"
-                        aria-hidden="true"
-                      />
-                    ))}
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
+                    <persona.icon className="h-6 w-6 text-primary" aria-hidden="true" />
                   </div>
-                  <blockquote className="text-sm leading-relaxed text-muted-foreground italic mb-4">
-                    &ldquo;{testimonial.quote}&rdquo;
-                  </blockquote>
-                  <div className="mt-auto pt-4 border-t border-border">
-                    <p className="font-semibold text-sm">
-                      {testimonial.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {testimonial.role}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {testimonial.company}
-                    </p>
-                  </div>
+                  <CardTitle className="font-display text-base">
+                    {persona.title}
+                  </CardTitle>
+                  <CardDescription className="text-sm leading-relaxed">
+                    {persona.description}
+                  </CardDescription>
                 </CardHeader>
               </Card>
             ))}
@@ -388,7 +446,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── Stats Bar ─────────────────────────────────────────────────── */}
+      {/* ─── Platform Facts ──────────────────────────────────────────── */}
       <section className="py-12 bg-gradient-to-br from-primary to-secondary text-primary-foreground relative overflow-hidden">
         <div
           aria-hidden="true"
@@ -412,8 +470,8 @@ export default function HomePage() {
               <div className="text-sm opacity-80">Material Categories</div>
             </div>
             <div>
-              <div className="font-display text-2xl">All 50</div>
-              <div className="text-sm opacity-80">US States</div>
+              <div className="font-display text-2xl">Nationwide</div>
+              <div className="text-sm opacity-80">US Coverage</div>
             </div>
             <div>
               <div className="font-display text-2xl">3% + 2%</div>
@@ -457,7 +515,7 @@ export default function HomePage() {
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed mb-4">
                 Source surplus hardwood, engineered, LVP, laminate, bamboo,
-                and tile at 30-60% below wholesale. Verified sellers.
+                and tile at closeout pricing from verified sellers.
                 Full specs and photos on every lot. Integrated freight
                 quotes at checkout.
               </p>
@@ -484,8 +542,8 @@ export default function HomePage() {
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed mb-4">
                 Liquidate overstock and closeout inventory to verified
-                buyers across all 50 states. 2% commission only when you
-                sell. No listing fees. Payouts in 3-5 business days.
+                buyers nationwide. 2% commission only when you
+                sell. No listing fees. Payouts typically in 3-5 business days.
               </p>
               <span className="inline-flex items-center text-sm font-semibold text-secondary group-hover:gap-2 transition-all">
                 See seller benefits
@@ -526,9 +584,9 @@ export default function HomePage() {
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto text-lg leading-relaxed">
                 Sellers: list your surplus and get it in front of verified
-                buyers across all 50 states. Buyers: stop missing deals.
+                buyers nationwide. Buyers: stop missing deals.
                 Set alerts for the products you need and source at
-                wholesale prices.
+                closeout prices.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/register?role=seller">

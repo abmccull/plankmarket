@@ -19,7 +19,7 @@ const BUYER_FAQS = [
   {
     question: "How are buyer fees calculated?",
     answer:
-      "Buyers pay a 3% platform fee on the combined inventory subtotal plus shipping. The buyer fee is shown before payment confirmation.",
+      "Buyers pay a 3% platform fee on the inventory subtotal only. Shipping is quoted and added separately at checkout. The buyer fee is shown before payment confirmation.",
   },
   {
     question: "How is shipping handled?",
@@ -30,6 +30,16 @@ const BUYER_FAQS = [
     question: "Can I make offers before verification?",
     answer:
       "Yes. Buyers can browse, message, and negotiate while unverified. Verification is required to complete payment and place an order.",
+  },
+  {
+    question: "Can I buy part of a lot or does it have to be full-lot?",
+    answer:
+      "It depends on the listing. Sellers specify whether a lot must be purchased in full or if they are willing to split. Some listings include a minimum order quantity. These terms are clearly shown on each listing before you make an offer.",
+  },
+  {
+    question: "What happens if my order arrives damaged or short?",
+    answer:
+      "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team mediates the claim. If no dispute is filed within 5 business days of delivery, the transaction closes automatically.",
   },
 ];
 
@@ -52,7 +62,7 @@ const SELLER_FAQS = [
   {
     question: "When do payouts happen?",
     answer:
-      "Payouts follow the platform settlement flow after payment and shipment milestones. Seller dashboards provide payout status and history.",
+      "Seller payouts release when the carrier picks up the shipment. Funds are typically available in your bank within 3-5 business days. Buyers have a 48-hour post-delivery window to report damage or shortages. Your seller dashboard shows real-time payout status and history.",
   },
 ];
 

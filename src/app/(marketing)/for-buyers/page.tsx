@@ -9,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   ArrowRight,
   Bell,
@@ -20,17 +19,16 @@ import {
   Search,
   Shield,
   Truck,
-  Star,
 } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "For Buyers — Closeout Flooring Your Competitors Miss | PlankMarket",
   description:
-    "Source first-quality closeout and surplus flooring at 30-60% below wholesale. 44 data fields per listing. Verified sellers. Integrated LTL freight. 3% buyer fee, no subscription.",
+    "Source first-quality closeout and surplus flooring below standard channel pricing. 44 data fields per listing. Verified sellers. Integrated LTL freight. 3% buyer fee, no subscription.",
   openGraph: {
     title: "The Closeout Inventory Your Competitors Never See.",
     description:
-      "First-quality surplus flooring from verified manufacturers and distributors. 30-60% below wholesale. Browse lots now.",
+      "First-quality surplus flooring from verified manufacturers and distributors. Below standard channel pricing. Browse lots now.",
     url: "https://plankmarket.com/for-buyers",
   },
 };
@@ -86,10 +84,10 @@ export default function ForBuyersPage() {
                 </h1>
                 <p className="mt-6 text-lg text-muted-foreground">
                   Manufacturers and distributors sit on closeout flooring they
-                  need to move. First-quality hardwood, engineered, LVP. 30-60%
-                  below wholesale. Most retailers never hear about these lots.
-                  PlankMarket puts them in one place, with full specs, verified
-                  sellers, and transparent pricing.
+                  need to move. First-quality hardwood, engineered, LVP — priced
+                  below standard channels. Most retailers never hear about these
+                  lots. PlankMarket puts them in one place, with full specs,
+                  verified sellers, and transparent pricing.
                 </p>
                 <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                   <Link href="/listings">
@@ -117,7 +115,7 @@ export default function ForBuyersPage() {
                   </div>
                   <div className="flex items-center gap-2 bg-white/60 backdrop-blur-sm rounded-full px-4 py-2 shadow-elevation-sm">
                     <Lock className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Stripe escrow protection</span>
+                    <span>Secure payment protection</span>
                   </div>
                 </div>
               </div>
@@ -238,8 +236,8 @@ export default function ForBuyersPage() {
                   See what is available right now. Not after six phone calls.
                 </h3>
                 <p className="text-muted-foreground text-base leading-relaxed mb-3">
-                  Browse hundreds of surplus lots from verified sellers across
-                  all 50 states. Hardwood, engineered, laminate, LVP, bamboo,
+                  Browse hundreds of surplus lots from verified sellers
+                  nationwide. Hardwood, engineered, laminate, LVP, bamboo,
                   tile. Filter by material, species, grade, square footage,
                   condition, price, and location.
                 </p>
@@ -286,7 +284,7 @@ export default function ForBuyersPage() {
                   Every seller on PlankMarket undergoes business verification.
                   EIN verification, document review, and admin approval before
                   they list a single lot. Payments are processed via Stripe
-                  and held in escrow until the carrier picks up your order.
+                  with a secure payment hold until the carrier picks up your order.
                 </p>
                 <p className="text-sm text-primary font-medium">
                   48-hour post-delivery dispute window with photo evidence.
@@ -333,7 +331,7 @@ export default function ForBuyersPage() {
                 step: "4",
                 title: "Pay securely and track your freight.",
                 description:
-                  "Check out via Stripe. Payment is held in escrow. Once the seller ships via LTL freight, you get a tracking number and follow delivery through your buyer dashboard. Funds release to the seller only after carrier pickup is confirmed.",
+                  "Check out via Stripe. Your payment is held securely. Once the seller ships via LTL freight, you get a tracking number and follow delivery through your buyer dashboard. You have 48 hours after delivery to report any damage or shortages with photo evidence.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -399,9 +397,9 @@ export default function ForBuyersPage() {
               },
               {
                 icon: Shield,
-                title: "Escrow Payment and Dispute Resolution",
+                title: "Secure Payment and Dispute Resolution",
                 description:
-                  "Payments held in escrow until carrier pickup is confirmed. 48-hour post-delivery window to report damage or shortages with photo evidence. Our support team mediates and protects your purchase.",
+                  "Payments held securely until carrier pickup is confirmed. 48-hour post-delivery window to report damage or shortages with photo evidence. Our support team mediates and protects your purchase.",
               },
             ].map((feature) => (
               <Card key={feature.title} className="card-hover-lift">
@@ -427,60 +425,52 @@ export default function ForBuyersPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl sm:text-4xl">
-              Buyers who stopped calling around.
+              Who PlankMarket is built for.
             </h2>
+            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
+              If you source flooring at volume and are tired of the phone-around game, PlankMarket was built for you.
+            </p>
           </div>
 
-          {/* Testimonials */}
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-16 stagger-grid">
+          {/* Buyer Personas */}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto mb-16 stagger-grid">
             {[
               {
-                quote:
-                  "I used to spend half my Monday morning calling distributors to check availability. Now I open PlankMarket, filter for what I need, and have a quote submitted before lunch. Found a 6,200 sq ft lot of prefinished white oak last month — well below what I would have paid through my usual channels.",
-                name: "Marcus T.",
-                role: "Purchasing Manager",
-                company: "Regional flooring contractor, Southeast US",
+                icon: Truck,
+                title: "Contractors Sourcing for Projects",
+                description:
+                  "Find the exact material you need for active projects. Filter by species, grade, and square footage. Stop chasing quotes by phone — source in minutes.",
               },
               {
-                quote:
-                  "The listing detail is what sold me. Every lot has photos, specs, pallet dimensions, and a clear condition description. I know exactly what is arriving before I pay for it. Have not had a single surprise shipment since I switched.",
-                name: "Diane R.",
-                role: "Owner",
-                company: "Flooring retail store, Midwest",
+                icon: Search,
+                title: "Retailers Stocking Closeout Deals",
+                description:
+                  "Fill your showroom with below-channel pricing on first-quality surplus. Set alerts for the categories you stock and buy before your competitors see it.",
               },
               {
-                quote:
-                  "We build 80-100 units a year and flooring is a major cost line. PlankMarket has become a consistent sourcing channel for us — especially for engineered hardwood and LVP. The verified sellers give our procurement team confidence, and the freight integration saves a ton of back-and-forth.",
-                name: "James W.",
-                role: "VP of Procurement",
-                company: "Residential home builder, Mid-Atlantic region",
+                icon: Layers,
+                title: "Builders Buying in Volume",
+                description:
+                  "Flooring is a major cost line on multi-unit projects. Source engineered hardwood, LVP, and laminate at closeout pricing with integrated freight quotes.",
               },
-            ].map((testimonial) => (
-              <Card key={testimonial.name} className="card-hover-lift flex flex-col">
-                <CardHeader className="flex-1">
-                  {/* Star rating */}
-                  <div className="flex gap-0.5 mb-3" aria-label="5 out of 5 stars">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className="h-4 w-4 fill-amber-400 text-amber-400"
-                        aria-hidden="true"
-                      />
-                    ))}
+              {
+                icon: Shield,
+                title: "Purchasing Teams Consolidating Sourcing",
+                description:
+                  "One marketplace. Verified sellers. Full specs on every lot. Consolidate your surplus sourcing instead of managing relationships with a dozen distributors.",
+              },
+            ].map((persona) => (
+              <Card key={persona.title} className="card-hover-lift">
+                <CardHeader>
+                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
+                    <persona.icon className="h-6 w-6 text-primary" aria-hidden="true" />
                   </div>
-                  <blockquote className="text-sm leading-relaxed text-muted-foreground italic mb-4">
-                    &ldquo;{testimonial.quote}&rdquo;
-                  </blockquote>
-                  <Separator className="mb-4" />
-                  <div>
-                    <p className="font-semibold text-sm">{testimonial.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {testimonial.role}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {testimonial.company}
-                    </p>
-                  </div>
+                  <CardTitle className="font-display text-base leading-snug">
+                    {persona.title}
+                  </CardTitle>
+                  <CardDescription className="text-sm leading-relaxed">
+                    {persona.description}
+                  </CardDescription>
                 </CardHeader>
               </Card>
             ))}
@@ -492,10 +482,10 @@ export default function ForBuyersPage() {
               <dl className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
                 <div>
                   <dt className="font-display text-3xl tabular-nums">
-                    30-60%
+                    Closeout
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
-                    Below standard wholesale on surplus lots
+                    Below-channel pricing on surplus lots
                   </dd>
                 </div>
                 <div>
@@ -516,10 +506,10 @@ export default function ForBuyersPage() {
                 </div>
                 <div>
                   <dt className="font-display text-3xl">
-                    All 50
+                    Nationwide
                   </dt>
                   <dd className="text-sm opacity-80 mt-1">
-                    States covered by verified US sellers
+                    Coverage from verified US sellers
                   </dd>
                 </div>
               </dl>
@@ -541,7 +531,7 @@ export default function ForBuyersPage() {
               </h2>
               <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
                 No subscription fees. No listing access fees. No charges to
-                browse. The 3% buyer fee covers payment processing, escrow
+                browse. The 3% buyer fee covers payment processing, secure payment
                 protection, dispute resolution, platform support, and freight
                 coordination tools.
               </p>
@@ -667,12 +657,12 @@ export default function ForBuyersPage() {
                 {
                   question: "What if my order arrives damaged or short?",
                   answer:
-                    "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team mediates the claim. Payments are held in escrow until carrier pickup, providing an additional layer of protection.",
+                    "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team mediates the claim. Payments are held securely until carrier pickup, providing an additional layer of protection.",
                 },
                 {
                   question: "Is my payment secure?",
                   answer:
-                    "All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses. PlankMarket never stores your payment card information. Funds are held in escrow after payment and only released to the seller once carrier pickup is confirmed.",
+                    "All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses. PlankMarket never stores your payment card information. Funds are held securely after payment and released to the seller once carrier pickup is confirmed.",
                 },
                 {
                   question: "How is this different from buying through a broker?",

@@ -67,7 +67,7 @@ export default function PricingPage() {
                 <Badge variant="outline" className="w-fit mx-auto mb-2 border-secondary text-secondary">
                   For Buyers
                 </Badge>
-                <CardTitle className="font-display text-3xl">Free</CardTitle>
+                <CardTitle className="font-display text-3xl">Pay Only When You Buy</CardTitle>
                 <CardDescription>Free to browse and register</CardDescription>
               </CardHeader>
               <Separator />
@@ -118,7 +118,7 @@ export default function PricingPage() {
                     "Access to nationwide buyer network",
                     "Customer support for you and buyers",
                     "Seller dashboard and analytics",
-                    "Fast payouts within 3-5 business days after shipment pickup",
+                    "Payouts typically within 3-5 business days after shipment pickup",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm">
                       <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -159,7 +159,7 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Platform Commission</h3>
                       <p className="text-sm text-muted-foreground">
-                        PlankMarket charges a 2% seller commission and 3% buyer fee on each completed transaction. This covers listing hosting, buyer network access, secure payment processing, payment protection, messaging tools, and platform support.
+                        PlankMarket charges a 2% seller commission and 3% buyer fee on each completed transaction, calculated on the inventory subtotal only. Shipping is quoted and added separately at checkout. This covers listing hosting, buyer network access, secure payment processing, payment protection, messaging tools, and platform support.
                       </p>
                     </div>
                   </div>
@@ -183,7 +183,7 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Payout Timeline</h3>
                       <p className="text-sm text-muted-foreground">
-                        Once shipment is picked up by the carrier, payment is automatically released and transferred to your connected Stripe account. Funds are typically available in your bank within 3-5 business days.
+                        Seller payouts release when the carrier picks up the shipment. Funds are typically available in your bank within 3-5 business days. Buyers have a 48-hour post-delivery window to report damage or shortages with photo evidence. If no dispute is filed within 5 business days of delivery, the transaction closes automatically.
                       </p>
                     </div>
                   </div>
@@ -229,7 +229,7 @@ export default function PricingPage() {
                     <span className="text-sm">$200.00</span>
                   </div>
                   <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
-                    <span className="text-sm font-semibold">Seller payout</span>
+                    <span className="text-sm font-semibold">Seller payout (gross, before Stripe fees)</span>
                     <span className="text-sm font-semibold">$9,800.00</span>
                   </div>
                   <Separator className="my-4" />
@@ -313,7 +313,7 @@ export default function PricingPage() {
               {
                 question: "What happens in case of a dispute or return?",
                 answer:
-                  "Our secure payment hold protects both parties. Buyers have 48 hours after delivery to report damage or shortage, with photo evidence and delivery receipt notes required. Freight damage must be noted on the delivery receipt at time of delivery. If no dispute is opened within 5 business days of delivery, the transaction is considered complete. Disputes are mediated by our support team. Commission and processing fees are refunded on full refunds; partial refunds get proportional adjustments.",
+                  "Our secure payment hold protects both parties. Seller payouts release when the carrier picks up the shipment. Buyers have a 48-hour window after delivery to report damage, shortages, or quality issues with photo evidence. Freight damage must be noted on the delivery receipt at time of delivery. If no dispute is filed within 5 business days of delivery, the transaction closes automatically. Disputes are mediated by our support team. Commission and processing fees are refunded on full refunds; partial refunds get proportional adjustments.",
               },
               {
                 question: "Are there plans for premium features?",
