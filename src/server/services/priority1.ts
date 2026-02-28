@@ -336,13 +336,11 @@ async function getStatus(request: StatusRequest): Promise<StatusResponse> {
     const phase = minutesSinceEpoch % 10;
 
     let status: string;
-    let statusReason: string;
     const trackingStatuses: TrackingStatus[] = [];
     const baseTime = new Date(now - 2 * 60 * 60 * 1000);
 
     if (phase < 3) {
       status = "Dispatched";
-      statusReason = "Shipment dispatched, awaiting carrier pickup";
       trackingStatuses.push({
         timeStamp: baseTime.toISOString(),
         city: "Salt Lake City", state: "UT", postalCode: "84101",
@@ -350,7 +348,6 @@ async function getStatus(request: StatusRequest): Promise<StatusResponse> {
       });
     } else if (phase < 7) {
       status = "InTransit";
-      statusReason = "Shipment in transit";
       trackingStatuses.push(
         {
           timeStamp: baseTime.toISOString(),
@@ -370,7 +367,6 @@ async function getStatus(request: StatusRequest): Promise<StatusResponse> {
       );
     } else {
       status = "Delivered";
-      statusReason = "Shipment delivered";
       trackingStatuses.push(
         {
           timeStamp: baseTime.toISOString(),

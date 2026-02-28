@@ -104,9 +104,6 @@ export function ListingsBrowseClient({
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const GRID_LIMITS = ["12", "24", "48"];
-  const LIST_LIMITS = ["50", "100", "250"];
-
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>) => {
       const params = new URLSearchParams(rawSearchParams.toString());
@@ -128,6 +125,8 @@ export function ListingsBrowseClient({
 
   const handleViewModeChange = useCallback(
     (mode: "grid" | "list") => {
+      const GRID_LIMITS = ["12", "24", "48"];
+      const LIST_LIMITS = ["50", "100", "250"];
       setViewMode(mode);
       const currentLimit = String(initialParams.limit);
       if (mode === "list" && GRID_LIMITS.includes(currentLimit)) {
@@ -136,7 +135,7 @@ export function ListingsBrowseClient({
         updateParams({ limit: "24" });
       }
     },
-    [initialParams.limit, updateParams, GRID_LIMITS, LIST_LIMITS]
+    [initialParams.limit, updateParams]
   );
 
   const handleSearchChange = useCallback(
