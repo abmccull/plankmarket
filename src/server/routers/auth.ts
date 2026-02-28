@@ -139,11 +139,12 @@ export const authRouter = createTRPCRouter({
           message: "Failed to create user account",
         });
       }
+      const authUser = authData.user;
 
       // Set app_metadata.role using service role client (server-writable only, not client-mutable)
       const { createServiceClient } = await import("@/lib/supabase/server");
       const serviceClient = await createServiceClient();
-      await serviceClient.auth.admin.updateUserById(authData.user.id, {
+      await serviceClient.auth.admin.updateUserById(authUser.id, {
         app_metadata: { role: input.role },
       });
 
@@ -159,22 +160,62 @@ export const authRouter = createTRPCRouter({
       }
 
       // Create user record in our database
-      const [newUser] = await ctx.db
-        .insert(users)
-        .values({
-          authId: authData.user.id,
+      let newUser: typeof users.$inferSelect | undefined;
+      try {
+        const [inserted] = await ctx.db
+          .insert(users)
+          .values({
+            authId: authUser.id,
+            email: input.email,
+            name: input.name,
+            role: input.role,
+            businessName: input.businessName,
+            phone: input.phone ?? "",
+            // Store safe placeholders for legacy databases that still enforce
+            // non-null business verification columns at registration time.
+            businessAddress: "Pending verification",
+            businessCity: "NA",
+            businessState: "NA",
+            businessZip: input.zipCode,
+            verificationDocUrl: "",
+            verificationRequestedAt: new Date(0),
+            verificationNotes: "",
+            businessWebsite: "",
+            einTaxId: "",
+            zipCode: input.zipCode,
+            lat: lat ?? 0,
+            lng: lng ?? 0,
+            verificationStatus: "unverified",
+            verified: false,
+            active: true,
+          })
+          .returning();
+
+        newUser = inserted;
+      } catch (dbError) {
+        console.error("Failed to create app user profile after auth signup", {
+          authUserId: authUser.id,
           email: input.email,
-          name: input.name,
           role: input.role,
-          businessName: input.businessName,
-          phone: input.phone,
-          zipCode: input.zipCode,
-          lat,
-          lng,
-          verificationStatus: "unverified",
-          verified: false,
-        })
-        .returning();
+          error: dbError,
+        });
+
+        // Avoid orphaned auth users that appear "logged in" but have no app profile.
+        await serviceClient.auth.admin
+          .deleteUser(authUser.id)
+          .catch((cleanupError) => {
+            console.error("Failed to rollback orphaned auth user", {
+              authUserId: authUser.id,
+              cleanupError,
+            });
+          });
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "We could not finish creating your account profile. Please try again.",
+        });
+      }
 
       // Send welcome email (fire-and-forget)
       sendWelcomeEmail({
@@ -200,7 +241,7 @@ export const authRouter = createTRPCRouter({
 
       return {
         user: newUser,
-        requiresVerification: !authData.user.email_confirmed_at,
+        requiresVerification: !authUser.email_confirmed_at,
       };
     }),
 

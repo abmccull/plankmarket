@@ -11,6 +11,27 @@ import { Redis } from "@upstash/redis";
 import { env } from "@/env";
 import { checkViolationStatus } from "@/server/services/content-moderation";
 
+function parseRole(value: unknown): "buyer" | "seller" | "admin" {
+  return value === "buyer" || value === "seller" || value === "admin"
+    ? value
+    : "buyer";
+}
+
+function parseZip(value: unknown): string {
+  if (typeof value !== "string") return "00000";
+  return /^\d{5}$/.test(value.trim()) ? value.trim() : "00000";
+}
+
+function parseText(value: unknown, fallback = ""): string {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function parseNumber(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
   const supabase = await createClient();
   const {
@@ -19,7 +40,7 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
 
   let dbUser = null;
   if (authUser) {
-    const result = await db.query.users.findFirst({
+    let result = await db.query.users.findFirst({
       where: eq(users.authId, authUser.id),
       columns: {
         id: true,
@@ -50,6 +71,84 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
         // verificationDocUrl, lat, lng
       },
     });
+
+    if (!result) {
+      const role = parseRole(authUser.app_metadata?.role);
+      const name = parseText(
+        authUser.user_metadata?.name,
+        parseText(authUser.email?.split("@")[0], "PlankMarket User")
+      ).slice(0, 255);
+      const businessName = parseText(authUser.user_metadata?.business_name, "")
+        .slice(0, 255);
+      const phone = parseText(authUser.user_metadata?.phone, "").slice(0, 20);
+      const zipCode = parseZip(
+        authUser.user_metadata?.zip_code ?? authUser.user_metadata?.zipCode
+      );
+
+      try {
+        await db
+          .insert(users)
+          .values({
+            authId: authUser.id,
+            email: authUser.email ?? `${authUser.id}@placeholder.plankmarket.local`,
+            name,
+            role,
+            businessName: businessName || null,
+            phone,
+            businessAddress: "Pending verification",
+            businessCity: "NA",
+            businessState: "NA",
+            businessZip: zipCode,
+            verificationDocUrl: "",
+            verificationRequestedAt: new Date(0),
+            verificationNotes: "",
+            businessWebsite: "",
+            einTaxId: "",
+            verificationStatus: "unverified",
+            verified: false,
+            active: true,
+            zipCode,
+            lat: parseNumber(authUser.user_metadata?.lat, 0),
+            lng: parseNumber(authUser.user_metadata?.lng, 0),
+          })
+          .onConflictDoNothing({ target: users.authId });
+      } catch (error) {
+        console.error("Failed to auto-provision missing user profile", {
+          authUserId: authUser.id,
+          email: authUser.email,
+          error,
+        });
+      }
+
+      result = await db.query.users.findFirst({
+        where: eq(users.authId, authUser.id),
+        columns: {
+          id: true,
+          authId: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          businessName: true,
+          businessAddress: true,
+          businessCity: true,
+          businessState: true,
+          businessZip: true,
+          avatarUrl: true,
+          stripeAccountId: true,
+          stripeOnboardingComplete: true,
+          verified: true,
+          active: true,
+          verificationStatus: true,
+          verificationRequestedAt: true,
+          verificationNotes: true,
+          businessWebsite: true,
+          zipCode: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    }
     dbUser = result ?? null;
   }
 

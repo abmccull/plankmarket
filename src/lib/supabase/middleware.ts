@@ -60,7 +60,28 @@ export async function updateSession(request: NextRequest) {
   if (pathname.startsWith("/admin") && user) {
     const role = user.app_metadata?.role as string | undefined;
     if (role !== "admin") {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      const dashboardPaths: Record<string, string> = {
+        buyer: "/buyer",
+        seller: "/seller",
+        admin: "/admin",
+      };
+      const fallbackPath = dashboardPaths[role ?? ""] ?? "/buyer";
+      return NextResponse.redirect(new URL(fallbackPath, request.url));
+    }
+  }
+
+  // Keep role-specific dashboards aligned with authenticated role.
+  if (pathname.startsWith("/seller") && user) {
+    const role = user.app_metadata?.role as string | undefined;
+    if (role !== "seller" && role !== "admin") {
+      return NextResponse.redirect(new URL("/buyer", request.url));
+    }
+  }
+
+  if (pathname.startsWith("/buyer") && user) {
+    const role = user.app_metadata?.role as string | undefined;
+    if (role !== "buyer" && role !== "admin") {
+      return NextResponse.redirect(new URL("/seller", request.url));
     }
   }
 

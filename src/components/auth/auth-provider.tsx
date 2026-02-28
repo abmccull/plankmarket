@@ -86,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (result.isAuthenticated && result.user) {
             setUser(result.user);
           } else {
+            await supabase.auth.signOut();
             setUser(null);
           }
         } else {
@@ -114,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (result.isAuthenticated && result.user) {
             setUser(result.user);
           } else {
+            await supabase.auth.signOut();
             setUser(null);
           }
         } catch {
