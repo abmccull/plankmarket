@@ -20,6 +20,29 @@ function escapeLike(input: string): string {
     .replace(/_/g, "\\_");
 }
 
+function isMissingColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const maybeError = error as {
+    code?: unknown;
+    message?: unknown;
+    cause?: unknown;
+  };
+  const code = typeof maybeError.code === "string" ? maybeError.code : "";
+  const message =
+    typeof maybeError.message === "string" ? maybeError.message : "";
+
+  if (code === "42703") return true; // PostgreSQL undefined_column
+  if (
+    message.toLowerCase().includes("column") &&
+    message.toLowerCase().includes("does not exist")
+  ) {
+    return true;
+  }
+
+  return isMissingColumnError(maybeError.cause);
+}
+
 /** Default platform settings */
 const DEFAULT_SETTINGS: Record<string, unknown> = {
   buyerFeePercent: 3,
@@ -274,6 +297,14 @@ export const adminRouter = createTRPCRouter({
         orderBy: [desc(orders.createdAt)],
         limit: input.limit,
         offset,
+        columns: {
+          id: true,
+          orderNumber: true,
+          paymentStatus: true,
+          totalPrice: true,
+          status: true,
+          createdAt: true,
+        },
         with: {
           buyer: {
             columns: {
@@ -471,23 +502,7 @@ export const adminRouter = createTRPCRouter({
 
   // Get finance dashboard statistics
   getFinanceStats: adminProcedure.query(async ({ ctx }) => {
-    // Summary KPIs
-    const [summary] = await ctx.db
-      .select({
-        totalGmv: sql<number>`coalesce(sum(subtotal), 0)`,
-        totalBuyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
-        totalSellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
-        totalSellerStripeFees: sql<number>`coalesce(sum(seller_stripe_fee), 0)`,
-        totalPlatformStripeFees: sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
-        platformRevenue: sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
-        totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
-        avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
-        orderCount: sql<number>`cast(count(*) as integer)`,
-      })
-      .from(orders);
-
-    // By order status
-    const byStatus = await ctx.db
+    const byStatusPromise = ctx.db
       .select({
         status: orders.status,
         count: sql<number>`cast(count(*) as integer)`,
@@ -496,26 +511,7 @@ export const adminRouter = createTRPCRouter({
       .from(orders)
       .groupBy(orders.status);
 
-    // Monthly trend (last 12 months)
-    const monthlyTrend = await ctx.db
-      .select({
-        month: sql<string>`to_char(date_trunc('month', created_at), 'YYYY-MM')`,
-        orderCount: sql<number>`cast(count(*) as integer)`,
-        gmv: sql<number>`coalesce(sum(subtotal), 0)`,
-        buyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
-        sellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
-        sellerStripeFees: sql<number>`coalesce(sum(seller_stripe_fee), 0)`,
-        platformStripeFees: sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
-      })
-      .from(orders)
-      .where(
-        sql`created_at >= date_trunc('month', now()) - interval '11 months'`
-      )
-      .groupBy(sql`date_trunc('month', created_at)`)
-      .orderBy(asc(sql`date_trunc('month', created_at)`));
-
-    // Escrow breakdown
-    const escrowBreakdown = await ctx.db
+    const escrowBreakdownPromise = ctx.db
       .select({
         escrowStatus: orders.escrowStatus,
         count: sql<number>`cast(count(*) as integer)`,
@@ -524,8 +520,7 @@ export const adminRouter = createTRPCRouter({
       .from(orders)
       .groupBy(orders.escrowStatus);
 
-    // Top 5 sellers by GMV
-    const topSellers = await ctx.db
+    const topSellersPromise = ctx.db
       .select({
         sellerId: orders.sellerId,
         sellerName: users.name,
@@ -539,8 +534,7 @@ export const adminRouter = createTRPCRouter({
       .orderBy(desc(sql`sum(${orders.subtotal})`))
       .limit(5);
 
-    // Recent 10 orders
-    const recentOrders = await ctx.db.query.orders.findMany({
+    const recentOrdersPromise = ctx.db.query.orders.findMany({
       orderBy: [desc(orders.createdAt)],
       limit: 10,
       columns: {
@@ -562,14 +556,153 @@ export const adminRouter = createTRPCRouter({
       },
     });
 
-    return {
-      summary,
-      byStatus,
-      monthlyTrend,
-      escrowBreakdown,
-      topSellers,
-      recentOrders,
-    };
+    const [byStatus, escrowBreakdown, topSellers, recentOrders] =
+      await Promise.all([
+        byStatusPromise,
+        escrowBreakdownPromise,
+        topSellersPromise,
+        recentOrdersPromise,
+      ]);
+
+    try {
+      // New schema: seller/platform Stripe fee allocation fields exist.
+      const [summary, monthlyTrend] = await Promise.all([
+        ctx.db
+          .select({
+            totalGmv: sql<number>`coalesce(sum(subtotal), 0)`,
+            totalBuyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+            totalSellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+            totalSellerStripeFees:
+              sql<number>`coalesce(sum(seller_stripe_fee), 0)`,
+            totalPlatformStripeFees:
+              sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
+            platformRevenue:
+              sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+            totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+            avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
+            orderCount: sql<number>`cast(count(*) as integer)`,
+          })
+          .from(orders),
+        ctx.db
+          .select({
+            month: sql<string>`to_char(date_trunc('month', created_at), 'YYYY-MM')`,
+            orderCount: sql<number>`cast(count(*) as integer)`,
+            gmv: sql<number>`coalesce(sum(subtotal), 0)`,
+            buyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+            sellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+            sellerStripeFees: sql<number>`coalesce(sum(seller_stripe_fee), 0)`,
+            platformStripeFees:
+              sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
+          })
+          .from(orders)
+          .where(
+            sql`created_at >= date_trunc('month', now()) - interval '11 months'`
+          )
+          .groupBy(sql`date_trunc('month', created_at)`)
+          .orderBy(asc(sql`date_trunc('month', created_at)`)),
+      ]);
+
+      return {
+        summary: summary[0],
+        byStatus,
+        monthlyTrend,
+        escrowBreakdown,
+        topSellers,
+        recentOrders,
+      };
+    } catch (error) {
+      if (!isMissingColumnError(error)) {
+        throw error;
+      }
+
+      // Legacy schema fallback: allocate all processor cost to seller share.
+      console.warn("Falling back to legacy finance stats query", { error });
+      let summary;
+      let monthlyTrend;
+      try {
+        [summary, monthlyTrend] = await Promise.all([
+          ctx.db
+            .select({
+              totalGmv: sql<number>`coalesce(sum(subtotal), 0)`,
+              totalBuyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+              totalSellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+              totalSellerStripeFees:
+                sql<number>`coalesce(sum(stripe_processing_fee), 0)`,
+              totalPlatformStripeFees: sql<number>`0`,
+              platformRevenue:
+                sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+              totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+              avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
+              orderCount: sql<number>`cast(count(*) as integer)`,
+            })
+            .from(orders),
+          ctx.db
+            .select({
+              month: sql<string>`to_char(date_trunc('month', created_at), 'YYYY-MM')`,
+              orderCount: sql<number>`cast(count(*) as integer)`,
+              gmv: sql<number>`coalesce(sum(subtotal), 0)`,
+              buyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+              sellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+              sellerStripeFees:
+                sql<number>`coalesce(sum(stripe_processing_fee), 0)`,
+              platformStripeFees: sql<number>`0`,
+            })
+            .from(orders)
+            .where(
+              sql`created_at >= date_trunc('month', now()) - interval '11 months'`
+            )
+            .groupBy(sql`date_trunc('month', created_at)`)
+            .orderBy(asc(sql`date_trunc('month', created_at)`)),
+        ]);
+      } catch (legacyError) {
+        if (!isMissingColumnError(legacyError)) {
+          throw legacyError;
+        }
+
+        // Very old schema fallback (before stripe_processing_fee existed).
+        [summary, monthlyTrend] = await Promise.all([
+          ctx.db
+            .select({
+              totalGmv: sql<number>`coalesce(sum(subtotal), 0)`,
+              totalBuyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+              totalSellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+              totalSellerStripeFees: sql<number>`0`,
+              totalPlatformStripeFees: sql<number>`0`,
+              platformRevenue:
+                sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+              totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+              avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
+              orderCount: sql<number>`cast(count(*) as integer)`,
+            })
+            .from(orders),
+          ctx.db
+            .select({
+              month: sql<string>`to_char(date_trunc('month', created_at), 'YYYY-MM')`,
+              orderCount: sql<number>`cast(count(*) as integer)`,
+              gmv: sql<number>`coalesce(sum(subtotal), 0)`,
+              buyerFees: sql<number>`coalesce(sum(buyer_fee), 0)`,
+              sellerFees: sql<number>`coalesce(sum(seller_fee), 0)`,
+              sellerStripeFees: sql<number>`0`,
+              platformStripeFees: sql<number>`0`,
+            })
+            .from(orders)
+            .where(
+              sql`created_at >= date_trunc('month', now()) - interval '11 months'`
+            )
+            .groupBy(sql`date_trunc('month', created_at)`)
+            .orderBy(asc(sql`date_trunc('month', created_at)`)),
+        ]);
+      }
+
+      return {
+        summary: summary[0],
+        byStatus,
+        monthlyTrend,
+        escrowBreakdown,
+        topSellers,
+        recentOrders,
+      };
+    }
   }),
 
   // Get paginated finance transactions with filters
@@ -613,41 +746,165 @@ export const adminRouter = createTRPCRouter({
       const whereClause =
         conditions.length > 0 ? and(...conditions) : undefined;
 
-      const transactionsList = await ctx.db.query.orders.findMany({
-        where: whereClause,
-        orderBy: [desc(orders.createdAt)],
-        limit: input.limit,
-        offset,
-        columns: {
-          id: true,
-          orderNumber: true,
-          quantitySqFt: true,
-          pricePerSqFt: true,
-          subtotal: true,
-          buyerFee: true,
-          sellerFee: true,
-          stripeProcessingFee: true,
-          sellerStripeFee: true,
-          platformStripeFee: true,
-          totalPrice: true,
-          sellerPayout: true,
-          status: true,
-          escrowStatus: true,
-          paymentStatus: true,
-          createdAt: true,
-        },
-        with: {
-          buyer: {
-            columns: { name: true, businessName: true },
+      let transactionsList: Array<{
+        id: string;
+        orderNumber: string;
+        quantitySqFt: number;
+        pricePerSqFt: number;
+        subtotal: number;
+        buyerFee: number;
+        sellerFee: number;
+        stripeProcessingFee: number;
+        sellerStripeFee: number;
+        platformStripeFee: number;
+        totalPrice: number;
+        sellerPayout: number;
+        status:
+          | "pending"
+          | "confirmed"
+          | "processing"
+          | "shipped"
+          | "delivered"
+          | "cancelled"
+          | "refunded";
+        escrowStatus: string;
+        paymentStatus: string | null;
+        createdAt: Date;
+        buyer: { name: string; businessName: string | null };
+        seller: { name: string; businessName: string | null };
+        listing: { id: string; title: string };
+      }> = [];
+
+      try {
+        transactionsList = await ctx.db.query.orders.findMany({
+          where: whereClause,
+          orderBy: [desc(orders.createdAt)],
+          limit: input.limit,
+          offset,
+          columns: {
+            id: true,
+            orderNumber: true,
+            quantitySqFt: true,
+            pricePerSqFt: true,
+            subtotal: true,
+            buyerFee: true,
+            sellerFee: true,
+            stripeProcessingFee: true,
+            sellerStripeFee: true,
+            platformStripeFee: true,
+            totalPrice: true,
+            sellerPayout: true,
+            status: true,
+            escrowStatus: true,
+            paymentStatus: true,
+            createdAt: true,
           },
-          seller: {
-            columns: { name: true, businessName: true },
+          with: {
+            buyer: {
+              columns: { name: true, businessName: true },
+            },
+            seller: {
+              columns: { name: true, businessName: true },
+            },
+            listing: {
+              columns: { id: true, title: true },
+            },
           },
-          listing: {
-            columns: { id: true, title: true },
-          },
-        },
-      });
+        });
+      } catch (error) {
+        if (!isMissingColumnError(error)) {
+          throw error;
+        }
+
+        console.warn("Falling back to legacy finance transactions query", {
+          error,
+        });
+        try {
+          const legacyTransactions = await ctx.db.query.orders.findMany({
+            where: whereClause,
+            orderBy: [desc(orders.createdAt)],
+            limit: input.limit,
+            offset,
+            columns: {
+              id: true,
+              orderNumber: true,
+              quantitySqFt: true,
+              pricePerSqFt: true,
+              subtotal: true,
+              buyerFee: true,
+              sellerFee: true,
+              stripeProcessingFee: true,
+              totalPrice: true,
+              sellerPayout: true,
+              status: true,
+              escrowStatus: true,
+              paymentStatus: true,
+              createdAt: true,
+            },
+            with: {
+              buyer: {
+                columns: { name: true, businessName: true },
+              },
+              seller: {
+                columns: { name: true, businessName: true },
+              },
+              listing: {
+                columns: { id: true, title: true },
+              },
+            },
+          });
+
+          transactionsList = legacyTransactions.map((tx) => ({
+            ...tx,
+            sellerStripeFee: tx.stripeProcessingFee,
+            platformStripeFee: 0,
+          }));
+        } catch (legacyError) {
+          if (!isMissingColumnError(legacyError)) {
+            throw legacyError;
+          }
+
+          const veryLegacyTransactions = await ctx.db.query.orders.findMany({
+            where: whereClause,
+            orderBy: [desc(orders.createdAt)],
+            limit: input.limit,
+            offset,
+            columns: {
+              id: true,
+              orderNumber: true,
+              quantitySqFt: true,
+              pricePerSqFt: true,
+              subtotal: true,
+              buyerFee: true,
+              sellerFee: true,
+              totalPrice: true,
+              sellerPayout: true,
+              status: true,
+              escrowStatus: true,
+              paymentStatus: true,
+              createdAt: true,
+            },
+            with: {
+              buyer: {
+                columns: { name: true, businessName: true },
+              },
+              seller: {
+                columns: { name: true, businessName: true },
+              },
+              listing: {
+                columns: { id: true, title: true },
+              },
+            },
+          });
+
+          transactionsList = veryLegacyTransactions.map((tx) => ({
+            ...tx,
+            stripeProcessingFee: 0,
+            sellerStripeFee: 0,
+            platformStripeFee: 0,
+          }));
+        }
+      }
 
       const [{ count }] = await ctx.db
         .select({ count: sql<number>`cast(count(*) as integer)` })
@@ -853,6 +1110,16 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          orderNumber: true,
+          buyerId: true,
+          sellerId: true,
+          stripePaymentIntentId: true,
+          paymentStatus: true,
+          status: true,
+          escrowStatus: true,
+        },
       });
 
       if (!order) {
@@ -943,6 +1210,10 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          orderNumber: true,
+        },
         with: {
           buyer: { columns: { email: true, name: true } },
           seller: { columns: { email: true, name: true } },
@@ -1000,6 +1271,11 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          escrowStatus: true,
+          transferFailedAt: true,
+        },
       });
 
       if (!order) {

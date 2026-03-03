@@ -266,12 +266,18 @@ export default function PrivacyPolicyPage() {
       number: "11",
       title: "Contact Us",
       content: (
-        <p className="text-sm text-muted-foreground">
-          If you have questions about this Privacy Policy or our data practices, please contact us at{" "}
-          <a href="mailto:privacy@plankmarket.com" className="text-primary hover:underline font-medium">
-            privacy@plankmarket.com
-          </a>
-        </p>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            PlankMarket is operated by ABM Studios LLC, a Wyoming limited liability company.
+          </p>
+          <p>
+            If you have questions about this Privacy Policy or our data practices, please contact us at{" "}
+            <a href="mailto:privacy@plankmarket.com" className="text-primary hover:underline font-medium">
+              privacy@plankmarket.com
+            </a>
+            .
+          </p>
+        </div>
       ),
     },
     {
@@ -295,6 +301,16 @@ export default function PrivacyPolicyPage() {
         </div>
       ),
     },
+    {
+      icon: Gavel,
+      number: "13",
+      title: "Policy Jurisdiction",
+      content: (
+        <p className="text-sm text-muted-foreground">
+          This Privacy Policy is issued by ABM Studios LLC and interpreted in accordance with applicable laws of the State of Wyoming, subject to any mandatory privacy rights and consumer protections that apply in your jurisdiction.
+        </p>
+      ),
+    },
   ];
 
   return (
@@ -316,7 +332,7 @@ export default function PrivacyPolicyPage() {
               At PlankMarket, we take your privacy seriously. This policy explains how we collect, use, disclose, and safeguard your information.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Last Updated: February 28, 2026
+              Last Updated: March 1, 2026
             </p>
           </div>
         </div>

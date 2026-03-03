@@ -46,17 +46,25 @@ export const notificationRouter = createTRPCRouter({
 
   // Get unread notification count
   getUnreadCount: protectedProcedure.query(async ({ ctx }) => {
-    const [result] = await ctx.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.userId, ctx.user.id),
-          eq(notifications.read, false)
-        )
-      );
+    try {
+      const [result] = await ctx.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.userId, ctx.user.id),
+            eq(notifications.read, false)
+          )
+        );
 
-    return { count: result?.count ?? 0 };
+      return { count: result?.count ?? 0 };
+    } catch (error) {
+      console.error("notification.getUnreadCount failed", {
+        userId: ctx.user.id,
+        error,
+      });
+      return { count: 0 };
+    }
   }),
 
   // Get latest notifications (for dropdown preview)
@@ -67,13 +75,21 @@ export const notificationRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const items = await ctx.db.query.notifications.findMany({
-        where: eq(notifications.userId, ctx.user.id),
-        orderBy: desc(notifications.createdAt),
-        limit: input.limit,
-      });
+      try {
+        const items = await ctx.db.query.notifications.findMany({
+          where: eq(notifications.userId, ctx.user.id),
+          orderBy: desc(notifications.createdAt),
+          limit: input.limit,
+        });
 
-      return items;
+        return items;
+      } catch (error) {
+        console.error("notification.getLatest failed", {
+          userId: ctx.user.id,
+          error,
+        });
+        return [];
+      }
     }),
 
   // Mark a single notification as read

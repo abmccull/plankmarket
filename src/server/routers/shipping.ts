@@ -255,6 +255,9 @@ export const shippingRouter = createTRPCRouter({
               ? eq(orders.sellerId, ctx.user.id)
               : eq(orders.buyerId, ctx.user.id)
         ),
+        columns: {
+          id: true,
+        },
       });
 
       if (!order) {
@@ -310,6 +313,9 @@ export const shippingRouter = createTRPCRouter({
               ? eq(orders.sellerId, ctx.user.id)
               : eq(orders.buyerId, ctx.user.id)
         ),
+        columns: {
+          id: true,
+        },
       });
 
       if (!order) {

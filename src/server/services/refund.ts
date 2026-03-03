@@ -36,6 +36,18 @@ export async function processOrderRefund({
   // Fetch order
   const order = await db.query.orders.findFirst({
     where: eq(orders.id, orderId),
+    columns: {
+      id: true,
+      orderNumber: true,
+      buyerId: true,
+      sellerId: true,
+      totalPrice: true,
+      status: true,
+      paymentStatus: true,
+      escrowStatus: true,
+      stripePaymentIntentId: true,
+      stripeTransferId: true,
+    },
   });
 
   if (!order) {

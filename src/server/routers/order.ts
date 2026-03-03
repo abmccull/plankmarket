@@ -21,21 +21,11 @@ import { inngest } from "@/lib/inngest/client";
 import { redis } from "@/lib/redis/client";
 import { maskUserForOrder } from "@/lib/contact-masking";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
+import { VALID_STATUS_TRANSITIONS } from "@/server/services/order-transitions";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
 }
-
-/** Valid order status transitions (state machine) */
-const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["processing", "cancelled"],
-  processing: ["shipped", "cancelled"],
-  shipped: ["delivered"],
-  delivered: ["refunded"],
-  cancelled: [],
-  refunded: [],
-};
 
 const cachedQuoteSchema = z.object({
   quoteId: z.number().int().optional(),
@@ -765,6 +755,52 @@ export const orderRouter = createTRPCRouter({
               ? eq(orders.sellerId, ctx.user.id)
               : eq(orders.buyerId, ctx.user.id)
         ),
+        columns: {
+          id: true,
+          orderNumber: true,
+          buyerId: true,
+          sellerId: true,
+          listingId: true,
+          quantitySqFt: true,
+          pricePerSqFt: true,
+          subtotal: true,
+          buyerFee: true,
+          sellerFee: true,
+          totalPrice: true,
+          sellerPayout: true,
+          shippingName: true,
+          shippingAddress: true,
+          shippingCity: true,
+          shippingState: true,
+          shippingZip: true,
+          shippingPhone: true,
+          trackingNumber: true,
+          carrier: true,
+          shippingPrice: true,
+          carrierRate: true,
+          shippingMargin: true,
+          selectedQuoteId: true,
+          selectedCarrier: true,
+          estimatedTransitDays: true,
+          quoteExpiresAt: true,
+          status: true,
+          escrowStatus: true,
+          notes: true,
+          createdAt: true,
+          updatedAt: true,
+          confirmedAt: true,
+          shippedAt: true,
+          deliveredAt: true,
+          cancelledAt: true,
+          refundedAt: true,
+          refundedAmount: true,
+          stripeRefundId: true,
+          paymentStatus: true,
+          stripePaymentIntentId: true,
+          stripeTransferId: true,
+          transferFailedAt: true,
+          transferError: true,
+        },
         with: {
           listing: {
             with: {
@@ -848,6 +884,14 @@ export const orderRouter = createTRPCRouter({
       const [items, countResult] = await Promise.all([
         ctx.db.query.orders.findMany({
           where,
+          columns: {
+            id: true,
+            orderNumber: true,
+            quantitySqFt: true,
+            totalPrice: true,
+            status: true,
+            createdAt: true,
+          },
           with: {
             listing: {
               columns: {
@@ -925,6 +969,15 @@ export const orderRouter = createTRPCRouter({
       const [items, countResult] = await Promise.all([
         ctx.db.query.orders.findMany({
           where,
+          columns: {
+            id: true,
+            orderNumber: true,
+            quantitySqFt: true,
+            totalPrice: true,
+            sellerPayout: true,
+            status: true,
+            createdAt: true,
+          },
           with: {
             listing: {
               columns: {
@@ -980,6 +1033,11 @@ export const orderRouter = createTRPCRouter({
           eq(orders.id, input.orderId),
           eq(orders.sellerId, ctx.user.id)
         ),
+        columns: {
+          id: true,
+          status: true,
+          escrowStatus: true,
+        },
       });
 
       if (!order) {

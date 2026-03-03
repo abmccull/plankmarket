@@ -399,7 +399,12 @@ export default function AdminSettingsPage() {
             <Separator />
             <div className="flex items-center justify-between py-1">
               <p className="text-sm">Governing Law</p>
-              <span className="text-sm font-medium">State of Delaware</span>
+              <span className="text-sm font-medium">State of Wyoming</span>
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between py-1">
+              <p className="text-sm">Legal Entity</p>
+              <span className="text-sm font-medium">ABM Studios LLC (Wyoming)</span>
             </div>
             <Separator />
             <div className="flex items-center justify-between py-1">

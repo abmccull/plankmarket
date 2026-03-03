@@ -20,6 +20,12 @@ export const reviewRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          buyerId: true,
+          sellerId: true,
+          status: true,
+        },
       });
 
       if (!order) {
@@ -98,6 +104,11 @@ export const reviewRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          buyerId: true,
+          sellerId: true,
+        },
       });
 
       if (!order) {

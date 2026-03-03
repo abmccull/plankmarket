@@ -43,15 +43,20 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const isLandingPage = pathname === "/";
+  const canLoadNotifications = Boolean(isAuthenticated && user);
 
   // Notification data - only fetch when authenticated
   const { data: unreadData } = trpc.notification.getUnreadCount.useQuery(
     undefined,
-    { enabled: isAuthenticated, refetchInterval: 30000 }
+    {
+      enabled: canLoadNotifications,
+      refetchInterval: canLoadNotifications ? 30000 : false,
+      retry: false,
+    }
   );
   const { data: latestNotifications } = trpc.notification.getLatest.useQuery(
     { limit: 5 },
-    { enabled: isAuthenticated }
+    { enabled: canLoadNotifications, retry: false }
   );
   const utils = trpc.useUtils();
   const markAsReadMutation = trpc.notification.markAsRead.useMutation({

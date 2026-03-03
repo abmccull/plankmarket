@@ -213,7 +213,18 @@ export const publicProcedure = t.procedure;
 export const rateLimitedPublicProcedure = t.procedure.use(
   t.middleware(async ({ ctx, next }) => {
     const identifier = `ip:${ctx.clientIp}`;
-    const { success } = await strictRateLimit.limit(identifier);
+    let success = true;
+    try {
+      ({ success } = await strictRateLimit.limit(identifier));
+    } catch (error) {
+      // Fail open for rate-limit provider outages to avoid platform-wide auth/API failures.
+      console.error("Public strict rate limit check failed", {
+        identifier,
+        error,
+      });
+      return next();
+    }
+
     if (!success) {
       throw new TRPCError({
         code: "TOO_MANY_REQUESTS",
@@ -249,7 +260,15 @@ const enforceAuth = t.middleware(({ ctx, next }) => {
 // Standard rate limit middleware
 const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
   const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
-  const { success } = await standardRateLimit.limit(identifier);
+  let success = true;
+  try {
+    ({ success } = await standardRateLimit.limit(identifier));
+  } catch (error) {
+    // Fail open for rate-limit provider outages to keep authenticated APIs available.
+    console.error("Standard rate limit check failed", { identifier, error });
+    return next();
+  }
+
   if (!success) {
     throw new TRPCError({
       code: "TOO_MANY_REQUESTS",
@@ -262,7 +281,15 @@ const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
 // Strict rate limit middleware for sensitive operations
 const enforceStrictRateLimit = t.middleware(async ({ ctx, next }) => {
   const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
-  const { success } = await strictRateLimit.limit(identifier);
+  let success = true;
+  try {
+    ({ success } = await strictRateLimit.limit(identifier));
+  } catch (error) {
+    // Fail open for rate-limit provider outages to avoid blocking critical writes.
+    console.error("Strict rate limit check failed", { identifier, error });
+    return next();
+  }
+
   if (!success) {
     throw new TRPCError({
       code: "TOO_MANY_REQUESTS",

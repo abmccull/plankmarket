@@ -73,7 +73,9 @@ export function Sidebar() {
 
   // Get unread message count
   const { data: unreadData } = trpc.message.getUnreadCount.useQuery(undefined, {
-    refetchInterval: 30000, // Refetch every 30 seconds
+    enabled: !!user,
+    retry: false,
+    refetchInterval: user ? 30000 : false, // Refetch every 30 seconds
   });
 
   const unreadCount = unreadData?.count || 0;

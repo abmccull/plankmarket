@@ -232,7 +232,7 @@ export default function TermsOfServicePage() {
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Accept PlankMarket&apos;s resolution as binding for transactions under $5,000</li>
           </ul>
           <p className="text-sm text-muted-foreground">
-            For disputes exceeding $5,000, either party may pursue resolution through binding arbitration administered by the American Arbitration Association under its Commercial Arbitration Rules, conducted in the State of Delaware.
+            For disputes exceeding $5,000, either party may pursue resolution through binding arbitration administered by the American Arbitration Association under its Commercial Arbitration Rules, conducted in the State of Wyoming.
           </p>
           <p className="text-sm text-muted-foreground">
             <strong>CLASS ACTION WAIVER:</strong> You agree that any dispute resolution proceedings will be conducted only on an individual basis and not in a class, consolidated, or representative action.
@@ -360,7 +360,7 @@ export default function TermsOfServicePage() {
       title: "Governing Law",
       content: (
         <p className="text-sm text-muted-foreground">
-          These Terms of Service shall be governed by and construed in accordance with the laws of the State of Delaware, without regard to its conflict of law provisions. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts located in Delaware.
+          These Terms of Service shall be governed by and construed in accordance with the laws of the State of Wyoming, without regard to its conflict of law provisions. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts located in Wyoming.
         </p>
       ),
     },
@@ -369,12 +369,18 @@ export default function TermsOfServicePage() {
       number: "20",
       title: "Contact Information",
       content: (
-        <p className="text-sm text-muted-foreground">
-          If you have questions about these Terms of Service, please contact us at{" "}
-          <a href="mailto:legal@plankmarket.com" className="text-primary hover:underline font-medium">
-            legal@plankmarket.com
-          </a>
-        </p>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            PlankMarket is operated by ABM Studios LLC, a Wyoming limited liability company.
+          </p>
+          <p>
+            If you have questions about these Terms of Service, please contact us at{" "}
+            <a href="mailto:legal@plankmarket.com" className="text-primary hover:underline font-medium">
+              legal@plankmarket.com
+            </a>
+            .
+          </p>
+        </div>
       ),
     },
   ];
@@ -398,7 +404,7 @@ export default function TermsOfServicePage() {
               Please read these terms carefully before using PlankMarket. By accessing our platform, you agree to be bound by these terms.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              Last Updated: February 28, 2026
+              Last Updated: March 1, 2026
             </p>
           </div>
         </div>

@@ -170,6 +170,13 @@ export const paymentRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          buyerId: true,
+          sellerId: true,
+          paymentStatus: true,
+          stripePaymentIntentId: true,
+        },
       });
 
       if (!order) {

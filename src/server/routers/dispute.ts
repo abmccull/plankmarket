@@ -23,6 +23,11 @@ export const disputeRouter = createTRPCRouter({
       // Get the order
       const order = await ctx.db.query.orders.findFirst({
         where: eq(orders.id, input.orderId),
+        columns: {
+          id: true,
+          buyerId: true,
+          sellerId: true,
+        },
       });
 
       if (!order) {
