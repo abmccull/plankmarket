@@ -13,12 +13,30 @@ import { priority1 } from "@/server/services/priority1";
 import { redis } from "@/lib/redis/client";
 import { slugify } from "@/lib/utils";
 import { getFreightDefaults } from "@/lib/constants/freight-defaults";
+import { isPro, FREE_LIMITS } from "@/lib/pro";
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
   create: sellerProcedure
     .input(listingFormSchema)
     .mutation(async ({ ctx, input }) => {
+      // Free-tier listing limit check
+      if (!isPro(ctx.user)) {
+        const [activeCount] = await ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(listings)
+          .where(and(
+            eq(listings.sellerId, ctx.user.id),
+            eq(listings.status, "active"),
+          ));
+        if ((activeCount?.count ?? 0) >= FREE_LIMITS.activeListings) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Free accounts are limited to ${FREE_LIMITS.activeListings} active listings. Upgrade to Pro for unlimited listings.`,
+          });
+        }
+      }
+
       const { mediaIds, ...listingData } = input;
 
       // Geo-lookup from ZIP code + auto-derive city/state
@@ -41,6 +59,7 @@ export const listingRouter = createTRPCRouter({
           sellerId: ctx.user.id,
           status: "active",
           originalTotalSqFt: listingData.totalSqFt,
+          originalAskPricePerSqFt: listingData.askPricePerSqFt,
           locationLat,
           locationLng,
           expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
@@ -92,6 +111,14 @@ export const listingRouter = createTRPCRouter({
   bulkCreate: sellerProcedure
     .input(z.object({ rows: z.array(csvListingRowSchema).min(1).max(100) }))
     .mutation(async ({ ctx, input }) => {
+      // CSV bulk import is a Pro-only feature
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "CSV bulk import is a Pro feature. Upgrade to Pro to import listings from spreadsheets.",
+        });
+      }
+
       const batchId = crypto.randomUUID();
 
       const createdListings = await ctx.db.transaction(async (tx) => {
@@ -212,6 +239,25 @@ export const listingRouter = createTRPCRouter({
           code: "BAD_REQUEST",
           message: "No listings have photos to publish. Add photos before publishing.",
         });
+      }
+
+      // Free-tier listing limit check
+      if (!isPro(ctx.user)) {
+        const [activeCount] = await ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(listings)
+          .where(and(
+            eq(listings.sellerId, ctx.user.id),
+            eq(listings.status, "active"),
+          ));
+        const currentActive = activeCount?.count ?? 0;
+        if (currentActive + publishable.length > FREE_LIMITS.activeListings) {
+          const canPublish = FREE_LIMITS.activeListings - currentActive;
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Free accounts are limited to ${FREE_LIMITS.activeListings} active listings. You can publish ${Math.max(0, canPublish)} more. Upgrade to Pro for unlimited.`,
+          });
+        }
       }
 
       const publishedIds = publishable.map((l) => l.id);

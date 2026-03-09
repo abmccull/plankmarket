@@ -136,6 +136,7 @@ export const listings = pgTable(
 
     // Pricing (using exact numeric type to avoid floating-point errors)
     askPricePerSqFt: money("ask_price_per_sq_ft").notNull(),
+    originalAskPricePerSqFt: money("original_ask_price_per_sq_ft"),
     buyNowPrice: money("buy_now_price"),
     allowOffers: boolean("allow_offers").default(true).notNull(),
     floorPrice: money("floor_price"),

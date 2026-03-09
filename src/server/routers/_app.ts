@@ -22,6 +22,9 @@ import { listingAssistantRouter } from "./listing-assistant";
 import { crmRouter } from "./crm";
 import { analyticsRouter } from "./analytics";
 import { shippingAddressRouter } from "./shipping-address";
+import { subscriptionRouter } from "./subscription";
+import { agentRouter } from "./agent";
+import { marketIntelligenceRouter } from "./market-intelligence";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -47,6 +50,9 @@ export const appRouter = createTRPCRouter({
   crm: crmRouter,
   analytics: analyticsRouter,
   shippingAddress: shippingAddressRouter,
+  subscription: subscriptionRouter,
+  agent: agentRouter,
+  marketIntelligence: marketIntelligenceRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { StripeOnboardingBanner } from "@/components/dashboard/stripe-onboarding-banner";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { EmptyState } from "@/components/ui/empty-state";
 import { trpc } from "@/lib/trpc/client";
+import { useProStatus } from "@/hooks/use-pro-status";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ProBadge } from "@/components/pro-badge";
 import { AreaChart } from "@/components/analytics/area-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -22,6 +25,8 @@ import {
   MapPin,
   SlidersHorizontal,
   BarChart3,
+  X,
+  Sparkles,
 } from "lucide-react";
 
 function calcTrend(current: number, previous: number): { value: number; label: string } {
@@ -39,6 +44,17 @@ export default function SellerDashboardPage() {
     trpc.analytics.overview.useQuery({ period: "30d" });
   const { data: recommendedRequestsData } =
     trpc.matching.recommendedRequests.useQuery();
+
+  const { isPro } = useProStatus();
+  const [proBannerDismissed, setProBannerDismissed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("plankmarket_pro_banner_dismissed") === "true";
+  });
+
+  const handleDismissProBanner = () => {
+    localStorage.setItem("plankmarket_pro_banner_dismissed", "true");
+    setProBannerDismissed(true);
+  };
 
   const isLoading = listingsLoading || ordersLoading;
   const recommendedRequests = recommendedRequestsData?.items ?? [];
@@ -110,6 +126,34 @@ export default function SellerDashboardPage() {
           trend={ordersTrend}
         />
       </div>
+
+      {/* Pro Upsell Banner — free users only */}
+      {!isPro && !proBannerDismissed && (
+        <div className="relative flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100/30 px-5 py-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <Sparkles className="h-5 w-5 text-amber-600 shrink-0" aria-hidden="true" />
+            <p className="text-sm">
+              Unlock AI Agent, Market Intelligence, and unlimited listings with{" "}
+              <span className="font-semibold">PlankMarket Pro</span>{" "}
+              <ProBadge className="align-middle" /> — $29/mo
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link href="/pro">
+              <Button size="sm" variant="gold">
+                Learn More
+              </Button>
+            </Link>
+            <button
+              onClick={handleDismissProBanner}
+              className="rounded-md p-1 text-amber-700 hover:bg-amber-200/60 transition-colors"
+              aria-label="Dismiss Pro upgrade banner"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mini Revenue Chart + Analytics Link */}
       <Card>

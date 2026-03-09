@@ -219,6 +219,14 @@ export const offerRouter = createTRPCRouter({
         },
       });
 
+      // Fire event for AI agent auto-handling (Pro sellers)
+      inngest.send({
+        name: "offer/created",
+        data: { offerId: result!.id },
+      }).catch((err) => {
+        console.error("Failed to send offer/created event:", err);
+      });
+
       return result;
     }),
 

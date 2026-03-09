@@ -25,6 +25,7 @@ import {
   User,
   Shield,
   HelpCircle,
+  Users,
 } from "lucide-react";
 
 interface NavItem {
@@ -91,6 +92,7 @@ export function MobileNav() {
         { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
         { title: "My Listings", href: "/seller/listings", icon: List },
         { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
+        { title: "Buyer CRM", href: "/seller/crm", icon: Users },
         { title: "Orders", href: "/seller/orders", icon: Package },
         { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
         { title: "Payments", href: "/seller/payments", icon: CreditCard },

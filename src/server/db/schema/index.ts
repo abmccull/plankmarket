@@ -119,6 +119,15 @@ export type {
   NewStripeWebhookEvent,
 } from "./stripe-webhook-events";
 
+export { promotionCredits } from "./promotion-credits";
+export type { PromotionCredit, NewPromotionCredit } from "./promotion-credits";
+
+export { agentConfigs } from "./agent-configs";
+export type { AgentConfig, NewAgentConfig } from "./agent-configs";
+
+export { agentActions } from "./agent-actions";
+export type { AgentAction, NewAgentAction } from "./agent-actions";
+
 // Relations
 import { relations } from "drizzle-orm";
 import { users } from "./users";
@@ -142,6 +151,9 @@ import { buyerRequests, buyerRequestResponses } from "./buyer-requests";
 import { sellerBuyerTags, sellerBuyerNotes, followups } from "./crm";
 import { listingDraftsAi } from "./listing-drafts-ai";
 import { shippingAddresses } from "./shipping-addresses";
+import { promotionCredits } from "./promotion-credits";
+import { agentConfigs } from "./agent-configs";
+import { agentActions } from "./agent-actions";
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   listings: many(listings),
@@ -176,6 +188,12 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   sellerFollowups: many(followups, { relationName: "sellerFollowups" }),
   listingDrafts: many(listingDraftsAi),
   shippingAddresses: many(shippingAddresses),
+  promotionCredits: many(promotionCredits),
+  agentConfig: one(agentConfigs, {
+    fields: [users.id],
+    references: [agentConfigs.userId],
+  }),
+  agentActions: many(agentActions),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -501,6 +519,27 @@ export const listingDraftsAiRelations = relations(listingDraftsAi, ({ one }) => 
 export const shippingAddressesRelations = relations(shippingAddresses, ({ one }) => ({
   user: one(users, {
     fields: [shippingAddresses.userId],
+    references: [users.id],
+  }),
+}));
+
+export const promotionCreditsRelations = relations(promotionCredits, ({ one }) => ({
+  user: one(users, {
+    fields: [promotionCredits.userId],
+    references: [users.id],
+  }),
+}));
+
+export const agentConfigsRelations = relations(agentConfigs, ({ one }) => ({
+  user: one(users, {
+    fields: [agentConfigs.userId],
+    references: [users.id],
+  }),
+}));
+
+export const agentActionsRelations = relations(agentActions, ({ one }) => ({
+  user: one(users, {
+    fields: [agentActions.userId],
     references: [users.id],
   }),
 }));

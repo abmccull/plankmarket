@@ -405,6 +405,7 @@ export const authRouter = createTRPCRouter({
           role: true,
           verified: true,
           createdAt: true,
+          proStatus: true,
         },
       });
 

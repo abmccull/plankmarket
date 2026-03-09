@@ -10,6 +10,14 @@ import { followupReminders } from "./followup-reminders";
 import { onboardingDrip } from "./onboarding-drip";
 import { firstListingCongrats, firstPurchaseCongrats } from "./milestone-emails";
 import { offerAccepted } from "./offer-accepted";
+import {
+  proWelcome,
+  proPaymentFailed,
+  proExpired,
+} from "./subscription-lifecycle";
+import { agentOfferHandler } from "./agent-offer-handler";
+import { agentMonitor } from "./agent-monitor";
+import { agentRepricer } from "./agent-repricer";
 
 export const functions = [
   savedSearchAlerts,
@@ -25,4 +33,10 @@ export const functions = [
   firstListingCongrats,
   firstPurchaseCongrats,
   offerAccepted,
+  proWelcome,
+  proPaymentFailed,
+  proExpired,
+  agentOfferHandler,
+  agentMonitor,
+  agentRepricer,
 ];

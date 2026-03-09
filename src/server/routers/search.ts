@@ -9,6 +9,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { listingFilterSchema } from "@/lib/validators/listing";
 import type { SearchFilters } from "@/types";
+import { isPro, FREE_LIMITS } from "@/lib/pro";
 
 export const searchRouter = createTRPCRouter({
   // Save a search
@@ -21,6 +22,20 @@ export const searchRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Free-tier saved search limit check
+      if (!isPro(ctx.user)) {
+        const [count] = await ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(savedSearches)
+          .where(eq(savedSearches.userId, ctx.user.id));
+        if ((count?.count ?? 0) >= FREE_LIMITS.savedSearches) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: `Free accounts are limited to ${FREE_LIMITS.savedSearches} saved searches. Upgrade to Pro for unlimited saved searches.`,
+          });
+        }
+      }
+
       const [search] = await ctx.db
         .insert(savedSearches)
         .values({

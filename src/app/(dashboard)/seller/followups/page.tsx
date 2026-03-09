@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
+import { ProGate } from "@/components/pro-gate";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
@@ -393,6 +394,7 @@ export default function SellerFollowupsPage() {
   const completed: Followup[] = (completedData?.items ?? []) as Followup[];
 
   return (
+    <ProGate feature="Buyer CRM">
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -483,5 +485,6 @@ export default function SellerFollowupsPage() {
         onCreated={refetchAll}
       />
     </div>
+    </ProGate>
   );
 }

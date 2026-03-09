@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2, ArrowLeft, ExternalLink, Shield } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { BuyerCrmPanel } from "@/components/crm/buyer-crm-panel";
 import { toast } from "sonner";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 import { getErrorMessage } from "@/lib/utils";
@@ -163,6 +164,11 @@ export default function ConversationPage() {
           </Link>
         </div>
       </Card>
+
+      {/* Buyer CRM (seller only) */}
+      {!isBuyer && conversationData.buyerId && (
+        <BuyerCrmPanel buyerId={conversationData.buyerId} compact />
+      )}
 
       {/* Messages container */}
       <Card elevation="flat" className="flex-1 flex flex-col border overflow-hidden">

@@ -23,6 +23,7 @@ import { Loader2, Package, Truck, MapPin, User, Star } from "lucide-react";
 import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
 import { ReviewCard } from "@/components/shared/review-card";
+import { BuyerCrmPanel } from "@/components/crm/buyer-crm-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import type { OrderStatus } from "@/types";
@@ -222,6 +223,9 @@ export default function SellerOrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Buyer CRM */}
+      <BuyerCrmPanel buyerId={order.buyerId} />
 
       {/* Shipment Tracking (Priority1 orders) */}
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}

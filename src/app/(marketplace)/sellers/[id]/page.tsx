@@ -13,6 +13,7 @@ import { StarRating } from "@/components/shared/star-rating";
 import { ReviewCard } from "@/components/shared/review-card";
 import { CheckCircle2, MapPin, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ProBadge } from "@/components/pro-badge";
 import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 import { formatDate } from "@/lib/utils";
 
@@ -70,6 +71,11 @@ function SellerProfileContent({ sellerId }: { sellerId: string }) {
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-2">
                 <CardTitle className="text-3xl">{displayName}</CardTitle>
+                {(profile?.proStatus === "active" ||
+                  profile?.proStatus === "trialing" ||
+                  profile?.proStatus === "past_due") && (
+                  <ProBadge />
+                )}
                 <Badge className="bg-green-50 text-green-700 border-green-200">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Verified

@@ -9,6 +9,9 @@ import { users } from "../db/schema/users";
 import { and, eq, sql, desc, asc, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { isPro } from "@/lib/pro";
+
+const PRO_GATE_MESSAGE = "Buyer CRM tools are a Pro feature. Upgrade to Pro to tag, annotate, and track your buyer relationships.";
 
 /**
  * Maximum number of tags per seller-buyer pair.
@@ -36,6 +39,10 @@ export const crmRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       // Verify buyer exists
       const buyer = await ctx.db.query.users.findFirst({
         where: eq(users.id, input.buyerId),
@@ -87,6 +94,10 @@ export const crmRouter = createTRPCRouter({
   removeTag: sellerProcedure
     .input(z.object({ tagId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       await ctx.db
         .delete(sellerBuyerTags)
         .where(
@@ -144,6 +155,10 @@ export const crmRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       // Verify buyer exists
       const buyer = await ctx.db.query.users.findFirst({
         where: eq(users.id, input.buyerId),
@@ -187,6 +202,10 @@ export const crmRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       const existing = await ctx.db.query.sellerBuyerNotes.findFirst({
         where: and(
           eq(sellerBuyerNotes.id, input.noteId),
@@ -216,6 +235,10 @@ export const crmRouter = createTRPCRouter({
   deleteNote: sellerProcedure
     .input(z.object({ noteId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       await ctx.db
         .delete(sellerBuyerNotes)
         .where(
@@ -262,6 +285,10 @@ export const crmRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       const [followup] = await ctx.db
         .insert(followups)
         .values({
@@ -337,6 +364,10 @@ export const crmRouter = createTRPCRouter({
   completeFollowup: sellerProcedure
     .input(z.object({ followupId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       const followup = await ctx.db.query.followups.findFirst({
         where: and(
           eq(followups.id, input.followupId),
@@ -375,6 +406,10 @@ export const crmRouter = createTRPCRouter({
   cancelFollowup: sellerProcedure
     .input(z.object({ followupId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      if (!isPro(ctx.user)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+      }
+
       const followup = await ctx.db.query.followups.findFirst({
         where: and(
           eq(followups.id, input.followupId),
@@ -433,6 +468,10 @@ export const crmRouter = createTRPCRouter({
    * Columns: buyerName, businessName, tags, noteCount, conversationCount, lastInteraction.
    */
   exportLeadsCsv: sellerProcedure.query(async ({ ctx }) => {
+    if (!isPro(ctx.user)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
+    }
+
     // Get all conversations for this seller to find unique buyers
     const sellerConversations = await ctx.db.query.conversations.findMany({
       where: eq(conversations.sellerId, ctx.user.id),

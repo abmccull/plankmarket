@@ -8,16 +8,14 @@ import {
   purchasePromotionSchema,
   cancelPromotionSchema,
 } from "@/lib/validators/promotion";
-import { listings, listingPromotions } from "../db/schema";
+import { listings, listingPromotions, promotionCredits } from "../db/schema";
 import { eq, and, sql, desc, gt, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import Stripe from "stripe";
-import { env } from "@/env";
+import { stripe } from "@/lib/stripe";
 
-const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-01-28.clover" as const,
-});
+// TODO: Add stricter rate limiting to financial endpoints (purchase, cancel)
+// when rate limiting infrastructure is implemented
 
 // Pricing matrix: tier × duration → price in dollars
 const PRICING: Record<string, Record<number, number>> = {
@@ -161,9 +159,114 @@ export const promotionRouter = createTRPCRouter({
         });
       }
 
-      // Create Stripe PaymentIntent (direct charge — this is platform revenue, not Connect)
+      const now = new Date();
+
+      // Read credits with FOR UPDATE lock inside transaction to prevent double-spend.
+      // Decide full/partial/no-credit path within the same transaction context.
+      const creditResult = await ctx.db.transaction(async (tx) => {
+        // Lock and read credits inside transaction to prevent concurrent spend
+        const lockedCredits = await tx.execute(
+          sql`SELECT id, amount, used_amount, expires_at
+              FROM promotion_credits
+              WHERE user_id = ${ctx.user.id}
+                AND expires_at > now()
+                AND used_amount < amount
+              ORDER BY expires_at ASC
+              FOR UPDATE`
+        );
+
+        const availableCredits = (lockedCredits as unknown) as Array<{
+          id: string;
+          amount: number;
+          used_amount: number;
+          expires_at: Date;
+        }>;
+
+        const totalCredit = availableCredits.reduce(
+          (sum, c) => sum + (Number(c.amount) - Number(c.used_amount)),
+          0
+        );
+
+        // FULL CREDIT PATH: credits fully cover the price, skip Stripe
+        if (totalCredit >= price) {
+          let remaining = price;
+          for (const credit of availableCredits) {
+            if (remaining <= 0) break;
+            const available = Number(credit.amount) - Number(credit.used_amount);
+            const deduct = Math.min(available, remaining);
+            await tx
+              .update(promotionCredits)
+              .set({ usedAmount: Number(credit.used_amount) + deduct })
+              .where(eq(promotionCredits.id, credit.id));
+            remaining -= deduct;
+          }
+
+          // Create promotion as immediately active (paid via credits)
+          const [promotion] = await tx
+            .insert(listingPromotions)
+            .values({
+              listingId: input.listingId,
+              sellerId: ctx.user.id,
+              tier: input.tier,
+              durationDays: input.durationDays,
+              pricePaid: price,
+              startsAt: now,
+              expiresAt: new Date(
+                now.getTime() + input.durationDays * 24 * 60 * 60 * 1000
+              ),
+              isActive: true,
+              stripePaymentIntentId: null,
+              paymentStatus: "succeeded",
+            })
+            .returning();
+
+          // Denormalize promotion fields onto the listing
+          await tx
+            .update(listings)
+            .set({
+              promotionTier: input.tier,
+              promotionExpiresAt: new Date(
+                now.getTime() + input.durationDays * 24 * 60 * 60 * 1000
+              ),
+              updatedAt: now,
+            })
+            .where(eq(listings.id, input.listingId));
+
+          return {
+            type: "full_credit" as const,
+            promotionId: promotion.id,
+            creditApplied: price,
+          };
+        }
+
+        // PARTIAL or NO CREDIT PATH: return credit info but don't deduct yet.
+        // Credits will be deducted AFTER Stripe PaymentIntent succeeds.
+        return {
+          type: "needs_stripe" as const,
+          totalCredit,
+          availableCredits,
+        };
+      });
+
+      // Full credit path — return immediately
+      if (creditResult.type === "full_credit") {
+        return {
+          promotionId: creditResult.promotionId,
+          clientSecret: null,
+          price,
+          creditApplied: creditResult.creditApplied,
+          paidViaCredits: true,
+        };
+      }
+
+      // Partial or no credit: create Stripe PaymentIntent FIRST, then deduct credits
+      const creditToApply = Math.min(creditResult.totalCredit, price);
+      const chargeAmount = price - creditToApply;
+
+      // Create Stripe PaymentIntent for the remaining amount BEFORE touching credits.
+      // If Stripe fails, no credits are lost.
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(price * 100),
+        amount: Math.round(chargeAmount * 100),
         currency: "usd",
         metadata: {
           type: "promotion",
@@ -171,11 +274,45 @@ export const promotionRouter = createTRPCRouter({
           sellerId: ctx.user.id,
           tier: input.tier,
           durationDays: input.durationDays.toString(),
+          creditApplied: creditToApply.toString(),
         },
       });
 
+      // Now deduct credits in a transaction with FOR UPDATE (safe from double-spend)
+      if (creditToApply > 0) {
+        await ctx.db.transaction(async (tx) => {
+          // Re-lock credits to prevent double-spend even after the gap
+          const lockedCredits = await tx.execute(
+            sql`SELECT id, amount, used_amount
+                FROM promotion_credits
+                WHERE user_id = ${ctx.user.id}
+                  AND expires_at > now()
+                  AND used_amount < amount
+                ORDER BY expires_at ASC
+                FOR UPDATE`
+          );
+
+          const freshCredits = (lockedCredits as unknown) as Array<{
+            id: string;
+            amount: number;
+            used_amount: number;
+          }>;
+
+          let remaining = creditToApply;
+          for (const credit of freshCredits) {
+            if (remaining <= 0) break;
+            const available = Number(credit.amount) - Number(credit.used_amount);
+            const deduct = Math.min(available, remaining);
+            await tx
+              .update(promotionCredits)
+              .set({ usedAmount: Number(credit.used_amount) + deduct })
+              .where(eq(promotionCredits.id, credit.id));
+            remaining -= deduct;
+          }
+        });
+      }
+
       // Insert promotion row with pending payment status
-      const now = new Date();
       const [promotion] = await ctx.db
         .insert(listingPromotions)
         .values({
@@ -198,6 +335,8 @@ export const promotionRouter = createTRPCRouter({
         promotionId: promotion.id,
         clientSecret: paymentIntent.client_secret,
         price,
+        creditApplied: creditToApply,
+        paidViaCredits: false,
       };
     }),
 

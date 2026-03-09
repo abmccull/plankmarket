@@ -31,7 +31,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Loader2, ArrowLeft, ArrowRight, Check, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PhotoUpload } from "@/components/listings/photo-upload";
 import { WIDTH_OPTIONS, THICKNESS_OPTIONS, getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
@@ -39,6 +39,9 @@ import { getFreightDefaults, FREIGHT_CLASS_OPTIONS } from "@/lib/constants/freig
 import { OnboardingTip } from "@/components/ui/onboarding-tip";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { useProStatus } from "@/hooks/use-pro-status";
+import { FREE_LIMITS } from "@/lib/pro";
+import Link from "next/link";
 
 const STEPS = [
   { id: 1, title: "Product Details", description: "Material and specs" },
@@ -135,6 +138,13 @@ export default function CreateListingPage() {
   const { currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
     useListingFormStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { isPro } = useProStatus();
+  const { data: sellerStats } = trpc.listing.getSellerStats.useQuery();
+
+  const activeListingCount = sellerStats
+    ?.filter((s) => s.status === "active")
+    .reduce((sum, s) => sum + s.count, 0) ?? 0;
+  const atListingLimit = !isPro && activeListingCount >= FREE_LIMITS.activeListings;
 
   const createMutation = trpc.listing.create.useMutation();
 
@@ -248,6 +258,31 @@ export default function CreateListingPage() {
           List your flooring inventory for buyers to discover
         </p>
       </div>
+
+      {/* Listing Limit Banner (free users only) */}
+      {!isPro && (
+        atListingLimit ? (
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <AlertTriangle className="h-5 w-5 text-destructive shrink-0" aria-hidden="true" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-destructive">
+                You&apos;ve reached the {FREE_LIMITS.activeListings}-listing limit.{" "}
+                <Link href="/pro" className="underline underline-offset-2 font-semibold">
+                  Upgrade to Pro
+                </Link>{" "}
+                for unlimited listings.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 p-4">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" aria-hidden="true" />
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+              You have {activeListingCount}/{FREE_LIMITS.activeListings} active listings on the Free plan
+            </p>
+          </div>
+        )
+      )}
 
       {/* Progress Steps */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2">
@@ -1156,6 +1191,7 @@ export default function CreateListingPage() {
                 type="submit"
                 disabled={
                   isSubmitting ||
+                  atListingLimit ||
                   (user?.verificationStatus !== "verified" &&
                     user?.role !== "admin")
                 }

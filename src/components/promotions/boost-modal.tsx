@@ -17,6 +17,7 @@ import { PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js"
 import { cn, formatCurrency } from "@/lib/utils";
 import { Loader2, Rocket, Star, Crown, Check, AlertCircle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import type { PromotionTier } from "@/types";
+import { useProStatus } from "@/hooks/use-pro-status";
 
 interface BoostModalProps {
   listingId: string;
@@ -159,6 +160,7 @@ export function BoostModal({
   const [step, setStep] = useState<ModalStep>("select");
   const [clientSecret, setClientSecret] = useState<string | null>(null);
 
+  const { isPro, availableCredit } = useProStatus();
   const { data: pricing } = trpc.promotion.getPricing.useQuery();
   const utils = trpc.useUtils();
 
@@ -290,6 +292,32 @@ export function BoostModal({
                   {formatCurrency(price)}
                 </div>
               </div>
+
+              {/* Pro credit breakdown */}
+              {isPro && availableCredit > 0 && price > 0 && (
+                <div className="mt-3 pt-3 border-t space-y-1.5">
+                  <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    You have {formatCurrency(availableCredit)} in promotion credits
+                  </p>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Price</span>
+                    <span>{formatCurrency(price)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400">
+                    <span>Credit applied</span>
+                    <span>-{formatCurrency(Math.min(availableCredit, price))}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm font-semibold">
+                    <span>Due</span>
+                    <span>{formatCurrency(Math.max(0, price - availableCredit))}</span>
+                  </div>
+                  {availableCredit >= price && (
+                    <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                      Fully covered by promotion credits — no payment needed
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {error && (
@@ -310,7 +338,9 @@ export function BoostModal({
                 {purchaseMutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Continue to Payment
+                {isPro && availableCredit >= price && price > 0
+                  ? "Use Promotion Credits"
+                  : "Continue to Payment"}
               </Button>
             </DialogFooter>
           </>

@@ -38,6 +38,7 @@ import {
   FileText,
 } from "lucide-react";
 import { StarRating } from "@/components/shared/star-rating";
+import { BuyerCrmPanel } from "@/components/crm/buyer-crm-panel";
 import { toast } from "sonner";
 
 export default function OfferDetailPage() {
@@ -377,8 +378,11 @@ export default function OfferDetailPage() {
           </Card>
         </div>
 
-        {/* Sidebar - Actions */}
+        {/* Sidebar - Actions + CRM */}
         <div className="space-y-4">
+          {/* Buyer CRM (seller only) */}
+          {isSeller && <BuyerCrmPanel buyerId={offer.buyerId} />}
+
           <Card className="sticky top-20">
             <CardHeader>
               <CardTitle>Actions</CardTitle>

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { trpc } from "@/lib/trpc/client";
+import { ProGate } from "@/components/pro-gate";
 import { parseListingsCsv, type ParsedListingRow, type CsvRowError } from "@/lib/csv/parse-listings";
 import { CSV_COLUMNS } from "@/lib/constants/csv-columns";
 import { useBulkUploadStore } from "@/lib/stores/bulk-upload-store";
@@ -132,6 +133,7 @@ export default function BulkUploadPage() {
   };
 
   return (
+    <ProGate feature="Bulk CSV Import">
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Bulk Upload</h1>
@@ -350,5 +352,6 @@ export default function BulkUploadPage() {
         </div>
       )}
     </div>
+    </ProGate>
   );
 }

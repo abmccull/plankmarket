@@ -7,6 +7,7 @@ import {
   timestamp,
   real,
   pgEnum,
+  index,
 } from "drizzle-orm/pg-core";
 
 export const userRoleEnum = pgEnum("user_role", ["buyer", "seller", "admin"]);
@@ -52,13 +53,24 @@ export const users = pgTable("users", {
   lat: real("lat"),
   lng: real("lng"),
 
+  // Pro subscription fields
+  proStatus: varchar("pro_status", { length: 20 })
+    .default("free")
+    .notNull(), // "free" | "active" | "past_due" | "cancelled" | "trialing"
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  proStartedAt: timestamp("pro_started_at", { withTimezone: true }),
+  proExpiresAt: timestamp("pro_expires_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
-});
+}, (table) => [
+  index("users_stripe_customer_id_idx").on(table.stripeCustomerId),
+]);
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;

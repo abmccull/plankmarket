@@ -24,6 +24,8 @@ import {
 } from "@/lib/utils/search-filters";
 import { EditSavedSearchDialog } from "@/components/saved-searches/edit-saved-search-dialog";
 import type { SavedSearch } from "@/server/db/schema/saved-searches";
+import { useProStatus } from "@/hooks/use-pro-status";
+import { FREE_LIMITS } from "@/lib/pro";
 
 const FREQUENCY_LABELS: Record<string, string> = {
   instant: "Instant",
@@ -33,12 +35,16 @@ const FREQUENCY_LABELS: Record<string, string> = {
 
 export default function SavedSearchesPage() {
   const router = useRouter();
+  const { isPro } = useProStatus();
   const { data: searches, isLoading, refetch } =
     trpc.search.getMySavedSearches.useQuery();
   const deleteSearch = trpc.search.deleteSavedSearch.useMutation();
 
   const [editingSearch, setEditingSearch] = useState<SavedSearch | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const searchCount = searches?.length ?? 0;
+  const atSearchLimit = !isPro && searchCount >= FREE_LIMITS.savedSearches;
 
   const handleDelete = async (id: string) => {
     try {
@@ -58,11 +64,28 @@ export default function SavedSearchesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Saved Searches</h1>
-        <p className="text-muted-foreground mt-1">
-          Get alerts when new listings match your criteria
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Saved Searches</h1>
+          <p className="text-muted-foreground mt-1">
+            Get alerts when new listings match your criteria
+          </p>
+        </div>
+        {!isPro && (
+          <div className="shrink-0 text-right">
+            <p className="text-sm font-medium text-muted-foreground">
+              {searchCount}/{FREE_LIMITS.savedSearches} saved searches
+            </p>
+            {atSearchLimit && (
+              <Link
+                href="/pro"
+                className="text-xs text-primary hover:underline underline-offset-2"
+              >
+                Upgrade to Pro for unlimited
+              </Link>
+            )}
+          </div>
+        )}
       </div>
 
       {isLoading ? (

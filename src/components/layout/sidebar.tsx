@@ -24,6 +24,9 @@ import {
   FileText,
   FileSpreadsheet,
   SlidersHorizontal,
+  TrendingUp,
+  Bot,
+  Users,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -38,13 +41,17 @@ const sellerItems: SidebarItem[] = [
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
   { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet },
   { title: "Request Board", href: "/seller/request-board", icon: ClipboardList },
+  { title: "Buyer CRM", href: "/seller/crm", icon: Users },
   { title: "Follow-ups", href: "/seller/followups", icon: Clock },
   { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
   { title: "Offers", href: "/offers", icon: Handshake },
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Orders", href: "/seller/orders", icon: Package },
   { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
+  { title: "Market Intel", href: "/seller/market", icon: TrendingUp },
   { title: "Payments", href: "/seller/payments", icon: CreditCard },
+  { title: "AI Agent", href: "/settings/agent", icon: Bot },
+  { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
   { title: "Settings", href: "/seller/settings", icon: Settings },
 ];
 

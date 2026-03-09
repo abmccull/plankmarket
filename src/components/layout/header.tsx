@@ -30,7 +30,10 @@ import {
   Menu,
   Bell,
   ChevronRight,
+  Crown,
 } from "lucide-react";
+import { useProStatus } from "@/hooks/use-pro-status";
+import { ProBadge } from "@/components/pro-badge";
 import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
 import { usePathname, useRouter } from "next/navigation";
@@ -43,6 +46,7 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const isLandingPage = pathname === "/";
+  const { isPro } = useProStatus();
   const canLoadNotifications = Boolean(isAuthenticated && user);
 
   // Notification data - only fetch when authenticated
@@ -143,6 +147,22 @@ export function Header() {
           >
             Pricing
           </Link>
+          {isPro ? (
+            <Link
+              href="/settings/subscription"
+              className="link-animated flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ProBadge />
+            </Link>
+          ) : (
+            <Link
+              href="/pro"
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 px-3 py-1 text-xs font-semibold text-amber-950 shadow-sm hover:brightness-110 transition-all"
+            >
+              <Crown className="h-3 w-3" aria-hidden="true" />
+              Go Pro
+            </Link>
+          )}
           {isLandingPage ? (
             <>
               <Link

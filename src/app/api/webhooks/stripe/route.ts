@@ -9,15 +9,15 @@ import {
   disputes,
   notifications,
   stripeWebhookEvents,
+  promotionCredits,
+  agentConfigs,
 } from "@/server/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { env } from "@/env";
 import { inngest } from "@/lib/inngest/client";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
-
-const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-01-28.clover" as const,
-});
+import { stripe } from "@/lib/stripe";
+import { PRO_MONTHLY_CREDIT } from "@/lib/pro";
 
 const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
 
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, duplicate: true });
     }
 
+    try {
     switch (event.type) {
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
@@ -510,9 +511,246 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case "customer.subscription.created": {
+        const subscription = event.data
+          .object as Stripe.Subscription;
+        const userId = subscription.metadata.userId;
+
+        if (userId) {
+          await db
+            .update(users)
+            .set({
+              proStatus: "active",
+              stripeSubscriptionId: subscription.id,
+              stripeCustomerId: subscription.customer as string,
+              proStartedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+
+          // Credit grant removed — invoice.payment_succeeded is the single source
+          // for promotion credits (fires for both initial and renewal invoices)
+
+          inngest
+            .send({
+              name: "subscription/activated",
+              data: { userId },
+            })
+            .catch((err) => {
+              console.error(
+                "Failed to send subscription/activated event:",
+                err
+              );
+            });
+        }
+        break;
+      }
+
+      case "customer.subscription.updated": {
+        const subscription = event.data
+          .object as Stripe.Subscription;
+        const userId = subscription.metadata.userId;
+
+        if (userId) {
+          // Map Stripe status to our proStatus
+          const statusMap: Record<string, string> = {
+            active: "active",
+            past_due: "past_due",
+            canceled: "cancelled",
+            trialing: "trialing",
+            incomplete: "active", // 3D Secure in progress, keep current access
+            unpaid: "past_due",
+          };
+          const proStatus = statusMap[subscription.status];
+          if (!proStatus) {
+            console.warn(
+              `Unknown Stripe subscription status: ${subscription.status}`
+            );
+            break; // Don't update — skip unknown statuses entirely
+          }
+
+          const updateFields: Record<string, unknown> = {
+            proStatus,
+            updatedAt: new Date(),
+          };
+
+          // If canceled, record when the subscription will actually end
+          if (subscription.status === "canceled") {
+            const cancelPeriodEnd =
+              subscription.items.data[0]?.current_period_end;
+            if (cancelPeriodEnd) {
+              const expiresDate = new Date(cancelPeriodEnd * 1000);
+              // Only set grace period if expiry is in the future
+              if (expiresDate > new Date()) {
+                updateFields.proExpiresAt = expiresDate;
+              }
+              // If already past, leave proExpiresAt null (immediate termination)
+            }
+          }
+
+          await db
+            .update(users)
+            .set(updateFields)
+            .where(eq(users.id, userId));
+
+          // Notify on payment issues
+          if (subscription.status === "past_due") {
+            inngest
+              .send({
+                name: "subscription/payment-failed",
+                data: { userId },
+              })
+              .catch((err) => {
+                console.error(
+                  "Failed to send subscription/payment-failed event:",
+                  err
+                );
+              });
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const subscription = event.data
+          .object as Stripe.Subscription;
+        const userId = subscription.metadata.userId;
+
+        if (userId) {
+          await db
+            .update(users)
+            .set({
+              proStatus: "free",
+              stripeSubscriptionId: null,
+              proExpiresAt: null,
+              proStartedAt: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+
+          inngest
+            .send({
+              name: "subscription/expired",
+              data: { userId },
+            })
+            .catch((err) => {
+              console.error(
+                "Failed to send subscription/expired event:",
+                err
+              );
+            });
+        }
+        break;
+      }
+
+      case "invoice.payment_succeeded": {
+        const invoice = event.data.object as Stripe.Invoice;
+
+        // Only process subscription renewals (parent.type = subscription_details)
+        const isSubscriptionInvoice =
+          invoice.parent?.type === "subscription_details" &&
+          invoice.parent.subscription_details?.subscription;
+
+        if (isSubscriptionInvoice) {
+          const customerId =
+            typeof invoice.customer === "string"
+              ? invoice.customer
+              : invoice.customer?.id;
+
+          if (customerId) {
+            const user = await db.query.users.findFirst({
+              where: eq(users.stripeCustomerId, customerId),
+              columns: { id: true },
+            });
+
+            if (user) {
+              // Grant promotion credit for the renewal period
+              const periodEnd =
+                invoice.lines?.data?.[0]?.period?.end;
+              if (periodEnd) {
+                await db.insert(promotionCredits).values({
+                  userId: user.id,
+                  amount: PRO_MONTHLY_CREDIT,
+                  usedAmount: 0,
+                  source: "subscription",
+                  expiresAt: new Date(periodEnd * 1000),
+                });
+              }
+
+              // Reset agent monitoring budget for the new period
+              await db
+                .update(agentConfigs)
+                .set({
+                  monitorBudgetUsed: 0,
+                  updatedAt: new Date(),
+                })
+                .where(eq(agentConfigs.userId, user.id));
+            }
+          }
+        }
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+
+        // Only process subscription invoices (skip one-off invoices)
+        const isSubscriptionInvoice =
+          invoice.parent?.type === "subscription_details" &&
+          invoice.parent.subscription_details?.subscription;
+        if (!isSubscriptionInvoice) break;
+
+        const customerId =
+          typeof invoice.customer === "string"
+            ? invoice.customer
+            : invoice.customer?.id;
+
+        if (customerId) {
+          const user = await db.query.users.findFirst({
+            where: eq(users.stripeCustomerId, customerId),
+            columns: { id: true },
+          });
+
+          if (user) {
+            await db
+              .update(users)
+              .set({
+                proStatus: "past_due",
+                updatedAt: new Date(),
+              })
+              .where(eq(users.id, user.id));
+
+            inngest
+              .send({
+                name: "subscription/payment-failed",
+                data: { userId: user.id },
+              })
+              .catch((err) => {
+                console.error(
+                  "Failed to send subscription/payment-failed event:",
+                  err
+                );
+              });
+          }
+        }
+        break;
+      }
+
       default:
         // Unhandled event type
         break;
+    }
+    } catch (processingError) {
+      // Remove idempotency record so Stripe retry can reprocess this event
+      await db
+        .delete(stripeWebhookEvents)
+        .where(eq(stripeWebhookEvents.id, event.id))
+        .catch(() => {});
+      console.error("Webhook processing error:", processingError);
+      return NextResponse.json(
+        { error: "Webhook handler failed" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ received: true });
