@@ -3,6 +3,7 @@ import {
   publicProcedure,
   sellerProcedure,
   adminProcedure,
+  strictSellerProcedure,
 } from "../trpc";
 import {
   purchasePromotionSchema,
@@ -13,9 +14,6 @@ import { eq, and, sql, desc, gt, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { stripe } from "@/lib/stripe";
-
-// TODO: Add stricter rate limiting to financial endpoints (purchase, cancel)
-// when rate limiting infrastructure is implemented
 
 // Pricing matrix: tier × duration → price in dollars
 const PRICING: Record<string, Record<number, number>> = {
@@ -32,7 +30,7 @@ export const promotionRouter = createTRPCRouter({
   }),
 
   // Purchase a promotion for a listing
-  purchase: sellerProcedure
+  purchase: strictSellerProcedure
     .input(purchasePromotionSchema)
     .mutation(async ({ ctx, input }) => {
       // Validate listing exists, is active, and belongs to the seller
@@ -341,7 +339,7 @@ export const promotionRouter = createTRPCRouter({
     }),
 
   // Cancel an active promotion with pro-rata refund
-  cancel: sellerProcedure
+  cancel: strictSellerProcedure
     .input(cancelPromotionSchema)
     .mutation(async ({ ctx, input }) => {
       const promotion = await ctx.db.query.listingPromotions.findFirst({

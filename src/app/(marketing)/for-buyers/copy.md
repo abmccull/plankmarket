@@ -172,16 +172,17 @@ Company type: Residential home builder, Mid-Atlantic region
 One fee. No surprises.
 
 **Headline**
-You pay 3% on top of the listed price. That's it.
+You pay 3% on inventory purchases. Freight is quoted separately.
 
 **Description**
-The 3% buyer fee covers payment processing, buyer protection, dispute resolution, platform support, and freight coordination tools. There are no membership fees, no listing access fees, and no charges to browse.
+The 3% buyer fee applies to the inventory subtotal only. Freight is quoted separately at checkout, and that freight quote already includes carrier charges plus marketplace shipping margin. There are no required membership fees, no listing access fees, and no charges to browse. Optional Pro is available for unlimited saved searches, AI monitoring, and advanced automation.
 
 **Fee Example**
 - Listed lot price: $8,000
 - Buyer fee (3%): $240
-- You pay: $8,240 + freight (quoted separately at checkout)
-- Seller receives: $7,840 (after their 2% fee)
+- Freight quote: $600
+- You pay: $8,840 total
+- Seller payout: inventory subtotal minus their 2% seller fee and inventory-only Stripe fee
 
 **Comparison to Alternatives**
 Traditional brokers: Charge 8–15% commission, provide no transparent pricing, and add weeks to the process.
@@ -189,7 +190,7 @@ Calling distributors directly: No central visibility, inconsistent pricing, and 
 General marketplaces (eBay, Craigslist): Unverified sellers, no flooring-specific specs, no freight integration, no dispute resolution for commercial freight.
 
 **No Hidden Fees Messaging**
-No subscription. No listing access fees. No renewal charges. You pay 3% only when you complete a purchase.
+No required subscription. No listing access fees. No renewal charges. You pay 3% only when you complete a purchase.
 
 ---
 
@@ -197,7 +198,7 @@ No subscription. No listing access fees. No renewal charges. You pay 3% only whe
 
 **Q1**
 Question: Who can buy on PlankMarket?
-Answer: PlankMarket is a B2B marketplace for flooring professionals. To buy, you need to create an account and complete business verification — your business name, contact information, and EIN are reviewed and approved by our team, typically within 1–3 business days. This keeps the marketplace professional and ensures you're dealing with verified sellers.
+Answer: PlankMarket is a B2B marketplace for flooring professionals. Buyers can create an account and browse immediately. Verification and approval are required before checkout. Your business name, contact information, and EIN are reviewed by our team, typically within 1–3 business days.
 
 **Q2**
 Question: What types of flooring are available?
@@ -205,11 +206,11 @@ Answer: PlankMarket lists overstock, closeout, discontinued, and surplus invento
 
 **Q3**
 Question: Can I negotiate on price?
-Answer: Yes. Every listing supports direct offers. Submit your offer, and the seller can accept, counter, or decline — all within a 48-hour response window. The offer history is visible to both parties throughout the negotiation.
+Answer: Yes. Every listing supports direct offers. Submit your offer, and the seller can accept, counter, or decline — all within a 48-hour response window. Buyers can browse, message, and negotiate before verification, but verification approval is required to complete payment and place an order.
 
 **Q4**
 Question: How does shipping work?
-Answer: PlankMarket uses integrated LTL freight. When you check out, you enter your delivery address and we generate freight quotes from our carrier network. You select a rate, and the freight cost is added to your order. The seller ships via LTL, and you can track the shipment in real time through your buyer dashboard.
+Answer: PlankMarket uses integrated LTL freight. When you check out, you enter your delivery address and we generate freight quotes from our carrier network. You select a rate, and the freight cost is added to your order. The freight quote already includes carrier charges plus marketplace shipping margin, so there is no additional buyer fee on freight. The seller ships via LTL, and you can track the shipment in real time through your buyer dashboard.
 
 **Q5**
 Question: What happens if my order arrives damaged or short?
@@ -233,4 +234,4 @@ Create your free buyer account and access hundreds of verified surplus flooring 
 Create Your Free Buyer Account
 
 **Supporting line**
-No subscription fees. Browse free. Pay 3% only when you buy.
+No required subscription. Browse free. Pay 3% on inventory only when you buy.

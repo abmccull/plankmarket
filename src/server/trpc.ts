@@ -306,6 +306,9 @@ const enforceStrictRateLimit = t.middleware(async ({ ctx, next }) => {
 });
 
 export const protectedProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit);
+export const strictProtectedProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceStrictRateLimit);
 
 // Verified user middleware - requires authenticated + verified (or admin)
 const enforceVerified = t.middleware(({ ctx, next }) => {
@@ -361,6 +364,10 @@ const enforceSeller = t.middleware(({ ctx, next }) => {
 });
 
 export const sellerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceSeller);
+export const strictSellerProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceStrictRateLimit)
+  .use(enforceSeller);
 
 // Seller procedure that allows pending verification (for draft listings)
 const enforceSellerOrPending = t.middleware(({ ctx, next }) => {
@@ -416,6 +423,10 @@ const enforceBuyer = t.middleware(({ ctx, next }) => {
 });
 
 export const buyerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceBuyer);
+export const strictBuyerProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceStrictRateLimit)
+  .use(enforceBuyer);
 
 // Buyer-only + verified (for transactional checkout/payment operations)
 const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {

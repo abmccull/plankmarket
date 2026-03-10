@@ -8,6 +8,199 @@ function isDryRun(): boolean {
   return env.PRIORITY1_DRY_RUN === "true";
 }
 
+function getDryRunStatusOverride(): string | undefined {
+  return process.env.PRIORITY1_DRY_RUN_STATUS;
+}
+
+function sumDigits(value: string): number {
+  return value
+    .split("")
+    .filter((char) => /\d/.test(char))
+    .reduce((sum, char) => sum + Number(char), 0);
+}
+
+function buildDryRunRatesResponse(request: RatesRequest): RatesResponse {
+  const totalWeight = request.items.reduce(
+    (sum, item) => sum + item.totalWeight,
+    0,
+  );
+  const totalUnits = request.items.reduce((sum, item) => sum + item.units, 0);
+  const zipSeed =
+    sumDigits(request.originZipCode) + sumDigits(request.destinationZipCode);
+  const densityFactor = request.items.reduce((sum, item) => {
+    return sum + item.length + item.width + item.height;
+  }, 0);
+  const base = Math.round(
+    145 +
+      zipSeed * 1.75 +
+      totalUnits * 32 +
+      totalWeight * 0.038 +
+      densityFactor * 0.12,
+  );
+  const quoteSeed = zipSeed * 100 + totalUnits * 10;
+  const pickupDate = new Date(request.pickupDate);
+
+  const carriers = [
+    {
+      id: quoteSeed + 11,
+      carrierName: "Dry Run Freight Co.",
+      carrierCode: "DRYF",
+      serviceLevel: "Standard",
+      transitDays: 5,
+      adjustment: 0,
+    },
+    {
+      id: quoteSeed + 22,
+      carrierName: "MockLine Logistics",
+      carrierCode: "MOCK",
+      serviceLevel: "Economy",
+      transitDays: 6,
+      adjustment: -18,
+    },
+    {
+      id: quoteSeed + 33,
+      carrierName: "Sandbox Express",
+      carrierCode: "SBXD",
+      serviceLevel: "Priority",
+      transitDays: 3,
+      adjustment: 37,
+    },
+    {
+      id: quoteSeed + 44,
+      carrierName: "Test Transit",
+      carrierCode: "TEST",
+      serviceLevel: "Balanced",
+      transitDays: 4,
+      adjustment: 12,
+    },
+  ];
+
+  return {
+    id: quoteSeed,
+    rateQuotes: carriers.map((carrier, index) => {
+      const total = Math.round((base + carrier.adjustment + index * 7) * 100) / 100;
+      const deliveryDate = new Date(pickupDate);
+      deliveryDate.setDate(deliveryDate.getDate() + carrier.transitDays);
+      const expirationDate = new Date(pickupDate);
+      expirationDate.setHours(expirationDate.getHours() + 12);
+
+      return {
+        id: carrier.id,
+        carrierName: carrier.carrierName,
+        carrierCode: carrier.carrierCode,
+        serviceLevel: carrier.serviceLevel,
+        transitDays: carrier.transitDays,
+        deliveryDate: deliveryDate.toISOString(),
+        effectiveDate: new Date().toISOString(),
+        expirationDate: expirationDate.toISOString(),
+        rateQuoteDetail: {
+          total,
+          charges: [
+            {
+              code: "LINEHAUL",
+              description: "Line haul",
+              amount: Math.round(total * 0.72 * 100) / 100,
+            },
+            {
+              code: "FUEL",
+              description: "Fuel surcharge",
+              amount: Math.round(total * 0.14 * 100) / 100,
+            },
+            {
+              code: "ACCESSORIAL",
+              description: "Accessorials",
+              amount: Math.round(total * 0.14 * 100) / 100,
+            },
+          ],
+        },
+      };
+    }),
+    invalidRateQuotes: [],
+  };
+}
+
+function buildDryRunTrackingStatuses(status: string): TrackingStatus[] {
+  const now = Date.now();
+  const baseTime = new Date(now - 2 * 60 * 60 * 1000);
+
+  if (status === "Dispatched") {
+    return [
+      {
+        timeStamp: baseTime.toISOString(),
+        city: "Salt Lake City",
+        state: "UT",
+        postalCode: "84101",
+        status: "Dispatched",
+        statusReason: "Shipment dispatched to carrier",
+      },
+    ];
+  }
+
+  if (status === "InTransit") {
+    return [
+      {
+        timeStamp: baseTime.toISOString(),
+        city: "Salt Lake City",
+        state: "UT",
+        postalCode: "84101",
+        status: "Dispatched",
+        statusReason: "Shipment dispatched to carrier",
+      },
+      {
+        timeStamp: new Date(baseTime.getTime() + 60 * 60 * 1000).toISOString(),
+        city: "Salt Lake City",
+        state: "UT",
+        postalCode: "84101",
+        status: "PickedUp",
+        statusReason: "Picked up by carrier",
+      },
+      {
+        timeStamp: new Date(now - 30 * 60 * 1000).toISOString(),
+        city: "Denver",
+        state: "CO",
+        postalCode: "80202",
+        status: "InTransit",
+        statusReason: "In transit to destination",
+      },
+    ];
+  }
+
+  return [
+    {
+      timeStamp: baseTime.toISOString(),
+      city: "Salt Lake City",
+      state: "UT",
+      postalCode: "84101",
+      status: "Dispatched",
+      statusReason: "Shipment dispatched to carrier",
+    },
+    {
+      timeStamp: new Date(baseTime.getTime() + 60 * 60 * 1000).toISOString(),
+      city: "Salt Lake City",
+      state: "UT",
+      postalCode: "84101",
+      status: "PickedUp",
+      statusReason: "Picked up by carrier",
+    },
+    {
+      timeStamp: new Date(baseTime.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+      city: "Denver",
+      state: "CO",
+      postalCode: "80202",
+      status: "InTransit",
+      statusReason: "In transit to destination",
+    },
+    {
+      timeStamp: new Date(now - 10 * 60 * 1000).toISOString(),
+      city: "Portland",
+      state: "OR",
+      postalCode: "97201",
+      status: "Delivered",
+      statusReason: "Delivered to consignee",
+    },
+  ];
+}
+
 // ============================================================================
 // Request Types
 // ============================================================================
@@ -293,6 +486,13 @@ async function getSuggestedClass(
  * Get carrier rate quotes for LTL shipment
  */
 async function getRates(request: RatesRequest): Promise<RatesResponse> {
+  if (isDryRun()) {
+    const response = buildDryRunRatesResponse(request);
+    console.log(
+      `[Priority1 DRY-RUN] getRates(${request.originZipCode} -> ${request.destinationZipCode}) → ${response.rateQuotes.length} mock quotes`,
+    );
+    return response;
+  }
   return priority1Fetch<RatesResponse>("/v2/ltl/quotes/rates", request);
 }
 
@@ -331,65 +531,15 @@ async function dispatch(request: DispatchRequest): Promise<DispatchResponse> {
 async function getStatus(request: StatusRequest): Promise<StatusResponse> {
   if (isDryRun()) {
     const now = Date.now();
-    // Simulate status based on current time — cycle every 10 minutes for easy testing
+    const baseTime = new Date(now - 2 * 60 * 60 * 1000);
+    const override = getDryRunStatusOverride();
     const minutesSinceEpoch = Math.floor(now / 60000);
     const phase = minutesSinceEpoch % 10;
 
-    let status: string;
-    const trackingStatuses: TrackingStatus[] = [];
-    const baseTime = new Date(now - 2 * 60 * 60 * 1000);
-
-    if (phase < 3) {
-      status = "Dispatched";
-      trackingStatuses.push({
-        timeStamp: baseTime.toISOString(),
-        city: "Salt Lake City", state: "UT", postalCode: "84101",
-        status: "Dispatched", statusReason: "Shipment dispatched to carrier",
-      });
-    } else if (phase < 7) {
-      status = "InTransit";
-      trackingStatuses.push(
-        {
-          timeStamp: baseTime.toISOString(),
-          city: "Salt Lake City", state: "UT", postalCode: "84101",
-          status: "Dispatched", statusReason: "Shipment dispatched to carrier",
-        },
-        {
-          timeStamp: new Date(baseTime.getTime() + 60 * 60 * 1000).toISOString(),
-          city: "Salt Lake City", state: "UT", postalCode: "84101",
-          status: "PickedUp", statusReason: "Picked up by carrier",
-        },
-        {
-          timeStamp: new Date(now - 30 * 60 * 1000).toISOString(),
-          city: "Denver", state: "CO", postalCode: "80202",
-          status: "InTransit", statusReason: "In transit to destination",
-        },
-      );
-    } else {
-      status = "Delivered";
-      trackingStatuses.push(
-        {
-          timeStamp: baseTime.toISOString(),
-          city: "Salt Lake City", state: "UT", postalCode: "84101",
-          status: "Dispatched", statusReason: "Shipment dispatched to carrier",
-        },
-        {
-          timeStamp: new Date(baseTime.getTime() + 60 * 60 * 1000).toISOString(),
-          city: "Salt Lake City", state: "UT", postalCode: "84101",
-          status: "PickedUp", statusReason: "Picked up by carrier",
-        },
-        {
-          timeStamp: new Date(baseTime.getTime() + 3 * 60 * 60 * 1000).toISOString(),
-          city: "Denver", state: "CO", postalCode: "80202",
-          status: "InTransit", statusReason: "In transit to destination",
-        },
-        {
-          timeStamp: new Date(now - 10 * 60 * 1000).toISOString(),
-          city: "Portland", state: "OR", postalCode: "97201",
-          status: "Delivered", statusReason: "Delivered to consignee",
-        },
-      );
-    }
+    const status =
+      override ||
+      (phase < 3 ? "Dispatched" : phase < 7 ? "InTransit" : "Delivered");
+    const trackingStatuses = buildDryRunTrackingStatuses(status);
 
     console.log(`[Priority1 DRY-RUN] getStatus(${request.identifierValue}) → ${status}`);
     return {

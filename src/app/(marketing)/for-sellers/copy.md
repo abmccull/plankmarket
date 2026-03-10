@@ -172,16 +172,17 @@ Company type: Flooring wholesale and distribution, Midwest
 2% on what you sell. Zero on what you don't.
 
 **Headline**
-No listing fees. No monthly subscription. Pay 2% only when a sale completes.
+No listing fees. No required monthly subscription. Pay 2% only when a sale completes.
 
 **Description**
-PlankMarket charges a 2% commission on completed sales. That commission covers access to the buyer network, payment processing infrastructure, buyer verification, dispute mediation, messaging tools, freight coordination, and platform support. You pay nothing to list, nothing monthly, and nothing on inventory that doesn't sell.
+PlankMarket charges a 2% commission on completed sales, calculated on the inventory subtotal only. Sellers also pay Stripe processing on the inventory subtotal only. Freight is quoted separately with marketplace margin already built in, and PlankMarket absorbs the shipping-related processor cost. You pay nothing to list, nothing required monthly, and nothing on inventory that does not sell.
 
 **Fee Example**
 - Your listed price: $12,000
 - Seller commission (2%): $240
-- Your payout: $11,760 (transferred to your Stripe Connect account)
-- Buyer pays: $12,360 (listed price + 3% buyer fee — separate from your payout)
+- Seller Stripe fee: $348.30
+- Your payout: $11,411.70 (transferred to your Stripe Connect account)
+- Buyer pays: listed price plus the 3% buyer fee on inventory only; freight is quoted separately with margin built in
 
 **Comparison to Alternatives**
 Traditional liquidators: Typically pay 30–50 cents on the dollar for your inventory — a fraction of what you'd recover through direct sale.
@@ -192,7 +193,7 @@ Open classifieds or general marketplaces: No flooring-specific tooling, no verif
 High-volume sellers with large inventories or frequent transactions may be eligible for reduced commission rates. Contact our partnerships team at partnerships@plankmarket.com to discuss custom pricing.
 
 **No Hidden Fees Messaging**
-No subscription fee. No listing or insertion fee. No renewal fee on unsold inventory. No payout or withdrawal fee. No featured placement charges.
+No required subscription fee. No listing or insertion fee. No renewal fee on unsold inventory. No payout or withdrawal fee. No featured placement charges. Pro is optional for unlimited listings and advanced seller tools.
 
 ---
 
@@ -204,7 +205,7 @@ Answer: You can list any surplus, overstock, discontinued, or closeout flooring 
 
 **Q2**
 Question: How does business verification work?
-Answer: When you register as a seller, you submit your business name, EIN, company details, and supporting documentation. Our team reviews your application — including AI-assisted document and website analysis — and typically completes verification within 1–3 business days. Verified status appears on your listings and increases buyer confidence.
+Answer: Sellers can create an account and explore the platform immediately. Verification approval is required before creating listings. When you submit your business name, EIN, company details, and supporting documentation, our team reviews the application — including AI-assisted document and website analysis — and typically completes verification within 1–3 business days. Verified status appears on your listings and increases buyer confidence.
 
 **Q3**
 Question: Can I set a minimum lot size or split lots?
@@ -220,7 +221,7 @@ Answer: Buyers have 48 hours after delivery to open a dispute, supported by phot
 
 **Q6**
 Question: Is there a limit to how many lots I can list?
-Answer: No. Listings are unlimited. List one lot or a hundred — there are no per-listing fees and no inventory caps. For high-volume sellers managing large portfolios, contact our team about CSV bulk upload and enterprise account options.
+Answer: Free sellers can get started without listing fees, and Pro is available for unlimited listings, bulk upload, CRM tools, AI workflows, and market intelligence. For high-volume sellers managing large portfolios, contact our team about enterprise support and onboarding.
 
 ---
 
@@ -236,4 +237,4 @@ Every day your overstock stays in the warehouse is a day it's costing you. List 
 Create Your Seller Account Free
 
 **Supporting line**
-No listing fees. No monthly cost. Pay 2% only when you sell.
+No listing fees. No required monthly cost. Pay 2% on inventory only when you sell.

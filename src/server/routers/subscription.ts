@@ -1,13 +1,10 @@
-import { createTRPCRouter, protectedProcedure } from "../trpc";
+import { createTRPCRouter, protectedProcedure, strictProtectedProcedure } from "../trpc";
 import { users, promotionCredits } from "../db/schema";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { env } from "@/env";
 import { stripe } from "@/lib/stripe";
-
-// TODO: Add stricter rate limiting to financial endpoints (createCheckout, createPortalSession)
-// when rate limiting infrastructure is implemented
 
 /** Stripe Price IDs for Pro subscription (not secrets — publishable IDs). */
 const STRIPE_PRO_PRICES = {
@@ -52,7 +49,7 @@ export const subscriptionRouter = createTRPCRouter({
   /**
    * Create a Stripe Checkout Session for a Pro subscription.
    */
-  createCheckout: protectedProcedure
+  createCheckout: strictProtectedProcedure
     .input(
       z.object({
         interval: z.enum(["monthly", "annual"]),
@@ -126,7 +123,7 @@ export const subscriptionRouter = createTRPCRouter({
   /**
    * Create a Stripe Billing Portal session for managing the subscription.
    */
-  createPortalSession: protectedProcedure.mutation(async ({ ctx }) => {
+  createPortalSession: strictProtectedProcedure.mutation(async ({ ctx }) => {
     if (!ctx.user.stripeCustomerId) {
       throw new TRPCError({
         code: "BAD_REQUEST",

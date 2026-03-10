@@ -9,6 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:shipping": "vitest run src/server/services/__tests__/priority1.test.ts src/server/services/__tests__/shipping-workflow.test.ts && npx tsx scripts/test-shipping-dry-run.ts",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
