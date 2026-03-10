@@ -296,10 +296,11 @@ export default function HomePage() {
                 Transparent Fees
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed">
-                3% buyer fee. 2% seller fee. No listing fees, no
-                subscriptions, no hidden charges. Payments processed through
-                Stripe. Seller payouts typically arrive within 3-5 business
-                days after carrier pickup.
+                3% buyer fee on inventory. 2% seller fee on inventory. No
+                listing fees, no required subscriptions, no hidden charges.
+                Freight is quoted separately with shipping margin built in.
+                Seller payouts typically arrive within 3-5 business days after
+                carrier pickup.
               </p>
             </div>
           </div>
@@ -607,8 +608,8 @@ export default function HomePage() {
                 </Link>
               </div>
               <p className="mt-6 text-sm text-white/60">
-                Free to join. No listing fees. No subscription.
-                Pay only when a transaction completes.
+                Free to join. No listing fees. No required subscription.
+                Upgrade to Pro only if you need advanced tools.
               </p>
             </div>
           </div>

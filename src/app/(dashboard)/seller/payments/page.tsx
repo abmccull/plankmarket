@@ -66,8 +66,7 @@ export default function SellerPaymentsPage() {
               Connect Stripe Account
             </CardTitle>
             <CardDescription>
-              We use Stripe to securely process payments and send you payouts. A
-              2% seller fee is deducted from each transaction.
+              We use Stripe to securely process payments and send you payouts. Sellers pay a 2% platform fee on inventory subtotal and Stripe processing on inventory subtotal only. PlankMarket absorbs shipping-related processor costs.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -123,12 +122,12 @@ export default function SellerPaymentsPage() {
   // State C: Fully onboarded
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Payments</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your payouts, transactions, and account settings
-        </p>
-      </div>
+        <div>
+          <h1 className="text-3xl font-bold">Payments</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage your payouts, transactions, and account settings
+          </p>
+        </div>
 
       <StripeConnectProvider>
         <ConnectNotificationBanner />

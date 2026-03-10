@@ -248,8 +248,12 @@ export function MakeOfferModal({
                 {formatCurrency(buyerFee)}
               </span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Shipping</span>
+              <span className="font-medium">Quoted at checkout</span>
+            </div>
             <div className="flex justify-between font-semibold text-base pt-2 border-t border-border">
-              <span>Total</span>
+              <span>Total Before Shipping</span>
               <span className="tabular-nums">{formatCurrency(total)}</span>
             </div>
           </div>

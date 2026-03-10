@@ -251,3 +251,53 @@ export function filtersToSearchParams(filters: SearchFilters): string {
 
   return params.toString();
 }
+
+function parseCsvStrings(value: string | null): string[] | undefined {
+  if (!value) return undefined;
+  const parsed = value.split(",").map((item) => item.trim()).filter(Boolean);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function parseCsvNumbers(value: string | null): number[] | undefined {
+  if (!value) return undefined;
+  const parsed = value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isFinite(item));
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function parseOptionalNumber(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Convert the current listings URL params into a SearchFilters object that can
+ * be saved and restored later.
+ */
+export function searchParamsToFilters(searchParams: URLSearchParams): SearchFilters {
+  const sort = searchParams.get("sort");
+
+  return {
+    query: searchParams.get("query") || undefined,
+    materialType: parseCsvStrings(searchParams.get("materialType")) as SearchFilters["materialType"],
+    condition: parseCsvStrings(searchParams.get("condition")) as SearchFilters["condition"],
+    species: parseCsvStrings(searchParams.get("species")) as SearchFilters["species"],
+    colorFamily: parseCsvStrings(searchParams.get("colorFamily")) as SearchFilters["colorFamily"],
+    finishType: parseCsvStrings(searchParams.get("finishType")) as SearchFilters["finishType"],
+    certifications: parseCsvStrings(searchParams.get("certifications")) as SearchFilters["certifications"],
+    state: parseCsvStrings(searchParams.get("state")),
+    width: parseCsvNumbers(searchParams.get("width")),
+    thickness: parseCsvNumbers(searchParams.get("thickness")),
+    wearLayer: parseCsvNumbers(searchParams.get("wearLayer")),
+    priceMin: parseOptionalNumber(searchParams.get("priceMin")),
+    priceMax: parseOptionalNumber(searchParams.get("priceMax")),
+    minLotSize: parseOptionalNumber(searchParams.get("minLotSize")),
+    maxLotSize: parseOptionalNumber(searchParams.get("maxLotSize")),
+    maxDistance: parseOptionalNumber(searchParams.get("maxDistance")),
+    buyerZip: searchParams.get("buyerZip") || undefined,
+    sort: sort ? (sort as SearchFilters["sort"]) : undefined,
+  };
+}

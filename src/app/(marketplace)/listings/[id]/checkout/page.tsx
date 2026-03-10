@@ -666,7 +666,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Buyer fee (3% on inventory + shipping)
+                    Buyer fee (3% on inventory only)
                   </span>
                   <span>{formatCurrency(buyerFee)}</span>
                 </div>

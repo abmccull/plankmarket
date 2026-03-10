@@ -150,7 +150,7 @@ export default function AdminSettingsPage() {
             <CardTitle>Fee Structure</CardTitle>
           </div>
           <CardDescription>
-            Commission and transaction fee configuration
+            Current platform fee policy. These values are fixed in the current release and shown here for reference.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -164,12 +164,11 @@ export default function AdminSettingsPage() {
                 min="0"
                 max="50"
                 value={form.buyerFeePercent}
-                onChange={(e) =>
-                  handleChange("buyerFeePercent", parseFloat(e.target.value) || 0)
-                }
+                disabled
+                readOnly
               />
               <p className="text-xs text-muted-foreground">
-                Applied to transaction value, paid by buyer
+                Fixed at 3% of inventory subtotal only
               </p>
             </div>
             <div className="space-y-2">
@@ -181,19 +180,18 @@ export default function AdminSettingsPage() {
                 min="0"
                 max="50"
                 value={form.sellerFeePercent}
-                onChange={(e) =>
-                  handleChange("sellerFeePercent", parseFloat(e.target.value) || 0)
-                }
+                disabled
+                readOnly
               />
               <p className="text-xs text-muted-foreground">
-                Deducted from seller payout
+                Fixed at 2% of inventory subtotal
               </p>
             </div>
             <div className="rounded-lg border p-4">
               <p className="text-sm text-muted-foreground">Stripe Processing</p>
               <p className="text-2xl font-bold">2.9% + $0.30</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Standard card processing fee (not configurable)
+                Seller share applies to inventory subtotal only. Platform absorbs shipping-related processor cost.
               </p>
             </div>
           </div>

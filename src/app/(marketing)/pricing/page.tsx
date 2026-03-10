@@ -23,11 +23,11 @@ import {
 export const metadata: Metadata = {
   title: "Pricing & Fees - Transparent B2B Marketplace Costs",
   description:
-    "PlankMarket charges a 3% buyer fee and 2% seller fee with no hidden costs. Transparent pricing for the B2B flooring liquidation marketplace.",
+    "PlankMarket charges a 3% buyer fee and 2% seller fee with transparent marketplace pricing, plus an optional Pro subscription for advanced tools.",
   openGraph: {
     title: "PlankMarket Pricing & Fees",
     description:
-      "Simple, transparent fee structure: 3% buyer fee, 2% seller fee, no hidden costs.",
+      "Simple marketplace pricing: 3% buyer fee, 2% seller fee, plus optional Pro for advanced tools.",
   },
 };
 
@@ -75,9 +75,10 @@ export default function PricingPage() {
                 <ul className="space-y-3">
                   {[
                     "Free to browse and register",
-                    "3% buyer fee on purchases",
+                    "3% buyer fee on inventory purchases",
                     "Secure Stripe payment processing",
-                    "Save searches and watchlists",
+                    "Up to 3 saved searches on Free",
+                    "Optional Pro for unlimited saved searches and AI monitoring",
                     "Direct messaging with sellers",
                     "Order tracking and support",
                   ].map((item) => (
@@ -105,17 +106,19 @@ export default function PricingPage() {
                   For Sellers
                 </Badge>
                 <CardTitle className="font-display text-3xl">Commission-Based</CardTitle>
-                <CardDescription>2% commission on completed sales</CardDescription>
+                <CardDescription>2% platform fee plus inventory-only Stripe processing on completed sales</CardDescription>
               </CardHeader>
               <Separator />
               <CardContent className="pt-6">
                 <ul className="space-y-3">
                   {[
-                    "Free to list — unlimited listings",
-                    "2% commission only on completed sales",
+                    "Free plan includes up to 10 active listings",
+                    "2% seller fee on inventory sold",
+                    "2.9% + $0.30 Stripe fee on inventory subtotal only",
                     "Secure payment via Stripe Connect",
                     "Built-in messaging and order management",
                     "Access to nationwide buyer network",
+                    "Optional Pro for unlimited listings, bulk upload, CRM, and market intelligence",
                     "Customer support for you and buyers",
                     "Seller dashboard and analytics",
                     "Payouts typically within 3-5 business days after shipment pickup",
@@ -133,6 +136,37 @@ export default function PricingPage() {
                     </Button>
                   </Link>
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Optional Pro */}
+      <section className="pb-20">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <Card className="relative overflow-hidden border-amber-300 bg-gradient-to-br from-amber-50 to-amber-100/40">
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-amber-500" />
+              <CardHeader className="text-center">
+                <Badge className="mx-auto w-fit border-transparent bg-amber-100 text-amber-800">
+                  Optional Upgrade
+                </Badge>
+                <CardTitle className="font-display text-2xl">
+                  PlankMarket Pro
+                </CardTitle>
+                <CardDescription className="max-w-2xl mx-auto">
+                  Power users can upgrade to Pro for unlimited listings, unlimited
+                  saved searches, AI agent workflows, bulk CSV import, buyer CRM,
+                  market intelligence, and monthly promotion credit.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex justify-center pb-8">
+                <Link href="/pro">
+                  <Button variant="gold">
+                    Explore Pro <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </div>
@@ -159,7 +193,7 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Platform Commission</h3>
                       <p className="text-sm text-muted-foreground">
-                        PlankMarket charges a 2% seller commission and 3% buyer fee on each completed transaction, calculated on the inventory subtotal only. Shipping is quoted and added separately at checkout. This covers listing hosting, buyer network access, secure payment processing, payment protection, messaging tools, and platform support.
+                        PlankMarket charges a 2% seller commission and 3% buyer fee on each completed transaction, calculated on the inventory subtotal only. Shipping is quoted separately at checkout, and the freight quote already includes marketplace shipping margin. This covers listing hosting, buyer network access, payment protection, messaging tools, and platform support.
                       </p>
                     </div>
                   </div>
@@ -171,7 +205,7 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Payment Processing (Stripe)</h3>
                       <p className="text-sm text-muted-foreground">
-                        Standard Stripe fees apply: approximately 2.9% + $0.30 per credit/debit card transaction. ACH transfers have lower percentage fees. These are charged by Stripe and deducted automatically before payout.
+                        Sellers are charged Stripe processing of approximately 2.9% + $0.30 on the inventory subtotal only. PlankMarket absorbs the processing cost tied to shipping and any remaining non-seller processor share.
                       </p>
                     </div>
                   </div>
@@ -206,13 +240,17 @@ export default function PricingPage() {
           <div className="max-w-3xl mx-auto">
             <Card className="border-primary/30">
               <CardHeader>
-                <CardTitle className="text-xl">Example: $10,000 Order</CardTitle>
+                <CardTitle className="text-xl">Example: $10,000 inventory order</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm font-medium">Subtotal</span>
+                    <span className="text-sm font-medium">Inventory subtotal</span>
                     <span className="text-sm font-semibold">$10,000.00</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Quoted freight</span>
+                    <span className="text-sm">$600.00</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between items-center py-2">
@@ -221,21 +259,25 @@ export default function PricingPage() {
                   </div>
                   <div className="flex justify-between items-center py-2 bg-secondary/10 px-3 rounded-md">
                     <span className="text-sm font-semibold">Buyer total</span>
-                    <span className="text-sm font-semibold">$10,300.00 + shipping</span>
+                    <span className="text-sm font-semibold">$10,900.00</span>
                   </div>
                   <Separator className="my-4" />
                   <div className="flex justify-between items-center py-2">
                     <span className="text-sm">Seller commission (2%)</span>
                     <span className="text-sm">$200.00</span>
                   </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Seller Stripe fee (2.9% + $0.30)</span>
+                    <span className="text-sm">$290.30</span>
+                  </div>
                   <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
-                    <span className="text-sm font-semibold">Seller payout (gross, before Stripe fees)</span>
-                    <span className="text-sm font-semibold">$9,800.00</span>
+                    <span className="text-sm font-semibold">Seller payout</span>
+                    <span className="text-sm font-semibold">$9,509.70</span>
                   </div>
                   <Separator className="my-4" />
                   <div className="flex justify-between items-start py-2">
-                    <span className="text-sm text-muted-foreground">Stripe processing (~2.9% + $0.30)</span>
-                    <span className="text-sm text-muted-foreground text-right">Deducted by Stripe from payout</span>
+                    <span className="text-sm text-muted-foreground">Shipping-related processor share</span>
+                    <span className="text-sm text-muted-foreground text-right">Absorbed by PlankMarket</span>
                   </div>
                 </div>
               </CardContent>
@@ -255,7 +297,7 @@ export default function PricingPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
             {[
-              "Monthly subscription fees",
+              "Required monthly subscription to buy or sell",
               "Listing or insertion fees",
               "Featured listing charges",
               "Renewal fees for unsold listings",
@@ -318,7 +360,7 @@ export default function PricingPage() {
               {
                 question: "Are there plans for premium features?",
                 answer:
-                  "We are developing optional premium features like featured listing placement, priority support, advanced analytics, and inventory management integrations. All premium features will be optional — core features remain available at standard commission rates.",
+                  "Yes. PlankMarket Pro is already available for power users who want unlimited listings or saved searches, AI agent workflows, CRM tools, bulk upload, and market intelligence. The core marketplace remains usable without a required subscription.",
               },
               {
                 question: "How does tax reporting work?",
@@ -357,7 +399,7 @@ export default function PricingPage() {
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
-                Join PlankMarket today. Buyers browse for free, sellers pay only when they sell.
+                Join PlankMarket today. Buyers browse for free, sellers pay only when they sell, and power users can upgrade to Pro when they need advanced tools.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/register?role=buyer">

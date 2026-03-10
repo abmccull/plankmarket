@@ -4,13 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { useProStatus } from "@/hooks/use-pro-status";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ProBadge } from "@/components/pro-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Check, Loader2, Settings } from "lucide-react";
+import { Check, Loader2, LogIn, Settings, UserPlus } from "lucide-react";
 import { getErrorMessage } from "@/lib/utils";
 
 type BillingInterval = "monthly" | "annual";
@@ -27,14 +28,13 @@ const FREE_FEATURES = [
 const PRO_FEATURES = [
   "Unlimited active listings",
   "Unlimited saved searches",
-  "AI autonomous agent (auto-offers, monitoring, repricing, negotiation)",
+  "AI agent workflows (saved-search monitoring, auto-offers, repricing)",
   "Market intelligence (pricing data, demand signals, competitive position)",
   "Seller CRM (tags, notes, followups)",
   "Bulk CSV import",
   "$15/month promotion credit",
   "Priority verification (24hr)",
   "Pro badge on profile",
-  "MCP server access",
 ] as const;
 
 function FeatureList({ features }: { features: readonly string[] }) {
@@ -54,6 +54,7 @@ function FeatureList({ features }: { features: readonly string[] }) {
 }
 
 export default function ProPricingPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const { isPro, isLoading: statusLoading } = useProStatus();
   const [interval, setInterval] = useState<BillingInterval>("annual");
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -75,7 +76,7 @@ export default function ProPricingPage() {
     createCheckout.mutate({ interval });
   };
 
-  if (statusLoading) {
+  if (authLoading || (isAuthenticated && statusLoading)) {
     return (
       <div className="container mx-auto max-w-5xl px-4 py-12">
         <div className="space-y-4 text-center">
@@ -124,7 +125,7 @@ export default function ProPricingPage() {
       <div className="text-center">
         <h1 className="text-display-md">PlankMarket Pro</h1>
         <p className="mt-3 text-base text-muted-foreground">
-          Unlock powerful tools to grow your flooring business.
+          Unlock advanced tools to buy and sell smarter on PlankMarket.
         </p>
       </div>
 
@@ -209,25 +210,45 @@ export default function ProPricingPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <FeatureList features={PRO_FEATURES} />
-            <Button
-              className="mt-4 w-full"
-              variant="gold"
-              size="lg"
-              onClick={handleSubscribe}
-              disabled={isRedirecting}
-            >
-              {isRedirecting ? (
-                <>
-                  <Loader2
-                    className="mr-2 h-4 w-4 animate-spin"
-                    aria-hidden="true"
-                  />
-                  Redirecting to checkout...
-                </>
-              ) : (
-                `Subscribe${interval === "annual" ? " & Save $99" : ""}`
-              )}
-            </Button>
+            {isAuthenticated ? (
+              <Button
+                className="mt-4 w-full"
+                variant="gold"
+                size="lg"
+                onClick={handleSubscribe}
+                disabled={isRedirecting}
+              >
+                {isRedirecting ? (
+                  <>
+                    <Loader2
+                      className="mr-2 h-4 w-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Redirecting to checkout...
+                  </>
+                ) : (
+                  `Subscribe${interval === "annual" ? " & Save $99" : ""}`
+                )}
+              </Button>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <Button asChild className="w-full" variant="gold" size="lg">
+                  <Link href="/register">
+                    <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Create Account to Upgrade
+                  </Link>
+                </Button>
+                <Button asChild className="w-full" variant="outline">
+                  <Link href="/login">
+                    <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Sign In to Subscribe
+                  </Link>
+                </Button>
+                <p className="text-center text-xs text-muted-foreground">
+                  Pro checkout starts after you sign in to your buyer or seller account.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

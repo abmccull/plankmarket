@@ -222,7 +222,7 @@ const STATS = [
 ] as const;
 
 const NO_FEES = [
-  "No subscription fee.",
+  "No required subscription fee.",
   "No listing or insertion fee.",
   "No renewal fee on unsold inventory.",
   "No payout or withdrawal fee.",
@@ -612,12 +612,15 @@ export default function ForSellersPage() {
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Transparent Pricing
             </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl">
-              2% on completed sales. Zero on everything else.
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              No listing fees. No monthly subscription. No setup costs. You pay 2% when inventory sells. If it does not sell, you pay nothing.
-            </p>
+              <h2 className="font-display text-3xl sm:text-4xl">
+                2% platform fee on sold inventory. No listing fees.
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+                No listing fees. No required monthly subscription. No setup costs.
+                The Free plan gets you started, and Pro is optional for unlimited
+                listings and advanced tools. You pay 2% plus the inventory-only
+                Stripe fee when inventory sells.
+              </p>
           </div>
 
           <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -630,7 +633,7 @@ export default function ForSellersPage() {
                 </Badge>
                 <CardTitle className="font-display text-xl">$12,000 lot of engineered hickory</CardTitle>
                 <CardDescription>
-                  The 2% seller fee covers access to the verified buyer network, payment processing, buyer verification, dispute mediation, messaging tools, and platform support. You pay nothing to list. Nothing monthly. Nothing on inventory that does not sell.
+                  The 2% seller fee covers access to the verified buyer network, buyer verification, dispute mediation, messaging tools, and platform support. You pay nothing to list. Nothing monthly. Nothing on inventory that does not sell.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -644,17 +647,21 @@ export default function ForSellersPage() {
                     <span className="text-sm text-muted-foreground">Seller fee (2%)</span>
                     <span className="text-sm text-muted-foreground">-$240</span>
                   </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-muted-foreground">Seller Stripe fee (2.9% + $0.30)</span>
+                    <span className="text-sm text-muted-foreground">-$348.30</span>
+                  </div>
                   <div className="flex justify-between items-center py-2 px-3 bg-primary/5 border border-primary/20 rounded-lg">
-                    <span className="text-sm font-semibold">Your gross payout (before Stripe fees)</span>
-                    <span className="text-sm font-bold text-primary">$11,760</span>
+                    <span className="text-sm font-semibold">Your payout</span>
+                    <span className="text-sm font-bold text-primary">$11,411.70</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between items-center py-2">
                     <span className="text-sm text-muted-foreground">Buyer pays</span>
-                    <span className="text-sm text-muted-foreground">$12,360</span>
+                    <span className="text-sm text-muted-foreground">$12,360 + freight</span>
                   </div>
                   <p className="text-xs text-muted-foreground pt-1">
-                    Buyer pays listed price + 3% buyer fee. Stripe processing fees (~2.9% + $0.30) are deducted by Stripe before payout. Your net payout transfers to your Stripe Connect account typically within 3-5 business days of carrier pickup.
+                    Buyer pays listed price plus the 3% buyer fee on inventory only. Your seller Stripe fee applies to inventory only. Freight is quoted separately with margin built in, and PlankMarket absorbs the shipping-related processor cost. Your payout transfers to your Stripe Connect account typically within 3-5 business days of carrier pickup.
                   </p>
                 </div>
               </CardContent>
@@ -822,7 +829,15 @@ export default function ForSellersPage() {
                 </Link>
               </div>
               <p className="mt-6 text-white/60 text-sm">
-                No listing fees. No monthly cost. 2% only when inventory sells.
+                No listing fees. No required monthly cost. Upgrade to Pro only if
+                you need unlimited listings or advanced seller tools.
+              </p>
+              <p className="mt-2 text-sm text-white/70">
+                Need bulk upload, CRM, or market intelligence?{" "}
+                <Link href="/pro" className="underline underline-offset-2 hover:text-white">
+                  Explore Pro
+                </Link>
+                .
               </p>
             </div>
           </div>

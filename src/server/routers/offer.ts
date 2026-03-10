@@ -1,7 +1,7 @@
 import {
   createTRPCRouter,
   protectedProcedure,
-  verifiedBuyerProcedure,
+  buyerProcedure,
 } from "../trpc";
 import {
   createOfferSchema,
@@ -102,7 +102,7 @@ export const offerRouter = createTRPCRouter({
    * Create an initial offer on a listing.
    * Sets lastActorId to buyerId, creates initial_offer event.
    */
-  createOffer: verifiedBuyerProcedure
+  createOffer: buyerProcedure
     .input(createOfferSchema)
     .mutation(async ({ ctx, input }) => {
       // Get the listing

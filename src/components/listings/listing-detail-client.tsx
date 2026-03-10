@@ -247,9 +247,13 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                   {formatCurrency(buyerFee)}
                 </span>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Shipping</span>
+                <span className="font-medium">Quoted at checkout</span>
+              </div>
               <Separator />
               <div className="flex justify-between font-semibold tabular-nums">
-                <span>Total (full lot)</span>
+                <span>Total before shipping</span>
                 <span>{formatCurrency(lotValue + buyerFee)}</span>
               </div>
             </div>

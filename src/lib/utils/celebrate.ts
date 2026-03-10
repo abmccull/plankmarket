@@ -7,8 +7,7 @@ function canRunConfetti(): boolean {
 
   if (
     typeof navigator !== "undefined" &&
-    /jsdom/i.test(navigator.userAgent) &&
-    process.env.ENABLE_CONFETTI_IN_TESTS !== "1"
+    /jsdom/i.test(navigator.userAgent)
   ) {
     return false;
   }

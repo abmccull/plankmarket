@@ -119,11 +119,11 @@ export default function TermsOfServicePage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">PlankMarket charges the following fees:</p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 3% of the combined inventory subtotal plus shipping, added to the buyer&apos;s total at checkout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 3% of the inventory subtotal only, added to the buyer&apos;s total at checkout</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Commission:</strong> 2% of the inventory subtotal, deducted from seller payout</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Processing Fee:</strong> 2.9% + $0.30 calculated on inventory subtotal only and deducted from seller payout</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Platform Processing Share:</strong> PlankMarket absorbs processing costs attributable to shipping and any remaining processor share not assigned to seller</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping Charge:</strong> Shipping costs are determined by carrier rates and charged to the buyer unless otherwise agreed</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping Charge:</strong> Shipping is quoted separately at checkout. The quoted amount may include carrier charges plus PlankMarket shipping margin and is charged to the buyer unless otherwise agreed</li>
           </ul>
           <p className="text-sm text-muted-foreground">
             All fees are subject to change with 30 days notice. Fees are non-refundable except as required by law or as explicitly stated in our refund policy.

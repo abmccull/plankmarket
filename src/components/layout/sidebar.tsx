@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
 import { UnreadBadge } from "@/components/messaging/unread-badge";
+import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
   Package,
@@ -33,24 +34,25 @@ interface SidebarItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
 }
 
 const sellerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
   { title: "My Listings", href: "/seller/listings", icon: List },
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
-  { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet },
+  { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
   { title: "Request Board", href: "/seller/request-board", icon: ClipboardList },
-  { title: "Buyer CRM", href: "/seller/crm", icon: Users },
-  { title: "Follow-ups", href: "/seller/followups", icon: Clock },
+  { title: "Buyer CRM", href: "/seller/crm", icon: Users, badge: "Pro" },
+  { title: "Follow-ups", href: "/seller/followups", icon: Clock, badge: "Pro" },
   { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
   { title: "Offers", href: "/offers", icon: Handshake },
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Orders", href: "/seller/orders", icon: Package },
   { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
-  { title: "Market Intel", href: "/seller/market", icon: TrendingUp },
+  { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
   { title: "Payments", href: "/seller/payments", icon: CreditCard },
-  { title: "AI Agent", href: "/settings/agent", icon: Bot },
+  { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
   { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
   { title: "Settings", href: "/seller/settings", icon: Settings },
 ];
@@ -62,8 +64,10 @@ const buyerItems: SidebarItem[] = [
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
   { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
+  { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
   { title: "My Requests", href: "/buyer/requests", icon: FileText },
   { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
+  { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
   { title: "Settings", href: "/buyer/settings", icon: Settings },
 ];
 
@@ -125,6 +129,11 @@ export function Sidebar() {
             >
               <item.icon className="h-4 w-4" />
               {item.title}
+              {item.badge && (
+                <Badge variant="outline" className="ml-auto border-amber-300 bg-amber-50 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                  {item.badge}
+                </Badge>
+              )}
               {isMessagesItem && unreadCount > 0 && (
                 <UnreadBadge count={unreadCount} className="ml-auto" />
               )}

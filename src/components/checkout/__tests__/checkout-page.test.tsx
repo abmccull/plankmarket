@@ -231,7 +231,7 @@ describe("CheckoutPage", () => {
 
     // Buyer fee label
     expect(
-      screen.getByText(/Buyer fee \(3% on inventory \+ shipping\)/i),
+      screen.getByText(/Buyer fee \(3% on inventory only\)/i),
     ).toBeInTheDocument();
 
     // Buyer fee amount ($210.00)

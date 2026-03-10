@@ -54,12 +54,12 @@ describe("calculateOrderFees - edge cases", () => {
     it("handles fractional-cent inputs (subtotal=$99.99, shipping=$49.99)", () => {
       const fees = calculateOrderFees(99.99, 49.99);
 
-      expect(fees.buyerFee).toBe(4.5);
-      expect(fees.totalCharge).toBe(154.48);
+      expect(fees.buyerFee).toBe(3);
+      expect(fees.totalCharge).toBe(152.98);
       expect(fees.sellerFee).toBe(2);
       expect(fees.sellerStripeFee).toBe(3.2);
-      expect(fees.totalStripeFee).toBe(4.78);
-      expect(fees.platformStripeFee).toBe(1.58);
+      expect(fees.totalStripeFee).toBe(4.74);
+      expect(fees.platformStripeFee).toBe(1.54);
       expect(fees.sellerPayout).toBe(94.79);
     });
   });
@@ -76,10 +76,12 @@ describe("calculateOrderFees - edge cases", () => {
       expect(fees).toEqual(feesZero);
 
       // Verify specific values with subtotal clamped to 0
-      expect(fees.buyerFee).toBe(0.3);
-      expect(fees.totalCharge).toBe(10.3);
+      expect(fees.buyerFee).toBe(0);
+      expect(fees.totalCharge).toBe(10);
       expect(fees.sellerFee).toBe(0);
       expect(fees.sellerStripeFee).toBe(0.3);
+      expect(fees.totalStripeFee).toBe(0.59);
+      expect(fees.platformStripeFee).toBe(0.29);
       expect(fees.sellerPayout).toBe(-0.3);
     });
 
@@ -105,12 +107,12 @@ describe("calculateOrderFees - edge cases", () => {
     it("handles $1,000,000 subtotal with $50,000 shipping without overflow", () => {
       const fees = calculateOrderFees(1_000_000, 50_000);
 
-      expect(fees.buyerFee).toBe(31_500);
-      expect(fees.totalCharge).toBe(1_081_500);
+      expect(fees.buyerFee).toBe(30_000);
+      expect(fees.totalCharge).toBe(1_080_000);
       expect(fees.sellerFee).toBe(20_000);
       expect(fees.sellerStripeFee).toBe(29_000.3);
-      expect(fees.totalStripeFee).toBe(31_363.8);
-      expect(fees.platformStripeFee).toBe(2_363.5);
+      expect(fees.totalStripeFee).toBe(31_320.3);
+      expect(fees.platformStripeFee).toBe(2_320);
       expect(fees.sellerPayout).toBe(950_999.7);
 
       // No field should be Infinity or NaN
@@ -150,10 +152,11 @@ describe("calculateOrderFees - edge cases", () => {
       [1_000_000, 50_000],
     ];
 
-    it("buyerFee is always 3% of (subtotal + shipping), rounded", () => {
+    it("buyerFee is always 3% of subtotal, rounded", () => {
       for (const [subtotal, shipping] of testCases) {
         const fees = calculateOrderFees(subtotal, shipping);
-        const expected = Math.round(0.03 * (subtotal + shipping) * 100) / 100;
+        const expected =
+          Math.round(0.03 * Math.max(0, subtotal) * 100) / 100;
         expect(fees.buyerFee).toBe(expected);
       }
     });

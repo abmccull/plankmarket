@@ -24,7 +24,7 @@ import {
 export const metadata: Metadata = {
   title: "For Buyers — Closeout Flooring Your Competitors Miss | PlankMarket",
   description:
-    "Source first-quality closeout and surplus flooring below standard channel pricing. 44 data fields per listing. Verified sellers. Integrated LTL freight. 3% buyer fee, no subscription.",
+    "Source first-quality closeout and surplus flooring below standard channel pricing. 44 data fields per listing. Verified sellers. Integrated LTL freight. 3% buyer fee, with optional Pro for advanced tools.",
   openGraph: {
     title: "The Closeout Inventory Your Competitors Never See.",
     description:
@@ -527,13 +527,13 @@ export default function ForBuyersPage() {
                 Transparent Pricing
               </Badge>
               <h2 className="font-display text-3xl sm:text-4xl">
-                3% on completed purchases. Nothing else.
+                3% on inventory purchases. Freight quoted separately.
               </h2>
               <p className="mt-4 text-muted-foreground max-w-2xl mx-auto">
-                No subscription fees. No listing access fees. No charges to
-                browse. The 3% buyer fee covers payment processing, secure payment
-                protection, dispute resolution, platform support, and freight
-                coordination tools.
+                No required subscription. No listing access fees. No charges to
+                browse. Optional Pro is available for unlimited saved searches,
+                AI monitoring, and advanced automation. The 3% buyer fee applies
+                to inventory only when you complete a purchase.
               </p>
             </div>
 
@@ -565,10 +565,10 @@ export default function ForBuyersPage() {
                     </div>
                     <div className="flex justify-between items-center py-3">
                       <dt className="text-xs text-muted-foreground">
-                        Freight quoted separately at checkout
+                        Freight quoted separately at checkout with shipping margin built in
                       </dt>
                       <dt className="text-xs text-muted-foreground">
-                        Seller receives $7,840
+                        No extra buyer fee applies to freight
                       </dt>
                     </div>
                   </dl>
@@ -637,7 +637,7 @@ export default function ForBuyersPage() {
                 {
                   question: "Who can buy on PlankMarket?",
                   answer:
-                    "PlankMarket is a B2B marketplace for flooring professionals. Retailers, contractors, and builders. To buy, you need to create an account and complete business verification. Your business name, contact information, and EIN are reviewed and approved by our team, typically within 1-3 business days.",
+                    "PlankMarket is a B2B marketplace for flooring professionals. Retailers, contractors, and builders can create an account and browse immediately. Verification is required before checkout. Your business name, contact information, and EIN are reviewed and approved by our team, typically within 1-3 business days.",
                 },
                 {
                   question: "What types of flooring are listed?",
@@ -652,7 +652,7 @@ export default function ForBuyersPage() {
                 {
                   question: "How does freight work?",
                   answer:
-                    "PlankMarket uses integrated LTL freight. At checkout, you enter your delivery address and we generate freight quotes from our carrier network based on pallet weight and dimensions. You select a rate, the freight cost is added to your order, and you can track the shipment in real time through your buyer dashboard.",
+                    "PlankMarket uses integrated LTL freight. At checkout, you enter your delivery address and we generate freight quotes from our carrier network based on pallet weight and dimensions. You select a rate, the freight cost is added to your order, and you can track the shipment in real time through your buyer dashboard. The freight quote already includes carrier charges plus marketplace shipping margin, so there is no additional buyer fee on freight.",
                 },
                 {
                   question: "What if my order arrives damaged or short?",
@@ -746,7 +746,15 @@ export default function ForBuyersPage() {
                 </Button>
               </Link>
               <p className="mt-5 text-sm text-white/60">
-                No subscription. Browse free. Pay 3% only when you buy.
+                No required subscription. Browse free. Upgrade to Pro only if you
+                want advanced buyer tools.
+              </p>
+              <p className="mt-2 text-sm text-white/70">
+                Need unlimited saved searches or AI monitoring?{" "}
+                <Link href="/pro" className="underline underline-offset-2 hover:text-white">
+                  Explore Pro
+                </Link>
+                .
               </p>
             </div>
           </div>

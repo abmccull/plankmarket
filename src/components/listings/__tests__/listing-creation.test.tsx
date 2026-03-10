@@ -176,7 +176,10 @@ vi.mock("@/lib/stores/auth-store", () => ({
 
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
-    listing: { create: { useMutation: vi.fn() } },
+    listing: {
+      create: { useMutation: vi.fn() },
+      getSellerStats: { useQuery: vi.fn() },
+    },
     useUtils: vi.fn(),
   },
 }));
@@ -238,11 +241,20 @@ function setupMocks(overrides: { currentStep?: number } = {}) {
   });
 
   const trpcMock = trpc as unknown as {
-    listing: { create: { useMutation: Mock } };
+    listing: {
+      create: { useMutation: Mock };
+      getSellerStats: { useQuery: Mock };
+    };
     useUtils: Mock;
   };
   trpcMock.listing.create.useMutation.mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({ id: "new-listing-id" }),
+  });
+  trpcMock.listing.getSellerStats.useQuery.mockReturnValue({
+    data: [
+      { status: "active", count: 0 },
+      { status: "draft", count: 0 },
+    ],
   });
   trpcMock.useUtils.mockReturnValue({});
 

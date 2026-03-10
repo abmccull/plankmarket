@@ -19,7 +19,7 @@ export function calculateOrderFees(
   const safeSubtotal = Math.max(0, subtotal);
   const safeShipping = Math.max(0, shipping);
 
-  const buyerFee = roundMoney(0.03 * (safeSubtotal + safeShipping));
+  const buyerFee = roundMoney(0.03 * safeSubtotal);
   const totalCharge = roundMoney(safeSubtotal + safeShipping + buyerFee);
   const sellerFee = roundMoney(0.02 * safeSubtotal);
   const sellerStripeFee = roundMoney(0.029 * safeSubtotal + 0.30);

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Detection } from "@/lib/content-filter/patterns";
 
 // vi.hoisted runs before vi.mock factories, avoiding the TDZ error
 const mockRedis = vi.hoisted(() => ({
@@ -146,12 +147,15 @@ describe("getViolationCount", () => {
 describe("logContentViolation", () => {
   it("inserts a violation record and increments the Redis counter", async () => {
     mockRedis.ttl.mockResolvedValue(-1);
+    const detections: Detection[] = [
+      { pattern: "test", category: "spam", severity: "medium" },
+    ];
 
     await logContentViolation({
       userId: "user-1",
       contentType: "listing",
       contentBody: "some bad content",
-      detections: [{ pattern: "test", category: "spam", severity: "medium" }] as any,
+      detections,
     });
 
     expect(db.insert).toHaveBeenCalled();

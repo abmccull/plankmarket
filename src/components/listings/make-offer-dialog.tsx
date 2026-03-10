@@ -188,9 +188,13 @@ export function MakeOfferDialog({
                   ${buyerFee.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Shipping</span>
+                <span className="font-medium">Quoted at checkout</span>
+              </div>
               <Separator className="my-2" />
               <div className="flex items-center justify-between">
-                <span className="font-semibold">Total Cost</span>
+                <span className="font-semibold">Total Before Shipping</span>
                 <span className="font-bold text-primary text-lg">
                   ${totalCost.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>

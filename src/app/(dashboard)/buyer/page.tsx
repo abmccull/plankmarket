@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { OnboardingTip } from "@/components/ui/onboarding-tip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ProBadge } from "@/components/pro-badge";
+import { useProStatus } from "@/hooks/use-pro-status";
 import {
   ShoppingCart,
   Heart,
@@ -16,6 +18,7 @@ import {
   Loader2,
   FileText,
   SlidersHorizontal,
+  Sparkles,
 } from "lucide-react";
 
 function TrendingSection() {
@@ -66,6 +69,7 @@ function TrendingSection() {
 }
 
 export default function BuyerDashboardPage() {
+  const { isPro } = useProStatus();
   const { data: orders, isLoading: ordersLoading } =
     trpc.order.getMyOrders.useQuery({ page: 1, limit: 5 });
   const { data: watchlist, isLoading: watchlistLoading } =
@@ -108,6 +112,24 @@ export default function BuyerDashboardPage() {
       </OnboardingTip>
 
       <OnboardingChecklist variant="buyer" />
+
+      {!isPro && (
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100/30 px-5 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Sparkles className="h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
+            <p className="text-sm">
+              Unlock unlimited saved searches, AI monitoring, and automated buyer workflows with{" "}
+              <span className="font-semibold">PlankMarket Pro</span>{" "}
+              <ProBadge className="align-middle" />
+            </p>
+          </div>
+          <Link href="/pro" className="shrink-0">
+            <Button size="sm" variant="gold">
+              Explore Pro
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatsCard

@@ -1,17 +1,18 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProBadge } from "@/components/pro-badge";
+import { ProSuccessActions } from "@/components/subscription/pro-success-actions";
 
 const UNLOCKED_FEATURES = [
   "Unlimited active listings",
-  "AI autonomous agent",
+  "Unlimited saved searches",
+  "AI agent workflows",
   "Market intelligence",
   "Seller CRM",
   "Bulk CSV import",
   "$15/month promotion credit",
   "Priority verification (24hr)",
+  "Pro badge on profile",
 ] as const;
 
 function CheckCircleIcon() {
@@ -82,14 +83,7 @@ export default async function ProSuccessPage({
             ))}
           </ul>
 
-          <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-            <Button asChild>
-              <Link href="/seller">Go to Dashboard</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/settings/subscription">View Subscription</Link>
-            </Button>
-          </div>
+          <ProSuccessActions />
         </CardContent>
       </Card>
     </div>

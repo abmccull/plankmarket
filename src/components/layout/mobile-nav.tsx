@@ -6,6 +6,7 @@ import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
 import { SheetClose } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
 import { getDashboardPath } from "@/lib/auth/roles";
@@ -17,6 +18,7 @@ import {
   LayoutDashboard,
   List,
   Plus,
+  FileSpreadsheet,
   BarChart3,
   CreditCard,
   Settings,
@@ -26,12 +28,16 @@ import {
   Shield,
   HelpCircle,
   Users,
+  TrendingUp,
+  Bot,
+  Crown,
 } from "lucide-react";
 
 interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  badge?: string;
 }
 
 export function MobileNav() {
@@ -59,6 +65,7 @@ export function MobileNav() {
         { title: "Browse Listings", href: "/listings", icon: Search },
         { title: "How It Works", href: "/how-it-works", icon: LayoutDashboard },
         { title: "Pricing", href: "/pricing", icon: CreditCard },
+        { title: "Go Pro", href: "/pro", icon: Crown, badge: "Pro" },
         ...(isLandingPage
           ? [
               { title: "Buyers", href: "/for-buyers", icon: ShoppingCart },
@@ -92,10 +99,14 @@ export function MobileNav() {
         { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
         { title: "My Listings", href: "/seller/listings", icon: List },
         { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
-        { title: "Buyer CRM", href: "/seller/crm", icon: Users },
+        { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
+        { title: "Buyer CRM", href: "/seller/crm", icon: Users, badge: "Pro" },
+        { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
+        { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
         { title: "Orders", href: "/seller/orders", icon: Package },
         { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
         { title: "Payments", href: "/seller/payments", icon: CreditCard },
+        { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
         { title: "Settings", href: "/seller/settings", icon: Settings },
       ];
     }
@@ -106,6 +117,8 @@ export function MobileNav() {
       { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
       { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
       { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
+      { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
+      { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
       { title: "Settings", href: "/buyer/settings", icon: Settings },
     ];
   };
@@ -161,12 +174,17 @@ export function MobileNav() {
                       ? "bg-secondary text-secondary-foreground"
                       : "text-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.title}
-                </Link>
-              </SheetClose>
-            );
+                  >
+                    <item.icon className="h-5 w-5" />
+                    {item.title}
+                    {item.badge && (
+                      <Badge variant="outline" className="ml-auto border-amber-300 bg-amber-50 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                        {item.badge}
+                      </Badge>
+                    )}
+                  </Link>
+                </SheetClose>
+              );
           })}
         </div>
       </div>

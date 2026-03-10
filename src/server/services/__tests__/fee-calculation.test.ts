@@ -5,12 +5,12 @@ describe("calculateOrderFees", () => {
   it("matches the baseline fee split example", () => {
     const fees = calculateOrderFees(750, 250);
 
-    expect(fees.buyerFee).toBe(30);
-    expect(fees.totalCharge).toBe(1030);
+    expect(fees.buyerFee).toBe(22.5);
+    expect(fees.totalCharge).toBe(1022.5);
     expect(fees.sellerFee).toBe(15);
     expect(fees.sellerStripeFee).toBe(22.05);
-    expect(fees.totalStripeFee).toBe(30.17);
-    expect(fees.platformStripeFee).toBe(8.12);
+    expect(fees.totalStripeFee).toBe(29.95);
+    expect(fees.platformStripeFee).toBe(7.9);
     expect(fees.sellerPayout).toBe(712.95);
   });
 
@@ -29,12 +29,12 @@ describe("calculateOrderFees", () => {
   it("handles large totals", () => {
     const fees = calculateOrderFees(150000, 8000);
 
-    expect(fees.buyerFee).toBe(4740);
-    expect(fees.totalCharge).toBe(162740);
+    expect(fees.buyerFee).toBe(4500);
+    expect(fees.totalCharge).toBe(162500);
     expect(fees.sellerFee).toBe(3000);
     expect(fees.sellerStripeFee).toBe(4350.3);
-    expect(fees.totalStripeFee).toBe(4719.76);
-    expect(fees.platformStripeFee).toBe(369.46);
+    expect(fees.totalStripeFee).toBe(4712.8);
+    expect(fees.platformStripeFee).toBe(362.5);
     expect(fees.sellerPayout).toBe(142649.7);
   });
 

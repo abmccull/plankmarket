@@ -19,12 +19,12 @@ const BUYER_FAQS = [
   {
     question: "How are buyer fees calculated?",
     answer:
-      "Buyers pay a 3% platform fee on the inventory subtotal only. Shipping is quoted and added separately at checkout. The buyer fee is shown before payment confirmation.",
+      "Buyers pay a 3% platform fee on the inventory subtotal only. Shipping is quoted separately at checkout, and that freight quote already includes the marketplace shipping margin, so there is no additional buyer fee on shipping.",
   },
   {
     question: "How is shipping handled?",
     answer:
-      "Checkout includes integrated freight quotes. You select a quote during checkout and that shipping amount is included in the order total.",
+      "Checkout includes integrated freight quotes. You select a quote during checkout and that shipping amount is included in the order total. The quoted freight amount already includes the carrier charge plus marketplace shipping margin.",
   },
   {
     question: "Can I make offers before verification?",

@@ -145,6 +145,10 @@ export default function CreateListingPage() {
     ?.filter((s) => s.status === "active")
     .reduce((sum, s) => sum + s.count, 0) ?? 0;
   const atListingLimit = !isPro && activeListingCount >= FREE_LIMITS.activeListings;
+  const requiresVerification =
+    !!user &&
+    user.role !== "admin" &&
+    user.verificationStatus !== "verified";
 
   const createMutation = trpc.listing.create.useMutation();
 
@@ -187,6 +191,13 @@ export default function CreateListingPage() {
       setValue("freightClass", currDefaults?.freightClass ?? "");
     }
   }, [watchedValues.materialType, watchedValues.nmfcCode, watchedValues.freightClass, setValue]);
+
+  useEffect(() => {
+    if (!requiresVerification) return;
+
+    toast.error("Verification is required before creating listings.");
+    router.replace("/seller/verification");
+  }, [requiresVerification, router]);
 
   const handleNext = async () => {
     updateFormData(watchedValues);
@@ -249,6 +260,10 @@ export default function CreateListingPage() {
       setIsSubmitting(false);
     }
   };
+
+  if (requiresVerification) {
+    return null;
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -903,9 +918,10 @@ export default function CreateListingPage() {
               <div className="rounded-lg bg-muted/50 p-4 mt-4">
                 <h4 className="text-sm font-medium mb-2">Fee Breakdown</h4>
                 <div className="space-y-1 text-sm text-muted-foreground">
-                  <p>Seller fee: 2% of transaction value</p>
-                  <p>Buyer fee: 3% (paid by buyer)</p>
-                  <p>Blended rate: ~5% total transaction cost</p>
+                  <p>Seller fee: 2% of inventory subtotal</p>
+                  <p>Buyer fee: 3% of inventory subtotal (paid by buyer)</p>
+                  <p>Seller Stripe fee: 2.9% + $0.30 on inventory subtotal only</p>
+                  <p>Shipping is quoted separately and shipping-related processor cost is absorbed by PlankMarket</p>
                 </div>
               </div>
             </CardContent>

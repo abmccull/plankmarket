@@ -1,51 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const MAX_SESSION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const LOGOUT_CHANNEL = "plankmarket-logout";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setUser, setLoading, logout } = useAuthStore();
   const utils = trpc.useUtils();
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sessionStart = useRef<number>(Date.now());
-
-  const performLogout = useCallback(async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    logout();
-  }, [logout]);
-
-  // Idle timeout: reset on user activity
-  useEffect(() => {
-    const resetIdle = () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-
-      // Check forced session expiry
-      if (Date.now() - sessionStart.current > MAX_SESSION_MS) {
-        performLogout();
-        return;
-      }
-
-      idleTimer.current = setTimeout(() => {
-        performLogout();
-      }, IDLE_TIMEOUT_MS);
-    };
-
-    const events = ["mousedown", "keydown", "scroll", "touchstart"] as const;
-    events.forEach((e) => window.addEventListener(e, resetIdle, { passive: true }));
-    resetIdle();
-
-    return () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-      events.forEach((e) => window.removeEventListener(e, resetIdle));
-    };
-  }, [performLogout]);
 
   // Cross-tab logout sync
   useEffect(() => {
@@ -69,10 +33,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     channel.close();
   }, []);
 
+  const syncServerSession = useCallback(
+    async (forceInvalidate = false) => {
+      if (forceInvalidate) {
+        await utils.invalidate();
+      }
+
+      const result = await utils.auth.getSession.fetch();
+      if (result.isAuthenticated && result.user) {
+        setUser(result.user);
+        return true;
+      }
+
+      setUser(null);
+      return false;
+    },
+    [setUser, utils],
+  );
+
   useEffect(() => {
     const supabase = createClient();
 
-    // Check initial session
     const initAuth = async () => {
       setLoading(true);
       try {
@@ -81,14 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } = await supabase.auth.getSession();
 
         if (session) {
-          sessionStart.current = Date.now();
-          const result = await utils.auth.getSession.fetch();
-          if (result.isAuthenticated && result.user) {
-            setUser(result.user);
-          } else {
-            await supabase.auth.signOut();
-            setUser(null);
-          }
+          await syncServerSession();
         } else {
           setUser(null);
         }
@@ -101,23 +75,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initAuth();
 
-    // Listen for auth state changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session) {
-        sessionStart.current = Date.now();
+      if (
+        session &&
+        (event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "USER_UPDATED")
+      ) {
         setLoading(true);
         try {
-          // Invalidate all cached tRPC data from previous session
-          await utils.invalidate();
-          const result = await utils.auth.getSession.fetch();
-          if (result.isAuthenticated && result.user) {
-            setUser(result.user);
-          } else {
-            await supabase.auth.signOut();
-            setUser(null);
-          }
+          await syncServerSession(event !== "TOKEN_REFRESHED");
         } catch {
           setUser(null);
         } finally {
@@ -125,7 +94,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } else if (event === "SIGNED_OUT") {
         broadcastLogout();
-        // Clear all cached tRPC data so next login starts fresh
         await utils.invalidate();
         setUser(null);
         setLoading(false);
@@ -135,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [setUser, setLoading, utils, broadcastLogout]);
+  }, [setUser, setLoading, utils, broadcastLogout, syncServerSession]);
 
   return <>{children}</>;
 }

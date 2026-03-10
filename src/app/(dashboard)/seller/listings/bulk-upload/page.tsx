@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { trpc } from "@/lib/trpc/client";
@@ -36,17 +36,23 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuthStore } from "@/lib/stores/auth-store";
 
 type PageState = "upload" | "preview" | "submitting";
 
 export default function BulkUploadPage() {
   const router = useRouter();
   const setBatch = useBulkUploadStore((s) => s.setBatch);
+  const { user } = useAuthStore();
 
   const [state, setState] = useState<PageState>("upload");
   const [validRows, setValidRows] = useState<ParsedListingRow[]>([]);
   const [errors, setErrors] = useState<CsvRowError[]>([]);
   const [totalRows, setTotalRows] = useState(0);
+  const requiresVerification =
+    !!user &&
+    user.role !== "admin" &&
+    user.verificationStatus !== "verified";
 
   const bulkCreateMutation = trpc.listing.bulkCreate.useMutation({
     onSuccess: (data) => {
@@ -66,6 +72,13 @@ export default function BulkUploadPage() {
       setState("preview");
     },
   });
+
+  useEffect(() => {
+    if (!requiresVerification) return;
+
+    toast.error("Verification is required before creating listings.");
+    router.replace("/seller/verification");
+  }, [requiresVerification, router]);
 
   const handleFile = useCallback(async (file: File) => {
     try {
@@ -131,6 +144,10 @@ export default function BulkUploadPage() {
     setErrors([]);
     setTotalRows(0);
   };
+
+  if (requiresVerification) {
+    return null;
+  }
 
   return (
     <ProGate feature="Bulk CSV Import">

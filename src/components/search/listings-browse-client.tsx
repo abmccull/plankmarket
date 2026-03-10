@@ -6,10 +6,16 @@ import Link from "next/link";
 import { ListingCard } from "@/components/search/listing-card";
 import { ListingTableView } from "@/components/search/listing-table-view";
 import { FacetedFilters } from "@/components/search/faceted-filters";
+import { SaveSearchDialog } from "@/components/saved-searches/save-search-dialog";
 import { SponsoredCarousel } from "@/components/promotions/sponsored-carousel";
 import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
 import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
 import { FEATURES } from "@/lib/feature-flags";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { useProStatus } from "@/hooks/use-pro-status";
+import { trpc } from "@/lib/trpc/client";
+import { FREE_LIMITS } from "@/lib/pro";
+import { getFilterBadges, searchParamsToFilters } from "@/lib/utils/search-filters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,9 +38,11 @@ import {
   List,
   ChevronLeft,
   ChevronRight,
+  BookmarkPlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SortOption, PromotionTier } from "@/types";
+import { toast } from "sonner";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "date_newest", label: "Newest First" },
@@ -92,6 +100,18 @@ interface ListingsBrowseClientProps {
   };
 }
 
+function buildDefaultSavedSearchName(searchParams: URLSearchParams): string {
+  const badges = getFilterBadges(searchParamsToFilters(searchParams))
+    .map((badge) => badge.label.replace(/"/g, ""))
+    .slice(0, 2);
+
+  if (badges.length > 0) {
+    return badges.join(" • ");
+  }
+
+  return "All Listings";
+}
+
 export function ListingsBrowseClient({
   initialData,
   sponsoredListings,
@@ -99,10 +119,25 @@ export function ListingsBrowseClient({
 }: ListingsBrowseClientProps) {
   const router = useRouter();
   const rawSearchParams = useSearchParams();
+  const { isAuthenticated } = useAuthStore();
+  const { isPro } = useProStatus();
   const [searchInput, setSearchInput] = useState(initialParams.query ?? "");
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { data: savedSearches, refetch: refetchSavedSearches } =
+    trpc.search.getMySavedSearches.useQuery(undefined, {
+      enabled: isAuthenticated,
+      retry: false,
+      staleTime: 60 * 1000,
+    });
+  const currentFilters = searchParamsToFilters(
+    new URLSearchParams(rawSearchParams.toString())
+  );
+  const defaultSavedSearchName = buildDefaultSavedSearchName(
+    new URLSearchParams(rawSearchParams.toString())
+  );
 
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>) => {
@@ -161,11 +196,32 @@ export function ListingsBrowseClient({
   };
 
   const currentPage = initialParams.page;
+  const savedSearchCount = savedSearches?.length ?? 0;
+  const atSearchLimit =
+    isAuthenticated && !isPro && savedSearchCount >= FREE_LIMITS.savedSearches;
   const hasFilters = !!(
     initialParams.materialType ||
     initialParams.condition ||
     initialParams.query
   );
+
+  const handleSaveSearchClick = useCallback(() => {
+    if (!isAuthenticated) {
+      toast.info("Sign in to save searches and get alerts for matching listings.");
+      router.push("/login");
+      return;
+    }
+
+    if (atSearchLimit) {
+      toast.error(
+        `Free accounts are limited to ${FREE_LIMITS.savedSearches} saved searches. Upgrade to Pro for unlimited saved searches.`
+      );
+      router.push("/pro");
+      return;
+    }
+
+    setIsSaveDialogOpen(true);
+  }, [atSearchLimit, isAuthenticated, router]);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -255,6 +311,17 @@ export function ListingsBrowseClient({
               ))}
             </SelectContent>
           </Select>
+          <Button
+            variant={atSearchLimit ? "gold" : "outline"}
+            size="sm"
+            onClick={handleSaveSearchClick}
+            className="h-8"
+          >
+            <BookmarkPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+            {isAuthenticated && !isPro
+              ? `Save Search (${savedSearchCount}/${FREE_LIMITS.savedSearches})`
+              : "Save Search"}
+          </Button>
           <div className="flex border rounded-md">
             <Button
               variant="ghost"
@@ -285,6 +352,16 @@ export function ListingsBrowseClient({
           </div>
         </div>
       </div>
+
+      <SaveSearchDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        filters={currentFilters}
+        defaultName={defaultSavedSearchName}
+        onSaved={() => {
+          refetchSavedSearches();
+        }}
+      />
 
       {/* Premium Hero Banner */}
       {FEATURES.PROMOTIONS_ENABLED && <PremiumHeroBanner />}
