@@ -5,6 +5,7 @@ import { listings, listingPromotions } from "@/server/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import Stripe from "stripe";
 import { env } from "@/env";
+import { calculateProratedPromotionRefundCents } from "@/server/services/promotion-refunds";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-01-28.clover" as const,
@@ -93,25 +94,18 @@ export async function GET(req: NextRequest) {
   for (const promotion of stalePromotions) {
     const listing = await db.query.listings.findFirst({
       where: eq(listings.id, promotion.listingId),
-      columns: { status: true, expiresAt: true },
+      columns: { status: true, expiresAt: true, soldAt: true },
     });
 
-    if (
-      listing &&
-      (listing.status === "expired" || listing.status === "sold") &&
-      listing.expiresAt &&
-      new Date(listing.expiresAt) < new Date(promotion.expiresAt)
-    ) {
-      const totalMs =
-        new Date(promotion.expiresAt).getTime() -
-        new Date(promotion.startsAt).getTime();
-      const usedMs =
-        new Date(listing.expiresAt).getTime() -
-        new Date(promotion.startsAt).getTime();
-      const unusedRatio = Math.max(0, 1 - usedMs / totalMs);
-      const refundAmount = Math.round(
-        promotion.pricePaid * unusedRatio * 100
-      );
+    if (listing) {
+      const refundAmount = calculateProratedPromotionRefundCents({
+        pricePaid: promotion.pricePaid,
+        startsAt: promotion.startsAt,
+        promotionExpiresAt: promotion.expiresAt,
+        listingStatus: listing.status,
+        listingExpiresAt: listing.expiresAt,
+        listingSoldAt: listing.soldAt,
+      });
 
       if (refundAmount > 0 && promotion.stripePaymentIntentId) {
         try {

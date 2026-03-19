@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { orders, notifications } from "@/server/db/schema";
 import { env } from "@/env";
 import type { Database } from "@/server/db";
+import { releaseReservedInventory } from "./inventory-reservation";
 
 const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
   apiVersion: "2026-01-28.clover" as const,
@@ -19,6 +20,20 @@ interface RefundResult {
   refundId: string;
   amountRefunded: number;
   transferReversalId?: string;
+}
+
+export function shouldReleaseInventoryOnRefund(params: {
+  orderStatus: string;
+  isFullRefund: boolean;
+}): boolean {
+  const { orderStatus, isFullRefund } = params;
+
+  return (
+    isFullRefund &&
+    (orderStatus === "pending" ||
+      orderStatus === "confirmed" ||
+      orderStatus === "processing")
+  );
 }
 
 /**
@@ -96,41 +111,54 @@ export async function processOrderRefund({
     order.escrowStatus === "held" || order.escrowStatus === "released"
       ? "refunded"
       : order.escrowStatus;
+  const shouldReleaseInventory = shouldReleaseInventoryOnRefund({
+    orderStatus: order.status,
+    isFullRefund,
+  });
 
-  // Update the order
-  await db
-    .update(orders)
-    .set({
-      paymentStatus: newPaymentStatus,
-      status: newOrderStatus,
-      escrowStatus: newEscrowStatus,
-      refundedAt: new Date(),
-      refundedAmount: refundAmountCents / 100,
-      stripeRefundId: refund.id,
-      updatedAt: new Date(),
-    })
-    .where(eq(orders.id, orderId));
-
-  // Create notifications for buyer and seller
   const refundAmountFormatted = `$${(refundAmountCents / 100).toFixed(2)}`;
-  await db.insert(notifications).values([
-    {
-      userId: order.buyerId,
-      type: "system" as const,
-      title: "Refund Processed",
-      message: `A ${isFullRefund ? "full" : "partial"} refund of ${refundAmountFormatted} has been issued for order ${order.orderNumber}.${reason ? ` Reason: ${reason}` : ""}`,
-      data: { orderId: order.id },
-      read: false,
-    },
-    {
-      userId: order.sellerId,
-      type: "system" as const,
-      title: "Order Refunded",
-      message: `A ${isFullRefund ? "full" : "partial"} refund of ${refundAmountFormatted} has been issued for order ${order.orderNumber}.${reason ? ` Reason: ${reason}` : ""}`,
-      data: { orderId: order.id },
-      read: false,
-    },
-  ]);
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(orders)
+      .set({
+        paymentStatus: newPaymentStatus,
+        status: newOrderStatus,
+        escrowStatus: newEscrowStatus,
+        refundedAt: new Date(),
+        refundedAmount: refundAmountCents / 100,
+        stripeRefundId: refund.id,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId));
+
+    if (shouldReleaseInventory) {
+      await releaseReservedInventory({
+        db: tx,
+        orderId,
+        reason: "full_refund_before_shipment",
+      });
+    }
+
+    await tx.insert(notifications).values([
+      {
+        userId: order.buyerId,
+        type: "system" as const,
+        title: "Refund Processed",
+        message: `A ${isFullRefund ? "full" : "partial"} refund of ${refundAmountFormatted} has been issued for order ${order.orderNumber}.${reason ? ` Reason: ${reason}` : ""}`,
+        data: { orderId: order.id },
+        read: false,
+      },
+      {
+        userId: order.sellerId,
+        type: "system" as const,
+        title: "Order Refunded",
+        message: `A ${isFullRefund ? "full" : "partial"} refund of ${refundAmountFormatted} has been issued for order ${order.orderNumber}.${reason ? ` Reason: ${reason}` : ""}`,
+        data: { orderId: order.id },
+        read: false,
+      },
+    ]);
+  });
 
   return {
     refundId: refund.id,

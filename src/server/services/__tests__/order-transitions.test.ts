@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   VALID_STATUS_TRANSITIONS,
+  canSellerUpdateOrderStatus,
   isValidTransition,
 } from "../order-transitions";
 
@@ -112,5 +113,57 @@ describe("isValidTransition — edge cases", () => {
     expect(Object.keys(VALID_STATUS_TRANSITIONS).sort()).toEqual(
       expectedStatuses.sort(),
     );
+  });
+});
+
+describe("canSellerUpdateOrderStatus", () => {
+  it("rejects pending -> confirmed before payment succeeds", () => {
+    expect(
+      canSellerUpdateOrderStatus({
+        currentStatus: "pending",
+        nextStatus: "confirmed",
+        paymentStatus: "pending",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows pending -> confirmed after payment succeeds", () => {
+    expect(
+      canSellerUpdateOrderStatus({
+        currentStatus: "pending",
+        nextStatus: "confirmed",
+        paymentStatus: "succeeded",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects seller cancellation once payment has succeeded", () => {
+    expect(
+      canSellerUpdateOrderStatus({
+        currentStatus: "confirmed",
+        nextStatus: "cancelled",
+        paymentStatus: "succeeded",
+      }),
+    ).toBe(false);
+  });
+
+  it("allows seller cancellation while the order is still unpaid", () => {
+    expect(
+      canSellerUpdateOrderStatus({
+        currentStatus: "pending",
+        nextStatus: "cancelled",
+        paymentStatus: "pending",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects fulfillment transitions before payment succeeds", () => {
+    expect(
+      canSellerUpdateOrderStatus({
+        currentStatus: "confirmed",
+        nextStatus: "processing",
+        paymentStatus: "pending",
+      }),
+    ).toBe(false);
   });
 });

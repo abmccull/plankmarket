@@ -4,7 +4,7 @@
   "installCommand": "npm install",
   "buildCommand": "next build",
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": true
   },
   "crons": [
     {

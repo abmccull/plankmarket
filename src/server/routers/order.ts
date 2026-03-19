@@ -21,7 +21,7 @@ import { inngest } from "@/lib/inngest/client";
 import { redis } from "@/lib/redis/client";
 import { maskUserForOrder } from "@/lib/contact-masking";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
-import { VALID_STATUS_TRANSITIONS } from "@/server/services/order-transitions";
+import { canSellerUpdateOrderStatus } from "@/server/services/order-transitions";
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
@@ -1037,6 +1037,7 @@ export const orderRouter = createTRPCRouter({
           id: true,
           status: true,
           escrowStatus: true,
+          paymentStatus: true,
         },
       });
 
@@ -1047,9 +1048,37 @@ export const orderRouter = createTRPCRouter({
         });
       }
 
-      // Validate status transition
-      const allowedTransitions = VALID_STATUS_TRANSITIONS[order.status];
-      if (!allowedTransitions || !allowedTransitions.includes(input.status)) {
+      if (
+        !canSellerUpdateOrderStatus({
+          currentStatus: order.status,
+          nextStatus: input.status,
+          paymentStatus: order.paymentStatus,
+        })
+      ) {
+        if (
+          input.status === "cancelled" &&
+          (order.paymentStatus === "succeeded" ||
+            order.paymentStatus === "partially_refunded")
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Paid orders must be cancelled by an admin so the refund can be processed.",
+          });
+        }
+
+        if (
+          input.status !== "cancelled" &&
+          order.paymentStatus !== "succeeded" &&
+          order.paymentStatus !== "partially_refunded"
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Order payment must succeed before it can move to the next fulfillment stage.",
+          });
+        }
+
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Cannot transition order from "${order.status}" to "${input.status}"`,

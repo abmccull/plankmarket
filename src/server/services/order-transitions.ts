@@ -23,3 +23,37 @@ export function isValidTransition(from: string, to: string): boolean {
   if (!allowed) return false;
   return allowed.includes(to);
 }
+
+function hasCapturedPayment(paymentStatus: string | null | undefined): boolean {
+  return paymentStatus === "succeeded" || paymentStatus === "partially_refunded";
+}
+
+export function canSellerUpdateOrderStatus(params: {
+  currentStatus: string;
+  nextStatus: string;
+  paymentStatus: string | null | undefined;
+}): boolean {
+  const { currentStatus, nextStatus, paymentStatus } = params;
+
+  if (!isValidTransition(currentStatus, nextStatus)) {
+    return false;
+  }
+
+  if (nextStatus === "cancelled") {
+    return !hasCapturedPayment(paymentStatus);
+  }
+
+  if (nextStatus === "confirmed") {
+    return hasCapturedPayment(paymentStatus);
+  }
+
+  if (
+    nextStatus === "processing" ||
+    nextStatus === "shipped" ||
+    nextStatus === "delivered"
+  ) {
+    return hasCapturedPayment(paymentStatus);
+  }
+
+  return true;
+}

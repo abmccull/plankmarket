@@ -91,6 +91,11 @@ export default function SellerOrderDetailPage() {
     );
   }
 
+  const paymentCaptured =
+    order.paymentStatus === "succeeded" ||
+    order.paymentStatus === "partially_refunded";
+  const canSellerCancel = !paymentCaptured;
+
   return (
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
@@ -262,7 +267,7 @@ export default function SellerOrderDetailPage() {
               </div>
             )}
             <div className="flex gap-2">
-              {order.status === "pending" && (
+              {order.status === "pending" && paymentCaptured && (
                 <Button onClick={() => handleUpdateStatus("confirmed")}>
                   Confirm Order
                 </Button>
@@ -280,7 +285,8 @@ export default function SellerOrderDetailPage() {
                   Mark as Delivered
                 </Button>
               )}
-              {(order.status as string) !== "cancelled" &&
+              {canSellerCancel &&
+                (order.status as string) !== "cancelled" &&
                 (order.status as string) !== "delivered" && (
                   <Button
                     variant="destructive"
