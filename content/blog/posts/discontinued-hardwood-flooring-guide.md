@@ -121,12 +121,10 @@ Even discontinued, inventory should be:
 
 Discontinued hardwood pricing (vs. wholesale when product was current):
 
-| Situation | Typical Discount |
-|-----------|------------------|
-| Recently discontinued (under 1 year) | 25-35% |
-| Discontinued 1-2 years | 35-45% |
-| Discontinued 2+ years | 45-60% |
-| Fashion-dated (out of style) | 50-65% |
+- **Recently discontinued (under 1 year)** — 25-35% off
+- **Discontinued 1-2 years** — 35-45% off
+- **Discontinued 2+ years** — 45-60% off
+- **Fashion-dated (out of style)** — 50-65% off
 
 The longer product has been discontinued, the more motivated sellers become.
 

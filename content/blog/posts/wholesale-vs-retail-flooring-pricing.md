@@ -89,12 +89,10 @@ Retail pricing is typically 2-3x manufacturer cost.
 
 What this looks like for a typical product (mid-grade engineered hardwood):
 
-| Level | Price per Sq Ft | Markup from Previous |
-|-------|-----------------|---------------------|
-| Manufacturing cost | $2.00 | — |
-| Manufacturer price (to distributor) | $2.80 | 40% |
-| Wholesale price (to contractor) | $3.75 | 34% |
-| Retail price (to consumer) | $6.50 | 73% |
+- **Manufacturing cost:** $2.00/sq ft
+- **Manufacturer price (to distributor):** $2.80/sq ft (40% markup)
+- **Wholesale price (to contractor):** $3.75/sq ft (34% markup)
+- **Retail price (to consumer):** $6.50/sq ft (73% markup)
 
 The spread from wholesale to retail is where contractors make margin.
 
@@ -104,11 +102,9 @@ Closeout pricing disrupts these tiers.
 
 When inventory needs to move (discontinued, overstock, excess), sellers accept lower prices:
 
-| Closeout Level | Typical Pricing |
-|----------------|-----------------|
-| Distributor selling closeout | 20-40% below wholesale |
-| Manufacturer selling closeout | 30-50% below wholesale |
-| Aggressive liquidation | 50-70% below wholesale |
+- **Distributor selling closeout:** 20-40% below wholesale
+- **Manufacturer selling closeout:** 30-50% below wholesale
+- **Aggressive liquidation:** 50-70% below wholesale
 
 At aggressive closeout pricing, a contractor might pay less than what the manufacturer originally charged the distributor.
 

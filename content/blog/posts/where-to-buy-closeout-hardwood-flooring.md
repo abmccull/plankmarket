@@ -191,13 +191,15 @@ On consumer marketplaces like Craigslist or Facebook, you're taking on more risk
 
 What should you expect to pay? (Discounts relative to wholesale)
 
-| Type | Condition | Typical Discount |
-|------|-----------|------------------|
-| Solid red/white oak | Overstock | 15-25% below wholesale |
-| Solid red/white oak | Discontinued | 25-40% below wholesale |
-| Solid exotic species | Closeout | 30-45% below wholesale |
-| Engineered oak | Overstock | 20-30% below wholesale |
-| Engineered oak | Discontinued | 30-45% below wholesale |
+**Solid red/white oak (overstock):** 15-25% below wholesale. These are fresh inventory that didn't move — good product, modest discount.
+
+**Solid red/white oak (discontinued):** 25-40% below wholesale. The line is being replaced. Deeper discount, same quality.
+
+**Solid exotic species (closeout):** 30-45% below wholesale. Less demand for exotics means steeper markdowns.
+
+**Engineered oak (overstock):** 20-30% below wholesale. Engineered is in demand, so discounts are moderate.
+
+**Engineered oak (discontinued):** 30-45% below wholesale. Strong discounts, especially on older width or finish profiles.
 
 If someone is offering 50%+ below wholesale on new product in perfect condition, either the wholesale comp is wrong or something else is off. Good deals exist; too-good-to-be-true deals are usually the latter.
 

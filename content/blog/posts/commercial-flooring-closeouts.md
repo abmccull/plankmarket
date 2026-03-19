@@ -27,28 +27,22 @@ Commercial flooring must meet higher durability standards:
 
 ### LVP/LVT
 
-| Specification | Residential | Commercial |
-|---------------|-------------|------------|
-| Wear layer | 12-20 mil | 20-28+ mil |
-| Thickness | 4-6mm | 5-8mm |
-| Traffic rating | Light-moderate | Heavy |
-| Warranty | 15-25 years | 10-15 years (heavier use) |
+- **Wear layer** — Residential: 12-20 mil, Commercial: 20-28+ mil
+- **Thickness** — Residential: 4-6mm, Commercial: 5-8mm
+- **Traffic rating** — Residential: light-moderate, Commercial: heavy
+- **Warranty** — Residential: 15-25 years, Commercial: 10-15 years (heavier use)
 
 ### Carpet Tile
 
-| Specification | Residential | Commercial |
-|---------------|-------------|------------|
-| Face weight | 20-30 oz | 24-40+ oz |
-| Backing | Residential cushion | Commercial/heavy traffic |
-| Warranty | 10-15 years | 10+ years (heavier use) |
+- **Face weight** — Residential: 20-30 oz, Commercial: 24-40+ oz
+- **Backing** — Residential: residential cushion, Commercial: commercial/heavy traffic
+- **Warranty** — Residential: 10-15 years, Commercial: 10+ years (heavier use)
 
 ### Hardwood
 
-| Specification | Residential | Commercial |
-|---------------|-------------|------------|
-| Finish | Standard poly | Commercial-grade finish |
-| Hardness | Any species | Harder species (oak+) |
-| Maintenance | DIY | Professional maintenance plan |
+- **Finish** — Residential: standard poly, Commercial: commercial-grade finish
+- **Hardness** — Residential: any species, Commercial: harder species (oak+)
+- **Maintenance** — Residential: DIY, Commercial: professional maintenance plan
 
 Products labeled "commercial" should meet these specs. Verify, don't assume.
 
@@ -128,14 +122,12 @@ Check against spec requirements before assuming a closeout will work.
 
 Commercial flooring closeout pricing:
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Commercial LVT/LVP (premium) | Overstock | 20-30% |
-| Commercial LVT/LVP (premium) | Discontinued | 30-45% |
-| Carpet tile (name brand) | Overstock | 25-35% |
-| Carpet tile (name brand) | Discontinued | 35-50% |
-| Commercial hardwood | Closeout | 30-45% |
-| Rubber/specialty | Closeout | 25-40% |
+- **Commercial LVT/LVP (premium), overstock:** 20-30% off
+- **Commercial LVT/LVP (premium), discontinued:** 30-45% off
+- **Carpet tile (name brand), overstock:** 25-35% off
+- **Carpet tile (name brand), discontinued:** 35-50% off
+- **Commercial hardwood, closeout:** 30-45% off
+- **Rubber/specialty, closeout:** 25-40% off
 
 Commercial products have thinner starting margins, so closeout discounts may be slightly less dramatic than residential.
 
@@ -154,13 +146,11 @@ Distributors prefer selling closeouts to known buyers who make quick decisions.
 
 Closeout sourcing takes longer than standard purchasing. Build it into your process:
 
-| Phase | Standard | With Closeout Sourcing |
-|-------|----------|----------------------|
-| Project identified | — | Check closeout availability |
-| Bid preparation | Spec products | Include closeout options |
-| Bid submission | Standard pricing | Lower pricing with closeout |
-| Award | — | Confirm closeout availability |
-| Ordering | Order from catalog | Secure closeout inventory |
+- **Project identified** — Standard: no action. With closeout sourcing: check closeout availability.
+- **Bid preparation** — Standard: spec products. With closeout sourcing: include closeout options.
+- **Bid submission** — Standard: standard pricing. With closeout sourcing: lower pricing with closeout.
+- **Award** — Standard: no action. With closeout sourcing: confirm closeout availability.
+- **Ordering** — Standard: order from catalog. With closeout sourcing: secure closeout inventory.
 
 Starting closeout searches at project identification gives maximum options.
 

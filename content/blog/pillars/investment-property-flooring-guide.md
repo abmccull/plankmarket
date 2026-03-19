@@ -113,12 +113,10 @@ Budget option when LVP isn't available:
 
 Rental property constraints align with closeout characteristics:
 
-| Closeout Constraint | Rental Reality |
-|---------------------|----------------|
-| Limited color selection | Neutral works for any tenant |
-| No reorder option | Fixed unit size, known quantity |
-| May be discontinued | Style doesn't need to be current |
-| No warranty | Durability matters more than warranty |
+- **Limited color selection** — Neutral works for any tenant
+- **No reorder option** — Fixed unit size, known quantity
+- **May be discontinued** — Style doesn't need to be current
+- **No warranty** — Durability matters more than warranty
 
 **Implementation:**
 1. Standardize on 2-3 products for your portfolio
@@ -144,11 +142,9 @@ Current buyer preferences:
 
 ### Product Selection by Flip Tier
 
-| Flip Tier | Floor Expectation | Product |
-|-----------|-------------------|---------|
-| Budget | Functional, updated | Quality LVP or laminate |
-| Mid-range | LVP expected | LVP or engineered hardwood |
-| Premium | Real wood expected | Engineered hardwood |
+- **Budget flip** — Buyers expect functional, updated flooring; use quality LVP or laminate
+- **Mid-range flip** — Buyers expect LVP; use LVP or engineered hardwood
+- **Premium flip** — Buyers expect real wood; use engineered hardwood
 
 Match product to buyer expectations for your market segment.
 
@@ -158,11 +154,9 @@ Flips are margin plays. Closeout sourcing directly improves ROI.
 
 **Cost comparison (2,000 sq ft flip):**
 
-| Sourcing | Cost/sq ft | Total | Savings |
-|----------|------------|-------|---------|
-| Retail | $4.00 | $8,000 | — |
-| Wholesale | $3.00 | $6,000 | $2,000 |
-| Closeout | $2.00 | $4,000 | $4,000 |
+- **Retail:** $4.00/sq ft, $8,000 total
+- **Wholesale:** $3.00/sq ft, $6,000 total, saving $2,000
+- **Closeout:** $2.00/sq ft, $4,000 total, saving $4,000
 
 $4,000 in savings on a flip with $25,000 target profit is 16% margin improvement.
 
@@ -246,14 +240,12 @@ Home Depot, Lowe's clearance can work for smaller needs:
 
 For investment property closeouts:
 
-| Factor | Priority |
-|--------|----------|
-| Durability specs | High |
-| Price | High |
-| Neutral color | High |
-| Current style | Medium |
-| Manufacturer warranty | Low |
-| Fashion-forward | Low |
+- **Durability specs** — High priority
+- **Price** — High priority
+- **Neutral color** — High priority
+- **Current style** — Medium priority
+- **Manufacturer warranty** — Low priority
+- **Fashion-forward** — Low priority
 
 Function over fashion. Price over prestige.
 

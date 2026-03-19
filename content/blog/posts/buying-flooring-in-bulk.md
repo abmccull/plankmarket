@@ -23,14 +23,12 @@ This guide covers when bulk buying makes sense and how to do it right.
 
 Flooring pricing improves at volume breakpoints:
 
-| Quantity | Typical Discount (vs. standard wholesale) |
-|----------|-------------------------------------------|
-| Under 500 sq ft | 0% (standard pricing) |
-| 500-2,000 sq ft | 5-10% |
-| 2,000-5,000 sq ft | 10-15% |
-| 5,000-10,000 sq ft | 15-25% |
-| 10,000-25,000 sq ft | 20-30% |
-| Full container/truckload | 25-40% |
+- **Under 500 sq ft** — 0% (standard pricing)
+- **500-2,000 sq ft** — 5-10% off
+- **2,000-5,000 sq ft** — 10-15% off
+- **5,000-10,000 sq ft** — 15-25% off
+- **10,000-25,000 sq ft** — 20-30% off
+- **Full container/truckload** — 25-40% off
 
 These ranges vary by product and supplier, but the pattern is consistent: volume unlocks savings.
 

@@ -28,12 +28,10 @@ This guide covers how to source flooring materials more effectively: building su
 
 ### Typical Project Cost Structure
 
-| Category | Percentage of Revenue |
-|----------|----------------------|
-| Materials | 40-55% |
-| Labor | 25-35% |
-| Overhead | 10-15% |
-| Profit | 5-15% |
+- **Materials** — 40-55% of revenue
+- **Labor** — 25-35% of revenue
+- **Overhead** — 10-15% of revenue
+- **Profit** — 5-15% of revenue
 
 If materials are 50% of revenue and you reduce material cost by 30%, that's 15 percentage points moving to profit. Your 10% margin becomes 25%.
 
@@ -61,12 +59,10 @@ Profit more than doubled from a change that's invisible to the client.
 
 Different sourcing tiers offer different pricing:
 
-| Tier | Who Pays This | Typical Markup from Previous |
-|------|---------------|------------------------------|
-| Factory/Import | Large distributors | Base pricing |
-| Primary Distribution | Retailers, contractors | 25-40% markup |
-| Retail | Consumers, small contractors | 50-100%+ markup |
-| Closeout | Varies | 25-60% below wholesale |
+- **Factory/Import** — Large distributors pay this; base pricing
+- **Primary Distribution** — Retailers and contractors pay this; 25-40% markup
+- **Retail** — Consumers and small contractors pay this; 50-100%+ markup
+- **Closeout** — Varies; 25-60% below wholesale
 
 Most contractors operate at the distribution tier. Adding closeout sourcing captures additional savings.
 
@@ -297,12 +293,10 @@ A "great deal" 1,000 miles away might not beat a good deal nearby.
 
 Closeout inventory is finite. Get quantities right the first time.
 
-| Installation Type | Recommended Overage |
-|-------------------|---------------------|
-| Straight install | 5-7% |
-| Diagonal | 10-15% |
-| Herringbone/chevron | 15-20% |
-| Complex rooms | 10-15% |
+- **Straight install** — 5-7% overage
+- **Diagonal** — 10-15% overage
+- **Herringbone/chevron** — 15-20% overage
+- **Complex rooms** — 10-15% overage
 
 For closeouts, err high. You can't reorder.
 

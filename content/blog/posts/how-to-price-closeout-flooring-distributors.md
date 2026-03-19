@@ -53,12 +53,10 @@ The "better" unit price produced worse total recovery.
 
 Before pricing, know what holding costs you:
 
-| Cost Category | Typical Range |
-|---------------|---------------|
-| Warehouse space | $0.50-1.50/sq ft/month |
-| Capital cost | 0.5-1%/month of inventory value |
-| Insurance | 0.04-0.08%/month of value |
-| Depreciation | 1-3%/month depending on product |
+- **Warehouse space** — $0.50-1.50/sq ft/month
+- **Capital cost** — 0.5-1%/month of inventory value
+- **Insurance** — 0.04-0.08%/month of value
+- **Depreciation** — 1-3%/month depending on product
 
 **Total:** Often 3-5% of inventory value per month.
 
@@ -72,40 +70,32 @@ Different products have different market expectations:
 
 ### Hardwood (Solid and Engineered)
 
-| Condition | Starting Price | Adjustment After 90 Days |
-|-----------|----------------|-------------------------|
-| Overstock (current line) | 15-20% below wholesale | +5-10% discount |
-| Discontinued (recent) | 25-30% below wholesale | +10% discount |
-| Discontinued (12+ months) | 35-45% below wholesale | Aggressive pricing |
+- **Overstock (current line)** — Start at 15-20% below wholesale, then add 5-10% discount after 90 days
+- **Discontinued (recent)** — Start at 25-30% below wholesale, then add 10% discount after 90 days
+- **Discontinued (12+ months)** — Start at 35-45% below wholesale, then move to aggressive pricing after 90 days
 
 Hardwood holds value better than other categories because product cycles are longer and demand is stable.
 
 ### LVP / Luxury Vinyl
 
-| Condition | Starting Price | Adjustment After 90 Days |
-|-----------|----------------|-------------------------|
-| Overstock (current line) | 20-25% below wholesale | +5-10% discount |
-| Discontinued (recent) | 30-35% below wholesale | +10% discount |
-| Discontinued (12+ months) | 40-50% below wholesale | Aggressive pricing |
+- **Overstock (current line)** — Start at 20-25% below wholesale, then add 5-10% discount after 90 days
+- **Discontinued (recent)** — Start at 30-35% below wholesale, then add 10% discount after 90 days
+- **Discontinued (12+ months)** — Start at 40-50% below wholesale, then move to aggressive pricing after 90 days
 
 LVP moves fast when priced right. Color trends matter more here. Gray tones may need deeper discounts than warm tones currently.
 
 ### Laminate
 
-| Condition | Starting Price | Adjustment After 90 Days |
-|-----------|----------------|-------------------------|
-| Overstock | 30-35% below wholesale | +10% discount |
-| Discontinued | 40-50% below wholesale | +10-15% discount |
-| Slow movers | 50-60% below wholesale | Take offers |
+- **Overstock** — Start at 30-35% below wholesale, then add 10% discount after 90 days
+- **Discontinued** — Start at 40-50% below wholesale, then add 10-15% discount after 90 days
+- **Slow movers** — Start at 50-60% below wholesale, then take offers after 90 days
 
 Laminate is the most competitive closeout category. Price to move.
 
 ### Tile
 
-| Condition | Starting Price | Adjustment After 90 Days |
-|-----------|----------------|-------------------------|
-| Overstock | 30-35% below wholesale | +10% discount |
-| Discontinued | 40-50% below wholesale | +10% discount |
+- **Overstock** — Start at 30-35% below wholesale, then add 10% discount after 90 days
+- **Discontinued** — Start at 40-50% below wholesale, then add 10% discount after 90 days
 
 Tile is heavy, so freight limits your buyer pool. Local buyers may pay more. Distant buyers need deeper discounts.
 

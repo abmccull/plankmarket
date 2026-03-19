@@ -157,12 +157,13 @@ Start sourcing early. Closeout availability is unpredictable.
 
 ## Pricing Targets
 
-| Product Tier | Retail | Target Closeout | Savings |
-|--------------|--------|-----------------|---------|
-| Basic LVP/laminate | $2.50-3.50/sq ft | $1.20-2.00/sq ft | 40-50% |
-| Mid-range LVP | $3.50-5.00/sq ft | $2.00-3.00/sq ft | 35-45% |
-| Engineered hardwood | $5.00-8.00/sq ft | $3.00-5.00/sq ft | 30-40% |
-| Premium engineered | $8.00-12.00/sq ft | $5.00-7.00/sq ft | 30-40% |
+**Basic LVP/laminate:** Retail $2.50-3.50/sq ft, target closeout $1.20-2.00/sq ft (40-50% savings)
+
+**Mid-range LVP:** Retail $3.50-5.00/sq ft, target closeout $2.00-3.00/sq ft (35-45% savings)
+
+**Engineered hardwood:** Retail $5.00-8.00/sq ft, target closeout $3.00-5.00/sq ft (30-40% savings)
+
+**Premium engineered:** Retail $8.00-12.00/sq ft, target closeout $5.00-7.00/sq ft (30-40% savings)
 
 On a 2,000 sq ft flip, hitting target closeout pricing saves $2,000-4,000 vs. retail.
 

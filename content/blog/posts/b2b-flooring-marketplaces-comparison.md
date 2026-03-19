@@ -243,13 +243,11 @@ The market is evolving. These gaps represent opportunity for platforms that solv
 
 Different platforms optimize for different things:
 
-| If you prioritize... | Consider... |
-|---------------------|-------------|
-| Lowest price possible | General liquidation auctions |
-| Known manufacturer quality | Manufacturer clearance programs |
-| Verified professional network | Flooring-specific B2B marketplaces |
-| Local pickup | Regional liquidators, distributor warehouses |
-| Wide selection | Multiple platforms in parallel |
+- **Lowest price possible** — General liquidation auctions
+- **Known manufacturer quality** — Manufacturer clearance programs
+- **Verified professional network** — Flooring-specific B2B marketplaces
+- **Local pickup** — Regional liquidators, distributor warehouses
+- **Wide selection** — Multiple platforms in parallel
 
 No single platform is best for everyone. The right choice depends on your buying patterns, volume, and risk tolerance.
 

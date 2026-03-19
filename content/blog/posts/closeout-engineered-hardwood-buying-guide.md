@@ -43,11 +43,9 @@ For contractors, this creates buying opportunity.
 
 The wear layer is the actual hardwood on top. It's the most important specification for engineered flooring.
 
-| Wear Layer | Quality Level | Refinishing |
-|------------|---------------|-------------|
-| 0.6-1.5mm | Entry level | Cannot refinish |
-| 2-3mm | Standard | 1-2 light refinishes |
-| 4mm+ | Premium | Multiple refinishes possible |
+- **0.6-1.5mm** — Entry level, cannot refinish
+- **2-3mm** — Standard, 1-2 light refinishes
+- **4mm+** — Premium, multiple refinishes possible
 
 **Closeout trap:** Low-quality engineered with thin wear layers sometimes shows up as "premium" closeouts. Check the specs.
 
@@ -99,14 +97,12 @@ Know what your clients are asking for. Closeouts on out-of-style finishes need d
 
 Species matters for both aesthetics and hardness:
 
-| Species | Hardness (Janka) | Market Position |
-|---------|------------------|-----------------|
-| Red oak | 1290 | Traditional, steady demand |
-| White oak | 1360 | On-trend, premium pricing |
-| European oak | 1360 | Preferred for wide plank |
-| Hickory | 1820 | Hardest domestic, popular for high-traffic |
-| Walnut | 1010 | Softer, premium aesthetic |
-| Maple | 1450 | Traditional, less common now |
+- **Red oak** — Janka 1290, traditional, steady demand
+- **White oak** — Janka 1360, on-trend, premium pricing
+- **European oak** — Janka 1360, preferred for wide plank
+- **Hickory** — Janka 1820, hardest domestic, popular for high-traffic
+- **Walnut** — Janka 1010, softer, premium aesthetic
+- **Maple** — Janka 1450, traditional, less common now
 
 European white oak closeouts are the most sought-after. Red oak closeouts need more competitive pricing because demand has shifted.
 
@@ -121,14 +117,12 @@ Character grades are currently more popular than select grades. Factor this into
 
 What to expect for closeout engineered hardwood (discounts vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| European oak, premium (4mm+ wear layer, wide plank) | Overstock | 20-30% |
-| European oak, premium | Discontinued | 30-45% |
-| Domestic oak, standard (2-3mm wear layer) | Overstock | 25-35% |
-| Domestic oak, standard | Discontinued | 35-50% |
-| Hickory, any tier | Closeout | 30-45% |
-| Exotic species | Closeout | 35-55% |
+- **European oak, premium (4mm+ wear layer, wide plank), overstock:** 20-30% off
+- **European oak, premium, discontinued:** 30-45% off
+- **Domestic oak, standard (2-3mm wear layer), overstock:** 25-35% off
+- **Domestic oak, standard, discontinued:** 35-50% off
+- **Hickory, any tier, closeout:** 30-45% off
+- **Exotic species, closeout:** 35-55% off
 
 Premium product at 30%+ off is a good deal. Standard product needs 40%+ off to be compelling because you could probably source current product at 30% off if you tried.
 

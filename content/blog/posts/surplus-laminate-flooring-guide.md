@@ -41,12 +41,10 @@ For buyers willing to use laminate (it's still a solid product for the right app
 
 Laminate thickness directly affects durability and feel:
 
-| Thickness | Quality Level | Application |
-|-----------|---------------|-------------|
-| 6-7mm | Entry | Light residential, temporary |
-| 8-10mm | Standard | General residential |
-| 10-12mm | Premium | Heavy residential, light commercial |
-| 12mm+ | Commercial | Commercial applications |
+- **6-7mm (entry level)** — Light residential or temporary use only. Feels thin underfoot.
+- **8-10mm (standard)** — General residential. The minimum for most contractor work.
+- **10-12mm (premium)** — Heavy residential and light commercial. Noticeably better feel and durability.
+- **12mm+ (commercial)** — Built for commercial traffic. Worth paying more for at closeout.
 
 For surplus purchasing, 8mm is the minimum for general use. 12mm is worth paying more for.
 
@@ -54,13 +52,11 @@ For surplus purchasing, 8mm is the minimum for general use. 12mm is worth paying
 
 The AC (Abrasion Class) rating indicates durability:
 
-| AC Rating | Durability | Application |
-|-----------|------------|-------------|
-| AC1 | Light residential | Bedrooms, closets |
-| AC2 | General residential | Living rooms, dining rooms |
-| AC3 | Heavy residential / Light commercial | All residential, light commercial |
-| AC4 | General commercial | Commercial spaces |
-| AC5 | Heavy commercial | Heavy commercial traffic |
+- **AC1** — Light residential. Bedrooms and closets only.
+- **AC2** — General residential. Living rooms and dining rooms.
+- **AC3** — Heavy residential and light commercial. The minimum for most contractor work.
+- **AC4** — General commercial. Use for kitchens, entryways, and commercial spaces.
+- **AC5** — Heavy commercial. Built for high-traffic commercial environments.
 
 Most contractor work needs AC3 minimum. AC4 for kitchens, entryways, commercial.
 
@@ -88,13 +84,11 @@ Verify the locking system type, especially on older closeout inventory.
 
 Surplus laminate pricing (discounts vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Premium (12mm, AC4+, water-resistant) | Overstock | 30-40% |
-| Premium | Discontinued | 40-55% |
-| Standard (8-10mm, AC3) | Overstock | 35-45% |
-| Standard | Discontinued | 45-60% |
-| Entry level (under 8mm) | Closeout | 50-70% |
+**Premium laminate (12mm, AC4+, water-resistant):** 30-40% off for overstock, 40-55% off when discontinued. The best closeout value in laminate.
+
+**Standard laminate (8-10mm, AC3):** 35-45% off for overstock, 45-60% off when discontinued. Solid product at aggressive pricing.
+
+**Entry level (under 8mm):** 50-70% off. These need deep discounts to move because demand is low.
 
 Laminate closeout pricing is aggressive. Premium laminate at 50% off is common. Standard laminate may go 60%+ off to move.
 

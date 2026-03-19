@@ -60,10 +60,9 @@ For closeouts, "European oak" may command slight premium, but evaluate the actua
 
 ### Construction Type
 
-| Type | Best For | Closeout Value |
-|------|----------|----------------|
-| Solid | Traditional installation, can refinish | High |
-| Engineered | Over concrete, radiant heat, wide plank | High |
+**Solid** — best for traditional installation where you want the option to refinish. Closeout value is high.
+
+**Engineered** — best over concrete, with radiant heat, or in wide plank formats. Closeout value is equally high.
 
 Both have strong demand. Engineered wide plank (7"+) is particularly sought after.
 
@@ -71,12 +70,10 @@ Both have strong demand. Engineered wide plank (7"+) is particularly sought afte
 
 Current preferences favor wider planks:
 
-| Width | Market Position |
-|-------|-----------------|
-| 2¼" - 3¼" | Traditional, declining demand |
-| 4" - 5" | Standard, steady demand |
-| 6" - 7" | Popular, good closeout value |
-| 8"+ | Premium, excellent closeout value |
+- **2¼" - 3¼"** — Traditional look, but demand is declining. Expect deeper discounts.
+- **4" - 5"** — Standard width with steady demand.
+- **6" - 7"** — The sweet spot right now. Popular with designers, good closeout value.
+- **8"+** — Premium wide plank. Excellent closeout value because of strong demand.
 
 Narrow plank closeouts need deeper discounts. Wide plank closeouts sell faster.
 
@@ -96,11 +93,9 @@ Natural and light finishes move fastest at closeout pricing.
 
 White oak grades:
 
-| Grade | Characteristics | Market |
-|-------|-----------------|--------|
-| Select/Prime | Minimal character, uniform | Premium market |
-| Natural/Character | Some color variation, small knots | Mainstream market |
-| Rustic | Significant character, open knots | Character-focused projects |
+- **Select/Prime** — Minimal character, uniform appearance. Targets the premium market.
+- **Natural/Character** — Some color variation and small knots. The mainstream choice right now.
+- **Rustic** — Significant character with open knots. Smaller but dedicated market for character-focused projects.
 
 Character grades are currently more popular than select. Rustic has a smaller but dedicated market.
 
@@ -108,14 +103,13 @@ Character grades are currently more popular than select. Rustic has a smaller bu
 
 White oak closeout pricing (vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Engineered wide plank (7"+) | Overstock | 20-30% |
-| Engineered wide plank | Discontinued | 30-40% |
-| Solid standard width | Overstock | 20-30% |
-| Solid standard width | Discontinued | 30-40% |
-| Narrow plank (any) | Closeout | 35-50% |
-| European oak premium | Closeout | 25-40% |
+**Engineered wide plank (7"+):** 20-30% off for overstock, 30-40% off for discontinued. The most sought-after format — discounts are real but moderate.
+
+**Solid standard width:** 20-30% off for overstock, 30-40% off for discontinued. Similar range to engineered.
+
+**Narrow plank (any construction):** 35-50% off. Declining demand means sellers have to price more aggressively.
+
+**European oak premium:** 25-40% off. The "European" label still commands a premium, even at closeout.
 
 White oak holds value better than most species because demand is strong. Don't expect 50%+ discounts on premium product.
 

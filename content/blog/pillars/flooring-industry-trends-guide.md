@@ -192,12 +192,13 @@ More options for sourcing = more opportunity for smart buyers.
 
 Trends create predictable closeout patterns:
 
-| Phase | Characteristics | Closeout Status |
-|-------|-----------------|-----------------|
-| Emerging (Year 1) | New products, premium pricing | No closeouts |
-| Peak (Years 2-4) | Maximum production, wide availability | Limited closeouts |
-| Plateau (Years 4-6) | Production continues, new trends emerge | Closeouts appear |
-| Decline (Years 6+) | Reduced production, heavy clearing | Deep closeouts |
+**Emerging (Year 1)** — New products, premium pricing. No closeouts available.
+
+**Peak (Years 2-4)** — Maximum production, wide availability. Limited closeouts.
+
+**Plateau (Years 4-6)** — Production continues, new trends emerge. Closeouts appear.
+
+**Decline (Years 6+)** — Reduced production, heavy clearing. Deep closeouts.
 
 **Current positioning (2026):**
 - Gray tones: Decline phase (deep closeouts)
@@ -236,14 +237,12 @@ Know your market when evaluating closeout opportunities.
 
 ### Closeout Opportunity Assessment
 
-| Category | Trend Position | Closeout Availability | Discount Depth |
-|----------|---------------|----------------------|----------------|
-| Gray LVP/laminate | Declining | High | 40-55% |
-| Narrow hardwood | Declining | High | 40-50% |
-| WPC (vs. SPC) | Declining | Moderate-High | 35-50% |
-| High gloss | Declining | Moderate | 45-60% |
-| Wide white oak | Peak | Low | 20-35% |
-| SPC premium | Peak | Moderate | 25-35% |
+- **Gray LVP/laminate** — Declining trend, high closeout availability, 40-55% discounts
+- **Narrow hardwood** — Declining trend, high closeout availability, 40-50% discounts
+- **WPC (vs. SPC)** — Declining trend, moderate-high closeout availability, 35-50% discounts
+- **High gloss** — Declining trend, moderate closeout availability, 45-60% discounts
+- **Wide white oak** — Peak trend, low closeout availability, 20-35% discounts
+- **SPC premium** — Peak trend, moderate closeout availability, 25-35% discounts
 
 Counter-trend products offer deepest discounts. Trending products move faster.
 

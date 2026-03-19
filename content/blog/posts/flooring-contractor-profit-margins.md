@@ -27,12 +27,10 @@ This guide covers how material sourcing affects margins and what you can do abou
 
 For a standard residential flooring project:
 
-| Category | Percentage of Revenue |
-|----------|----------------------|
-| Materials | 40-55% |
-| Labor | 25-35% |
-| Overhead | 10-15% |
-| **Profit** | **5-15%** |
+- **Materials** — 40-55% of revenue
+- **Labor** — 25-35% of revenue
+- **Overhead** — 10-15% of revenue
+- **Profit** — 5-15% of revenue
 
 If materials consume 50% of revenue and you reduce material cost by 30%, that 15% of revenue goes straight to profit.
 

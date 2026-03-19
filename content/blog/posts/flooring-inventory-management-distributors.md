@@ -43,12 +43,10 @@ Track these to catch surplus early:
 
 DOI = (Average Inventory Value) / (Daily Cost of Goods Sold)
 
-| DOI | Status | Action |
-|-----|--------|--------|
-| Under 60 | Healthy | Maintain |
-| 60-90 | Watch | Review slow movers |
-| 90-120 | Concern | Active clearance |
-| 120+ | Problem | Aggressive liquidation |
+- **Under 60 days** — Healthy. Maintain current approach.
+- **60-90 days** — Watch. Review slow movers.
+- **90-120 days** — Concern. Active clearance needed.
+- **120+ days** — Problem. Aggressive liquidation.
 
 Calculate DOI by category and by SKU. Category-level health can mask SKU-level problems.
 
@@ -56,12 +54,10 @@ Calculate DOI by category and by SKU. Category-level health can mask SKU-level p
 
 Turnover = (Annual COGS) / (Average Inventory Value)
 
-| Turnover | Interpretation |
-|----------|----------------|
-| 6+ turns/year | Excellent |
-| 4-6 turns/year | Good |
-| 2-4 turns/year | Below average |
-| Under 2 turns/year | Problem inventory |
+- **6+ turns/year** — Excellent
+- **4-6 turns/year** — Good
+- **2-4 turns/year** — Below average
+- **Under 2 turns/year** — Problem inventory
 
 Higher turnover means less capital tied up and less surplus risk.
 
@@ -69,11 +65,9 @@ Higher turnover means less capital tied up and less surplus risk.
 
 What percentage of inventory is over 6 months old? Over 12 months?
 
-| Age | Target Percentage |
-|-----|-------------------|
-| Under 6 months | 80%+ |
-| 6-12 months | 15% or less |
-| Over 12 months | 5% or less |
+- **Under 6 months** — 80%+ of inventory
+- **6-12 months** — 15% or less
+- **Over 12 months** — 5% or less
 
 If more than 20% of your inventory is over 6 months old, you have a structural problem.
 

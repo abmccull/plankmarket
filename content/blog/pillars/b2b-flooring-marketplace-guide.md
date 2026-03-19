@@ -193,11 +193,9 @@ Transparent pricing respects everyone's time.
 
 **Question:** What does the platform charge?
 
-| Fee Type | Notes |
-|----------|-------|
-| Transaction fees | Aligned incentives — platform wins when deals close |
-| Listing fees | Creates friction, may reduce inventory |
-| Subscription fees | Can work for heavy users |
+- **Transaction fees** — Aligned incentives; platform wins when deals close
+- **Listing fees** — Creates friction, may reduce inventory
+- **Subscription fees** — Can work for heavy users
 
 Understand fees before committing. Transaction fees of 2-5% are typical for B2B marketplaces.
 
@@ -289,23 +287,19 @@ Reputation compounds. Good sellers get better buyer engagement.
 
 ### For Buyers
 
-| Factor | Impact |
-|--------|--------|
-| Aggregated selection | Find products you wouldn't find otherwise |
-| Price transparency | Know you're getting fair pricing |
-| Verified sellers | Reduced risk of problems |
-| Platform fees (buyer side) | 2-3% typical, offset by better pricing |
+- **Aggregated selection** — Find products you wouldn't find otherwise
+- **Price transparency** — Know you're getting fair pricing
+- **Verified sellers** — Reduced risk of problems
+- **Platform fees (buyer side)** — 2-3% typical, offset by better pricing
 
 The fee is typically worthwhile for the selection, transparency, and verification.
 
 ### For Sellers
 
-| Factor | Impact |
-|--------|--------|
-| Reach | Access buyers beyond your network |
-| Lower fees vs. brokers | 2-5% vs. 15-25% broker commission |
-| Speed | Faster liquidation than waiting for right buyer |
-| Separation from primary channel | Closeout sales don't compete with regular sales |
+- **Reach** — Access buyers beyond your network
+- **Lower fees vs. brokers** — 2-5% vs. 15-25% broker commission
+- **Speed** — Faster liquidation than waiting for right buyer
+- **Separation from primary channel** — Closeout sales don't compete with regular sales
 
 For surplus liquidation, marketplace fees are significantly lower than alternatives.
 

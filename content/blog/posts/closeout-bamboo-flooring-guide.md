@@ -71,12 +71,10 @@ Know what you're buying. Marketing language can obscure construction type.
 
 ### Thickness
 
-| Thickness | Quality Level |
-|-----------|---------------|
-| Under 1/2" | Entry |
-| 1/2" | Standard |
-| 9/16" - 5/8" | Premium |
-| 3/4" | Commercial grade |
+- **Under 1/2"** — Entry level
+- **1/2"** — Standard
+- **9/16" - 5/8"** — Premium
+- **3/4"** — Commercial grade
 
 Thicker is better for durability and refinishing potential (strand woven can be refinished).
 
@@ -113,12 +111,10 @@ Finishes vary from matte to high gloss. Current preferences lean toward lower sh
 
 Bamboo closeout pricing (discounts vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Strand woven, premium | Overstock | 25-35% |
-| Strand woven, premium | Discontinued | 35-50% |
-| Engineered bamboo | Closeout | 30-45% |
-| Solid horizontal/vertical | Closeout | 40-55% |
+- **Strand woven, premium (overstock):** 25-35% off wholesale
+- **Strand woven, premium (discontinued):** 35-50% off wholesale
+- **Engineered bamboo (closeout):** 30-45% off wholesale
+- **Solid horizontal/vertical (closeout):** 40-55% off wholesale
 
 Strand woven bamboo closeouts are the best value. The product is genuinely high quality; the discount is real savings.
 

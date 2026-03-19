@@ -41,13 +41,11 @@ Every month you hold, your breakeven recovery drops.
 
 **Monthly holding cost calculation:**
 
-| Cost Factor | Typical Monthly Rate |
-|-------------|---------------------|
-| Warehouse space | 0.5-1.5% of value |
-| Capital cost | 0.5-1% of value |
-| Insurance | 0.03-0.08% of value |
-| Depreciation | 1-3% of value |
-| **Total** | **2-5.5% of value/month** |
+- **Warehouse space** — 0.5-1.5% of value
+- **Capital cost** — 0.5-1% of value
+- **Insurance** — 0.03-0.08% of value
+- **Depreciation** — 1-3% of value
+- **Total** — 2-5.5% of value/month
 
 At 3.5% monthly holding cost, a $100,000 lot costs $3,500/month to hold.
 
@@ -64,13 +62,15 @@ Three factors determine whether to hold or liquidate:
 
 Be honest: what's the realistic chance this moves through your standard sales process?
 
-| Situation | Probability | Implication |
-|-----------|-------------|-------------|
-| Current product, adequate demand | High (>50%) | Hold, promote internally |
-| Current product, soft demand | Medium (20-50%) | Short hold, then liquidate |
-| Recently discontinued | Low (10-20%) | Liquidate promptly |
-| Discontinued 6+ months | Very low (<10%) | Liquidate immediately |
-| Fashion-dated or slow mover | Very low (<10%) | Liquidate immediately |
+**Current product, adequate demand** — High probability (>50%). Hold and promote internally.
+
+**Current product, soft demand** — Medium probability (20-50%). Short hold, then liquidate.
+
+**Recently discontinued** — Low probability (10-20%). Liquidate promptly.
+
+**Discontinued 6+ months** — Very low probability (<10%). Liquidate immediately.
+
+**Fashion-dated or slow mover** — Very low probability (<10%). Liquidate immediately.
 
 If the honest probability is under 25%, waiting is gambling.
 
@@ -116,13 +116,15 @@ This is the math that clarifies most decisions.
 
 ## The Decision Matrix
 
-| Scenario | Action |
-|----------|--------|
-| High probability of normal sale, stable price | Hold, active internal promotion |
-| Low probability of normal sale, any price trajectory | Liquidate immediately |
-| Medium probability, rising price | Short hold (30-60 days), then liquidate |
-| Medium probability, falling price | Liquidate immediately |
-| Any probability, holding cost exceeds possible gain | Liquidate immediately |
+**High probability of normal sale, stable price** — Hold, with active internal promotion.
+
+**Low probability of normal sale, any price trajectory** — Liquidate immediately.
+
+**Medium probability, rising price** — Short hold (30-60 days), then liquidate.
+
+**Medium probability, falling price** — Liquidate immediately.
+
+**Any probability, holding cost exceeds possible gain** — Liquidate immediately.
 
 Most closeout situations fit the "liquidate immediately" or "short hold then liquidate" categories.
 

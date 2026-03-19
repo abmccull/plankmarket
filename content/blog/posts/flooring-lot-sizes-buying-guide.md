@@ -25,14 +25,12 @@ This guide covers how to calculate the right lot size for different situations.
 
 Every flooring installation needs overage. Material gets cut, waste happens, and you need replacement pieces for the future.
 
-| Installation Type | Recommended Overage |
-|-------------------|---------------------|
-| Straight installation, simple room | 5-7% |
-| Diagonal installation | 10-15% |
-| Herringbone/chevron pattern | 15-20% |
-| Complex room shapes | 10-15% |
-| Stair installations | 15-20% |
-| Commercial (high traffic, future repairs) | 10-15% |
+- **Straight installation, simple room** — 5-7%
+- **Diagonal installation** — 10-15%
+- **Herringbone/chevron pattern** — 15-20%
+- **Complex room shapes** — 10-15%
+- **Stair installations** — 15-20%
+- **Commercial (high traffic, future repairs)** — 10-15%
 
 For closeout flooring, err toward the higher end. You can't order more.
 

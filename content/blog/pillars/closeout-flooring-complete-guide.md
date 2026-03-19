@@ -42,12 +42,10 @@ None of these affect product quality. The flooring is the same; the circumstance
 
 Sellers discount closeout inventory because holding it costs money:
 
-| Holding Cost | Typical Rate |
-|--------------|--------------|
-| Warehouse space | $6-15/sq ft annually |
-| Capital tied up | 6-12% of value annually |
-| Insurance | 0.5-1% of value annually |
-| Depreciation | 10-25% annually |
+- **Warehouse space** — $6-15/sq ft annually
+- **Capital tied up** — 6-12% of value annually
+- **Insurance** — 0.5-1% of value annually
+- **Depreciation** — 10-25% annually
 
 A distributor sitting on $100,000 of surplus flooring might pay $25,000-40,000 in annual holding costs. At some point, selling at a discount beats continuing to hold.
 
@@ -188,12 +186,10 @@ Smaller categories with dedicated buyers.
 
 What should you expect to pay? Discounts vary by product condition and time on market.
 
-| Condition | Typical Discount Range |
-|-----------|----------------------|
-| Overstock (current line) | 15-30% below wholesale |
-| Recently discontinued | 25-40% below wholesale |
-| Discontinued 6+ months | 35-50% below wholesale |
-| Fashion-dated/slow mover | 45-65% below wholesale |
+- **Overstock (current line)** — 15-30% below wholesale
+- **Recently discontinued** — 25-40% below wholesale
+- **Discontinued 6+ months** — 35-50% below wholesale
+- **Fashion-dated/slow mover** — 45-65% below wholesale
 
 These are ranges, not guarantees. Research comparable pricing before evaluating specific deals.
 

@@ -78,12 +78,10 @@ Know what you're buying. Marketing terms vary; actual construction matters.
 
 ### Total Thickness
 
-| Thickness | Quality Level | Application |
-|-----------|---------------|-------------|
-| Under 5mm | Entry | Light residential |
-| 5-6mm | Standard | General residential |
-| 6-8mm | Premium | Heavy residential, light commercial |
-| 8mm+ | Commercial | Commercial applications |
+- **Under 5mm (entry)** — Light residential only. Thin and flexible, won't hide subfloor imperfections.
+- **5-6mm (standard)** — General residential. Adequate for most homes.
+- **6-8mm (premium)** — Heavy residential and light commercial. Noticeably more rigid and durable.
+- **8mm+ (commercial)** — Built for commercial traffic. Best feel and performance.
 
 Thicker is generally better for durability and sound absorption.
 
@@ -91,12 +89,10 @@ Thicker is generally better for durability and sound absorption.
 
 The wear layer protects against scratches and wear. Measured in mils:
 
-| Wear Layer | Durability | Application |
-|------------|------------|-------------|
-| 6-12 mil | Light duty | Low-traffic residential |
-| 12-20 mil | Standard | General residential |
-| 20-28 mil | Heavy duty | High-traffic, light commercial |
-| 28+ mil | Commercial | Commercial traffic |
+- **6-12 mil** — Light duty. Low-traffic residential rooms only.
+- **12-20 mil** — Standard. General residential use — the minimum for contractor work.
+- **20-28 mil** — Heavy duty. High-traffic areas, kitchens, entryways, light commercial.
+- **28+ mil** — Commercial grade. Built for sustained commercial traffic.
 
 For contractor work, 12 mil minimum. 20 mil for kitchens, entries, commercial.
 
@@ -129,14 +125,17 @@ Unknown manufacturers without certifications carry risk.
 
 Waterproof flooring closeout pricing (vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| SPC 6mm+, 20mil+, attached pad | Overstock | 20-30% |
-| SPC premium | Discontinued | 30-40% |
-| SPC standard | Closeout | 30-40% |
-| WPC premium | Closeout | 30-45% |
-| WPC standard | Closeout | 35-50% |
-| Standard LVP | Closeout | 40-55% |
+**SPC with premium specs (6mm+, 20mil+, attached pad):** 20-30% off for overstock. The best product in the category — discounts are moderate because demand is strong.
+
+**SPC premium (discontinued):** 30-40% off. Great value when you can find it in current styles.
+
+**SPC standard:** 30-40% off at closeout. Solid product at meaningful savings.
+
+**WPC premium:** 30-45% off. WPC has lost share to SPC, so sellers price more aggressively.
+
+**WPC standard:** 35-50% off. Needs deeper discounts to compete with SPC closeouts.
+
+**Standard LVP:** 40-55% off. Entry-level product that requires steep discounts to move.
 
 SPC with premium specs (thick, good wear layer, attached pad) at 30% off is a strong buy.
 

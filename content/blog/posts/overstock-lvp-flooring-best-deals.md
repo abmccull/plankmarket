@@ -88,11 +88,9 @@ Quality and documentation vary more in retail liquidation. Verify what you're bu
 
 LVP ranges from 2mm to 8mm+ total thickness.
 
-| Thickness | Application | Quality Level |
-|-----------|-------------|---------------|
-| 2-4mm | Light residential, budget | Entry |
-| 4-6mm | Standard residential | Standard |
-| 6-8mm+ | Commercial, heavy residential | Premium |
+- **2-4mm** — Light residential, budget (Entry level)
+- **4-6mm** — Standard residential (Standard level)
+- **6-8mm+** — Commercial, heavy residential (Premium level)
 
 Thicker is generally better: more stability, better acoustics, more realistic feel underfoot.
 
@@ -102,12 +100,10 @@ For closeout purchasing, aim for 5mm+ unless the discount is substantial on thin
 
 The wear layer determines durability. Measured in mils (thousandths of an inch).
 
-| Wear Layer | Durability | Application |
-|------------|------------|-------------|
-| 6-12 mil | Light residential | Bedrooms, low-traffic |
-| 12-20 mil | Standard residential | General use |
-| 20-28 mil | Heavy residential/light commercial | High-traffic areas |
-| 28+ mil | Commercial | Commercial applications |
+- **6-12 mil** — Light residential durability, best for bedrooms and low-traffic areas
+- **12-20 mil** — Standard residential durability, suitable for general use
+- **20-28 mil** — Heavy residential/light commercial durability, ideal for high-traffic areas
+- **28+ mil** — Commercial durability, designed for commercial applications
 
 Most contractor work needs 12 mil minimum. 20 mil for kitchens, entryways, and high-traffic areas.
 
@@ -152,14 +148,10 @@ Wide plank (7"+) and longer lengths are on-trend. Narrow planks (4"-5") may be h
 
 What to expect for overstock LVP (discounts vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Premium SPC (6mm+, 20mil+, attached pad) | Overstock | 20-30% |
-| Premium SPC | Discontinued | 30-40% |
-| Standard SPC (5mm, 12-20mil) | Overstock | 25-35% |
-| Standard SPC | Discontinued | 35-45% |
-| WPC, any tier | Closeout | 30-45% |
-| Entry level (under 5mm) | Closeout | 40-60% |
+- **Premium SPC (6mm+, 20mil+, attached pad):** 20-30% off when overstock, 30-40% off when discontinued
+- **Standard SPC (5mm, 12-20mil):** 25-35% off when overstock, 35-45% off when discontinued
+- **WPC, any tier:** 30-45% off at closeout
+- **Entry level (under 5mm):** 40-60% off at closeout
 
 Premium SPC with attached pad is the sweet spot: strong demand, good closeout availability, and attractive pricing at 25-30% off.
 

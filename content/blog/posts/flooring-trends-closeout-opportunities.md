@@ -109,13 +109,11 @@ Based on current trends, where to find opportunity:
 
 Products where supply exceeds demand, creating aggressive closeout pricing:
 
-| Category | Why It's Closeout | Typical Discount |
-|----------|-------------------|------------------|
-| Gray LVP/laminate | Color trend shift | 40-55% |
-| Narrow hardwood (under 4") | Width trend shift | 40-50% |
-| WPC (vs. SPC) | Technology preference shift | 35-50% |
-| High-gloss finishes | Texture trend shift | 45-60% |
-| Exotic hardwoods | Species preference shift | 40-60% |
+- **Gray LVP/laminate** — Color trend shift, 40-55% off
+- **Narrow hardwood (under 4")** — Width trend shift, 40-50% off
+- **WPC (vs. SPC)** — Technology preference shift, 35-50% off
+- **High-gloss finishes** — Texture trend shift, 45-60% off
+- **Exotic hardwoods** — Species preference shift, 40-60% off
 
 These categories offer maximum savings but require buyers who want (or can sell) the product.
 
@@ -123,12 +121,10 @@ These categories offer maximum savings but require buyers who want (or can sell)
 
 Products with normal closeout availability and pricing:
 
-| Category | Why It's Closeout | Typical Discount |
-|----------|-------------------|------------------|
-| Engineered oak (discontinued lines) | Normal product cycles | 25-40% |
-| SPC/LVP (discontinued colors) | Color refresh | 25-40% |
-| Tile (production run changes) | Normal turnover | 30-45% |
-| Laminate (line updates) | Normal cycles | 35-50% |
+- **Engineered oak (discontinued lines)** — Normal product cycles, 25-40% off
+- **SPC/LVP (discontinued colors)** — Color refresh, 25-40% off
+- **Tile (production run changes)** — Normal turnover, 30-45% off
+- **Laminate (line updates)** — Normal cycles, 35-50% off
 
 Standard closeout opportunity. Good products at good discounts.
 
@@ -136,11 +132,9 @@ Standard closeout opportunity. Good products at good discounts.
 
 Products where closeouts don't last:
 
-| Category | Why It Moves Fast | Typical Discount |
-|----------|-------------------|------------------|
-| Wide-plank white oak | High demand | 20-35% |
-| Premium SPC (warm tones) | Current style | 20-30% |
-| Wire-brushed finishes | Trending texture | 25-35% |
+- **Wide-plank white oak** — High demand, 20-35% off
+- **Premium SPC (warm tones)** — Current style, 20-30% off
+- **Wire-brushed finishes** — Trending texture, 25-35% off
 
 Lower discounts but lower risk. Product sells.
 

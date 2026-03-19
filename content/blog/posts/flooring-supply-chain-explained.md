@@ -116,12 +116,10 @@ Why does surplus exist instead of just selling through? Carrying costs.
 
 Flooring inventory is expensive to hold:
 
-| Cost Factor | Impact |
-|-------------|--------|
-| Warehouse space | $4-15/sq ft annually |
-| Capital tied up | 6-12% annually |
-| Insurance | 0.5-1% annually |
-| Depreciation | 10-25% annually for fashion-sensitive products |
+- **Warehouse space** — $4-15/sq ft annually
+- **Capital tied up** — 6-12% annually
+- **Insurance** — 0.5-1% annually
+- **Depreciation** — 10-25% annually for fashion-sensitive products
 
 A distributor sitting on $1M of surplus flooring might be paying $150-300K/year in carrying costs.
 

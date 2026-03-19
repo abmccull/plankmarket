@@ -25,13 +25,11 @@ When hickory closeouts appear, they represent genuine opportunity: a premium pro
 
 ### Hardness
 
-| Species | Janka Hardness |
-|---------|----------------|
-| Hickory | 1,820 |
-| White Oak | 1,360 |
-| Red Oak | 1,290 |
-| Walnut | 1,010 |
-| Pine | 690 |
+- **Hickory** — 1,820
+- **White Oak** — 1,360
+- **Red Oak** — 1,290
+- **Walnut** — 1,010
+- **Pine** — 690
 
 Hickory is 33% harder than white oak. For high-traffic areas, pet owners, and commercial applications, this matters.
 
@@ -75,11 +73,11 @@ For buyers who want hickory, closeouts offer real value.
 
 Hickory grades significantly affect appearance:
 
-| Grade | Characteristics | Market Position |
-|-------|-----------------|-----------------|
-| Select/Prime | Minimal color variation, few knots | Clean look, premium pricing |
-| Natural/Character | Moderate variation, some knots | Balanced look, mainstream |
-| Rustic | High variation, prominent knots | Character look, often discounted |
+**Select/Prime** — Minimal color variation, few knots. Clean look, premium pricing.
+
+**Natural/Character** — Moderate variation, some knots. Balanced look, mainstream.
+
+**Rustic** — High variation, prominent knots. Character look, often discounted.
 
 For closeouts:
 - Select grade hickory at closeout is valuable (hard to find)
@@ -88,20 +86,17 @@ For closeouts:
 
 ### Construction
 
-| Type | Advantages | Closeout Value |
-|------|------------|----------------|
-| Solid | Can refinish multiple times | High for durability-focused buyers |
-| Engineered | Works over concrete, radiant heat | Good, especially wide plank |
+**Solid** — Can refinish multiple times. High closeout value for durability-focused buyers.
+
+**Engineered** — Works over concrete and radiant heat. Good closeout value, especially wide plank.
 
 Wide plank engineered hickory is increasingly popular.
 
 ### Width
 
-| Width | Market Position |
-|-------|-----------------|
-| 3"-4" | Traditional, declining demand |
-| 5" | Standard, steady |
-| 6"-7"+ | On-trend, premium closeout value |
+- **3"-4"** — Traditional, declining demand
+- **5"** — Standard, steady
+- **6"-7"+** — On-trend, premium closeout value
 
 Wide plank hickory closeouts move faster.
 
@@ -119,13 +114,11 @@ Natural and light finishes are currently preferred.
 
 Hickory closeout pricing (vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Solid, select grade | Closeout | 30-40% |
-| Solid, character grade | Closeout | 35-45% |
-| Engineered, wide plank | Overstock | 25-35% |
-| Engineered, wide plank | Discontinued | 35-50% |
-| Rustic grade (any) | Closeout | 40-55% |
+- **Solid, select grade** (closeout): 30-40% off
+- **Solid, character grade** (closeout): 35-45% off
+- **Engineered, wide plank** (overstock): 25-35% off
+- **Engineered, wide plank** (discontinued): 35-50% off
+- **Rustic grade, any construction** (closeout): 40-55% off
 
 Hickory closeout discounts can be deeper than oak because the buyer pool is smaller.
 

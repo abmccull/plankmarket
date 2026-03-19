@@ -26,13 +26,11 @@ Before deciding to hold or liquidate, know what holding actually costs.
 
 ### Carrying Cost Breakdown
 
-| Cost Category | Typical Rate | Annual Cost on $100K Inventory |
-|---------------|--------------|-------------------------------|
-| Warehouse space | $6-15/sq ft | $3,000-8,000 |
-| Capital cost | 6-12% | $6,000-12,000 |
-| Insurance | 0.5-1% | $500-1,000 |
-| Depreciation | 10-25% | $10,000-25,000 |
-| **Total** | | **$19,500-46,000** |
+- **Warehouse space** — $6-15/sq ft, or $3,000-8,000 annually on $100K inventory
+- **Capital cost** — 6-12%, or $6,000-12,000 annually on $100K inventory
+- **Insurance** — 0.5-1%, or $500-1,000 annually on $100K inventory
+- **Depreciation** — 10-25%, or $10,000-25,000 annually on $100K inventory
+- **Total** — **$19,500-46,000 annually on $100K inventory**
 
 That's 20-46% of inventory value lost annually. A $100,000 surplus that sits for a year might cost you $30,000+ in carrying costs alone.
 
@@ -87,13 +85,15 @@ Pricing closeout flooring is uncomfortable. You paid wholesale, and now you're s
 
 ### Pricing by Product Category
 
-| Product | Overstock | Discontinued (Recent) | Discontinued (6+ months) |
-|---------|-----------|----------------------|-------------------------|
-| Hardwood | 15-25% off | 25-35% off | 35-45% off |
-| Engineered | 20-30% off | 30-40% off | 40-50% off |
-| LVP | 20-30% off | 30-40% off | 40-50% off |
-| Laminate | 30-40% off | 40-50% off | 50-60% off |
-| Tile | 25-35% off | 35-45% off | 45-55% off |
+**Hardwood:** 15-25% off for overstock, 25-35% off for recently discontinued, 35-45% off for discontinued 6+ months
+
+**Engineered:** 20-30% off for overstock, 30-40% off for recently discontinued, 40-50% off for discontinued 6+ months
+
+**LVP:** 20-30% off for overstock, 30-40% off for recently discontinued, 40-50% off for discontinued 6+ months
+
+**Laminate:** 30-40% off for overstock, 40-50% off for recently discontinued, 50-60% off for discontinued 6+ months
+
+**Tile:** 25-35% off for overstock, 35-45% off for recently discontinued, 45-55% off for discontinued 6+ months
 
 These are starting points. Adjust based on market response.
 
@@ -101,13 +101,11 @@ These are starting points. Adjust based on market response.
 
 If inventory isn't moving, reduce systematically:
 
-| Time Listed | Action |
-|-------------|--------|
-| Day 1-30 | Initial price (category ranges above) |
-| Day 31-60 | Reduce 5-10% |
-| Day 61-90 | Reduce another 5-10% |
-| Day 91-120 | Accept any reasonable offer |
-| Day 120+ | Consider donation, aggressive disposal |
+- **Day 1-30** — Initial price (category ranges above)
+- **Day 31-60** — Reduce 5-10%
+- **Day 61-90** — Reduce another 5-10%
+- **Day 91-120** — Accept any reasonable offer
+- **Day 120+** — Consider donation, aggressive disposal
 
 Every month you wait, the math gets worse.
 

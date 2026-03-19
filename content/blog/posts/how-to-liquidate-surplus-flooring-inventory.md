@@ -129,12 +129,10 @@ Pricing closeout flooring is part art, part math.
 
 **Research comparable pricing.** What are similar products selling for at closeout? Typical ranges:
 
-| Product Type | Typical Closeout Discount |
-|--------------|---------------------------|
-| Hardwood (discontinued) | 30-40% below wholesale |
-| Engineered (overstock) | 20-30% below wholesale |
-| LVP (closeout) | 25-35% below wholesale |
-| Laminate (surplus) | 35-50% below wholesale |
+- **Hardwood (discontinued):** 30-40% below wholesale
+- **Engineered (overstock):** 20-30% below wholesale
+- **LVP (closeout):** 25-35% below wholesale
+- **Laminate (surplus):** 35-50% below wholesale
 
 **Factor in time on market.** The longer it's been sitting, the more aggressive your pricing should be. If it's been 6+ months, you've already lost money. Price to move it.
 

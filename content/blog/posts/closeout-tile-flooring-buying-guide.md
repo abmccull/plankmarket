@@ -41,12 +41,10 @@ Before evaluating any tile closeout, understand freight:
 
 **Freight costs:** LTL freight for tile typically runs $0.50-2.00/sq ft depending on distance and quantity.
 
-| Distance | Typical Freight Cost |
-|----------|---------------------|
-| Under 200 miles | $0.30-0.60/sq ft |
-| 200-500 miles | $0.50-1.00/sq ft |
-| 500-1,000 miles | $0.80-1.50/sq ft |
-| 1,000+ miles | $1.20-2.00+/sq ft |
+- **Under 200 miles** — $0.30-0.60/sq ft
+- **200-500 miles** — $0.50-1.00/sq ft
+- **500-1,000 miles** — $0.80-1.50/sq ft
+- **1,000+ miles** — $1.20-2.00+/sq ft
 
 A tile closeout priced at $1.50/sq ft with $1.50/sq ft freight is not actually a deal if regular wholesale delivered is $2.75/sq ft.
 
@@ -56,10 +54,9 @@ A tile closeout priced at $1.50/sq ft with $1.50/sq ft freight is not actually a
 
 ### Porcelain vs. Ceramic
 
-| Type | Characteristics | Value |
-|------|-----------------|-------|
-| Porcelain | Dense, low absorption, freeze-thaw resistant | Higher |
-| Ceramic | Less dense, higher absorption, interior only | Lower |
+**Porcelain** — Dense, low absorption, freeze-thaw resistant. Higher closeout value.
+
+**Ceramic** — Less dense, higher absorption, interior only. Lower closeout value.
 
 Porcelain commands premium even at closeout. Ceramic closeouts need deeper discounts.
 
@@ -74,12 +71,10 @@ Large format tile closeouts are more valuable. Small format needs deeper discoun
 
 ### Finish
 
-| Finish | Current Demand | Closeout Value |
-|--------|----------------|----------------|
-| Matte | High | Premium |
-| Textured/anti-slip | High | Premium |
-| Polished | Medium | Standard |
-| High gloss | Lower | Discount |
+- **Matte** — High demand, premium closeout value
+- **Textured/anti-slip** — High demand, premium closeout value
+- **Polished** — Medium demand, standard closeout value
+- **High gloss** — Lower demand, discount closeout value
 
 Matte and textured finishes are current preferences. High gloss is falling out of favor.
 
@@ -105,13 +100,11 @@ For closeout purchasing:
 
 Tile closeout pricing (discounts vs. wholesale):
 
-| Product | Condition | Typical Discount |
-|---------|-----------|------------------|
-| Porcelain, large format, first quality | Overstock | 25-35% |
-| Porcelain, large format, first quality | Discontinued | 35-50% |
-| Porcelain, standard format | Closeout | 35-45% |
-| Ceramic, any format | Closeout | 40-55% |
-| Large format, dated colors | Closeout | 45-60% |
+- **Porcelain, large format, first quality** (overstock): 25-35% off
+- **Porcelain, large format, first quality** (discontinued): 35-50% off
+- **Porcelain, standard format** (closeout): 35-45% off
+- **Ceramic, any format** (closeout): 40-55% off
+- **Large format, dated colors** (closeout): 45-60% off
 
 Remember: these discounts are before freight. Calculate total delivered cost.
 

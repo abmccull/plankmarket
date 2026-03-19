@@ -187,12 +187,10 @@ This requires storage space but improves economics.
 
 ## Cost Comparison
 
-| Approach | Cost per Sq Ft | Notes |
-|----------|----------------|-------|
-| Big box retail | $3.00-5.00 | Convenient but expensive |
-| Wholesale | $2.00-3.50 | Standard contractor pricing |
-| Closeout | $1.20-2.50 | 30-50% savings |
-| Deep closeout | $0.80-1.50 | Aggressive liquidation pricing |
+- **Big box retail:** $3.00-5.00/sq ft — convenient but expensive
+- **Wholesale:** $2.00-3.50/sq ft — standard contractor pricing
+- **Closeout:** $1.20-2.50/sq ft — 30-50% savings
+- **Deep closeout:** $0.80-1.50/sq ft — aggressive liquidation pricing
 
 On a 1,000 sq ft unit:
 - Retail: $3,000-5,000

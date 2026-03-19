@@ -43,11 +43,9 @@ All discounts shown are relative to typical wholesale pricing (not retail).
 
 ### Hardwood Flooring (Solid)
 
-| Condition | Typical Discount | Good Deal | Walk Away |
-|-----------|------------------|-----------|-----------|
-| Overstock (current line) | 15-25% below wholesale | 25%+ | Under 15% |
-| Discontinued | 25-40% below wholesale | 40%+ | Under 25% |
-| Slight damage/seconds | 40-60% below wholesale | 55%+ | Under 40% |
+- **Overstock (current line):** typically 15-25% below wholesale, good deal at 25%+, walk away under 15%
+- **Discontinued:** typically 25-40% below wholesale, good deal at 40%+, walk away under 25%
+- **Slight damage/seconds:** typically 40-60% below wholesale, good deal at 55%+, walk away under 40%
 
 **Notes:**
 - Species matters: oak and maple move faster than exotic species
@@ -56,11 +54,9 @@ All discounts shown are relative to typical wholesale pricing (not retail).
 
 ### Engineered Hardwood
 
-| Condition | Typical Discount | Good Deal | Walk Away |
-|-----------|------------------|-----------|-----------|
-| Overstock (current line) | 20-30% below wholesale | 30%+ | Under 20% |
-| Discontinued | 30-45% below wholesale | 45%+ | Under 30% |
-| Slight damage/seconds | 45-60% below wholesale | 55%+ | Under 45% |
+- **Overstock (current line):** typically 20-30% below wholesale, good deal at 30%+, walk away under 20%
+- **Discontinued:** typically 30-45% below wholesale, good deal at 45%+, walk away under 30%
+- **Slight damage/seconds:** typically 45-60% below wholesale, good deal at 55%+, walk away under 45%
 
 **Notes:**
 - Wear layer thickness affects closeout value (thicker = more valuable)
@@ -69,11 +65,9 @@ All discounts shown are relative to typical wholesale pricing (not retail).
 
 ### Luxury Vinyl Plank (LVP)
 
-| Condition | Typical Discount | Good Deal | Walk Away |
-|-----------|------------------|-----------|-----------|
-| Overstock (current line) | 15-25% below wholesale | 25%+ | Under 15% |
-| Discontinued | 25-40% below wholesale | 35%+ | Under 25% |
-| Slight damage/seconds | 35-50% below wholesale | 45%+ | Under 35% |
+- **Overstock (current line):** typically 15-25% below wholesale, good deal at 25%+, walk away under 15%
+- **Discontinued:** typically 25-40% below wholesale, good deal at 35%+, walk away under 25%
+- **Slight damage/seconds:** typically 35-50% below wholesale, good deal at 45%+, walk away under 35%
 
 **Notes:**
 - LVP market moves fast; discontinued lines depreciate quickly
@@ -83,11 +77,9 @@ All discounts shown are relative to typical wholesale pricing (not retail).
 
 ### Laminate
 
-| Condition | Typical Discount | Good Deal | Walk Away |
-|-----------|------------------|-----------|-----------|
-| Overstock (current line) | 20-30% below wholesale | 30%+ | Under 20% |
-| Discontinued | 35-55% below wholesale | 50%+ | Under 35% |
-| Slight damage/seconds | 50-70% below wholesale | 65%+ | Under 50% |
+- **Overstock (current line):** typically 20-30% below wholesale, good deal at 30%+, walk away under 20%
+- **Discontinued:** typically 35-55% below wholesale, good deal at 50%+, walk away under 35%
+- **Slight damage/seconds:** typically 50-70% below wholesale, good deal at 65%+, walk away under 50%
 
 **Notes:**
 - Laminate is the most aggressive closeout pricing; supply exceeds demand
@@ -97,11 +89,9 @@ All discounts shown are relative to typical wholesale pricing (not retail).
 
 ### Tile (Ceramic and Porcelain)
 
-| Condition | Typical Discount | Good Deal | Walk Away |
-|-----------|------------------|-----------|-----------|
-| Overstock (current line) | 25-35% below wholesale | 35%+ | Under 25% |
-| Discontinued | 35-50% below wholesale | 45%+ | Under 35% |
-| Slight damage/seconds | 50-70% below wholesale | 60%+ | Under 50% |
+- **Overstock (current line):** typically 25-35% below wholesale, good deal at 35%+, walk away under 25%
+- **Discontinued:** typically 35-50% below wholesale, good deal at 45%+, walk away under 35%
+- **Slight damage/seconds:** typically 50-70% below wholesale, good deal at 60%+, walk away under 50%
 
 **Notes:**
 - Tile is heavy; freight costs can eliminate savings
@@ -113,23 +103,19 @@ All discounts shown are relative to typical wholesale pricing (not retail).
 
 ### Lot Size
 
-| Lot Size | Pricing Impact |
-|----------|----------------|
-| Under 500 sq ft | +5-10% premium (small project-ready) or steep discount (remnant) |
-| 500-2,000 sq ft | Standard closeout pricing |
-| 2,000-5,000 sq ft | Slight discount for volume |
-| 5,000+ sq ft | Negotiable; buyer leverage increases |
+- **Under 500 sq ft:** +5-10% premium (small project-ready) or steep discount (remnant)
+- **500-2,000 sq ft:** Standard closeout pricing
+- **2,000-5,000 sq ft:** Slight discount for volume
+- **5,000+ sq ft:** Negotiable; buyer leverage increases
 
 The sweet spot for most buyers is 500-2,000 sq ft: enough for a project, not so much that you're stuck holding inventory yourself.
 
 ### Time on Market
 
-| Time Listed | Pricing Expectation |
-|-------------|-------------------|
-| Fresh (under 30 days) | Top of range; seller testing the market |
-| 30-90 days | Mid-range; motivated but not desperate |
-| 90-180 days | Lower range; seller needs to move it |
-| 180+ days | Negotiate hard; holding costs are painful |
+- **Fresh (under 30 days):** Top of range; seller testing the market
+- **30-90 days:** Mid-range; motivated but not desperate
+- **90-180 days:** Lower range; seller needs to move it
+- **180+ days:** Negotiate hard; holding costs are painful
 
 If a listing has been up for 6 months, the seller's position has changed. They're more flexible than the listing price suggests.
 

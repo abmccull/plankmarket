@@ -29,11 +29,9 @@ This is the visible cost. Flooring takes up space. Space costs money.
 
 Industrial warehouse rates vary by market, but a reasonable range:
 
-| Market Type | Annual Cost per Sq Ft |
-|-------------|----------------------|
-| Secondary markets | $4-7 |
-| Primary markets | $8-15 |
-| Major metros | $15-25+ |
+- **Secondary markets** — $4-7 per sq ft annually
+- **Primary markets** — $8-15 per sq ft annually
+- **Major metros** — $15-25+ per sq ft annually
 
 A standard pallet of flooring (roughly 500-800 sq ft of material) takes up about 48 sq ft of floor space. At $10/sq ft annually, that's $480/year just for the space.
 
@@ -86,11 +84,9 @@ Flooring inventory doesn't hold value. It loses value:
 
 How fast does it depreciate? It depends on the product, but rough estimates:
 
-| Product Type | Annual Depreciation |
-|--------------|-------------------|
-| Fashion-forward (colors, finishes) | 15-25% |
-| Core products (standard oak, etc.) | 5-15% |
-| Discontinued lines | 20-30%+ |
+- **Fashion-forward (colors, finishes)** — 15-25% annually
+- **Core products (standard oak, etc.)** — 5-15% annually
+- **Discontinued lines** — 20-30%+ annually
 
 A $100,000 lot of discontinued fashion-forward LVP might be worth $70,000 in 12 months. That's a $30,000 loss even if you eventually sell it.
 
@@ -100,13 +96,15 @@ Let's calculate total annual holding cost for a real example:
 
 **Scenario:** $100,000 of overstock engineered hardwood, taking 500 sq ft of warehouse space, held for 12 months.
 
-| Cost Category | Calculation | Annual Cost |
-|---------------|-------------|-------------|
-| Warehouse space | 500 sq ft × $10/sq ft | $5,000 |
-| Capital cost | $100,000 × 8% | $8,000 |
-| Insurance | $100,000 × 0.5% | $500 |
-| Depreciation | $100,000 × 15% | $15,000 |
-| **Total** | | **$28,500** |
+**Warehouse space:** 500 sq ft at $10/sq ft = $5,000
+
+**Capital cost:** $100,000 at 8% = $8,000
+
+**Insurance:** $100,000 at 0.5% = $500
+
+**Depreciation:** $100,000 at 15% = $15,000
+
+**Total annual holding cost: $28,500**
 
 That's 28.5% of the inventory's value lost in one year of holding.
 
