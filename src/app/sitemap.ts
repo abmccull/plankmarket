@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { createServerCaller } from "@/lib/trpc/server";
+import { getAllContent } from "@/lib/blog";
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plankmarket.com";
 
@@ -8,6 +9,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticPages: MetadataRoute.Sitemap = [
     { url: `${BASE_URL}`, lastModified: new Date(), changeFrequency: "daily", priority: 1.0 },
     { url: `${BASE_URL}/listings`, lastModified: new Date(), changeFrequency: "hourly", priority: 0.9 },
+    { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.7 },
     { url: `${BASE_URL}/about`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
     { url: `${BASE_URL}/how-it-works`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
     { url: `${BASE_URL}/pricing`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
@@ -16,6 +18,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.1 },
     { url: `${BASE_URL}/privacy`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.1 },
   ];
+
+  // Blog pages
+  const blogPages: MetadataRoute.Sitemap = getAllContent().map((post) => ({
+    url: `${BASE_URL}/blog/${post.slug}`,
+    lastModified: new Date(post.publishDate),
+    changeFrequency: "monthly" as const,
+    priority: post.type === "pillar" ? 0.7 : 0.6,
+  }));
 
   // Dynamic listing pages
   let listingPages: MetadataRoute.Sitemap = [];
@@ -32,5 +42,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Sitemap generation should not fail the build
   }
 
-  return [...staticPages, ...listingPages];
+  return [...staticPages, ...blogPages, ...listingPages];
 }

@@ -147,6 +147,12 @@ export function Header() {
           >
             Pricing
           </Link>
+          <Link
+            href="/blog"
+            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Blog
+          </Link>
           {isPro ? (
             <Link
               href="/settings/subscription"
