@@ -31,7 +31,9 @@ import {
   Database,
   Percent,
   Timer,
+  Calculator,
 } from "lucide-react";
+import { CarryingCostCalculator } from "@/components/marketing/carrying-cost-calculator";
 
 export const metadata: Metadata = {
   title: "Sell Surplus Flooring B2B — Move Closeouts Before the Margin Disappears | PlankMarket",
@@ -376,6 +378,29 @@ export default function ForSellersPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Carrying Cost Calculator — first thing after the hero ── */}
+      <section className="py-20 bg-gradient-to-br from-destructive/5 via-background to-primary/5 border-y border-border">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
+              <Calculator className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              Free Calculator
+            </Badge>
+            <h2 className="font-display text-3xl sm:text-4xl max-w-3xl mx-auto">
+              How much is holding{" "}
+              <span className="text-destructive">actually costing you?</span>
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+              Plug in your numbers. See warehouse, insurance, depreciation, and
+              opportunity costs — then compare holding vs. selling today.
+            </p>
+          </div>
+          <div className="max-w-5xl mx-auto">
+            <CarryingCostCalculator />
           </div>
         </div>
       </section>

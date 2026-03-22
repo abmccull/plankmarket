@@ -19,7 +19,9 @@ import {
   Clock,
   DollarSign,
   Users,
+  Calculator,
 } from "lucide-react";
+import { CarryingCostCalculatorCompact } from "@/components/marketing/carrying-cost-calculator-compact";
 
 export const metadata: Metadata = {
   title: "PlankMarket — B2B Closeout Flooring Marketplace",
@@ -235,6 +237,30 @@ export default function HomePage() {
                 </Card>
               ))}
             </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* ─── Carrying Cost Calculator ─────────────────────────────────── */}
+      <section className="py-20 bg-gradient-to-br from-destructive/5 via-background to-primary/5 border-y border-border">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8">
+              <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
+                <Calculator className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+                Free Calculator
+              </Badge>
+              <h2 className="font-display text-3xl sm:text-4xl">
+                How much is holding{" "}
+                <span className="text-destructive">actually costing you?</span>
+              </h2>
+              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+                Plug in your numbers. See what surplus inventory costs you every
+                month in storage, insurance, depreciation, and lost capital.
+              </p>
+            </div>
+            <CarryingCostCalculatorCompact />
           </div>
         </div>
       </section>

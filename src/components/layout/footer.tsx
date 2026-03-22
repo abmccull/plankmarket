@@ -74,6 +74,14 @@ export function Footer() {
                   Pricing & Fees
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/tools/carrying-cost-calculator"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Carrying Cost Calculator
+                </Link>
+              </li>
             </ul>
           </div>
 
