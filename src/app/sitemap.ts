@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 import { createServerCaller } from "@/lib/trpc/server";
 import { getAllContent } from "@/lib/blog";
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plankmarket.com";
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.plankmarket.com";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Static marketing pages

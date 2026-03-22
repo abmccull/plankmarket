@@ -23,7 +23,7 @@ const dmSerif = DM_Serif_Display({
   subsets: ["latin"],
 });
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plankmarket.com";
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.plankmarket.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
