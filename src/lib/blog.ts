@@ -23,7 +23,7 @@ export type BlogPost = {
   targetKeyword: string;
   secondaryKeywords: string;
   searchIntent: string;
-  cluster?: string;
+  cluster: string;
   readingTime: number;
   content: string;
 };
@@ -51,7 +51,7 @@ function parseFrontmatter(filePath: string): BlogPost | null {
     targetKeyword: data.target_keyword || "",
     secondaryKeywords: data.secondary_keywords || "",
     searchIntent: data.search_intent || "",
-    cluster: data.cluster,
+    cluster: data.cluster || "uncategorized",
     readingTime: Math.ceil(wordCount / 200),
     content,
   };
@@ -107,23 +107,68 @@ export function getPostBySlug(slug: string): BlogPost | null {
   return null;
 }
 
+const STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "for", "to", "in", "of", "on", "is", "it",
+  "by", "at", "from", "with", "as", "how", "what", "when", "where", "why",
+  "your", "you", "that", "this", "are", "was", "be", "do", "does", "vs",
+]);
+
+function tokenizeKeywords(
+  targetKeyword: string,
+  secondaryKeywords: string
+): Set<string> {
+  const raw = `${targetKeyword}, ${secondaryKeywords}`;
+  return new Set(
+    raw
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .filter((t) => t.length > 1 && !STOP_WORDS.has(t))
+  );
+}
+
 export function getRelatedPosts(
   post: BlogPostMeta,
   limit = 3
 ): BlogPostMeta[] {
   const all = [...getAllPosts(), ...getPillarPages()];
+  const postTokens = tokenizeKeywords(post.targetKeyword, post.secondaryKeywords);
+
   return all
     .filter((p) => p.slug !== post.slug)
-    .sort((a, b) => {
-      let scoreA = 0;
-      let scoreB = 0;
-      if (a.cluster && a.cluster === post.cluster) scoreA += 2;
-      if (b.cluster && b.cluster === post.cluster) scoreB += 2;
-      if (a.audience === post.audience) scoreA += 1;
-      if (b.audience === post.audience) scoreB += 1;
-      return scoreB - scoreA;
+    .map((candidate) => {
+      let score = 0;
+
+      // Cluster match (+3)
+      if (candidate.cluster === post.cluster && post.cluster !== "uncategorized") {
+        score += 3;
+      }
+
+      // Audience match (+1 full, +0.5 partial for "Both")
+      if (candidate.audience === post.audience) {
+        score += 1;
+      } else if (candidate.audience === "Both" || post.audience === "Both") {
+        score += 0.5;
+      }
+
+      // Keyword overlap (+0.5 per shared token)
+      const candidateTokens = tokenizeKeywords(
+        candidate.targetKeyword,
+        candidate.secondaryKeywords
+      );
+      for (const token of postTokens) {
+        if (candidateTokens.has(token)) score += 0.5;
+      }
+
+      // Pillar boost (+1) — pillar in same cluster gets a bonus
+      if (candidate.type === "pillar" && candidate.cluster === post.cluster) {
+        score += 1;
+      }
+
+      return { candidate, score };
     })
-    .slice(0, limit);
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((r) => r.candidate);
 }
 
 const processor = unified()

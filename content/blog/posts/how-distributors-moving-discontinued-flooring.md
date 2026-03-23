@@ -8,6 +8,7 @@ audience: Sellers
 publish_date: '2026-07-07'
 status: published
 type: post
+cluster: surplus-liquidation
 description: The flooring industry's discontinuation cycle has accelerated.
 ---
 

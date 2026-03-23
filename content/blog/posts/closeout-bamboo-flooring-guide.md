@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-04-21'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Bamboo flooring occupies a niche position: sustainable appeal, hardwood
   aesthetics, and pricing that's often competitive with mid-tier engineered.

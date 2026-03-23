@@ -8,6 +8,7 @@ audience: Sellers
 publish_date: '2026-07-03'
 status: published
 type: post
+cluster: surplus-liquidation
 description: The surplus flooring in your warehouse isn't sitting there for free.
 ---
 

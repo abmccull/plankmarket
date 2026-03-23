@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-15'
 status: published
 type: post
+cluster: contractor-sourcing
 description: >-
   Most flooring contractors focus on labor efficiency to improve margins. Fewer
   focus on material sourcing.

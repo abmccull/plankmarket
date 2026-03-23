@@ -75,7 +75,8 @@ export default async function BlogPostPage({
   const html = await renderMarkdown(post.content);
   const related = getRelatedPosts(post, 3);
   const isPillar = post.type === "pillar";
-  const headings = isPillar ? extractHeadings(post.content) : [];
+  const headings = extractHeadings(post.content);
+  const showToc = headings.length >= 3;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -152,9 +153,9 @@ export default async function BlogPostPage({
         </header>
 
         {/* Content + optional TOC sidebar */}
-        {isPillar ? (
+        {showToc ? (
           <div className="flex gap-12">
-            <div className="max-w-4xl flex-1 min-w-0">
+            <div className={`${isPillar ? "max-w-4xl" : "max-w-3xl"} flex-1 min-w-0`}>
               <PostContent html={html} />
             </div>
             <aside className="hidden xl:block w-64 shrink-0">
@@ -162,7 +163,7 @@ export default async function BlogPostPage({
             </aside>
           </div>
         ) : (
-          <div className="max-w-3xl">
+          <div className={isPillar ? "max-w-4xl" : "max-w-3xl"}>
             <PostContent html={html} />
           </div>
         )}

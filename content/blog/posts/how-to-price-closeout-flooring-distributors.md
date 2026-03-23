@@ -10,6 +10,7 @@ audience: Sellers
 publish_date: '2026-07-14'
 status: published
 type: post
+cluster: surplus-liquidation
 description: Pricing closeout flooring is uncomfortable.
 ---
 

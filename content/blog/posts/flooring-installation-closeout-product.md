@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-06-02'
 status: published
 type: post
+cluster: closeout-buying
 description: >-
   Closeout flooring installs the same as retail flooring. The product is
   identical.

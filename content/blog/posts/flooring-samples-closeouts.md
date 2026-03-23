@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-06-16'
 status: published
 type: post
+cluster: closeout-buying
 description: >-
   Samples reduce risk on closeout purchases. Seeing actual product before
   committing helps verify quality, confirm color, and prevent surprises.

@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-05-01'
 status: published
 type: post
+cluster: contractor-sourcing
 description: Commercial flooring projects have different economics than residential.
 ---
 

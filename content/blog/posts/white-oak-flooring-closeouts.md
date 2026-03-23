@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-08-11'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   White oak is the dominant hardwood species right now. It's in nearly every
   design magazine, specified by most interior designers, and requested by

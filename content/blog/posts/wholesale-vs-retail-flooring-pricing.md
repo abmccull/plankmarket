@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-08-14'
 status: published
 type: post
+cluster: closeout-buying
 description: >-
   The flooring supply chain has multiple pricing tiers. Understanding them
   clarifies where value exists and where you're overpaying.

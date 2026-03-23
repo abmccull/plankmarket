@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-22'
 status: published
 type: post
+cluster: real-estate
 description: >-
   Flooring is one of the largest material costs in a flip. It's also one of the
   most visible improvements.

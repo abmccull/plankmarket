@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-06-26'
 status: published
 type: post
+cluster: closeout-buying
 description: Warranty is one of the most misunderstood aspects of closeout flooring.
 ---
 

@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-19'
 status: published
 type: post
+cluster: closeout-buying
 description: Every flooring distributor has closeout inventory. Most don't advertise it.
 ---
 

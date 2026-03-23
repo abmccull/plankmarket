@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-06-19'
 status: published
 type: post
+cluster: contractor-sourcing
 description: The flooring supply chain is more complex than most building materials.
 ---
 

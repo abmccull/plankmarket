@@ -8,6 +8,7 @@ audience: Sellers
 publish_date: '2026-06-05'
 status: published
 type: post
+cluster: surplus-liquidation
 description: >-
   Surplus isn't an accident. It's the result of inventory decisions made months
   earlier.

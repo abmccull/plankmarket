@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-26'
 status: published
 type: post
+cluster: contractor-sourcing
 description: New construction flooring is a volume game with tight timelines.
 ---
 

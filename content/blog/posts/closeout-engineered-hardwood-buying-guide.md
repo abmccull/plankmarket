@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-04-24'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Engineered hardwood is the fastest-growing segment of the hardwood flooring
   market. It's also the segment with the most closeout opportunity.

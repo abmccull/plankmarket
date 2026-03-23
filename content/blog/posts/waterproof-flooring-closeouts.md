@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-07-28'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Waterproof flooring has dominated the market for the past five years. That
   growth also created oversupply.

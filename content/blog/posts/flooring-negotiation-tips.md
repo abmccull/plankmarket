@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-06-12'
 status: published
 type: post
+cluster: closeout-buying
 description: The listed price on closeout flooring is rarely the final price.
 ---
 

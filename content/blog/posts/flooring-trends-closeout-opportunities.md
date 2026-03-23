@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-06-23'
 status: published
 type: post
+cluster: trends-authority
 description: Flooring trends directly affect closeout availability.
 ---
 

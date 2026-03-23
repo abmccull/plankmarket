@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-07-21'
 status: published
 type: post
+cluster: contractor-sourcing
 description: A 40% discount on closeout flooring means nothing if freight costs 30%.
 ---
 

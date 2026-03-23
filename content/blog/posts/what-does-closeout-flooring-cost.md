@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-07-31'
 status: published
 type: post
+cluster: closeout-buying
 description: Closeout flooring pricing is opaque by design.
 ---
 

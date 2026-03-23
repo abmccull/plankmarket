@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-29'
 status: published
 type: post
+cluster: real-estate
 description: Rental property flooring has different requirements than owner-occupied homes.
 ---
 

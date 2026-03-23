@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-08-07'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Closeout hardwood flooring is how contractors make margin on flooring-heavy
   projects.

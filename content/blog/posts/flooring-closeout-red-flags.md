@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-12'
 status: published
 type: post
+cluster: closeout-buying
 description: Not every low price is a good deal.
 ---
 

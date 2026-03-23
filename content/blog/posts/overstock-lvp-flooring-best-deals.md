@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-07-17'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   LVP (Luxury Vinyl Plank) is the fastest-moving flooring category. It's also
   one of the most oversupplied.

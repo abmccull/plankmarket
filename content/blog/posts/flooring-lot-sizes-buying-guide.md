@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-06-09'
 status: published
 type: post
+cluster: closeout-buying
 description: Buying the wrong amount of flooring creates problems either way.
 ---
 

@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-04-17'
 status: published
 type: post
+cluster: closeout-buying
 description: Bulk flooring purchases unlock better pricing. They also create risk.
 ---
 

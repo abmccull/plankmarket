@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-07-24'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Laminate flooring is the most aggressively discounted category in closeout
   flooring.

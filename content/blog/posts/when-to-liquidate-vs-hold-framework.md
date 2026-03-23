@@ -10,6 +10,7 @@ audience: Sellers
 publish_date: '2026-08-04'
 status: published
 type: post
+cluster: surplus-liquidation
 description: The hardest inventory decision isn't how much to discount. It's when to start.
 ---
 

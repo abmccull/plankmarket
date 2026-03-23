@@ -10,6 +10,7 @@ audience: Buyers
 publish_date: '2026-06-30'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Hickory is the hardest domestic hardwood commonly used for flooring. That
   durability makes it valuable for high-traffic applications.

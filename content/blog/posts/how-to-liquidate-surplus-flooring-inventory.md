@@ -8,6 +8,7 @@ audience: Sellers
 publish_date: '2026-07-10'
 status: published
 type: post
+cluster: surplus-liquidation
 description: >-
   Surplus flooring inventory is a cash flow problem disguised as a storage
   problem.

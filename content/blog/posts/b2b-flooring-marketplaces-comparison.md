@@ -10,6 +10,7 @@ audience: Sellers
 publish_date: '2026-04-14'
 status: published
 type: post
+cluster: b2b-marketplace
 description: The B2B flooring marketplace landscape is surprisingly thin.
 ---
 

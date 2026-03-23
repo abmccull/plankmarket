@@ -10,6 +10,7 @@ audience: Both
 publish_date: '2026-05-08'
 status: published
 type: post
+cluster: contractor-sourcing
 description: >-
   Some flooring businesses use closeout sourcing occasionally. Others build it
   into their core model.

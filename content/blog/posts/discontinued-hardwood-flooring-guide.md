@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-05-05'
 status: published
 type: post
+cluster: trends-authority
 description: >-
   Discontinued hardwood flooring is often the same product at a better price.
   The only difference: the manufacturer stopped making it.

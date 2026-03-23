@@ -8,6 +8,7 @@ audience: Buyers
 publish_date: '2026-04-28'
 status: published
 type: post
+cluster: trends-authority
 description: 'Tile closeouts offer significant savings with one major catch: freight.'
 ---
 
