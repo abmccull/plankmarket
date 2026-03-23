@@ -28,6 +28,7 @@ import {
   TrendingUp,
   Bot,
   Users,
+  Shield,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -78,9 +79,13 @@ export function Sidebar() {
   // Determine sidebar variant from user role, with pathname as fallback.
   // Shared routes like /preferences, /messages, /offers don't contain a role
   // prefix, so we rely on the user's actual role to keep the correct sidebar.
-  const isSeller =
-    user?.role === "seller" || user?.role === "admin" || pathname.startsWith("/seller");
-  const items = isSeller ? sellerItems : buyerItems;
+  const isAdminUser = user?.role === "admin";
+  const isOnSellerRoute = pathname.startsWith("/seller");
+  const isOnBuyerRoute = pathname.startsWith("/buyer");
+  const isSeller = user?.role === "seller" || isOnSellerRoute;
+  // Admin on shared routes (/messages, /preferences, /offers) defaults to seller items
+  // unless they were explicitly on a buyer route
+  const items = isSeller || (isAdminUser && !isOnBuyerRoute) ? sellerItems : buyerItems;
 
   // Get unread message count
   const { data: unreadData } = trpc.message.getUnreadCount.useQuery(undefined, {
@@ -101,7 +106,7 @@ export function Sidebar() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">
-                {isSeller ? "Seller Dashboard" : "Buyer Dashboard"}
+                {isAdminUser ? "Admin Dashboard" : isSeller ? "Seller Dashboard" : "Buyer Dashboard"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {user?.businessName || user?.name}
@@ -109,6 +114,20 @@ export function Sidebar() {
             </div>
           </div>
         </div>
+        {isAdminUser && (
+          <Link
+            href="/admin"
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              pathname.startsWith("/admin")
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/50"
+            )}
+          >
+            <Shield className="h-4 w-4" />
+            Admin Panel
+          </Link>
+        )}
         {items.map((item) => {
           const isActive =
             pathname === item.href ||

@@ -80,17 +80,52 @@ export function MobileNav() {
 
     // Use user role to determine nav items, not just pathname.
     // Shared routes like /preferences, /messages, /offers don't have a role prefix.
-    const isSeller =
-      user.role === "seller" || user.role === "admin" || pathname.startsWith("/seller");
+    const isAdminUser = user.role === "admin";
+    const isOnSellerRoute = pathname.startsWith("/seller");
+    const isOnBuyerRoute = pathname.startsWith("/buyer");
+    const isSeller = user.role === "seller" || isOnSellerRoute;
 
     if (pathname.startsWith("/admin")) {
       return [
         { title: "Browse Listings", href: "/listings", icon: Search },
-        { title: "Dashboard", href: getDashboardPath(user.role), icon: LayoutDashboard },
+        { title: "Admin Panel", href: "/admin", icon: Shield },
+        { title: "Seller Dashboard", href: "/seller", icon: LayoutDashboard },
+        { title: "Buyer Dashboard", href: "/buyer", icon: LayoutDashboard },
+        { title: "Settings", href: `${getDashboardPath(user.role)}/settings`, icon: Settings },
+      ];
+    }
+
+    // Admin on seller or buyer routes: show context-appropriate items + Admin Panel link
+    // Default to seller items on shared routes (/messages, /preferences, etc.)
+    if (isAdminUser) {
+      const adminPanelItem: NavItem = { title: "Admin Panel", href: "/admin", icon: Shield };
+      if (isSeller || !isOnBuyerRoute) {
+        return [
+          adminPanelItem,
+          { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
+          { title: "My Listings", href: "/seller/listings", icon: List },
+          { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
+          { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
+          { title: "Buyer CRM", href: "/seller/crm", icon: Users, badge: "Pro" },
+          { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
+          { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
+          { title: "Orders", href: "/seller/orders", icon: Package },
+          { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
+          { title: "Payments", href: "/seller/payments", icon: CreditCard },
+          { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
+          { title: "Settings", href: "/seller/settings", icon: Settings },
+        ];
+      }
+      return [
+        adminPanelItem,
+        { title: "Browse Listings", href: "/listings", icon: Search },
+        { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
         { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
         { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
-        { title: "Admin Panel", href: "/admin", icon: Shield },
-        { title: "Settings", href: `${getDashboardPath(user.role)}/settings`, icon: Settings },
+        { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
+        { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
+        { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
+        { title: "Settings", href: "/buyer/settings", icon: Settings },
       ];
     }
 

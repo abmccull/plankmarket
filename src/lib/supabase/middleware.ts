@@ -51,11 +51,13 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // Define protected routes
-  const protectedPaths = ["/seller", "/buyer", "/admin"];
   const authPaths = ["/login", "/register"];
   const pathname = request.nextUrl.pathname;
 
-  const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
+  // Match only exact dashboard segments: /seller, /seller/*, /buyer, /buyer/*, /admin, /admin/*
+  // Do NOT match hyphenated marketing pages like /seller-guide
+  const firstSegment = pathname.split("/")[1];
+  const isProtected = firstSegment === "seller" || firstSegment === "buyer" || firstSegment === "admin";
   const isAuthPage = authPaths.some((p) => pathname.startsWith(p));
   const role = resolveRole(user);
 
@@ -68,7 +70,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect non-admin authenticated users away from admin routes
-  if (pathname.startsWith("/admin") && user) {
+  if (firstSegment === "admin" && user) {
     if (role && role !== "admin") {
       const dashboardPaths: Record<string, string> = {
         buyer: "/buyer",
@@ -80,14 +82,19 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
+  // Admin can access any dashboard route without redirect
+  if (role === "admin") {
+    return supabaseResponse;
+  }
+
   // Keep role-specific dashboards aligned with authenticated role.
-  if (pathname.startsWith("/seller") && user) {
+  if (firstSegment === "seller" && user) {
     if (role === "buyer") {
       return NextResponse.redirect(new URL("/buyer", request.url));
     }
   }
 
-  if (pathname.startsWith("/buyer") && user) {
+  if (firstSegment === "buyer" && user) {
     if (role === "seller") {
       return NextResponse.redirect(new URL("/seller", request.url));
     }

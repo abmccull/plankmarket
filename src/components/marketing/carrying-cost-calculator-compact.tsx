@@ -15,9 +15,9 @@ function parseNum(val: string): number {
 }
 
 export function CarryingCostCalculatorCompact() {
-  const [inventoryValue, setInventoryValue] = useState("");
-  const [months, setMonths] = useState(6);
-  const [discount, setDiscount] = useState("40");
+  const [inventoryValue, setInventoryValue] = useState("200,000");
+  const [months, setMonths] = useState(12);
+  const [discount, setDiscount] = useState("25");
 
   const value = parseNum(inventoryValue);
   const discountPct = parseNum(discount);
@@ -25,8 +25,8 @@ export function CarryingCostCalculatorCompact() {
   // Simplified calculation using defaults for compact version
   const warehouseCost = 0; // No sqft input in compact
   const insuranceRate = 0.5;
-  const capitalRate = 8;
-  const depreciationRate = 1.5;
+  const capitalRate = 12;
+  const depreciationRate = 4;
 
   const monthlyInsurance = value * (insuranceRate / 100);
   const monthlyDepreciation = value * (depreciationRate / 100);

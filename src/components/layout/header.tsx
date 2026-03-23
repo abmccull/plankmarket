@@ -31,6 +31,7 @@ import {
   Bell,
   ChevronRight,
   Crown,
+  Shield,
 } from "lucide-react";
 import { useProStatus } from "@/hooks/use-pro-status";
 import { ProBadge } from "@/components/pro-badge";
@@ -190,7 +191,7 @@ export function Header() {
                 FAQ
               </Link>
             </>
-          ) : isAuthenticated && user?.role === "seller" ? (
+          ) : isAuthenticated && (user?.role === "seller" || user?.role === "admin") ? (
             <>
               <Link
                 href="/seller-guide"
@@ -367,6 +368,14 @@ export function Header() {
                     <LayoutDashboard className="mr-2 h-4 w-4" />
                     Dashboard
                   </DropdownMenuItem>
+                  {user.role === "admin" && (
+                    <DropdownMenuItem
+                      onClick={() => router.push("/admin")}
+                    >
+                      <Shield className="mr-2 h-4 w-4" />
+                      Admin Panel
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     onClick={() =>
                       router.push(`${getDashboardPath(user.role)}/orders`)
