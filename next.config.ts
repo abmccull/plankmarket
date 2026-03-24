@@ -29,6 +29,21 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      // Old blog slugs that may have been crawled - redirect to closest match
+      {
+        source: "/blog/buying-flooring-lots-guide-for-retailers",
+        destination: "/blog/flooring-lot-sizes-buying-guide",
+        permanent: true,
+      },
+      {
+        source: "/blog/what-is-flooring-lot-how-liquidation-lots-work",
+        destination: "/blog/flooring-lot-sizes-buying-guide",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {
