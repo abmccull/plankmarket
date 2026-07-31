@@ -3,8 +3,10 @@ import { db } from "@/server/db";
 import { followups } from "@/server/db/schema/crm";
 import { notifications } from "@/server/db/schema/notifications";
 import { users } from "@/server/db/schema/users";
-import { eq, and, lte } from "drizzle-orm";
-import { resend } from "@/lib/email/client";
+import { eq, and, lte, sql } from "drizzle-orm";
+import { sendEmailOrThrow } from "@/lib/email/delivery";
+import { buildEmailIdempotencyKey } from "@/lib/email/delivery-policy";
+import { env } from "@/env";
 import { escapeHtml } from "@/lib/utils";
 
 export const followupReminders = inngest.createFunction(
@@ -44,9 +46,11 @@ export const followupReminders = inngest.createFunction(
       "send-reminder-notifications",
       async () => {
         let sentCount = 0;
+        const failures: unknown[] = [];
 
         for (const followup of pendingFollowups) {
           try {
+            const reminderDay = new Date().toISOString().slice(0, 10);
             // Fetch buyer name if a buyerId is linked
             let buyerName: string | null = null;
             if (followup.buyerId) {
@@ -73,18 +77,34 @@ export const followupReminders = inngest.createFunction(
 
             // Create in-app notification for the seller
             try {
-              await db.insert(notifications).values({
-                userId: followup.sellerId,
-                type: "system",
-                title: "Followup reminder",
-                message: notificationMessage,
-                data: {
-                  followupId: followup.id,
-                  conversationId: followup.conversationId ?? undefined,
-                  buyerId: followup.buyerId ?? undefined,
-                },
-              });
+              const existingNotification = await db
+                .select({ id: notifications.id })
+                .from(notifications)
+                .where(
+                  and(
+                    eq(notifications.userId, followup.sellerId),
+                    eq(notifications.type, "system"),
+                    sql`${notifications.data}->>'followupId' = ${followup.id}`,
+                    sql`${notifications.data}->>'reminderDay' = ${reminderDay}`,
+                  ),
+                )
+                .limit(1);
+              if (existingNotification.length === 0) {
+                await db.insert(notifications).values({
+                  userId: followup.sellerId,
+                  type: "system",
+                  title: "Followup reminder",
+                  message: notificationMessage,
+                  data: {
+                    followupId: followup.id,
+                    reminderDay,
+                    conversationId: followup.conversationId ?? undefined,
+                    buyerId: followup.buyerId ?? undefined,
+                  },
+                });
+              }
             } catch (notifError) {
+              failures.push(notifError);
               console.error(
                 `Failed to create notification for followup ${followup.id}:`,
                 notifError
@@ -92,18 +112,24 @@ export const followupReminders = inngest.createFunction(
             }
 
             // Send email reminder
-            const appUrl =
-              process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+            const appUrl = env.NEXT_PUBLIC_APP_URL;
             const conversationLink = followup.conversationId
               ? `${appUrl}/messages/${followup.conversationId}`
               : null;
 
             try {
-              await resend.emails.send({
-                from: "PlankMarket <noreply@plankmarket.com>",
-                to: followup.sellerEmail,
-                subject: `Followup reminder: ${escapeHtml(followup.title)}`,
-                html: `
+              await sendEmailOrThrow({
+                category: "followup_reminder",
+                idempotencyKey: buildEmailIdempotencyKey(
+                  "followup_reminder",
+                  followup.id,
+                  reminderDay,
+                ),
+                message: {
+                  from: env.EMAIL_FROM,
+                  to: followup.sellerEmail,
+                  subject: `Followup reminder: ${escapeHtml(followup.title)}`,
+                  html: `
                   <p>Hi ${escapeHtml(followup.sellerName ?? "")},</p>
                   <p>This is a reminder about a followup that is due.</p>
                   <table style="border-collapse:collapse;width:100%;max-width:480px;">
@@ -146,20 +172,30 @@ export const followupReminders = inngest.createFunction(
                     <a href="${appUrl}/seller/crm">Manage your followups</a>.
                   </p>
                 `,
+                },
               });
               sentCount++;
             } catch (emailError) {
+              failures.push(emailError);
               console.error(
                 `Failed to send followup reminder email to seller ${followup.sellerId} for followup ${followup.id}:`,
                 emailError
               );
             }
           } catch (error) {
+            failures.push(error);
             console.error(
               `Failed to process followup reminder ${followup.id}:`,
               error
             );
           }
+        }
+
+        if (failures.length > 0) {
+          throw new AggregateError(
+            failures,
+            "One or more followup reminders could not be delivered",
+          );
         }
 
         return sentCount;

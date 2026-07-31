@@ -22,7 +22,11 @@ import {
   formatCurrency,
   formatSqFt,
 } from "@/lib/utils";
-import { calculateOrderFees } from "@/lib/fees";
+import {
+  BUYER_MARKETPLACE_FEE_PERCENT,
+  calculateOrderFees,
+} from "@/lib/fees";
+import { resolveListingUnitPrice } from "@/lib/listing-pricing";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, ShieldCheck, Package, Check, Truck, CheckCircle2, Clock } from "lucide-react";
 import { StripeProvider } from "@/components/checkout/stripe-provider";
@@ -31,10 +35,20 @@ import ShippingQuoteSelector, {
   type SelectedShippingQuote,
 } from "@/components/checkout/shipping-quote-selector";
 import Image from "next/image";
-import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 type CheckoutStep = "address" | "shipping" | "payment";
 type SavedAddressOption = "new" | string; // "new" or address id
+interface AuthoritativeOrderTax {
+  amount: number;
+  total: number;
+  status: string;
+  liability: string;
+  jurisdictions: Array<{
+    state: string | null;
+    ratePercent: string;
+    taxabilityReason: string;
+  }>;
+}
 
 const STEPS: { key: CheckoutStep; label: string }[] = [
   { key: "address", label: "Address" },
@@ -55,10 +69,20 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [selectedQuote, setSelectedQuote] = useState<SelectedShippingQuote | null>(null);
   const [selectedAddressId, setSelectedAddressId] = useState<SavedAddressOption>("new");
+  const [authoritativeTax, setAuthoritativeTax] =
+    useState<AuthoritativeOrderTax | null>(null);
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
     id: listingId,
   });
+  const {
+    data: purchaseConfig,
+    isLoading: isPurchaseConfigLoading,
+    isError: isPurchaseConfigError,
+  } = trpc.listing.getPurchaseConfig.useQuery(
+    { listingId },
+    { enabled: !!listingId },
+  );
 
   // Fetch offer details when offerId is present
   const { data: offer, isLoading: isOfferLoading } = trpc.offer.getOfferById.useQuery(
@@ -167,7 +191,20 @@ export default function CheckoutPage() {
   };
 
   const quantitySqFt = watch("quantitySqFt") || (isOfferCheckout ? offerQuantity : null) || listing?.totalSqFt || 0;
+  const shippingState = watch("shippingState") || "";
   const shippingZip = watch("shippingZip") || "";
+
+  const directPurchasePricing =
+    !isOfferCheckout && listing
+      ? resolveListingUnitPrice({
+          baseUnitPrice: listing.buyNowPrice ?? listing.askPricePerSqFt,
+          availableQuantity: listing.totalSqFt,
+          requestedQuantity: quantitySqFt,
+          fullLotOnly: purchaseConfig?.fullLotOnly ?? true,
+          partialQuantityMarkupPercent:
+            purchaseConfig?.partialQuantityMarkupPercent ?? null,
+        })
+      : null;
 
   // Handle "Continue to Shipping" — validate address fields
   const handleContinueToShipping = async () => {
@@ -179,9 +216,28 @@ export default function CheckoutPage() {
       "shippingState",
       "shippingZip",
     ]);
-    if (isValid) {
-      setCurrentStep("shipping");
+    if (!isValid) return;
+
+    if (directPurchasePricing && !directPurchasePricing.purchaseAllowed) {
+      toast.error("This seller currently sells this listing only as a full lot.");
+      return;
     }
+
+    if (
+      purchaseConfig?.sellingTerritoryMode === "allowed_states" &&
+      purchaseConfig.allowedDestinationStates.length > 0 &&
+      shippingState.trim().length > 0 &&
+      !purchaseConfig.allowedDestinationStates.includes(
+        shippingState.trim().toUpperCase(),
+      )
+    ) {
+      toast.error(
+        `This seller currently sells only into ${purchaseConfig.allowedDestinationStates.join(", ")}.`,
+      );
+      return;
+    }
+
+    setCurrentStep("shipping");
   };
 
   // Handle "Continue to Payment" — create order with shipping quote
@@ -221,6 +277,13 @@ export default function CheckoutPage() {
             ...shippingQuoteFields,
           });
       setOrderId(order.id);
+      setAuthoritativeTax({
+        amount: Number(order.taxAmount),
+        total: Number(order.totalPrice),
+        status: order.taxStatus,
+        liability: order.taxLiability,
+        jurisdictions: order.taxJurisdictionSummary,
+      });
 
       // Create payment intent
       const paymentIntentData = await createPaymentIntent.mutateAsync({
@@ -253,7 +316,11 @@ export default function CheckoutPage() {
     }
   };
 
-  if (isLoading || (offerId && isOfferLoading)) {
+  if (
+    isLoading ||
+    isPurchaseConfigLoading ||
+    (offerId && isOfferLoading)
+  ) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -269,15 +336,40 @@ export default function CheckoutPage() {
     );
   }
 
+  if (isPurchaseConfigError || !purchaseConfig) {
+    return (
+      <div className="container mx-auto max-w-xl px-4 py-20 text-center">
+        <h1 className="text-2xl font-bold">Purchase rules unavailable</h1>
+        <p className="mt-3 text-muted-foreground">
+          We could not safely verify this listing&apos;s quantity and territory
+          rules. No order has been created. Please return to the listing and
+          try again.
+        </p>
+        <Button className="mt-6" onClick={() => router.back()}>
+          Back to listing
+        </Button>
+      </div>
+    );
+  }
+
   // Use offer price if checking out from an accepted offer, otherwise listing price
   const pricePerSqFt = isOfferCheckout && offerPrice !== null
     ? offerPrice
-    : (listing.buyNowPrice ?? listing.askPricePerSqFt);
+    : (directPurchasePricing?.finalUnitPrice ??
+        listing.buyNowPrice ??
+        listing.askPricePerSqFt);
   const subtotal = Math.round(quantitySqFt * pricePerSqFt * 100) / 100;
-  const shippingCost = selectedQuote?.shippingPrice ?? 0;
-  const feeBreakdown = calculateOrderFees(subtotal, shippingCost);
+  const buyerShippingCost = selectedQuote?.buyerFreightCharge ?? 0;
+  const sellerFreightContribution =
+    selectedQuote?.sellerFreightContribution ?? 0;
+  const feeBreakdown = calculateOrderFees(
+    subtotal,
+    buyerShippingCost,
+    sellerFreightContribution,
+  );
   const buyerFee = feeBreakdown.buyerFee;
   const total = feeBreakdown.totalCharge;
+  const displayedTotal = authoritativeTax?.total ?? total;
 
   const stepIndex = STEPS.findIndex((s) => s.key === currentStep);
 
@@ -405,9 +497,10 @@ export default function CheckoutPage() {
                             max={listing.totalSqFt}
                             defaultValue={isOfferCheckout && offerQuantity ? offerQuantity : listing.totalSqFt}
                             disabled={isOfferCheckout}
+                            readOnly={!isOfferCheckout && purchaseConfig.fullLotOnly}
                             {...register("quantitySqFt", { valueAsNumber: true })}
                             onBlur={(e) => {
-                              if (isOfferCheckout) return;
+                              if (isOfferCheckout || purchaseConfig.fullLotOnly) return;
                               if (boxSize && boxSize > 0) {
                                 const raw = parseFloat(e.target.value);
                                 if (!isNaN(raw) && raw > 0) {
@@ -420,7 +513,15 @@ export default function CheckoutPage() {
                                 }
                               }
                             }}
-                            aria-describedby={errors.quantitySqFt ? "quantitySqFt-error" : isOfferCheckout ? "quantitySqFt-locked" : undefined}
+                            aria-describedby={
+                              errors.quantitySqFt
+                                ? "quantitySqFt-error"
+                                : isOfferCheckout
+                                  ? "quantitySqFt-locked"
+                                  : purchaseConfig.fullLotOnly
+                                    ? "quantitySqFt-full-lot"
+                                    : undefined
+                            }
                             aria-invalid={!!errors.quantitySqFt}
                           />
                           {errors.quantitySqFt && (
@@ -431,6 +532,11 @@ export default function CheckoutPage() {
                           {isOfferCheckout ? (
                             <p id="quantitySqFt-locked" className="text-xs text-muted-foreground">
                               Quantity is locked to accepted offer amount: {formatSqFt(offerQuantity ?? 0)}
+                            </p>
+                          ) : purchaseConfig.fullLotOnly ? (
+                            <p id="quantitySqFt-full-lot" className="text-xs text-muted-foreground">
+                              This listing is sold as one full lot. Quantity is
+                              fixed at {formatSqFt(listing.totalSqFt)}.
                             </p>
                           ) : (
                             <p className="text-xs text-muted-foreground">
@@ -642,7 +748,7 @@ export default function CheckoutPage() {
                     {listing.title}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {listing.seller ? getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState, name: listing.seller.name, businessCity: listing.seller.businessCity }) : "Verified Seller"}
+                    {listing.seller?.displayName ?? "Verified Seller"}
                   </p>
                 </div>
               </div>
@@ -664,28 +770,110 @@ export default function CheckoutPage() {
                   </span>
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
+                {directPurchasePricing?.partialQuantity.applied && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Full-lot unit price
+                      </span>
+                      <span>
+                        {formatCurrency(
+                          directPurchasePricing.currentBaseUnitPrice ?? 0,
+                        )}/sq ft
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted-foreground">
+                        Partial-order adjustment
+                      </span>
+                      <span className="text-right">
+                        +{directPurchasePricing.partialQuantity.markupPercent}%
+                        {" · "}
+                        {formatCurrency(pricePerSqFt)}/sq ft
+                      </span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Buyer fee (3% on inventory only)
+                    Buyer fee ({BUYER_MARKETPLACE_FEE_PERCENT}% on inventory only)
                   </span>
                   <span>{formatCurrency(buyerFee)}</span>
                 </div>
-                {selectedQuote && (
+                {authoritativeTax ? (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      Shipping ({selectedQuote.carrierName})
+                      Sales tax
                     </span>
-                    <span>{formatCurrency(selectedQuote.shippingPrice)}</span>
+                    <span>{formatCurrency(authoritativeTax.amount)}</span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Sales tax</span>
+                    <span className="text-right text-muted-foreground">
+                      Calculated before payment
+                    </span>
                   </div>
                 )}
+                {selectedQuote &&
+                  (selectedQuote.sellerFreightContribution > 0 ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Full freight charge
+                        </span>
+                        <span>{formatCurrency(selectedQuote.shippingPrice)}</span>
+                      </div>
+                      <div className="flex justify-between gap-4 text-green-700 dark:text-green-400">
+                        <span>Seller shipping credit</span>
+                        <span>
+                          -
+                          {formatCurrency(
+                            selectedQuote.sellerFreightContribution,
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex justify-between font-medium">
+                        <span>
+                          Buyer shipping ({selectedQuote.carrierName})
+                        </span>
+                        <span>
+                          {formatCurrency(selectedQuote.buyerFreightCharge)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Buyer shipping ({selectedQuote.carrierName})
+                      </span>
+                      <span>
+                        {formatCurrency(selectedQuote.buyerFreightCharge)}
+                      </span>
+                    </div>
+                  ))}
                 <Separator />
                 <div className="flex justify-between font-semibold text-base">
                   <span>Total</span>
                   <span className="text-primary">
-                    {formatCurrency(total)}
+                    {formatCurrency(displayedTotal)}
                   </span>
                 </div>
               </div>
+
+              {authoritativeTax?.status === "calculated" && (
+                <p className="text-xs text-muted-foreground">
+                  Tax was calculated from the delivery address and the
+                  listing&apos;s verified product category. The amount above is
+                  included in the PaymentIntent total.
+                </p>
+              )}
+              {authoritativeTax?.status === "disabled" && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Tax calculation is disabled in this non-production
+                  environment. Production checkout cannot run in this mode.
+                </p>
+              )}
 
               {selectedQuote && (
                 <p className="text-xs text-muted-foreground">
@@ -693,9 +881,16 @@ export default function CheckoutPage() {
                 </p>
               )}
 
+              {purchaseConfig?.sellingTerritoryMode === "allowed_states" &&
+                purchaseConfig.allowedDestinationStates.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Seller territory: {purchaseConfig.allowedDestinationStates.join(", ")}
+                  </p>
+                )}
+
               <p className="text-xs text-center text-muted-foreground">
-                By placing this order, you agree to our Terms of Service.
-                Seller fee (2%) will be deducted from seller payout.
+                By placing this order, you agree to our Terms of Service. Seller
+                fees are handled separately from the buyer checkout total.
               </p>
             </CardContent>
           </Card>

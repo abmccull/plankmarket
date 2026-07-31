@@ -81,6 +81,16 @@ describe("RegisterForm", () => {
     ).toBeInTheDocument();
   });
 
+  it("makes account creation visibly separate from verification", () => {
+    render(<RegisterPage />);
+
+    expect(screen.getByText(/create your account/i)).toBeInTheDocument();
+    expect(screen.getByText(/of 2/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/we do not ask for an ein/i),
+    ).toBeInTheDocument();
+  });
+
   // 3. Shows seller account title when "Sell Flooring" clicked
   it('shows seller account title when "Sell Flooring" is clicked', async () => {
     const user = userEvent.setup();
@@ -94,6 +104,25 @@ describe("RegisterForm", () => {
     expect(
       screen.getByRole("button", { name: /create seller account/i }),
     ).toBeInTheDocument();
+  });
+
+  it("exposes the selected account role to assistive technology", async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+
+    const buyerButton = screen.getByRole("button", { name: /buy flooring/i });
+    const sellerButton = screen.getByRole("button", { name: /sell flooring/i });
+
+    expect(buyerButton).toHaveAttribute("aria-pressed", "true");
+    expect(sellerButton).toHaveAttribute("aria-pressed", "false");
+
+    buyerButton.focus();
+    await user.keyboard("[Tab]");
+    expect(sellerButton).toHaveFocus();
+    await user.keyboard("[Space]");
+
+    expect(buyerButton).toHaveAttribute("aria-pressed", "false");
+    expect(sellerButton).toHaveAttribute("aria-pressed", "true");
   });
 
   // 4. Shows validation error for short password
@@ -119,6 +148,11 @@ describe("RegisterForm", () => {
         screen.getByText(/password must be at least 8 characters/i),
       ).toBeInTheDocument();
     });
+    expect(screen.getByLabelText(/^password$/i)).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByRole("alert")).toHaveAttribute("id", "password-error");
   });
 
   // 5. Shows validation error for invalid email
@@ -239,11 +273,24 @@ describe("RegisterForm", () => {
   });
 
   // 10. Has link to login page
-  it("has a link to the login page", () => {
+  it("has a role-preserving link to the login page", () => {
     render(<RegisterPage />);
 
     const signInLink = screen.getByRole("link", { name: /sign in/i });
     expect(signInLink).toBeInTheDocument();
-    expect(signInLink).toHaveAttribute("href", "/login");
+    expect(signInLink).toHaveAttribute("href", "/login?role=buyer");
+  });
+
+  it("keeps the password hint wired before validation fails", () => {
+    render(<RegisterPage />);
+
+    expect(screen.getByLabelText(/^password$/i)).toHaveAttribute(
+      "aria-describedby",
+      "password-hint",
+    );
+    expect(screen.getByText(/minimum 8 characters/i)).toHaveAttribute(
+      "id",
+      "password-hint",
+    );
   });
 });

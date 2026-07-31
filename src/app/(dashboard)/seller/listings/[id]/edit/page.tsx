@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -33,6 +34,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Loader2, ArrowLeft, Save } from "lucide-react";
 import { PhotoUpload } from "@/components/listings/photo-upload";
+import {
+  AutomaticMarkdownPreview,
+  ChoiceCard,
+  getFreightUiMode,
+  SellerCommercialFulfillmentFields,
+  type UsStateCode,
+} from "@/components/marketplace/seller-commercial-fields";
 import {
   WIDTH_OPTIONS,
   THICKNESS_OPTIONS,
@@ -115,7 +123,7 @@ export default function EditListingPage() {
   const router = useRouter();
   const listingId = params.id as string;
 
-  const { data: listing, isLoading, error } = trpc.listing.getById.useQuery(
+  const { data: listing, isLoading, error } = trpc.listing.getForEdit.useQuery(
     { id: listingId },
     { enabled: !!listingId }
   );
@@ -135,6 +143,16 @@ export default function EditListingPage() {
 
   // eslint-disable-next-line react-hooks/incompatible-library -- React Hook Form is not memoization-safe by design
   const watchedValues = watch();
+  const freightMode = getFreightUiMode({
+    freightPaymentMode: watchedValues.freightPaymentMode,
+    sellerFreightStates: watchedValues.sellerFreightStates,
+  });
+  const markdownFloorPercent = Number(
+    watchedValues.automaticMarkdownFloorPercent ?? 0,
+  );
+  const markdownIntervalDays = Number(
+    watchedValues.automaticMarkdownIntervalDays ?? 0,
+  );
 
   // Pre-populate form when listing data loads
   useEffect(() => {
@@ -171,6 +189,21 @@ export default function EditListingPage() {
         buyNowPrice: listing.buyNowPrice ?? undefined,
         allowOffers: listing.allowOffers,
         floorPrice: listing.floorPrice ?? undefined,
+        fullLotOnly: listing.fullLotOnly ?? false,
+        partialQuantityMarkupPercent:
+          listing.partialQuantityMarkupPercent ?? undefined,
+        automaticMarkdownEnabled: listing.automaticMarkdownEnabled ?? false,
+        automaticMarkdownFloorPercent:
+          listing.automaticMarkdownFloorPercent ?? undefined,
+        automaticMarkdownIntervalDays:
+          listing.automaticMarkdownIntervalDays ?? undefined,
+        allowSampleRequests: listing.allowSampleRequests ?? false,
+        territoryMode: listing.territoryMode ?? "unrestricted",
+        allowedDestinationStates:
+          (listing.allowedDestinationStates as string[]) ?? [],
+        freightPaymentMode: listing.freightPaymentMode ?? "buyer_pays",
+        sellerFreightStates: (listing.sellerFreightStates as string[]) ?? [],
+        freightDropCharge: listing.freightDropCharge ?? undefined,
         condition: listing.condition,
         reasonCode: listing.reasonCode ?? undefined,
         certifications: (listing.certifications as string[]) ?? [],
@@ -677,7 +710,7 @@ export default function EditListingPage() {
               Asking price and purchase options
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="askPricePerSqFt">Ask Price per Sq Ft ($) *</Label>
               <Input
@@ -705,50 +738,288 @@ export default function EditListingPage() {
                 )}
             </div>
 
-            <Separator className="my-4" />
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="buyNowPrice">Buy Now Price per Sq Ft ($, optional)</Label>
+                  <Input
+                    id="buyNowPrice"
+                    type="number"
+                    step="0.01"
+                    placeholder="4.25"
+                    {...register("buyNowPrice", { valueAsNumber: true })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave blank if this listing should only move through offers
+                    or negotiated checkout.
+                  </p>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="buyNowPrice">Buy Now Price per Sq Ft ($, optional)</Label>
-              <Input
-                id="buyNowPrice"
-                type="number"
-                step="0.01"
-                placeholder="4.25"
-                {...register("buyNowPrice", { valueAsNumber: true })}
-              />
-              <p className="text-xs text-muted-foreground">
-                Buy now price per square foot. Leave blank to disable instant purchase.
-              </p>
-            </div>
+                <div className="rounded-2xl border bg-card p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-allow-offers" className="text-sm font-medium">
+                        Allow offers
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Buyers can submit an offer and each side can accept,
+                        decline, or counter when it is their turn.
+                      </p>
+                    </div>
+                    <Switch
+                      id="edit-allow-offers"
+                      checked={!!watchedValues.allowOffers}
+                      onCheckedChange={(checked) =>
+                        setValue("allowOffers", checked, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                  </div>
 
-            <Separator className="my-4" />
+                  {watchedValues.allowOffers ? (
+                    <div className="mt-4 space-y-2">
+                      <Label htmlFor="floorPrice">Internal floor price per Sq Ft ($)</Label>
+                      <Input
+                        id="floorPrice"
+                        type="number"
+                        step="0.01"
+                        placeholder="2.00"
+                        {...register("floorPrice", { valueAsNumber: true })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        This minimum is not visible to buyers.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
 
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="rounded border-gray-300"
-                  {...register("allowOffers")}
-                />
-                <span className="text-sm font-medium">Accept Offers</span>
-              </label>
-            </div>
+                <div className="rounded-2xl border bg-card p-4">
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <div className="font-medium">Purchase structure</div>
+                      <p className="text-sm text-muted-foreground">
+                        Control whether the listing is full-lot only or allows
+                        partial quantity pricing.
+                      </p>
+                    </div>
 
-            {watchedValues.allowOffers && (
-              <div className="space-y-2">
-                <Label htmlFor="floorPrice">Floor Price per Sq Ft ($)</Label>
-                <Input
-                  id="floorPrice"
-                  type="number"
-                  step="0.01"
-                  placeholder="2.00"
-                  {...register("floorPrice", { valueAsNumber: true })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Minimum price you will accept. Not visible to buyers.
-                </p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <ChoiceCard
+                        title="Full lot only"
+                        description="Buyers must take the entire listing quantity."
+                        selected={!!watchedValues.fullLotOnly}
+                        onClick={() => {
+                          setValue("fullLotOnly", true, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                          setValue("partialQuantityMarkupPercent", null, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }}
+                      />
+                      <ChoiceCard
+                        title="Allow partial quantities"
+                        description="Let buyers purchase less than the full lot and add a markup for partial orders."
+                        selected={!watchedValues.fullLotOnly}
+                        onClick={() =>
+                          setValue("fullLotOnly", false, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      />
+                    </div>
+
+                    {!watchedValues.fullLotOnly ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="partialQuantityMarkupPercent">
+                          Partial-order markup (%)
+                        </Label>
+                        <Input
+                          id="partialQuantityMarkupPercent"
+                          type="number"
+                          min={0}
+                          max={500}
+                          step="1"
+                          {...register("partialQuantityMarkupPercent", {
+                            valueAsNumber: true,
+                          })}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border bg-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="edit-automatic-markdown" className="text-sm font-medium">
+                        Automatic markdown
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Step the listing down in four equal intervals until it
+                        reaches your floor.
+                      </p>
+                    </div>
+                    <Switch
+                      id="edit-automatic-markdown"
+                      checked={!!watchedValues.automaticMarkdownEnabled}
+                      onCheckedChange={(checked) =>
+                        setValue("automaticMarkdownEnabled", checked, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                    />
+                  </div>
+
+                  {watchedValues.automaticMarkdownEnabled ? (
+                    <div className="mt-4 space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="automaticMarkdownFloorPercent">
+                            Lowest allowed percent of original ask
+                          </Label>
+                          <Input
+                            id="automaticMarkdownFloorPercent"
+                            type="number"
+                            min={1}
+                            max={100}
+                            step="1"
+                            {...register("automaticMarkdownFloorPercent", {
+                              valueAsNumber: true,
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="automaticMarkdownIntervalDays">
+                            Days between markdown steps
+                          </Label>
+                          <Input
+                            id="automaticMarkdownIntervalDays"
+                            type="number"
+                            min={1}
+                            max={365}
+                            step="1"
+                            {...register("automaticMarkdownIntervalDays", {
+                              valueAsNumber: true,
+                            })}
+                          />
+                        </div>
+                      </div>
+
+                      {watchedValues.askPricePerSqFt &&
+                      markdownFloorPercent > 0 &&
+                      markdownIntervalDays > 0 ? (
+                        <AutomaticMarkdownPreview
+                          baseUnitPrice={watchedValues.askPricePerSqFt}
+                          floorPercent={markdownFloorPercent}
+                          intervalDays={markdownIntervalDays}
+                          description="This preview uses the current ask price and updates if you change the markdown rule."
+                        />
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Add a valid ask price, floor percent, and interval to
+                          preview the markdown schedule.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            )}
+
+              <div className="space-y-4">
+                <SellerCommercialFulfillmentFields
+                  sampleRequests={{
+                    id: "edit-allow-samples",
+                    enabled: !!watchedValues.allowSampleRequests,
+                    onChange: (checked) =>
+                      setValue("allowSampleRequests", checked, {
+                        shouldDirty: true,
+                      }),
+                  }}
+                  territory={{
+                    mode:
+                      watchedValues.territoryMode === "allowed_states"
+                        ? "allowed_states"
+                        : "unrestricted",
+                    selectedStates:
+                      (watchedValues.allowedDestinationStates ??
+                        []) as UsStateCode[],
+                    onChange: ({ mode, selectedStates }) => {
+                      setValue("territoryMode", mode, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      setValue("allowedDestinationStates", selectedStates, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                    },
+                    error: errors.allowedDestinationStates?.message,
+                  }}
+                  freight={{
+                    mode: freightMode,
+                    selectedStates:
+                      (watchedValues.sellerFreightStates ??
+                        []) as UsStateCode[],
+                    onChange: ({
+                      persistence,
+                      selectedStates,
+                      shouldClearDropCharge,
+                    }) => {
+                      setValue(
+                        "freightPaymentMode",
+                        persistence.freightPaymentMode,
+                        {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        },
+                      );
+                      setValue("sellerFreightStates", selectedStates, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      if (shouldClearDropCharge) {
+                        setValue("freightDropCharge", null, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }
+                    },
+                    dropChargeInputId: "freightDropCharge",
+                    dropChargeValue:
+                      watchedValues.freightDropCharge != null
+                        ? String(watchedValues.freightDropCharge)
+                        : "",
+                    onDropChargeChange: (value) =>
+                      setValue(
+                        "freightDropCharge",
+                        value.length > 0 ? Number(value) : null,
+                        {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        },
+                      ),
+                    statesError: errors.sellerFreightStates?.message,
+                    dropChargeError: errors.freightDropCharge?.message,
+                  }}
+                />
+
+                <div className="rounded-2xl border bg-muted/50 p-4">
+                  <p className="text-sm font-medium">Sales tax</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Sales-tax registration states are managed in seller
+                    preferences and are stored for operations only. Automatic
+                    tax calculation is not yet live in checkout.
+                  </p>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -848,7 +1119,9 @@ export default function EditListingPage() {
           <CardContent>
             <PhotoUpload
               onImagesChange={(ids) => setValue("mediaIds", ids, { shouldDirty: true })}
-              initialMediaIds={listing?.media?.map((m) => m.id) ?? []}
+              initialMediaIds={
+                listing?.media?.map((media: { id: string }) => media.id) ?? []
+              }
             />
           </CardContent>
         </Card>

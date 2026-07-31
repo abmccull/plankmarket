@@ -275,8 +275,8 @@ describe("truncate", () => {
 // calculateBuyerFee
 // ---------------------------------------------------------------------------
 describe("calculateBuyerFee", () => {
-  it("should calculate 3% buyer fee", () => {
-    expect(calculateBuyerFee(100)).toBe(3);
+  it("should calculate 5% buyer fee", () => {
+    expect(calculateBuyerFee(100)).toBe(5);
   });
 
   it("should return 0 for a zero price", () => {
@@ -285,18 +285,18 @@ describe("calculateBuyerFee", () => {
 
   it("should round to two decimal places", () => {
     // 3% of 10.00 = 0.30
-    expect(calculateBuyerFee(10)).toBe(0.3);
+    expect(calculateBuyerFee(10)).toBe(0.5);
     // 3% of 33.33 = 0.9999 → rounds to 1.00
-    expect(calculateBuyerFee(33.33)).toBe(1);
+    expect(calculateBuyerFee(33.33)).toBe(1.67);
   });
 
   it("should handle large amounts", () => {
-    expect(calculateBuyerFee(100000)).toBe(3000);
+    expect(calculateBuyerFee(100000)).toBe(5000);
   });
 
   it("should handle fractional prices", () => {
     // 3% of 1.99 = 0.0597 → rounds to 0.06
-    expect(calculateBuyerFee(1.99)).toBe(0.06);
+    expect(calculateBuyerFee(1.99)).toBe(0.1);
   });
 });
 
@@ -304,8 +304,8 @@ describe("calculateBuyerFee", () => {
 // calculateSellerFee
 // ---------------------------------------------------------------------------
 describe("calculateSellerFee", () => {
-  it("should calculate 2% seller fee", () => {
-    expect(calculateSellerFee(100)).toBe(2);
+  it("should calculate 5% seller fee", () => {
+    expect(calculateSellerFee(100)).toBe(5);
   });
 
   it("should return 0 for a zero price", () => {
@@ -314,11 +314,11 @@ describe("calculateSellerFee", () => {
 
   it("should round to two decimal places", () => {
     // 2% of 33.33 = 0.6666 → rounds to 0.67
-    expect(calculateSellerFee(33.33)).toBe(0.67);
+    expect(calculateSellerFee(33.33)).toBe(1.67);
   });
 
   it("should handle large amounts", () => {
-    expect(calculateSellerFee(100000)).toBe(2000);
+    expect(calculateSellerFee(100000)).toBe(5000);
   });
 });
 
@@ -326,8 +326,8 @@ describe("calculateSellerFee", () => {
 // calculateTotalWithFees
 // ---------------------------------------------------------------------------
 describe("calculateTotalWithFees", () => {
-  it("should add 3% buyer fee to the base price", () => {
-    expect(calculateTotalWithFees(100)).toBe(103);
+  it("should add 5% buyer fee to the base price", () => {
+    expect(calculateTotalWithFees(100)).toBe(105);
   });
 
   it("should return 0 for a zero price", () => {
@@ -340,6 +340,6 @@ describe("calculateTotalWithFees", () => {
   });
 
   it("should handle large amounts", () => {
-    expect(calculateTotalWithFees(100000)).toBe(103000);
+    expect(calculateTotalWithFees(100000)).toBe(105000);
   });
 });

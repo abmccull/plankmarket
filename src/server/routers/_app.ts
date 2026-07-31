@@ -25,6 +25,9 @@ import { shippingAddressRouter } from "./shipping-address";
 import { subscriptionRouter } from "./subscription";
 import { agentRouter } from "./agent";
 import { marketIntelligenceRouter } from "./market-intelligence";
+import { sampleRequestRouter } from "./sample-request";
+import { reconciliationRouter } from "./reconciliation";
+import { inventoryIntegrationRouter } from "./inventory-integration";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
@@ -53,6 +56,9 @@ export const appRouter = createTRPCRouter({
   subscription: subscriptionRouter,
   agent: agentRouter,
   marketIntelligence: marketIntelligenceRouter,
+  sampleRequest: sampleRequestRouter,
+  reconciliation: reconciliationRouter,
+  inventoryIntegration: inventoryIntegrationRouter,
 });
 
 export type AppRouter = typeof appRouter;

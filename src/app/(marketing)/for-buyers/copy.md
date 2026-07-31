@@ -22,7 +22,7 @@ Create a Free Buyer Account
 **Trust Signals**
 - Shield icon — Every seller is business-verified
 - Layers icon — 6 flooring categories, all 50 US states
-- Lock icon — Secure Stripe payments, buyer protection included
+- Lock icon — Stripe-processed payments with tracked shipping
 
 ---
 
@@ -65,8 +65,8 @@ Description: PlankMarket requires detailed specs on every listing: material type
 Supporting detail: 44 flooring-specific data fields per listing — more detail than any general marketplace or broker call will ever give you.
 
 **Value Proposition 3**
-Title: Verified sellers. Secure payment. Real buyer protection.
-Description: Every seller on PlankMarket undergoes business verification — EIN verification, document review, and admin approval — before listing a single lot. Payments are processed via Stripe and held in escrow until the carrier picks up your order.
+Title: Verified sellers. Stripe payments. Tracked orders.
+Description: Every seller on PlankMarket undergoes business verification — EIN verification, document review, and admin approval — before listing a single lot. Payments are processed through Stripe, and PlankMarket initiates the seller transfer only after carrier pickup is confirmed and the configured release window has passed.
 Supporting detail: If something goes wrong, our dispute resolution team steps in. Buyers have 48 hours post-delivery to report damage or shortage, with photo documentation.
 
 ---
@@ -94,7 +94,7 @@ Description: Found the right lot? Buy now at the listed price or use the built-i
 **Step 4**
 Number: 4
 Title: Pay securely and track your freight shipment.
-Description: Check out via Stripe. Your payment is held in escrow. Once the seller ships your order via LTL freight, you get a tracking number and can follow delivery through your buyer dashboard. Your funds are only released to the seller after carrier pickup is confirmed.
+Description: Check out via Stripe. Once the order ships by LTL freight, you get a tracking number and can follow delivery through your buyer dashboard. Seller payment is scheduled only after carrier pickup is confirmed and the review window has passed.
 
 ---
 
@@ -130,8 +130,8 @@ Description: Freight quotes are generated at checkout based on your delivery add
 
 **Feature 6**
 Icon: Shield
-Title: Buyer Protection and Dispute Resolution
-Description: Payments are held in escrow until carrier pickup is confirmed. Buyers have 48 hours post-delivery to report damage or shortages with photo evidence. Our support team mediates disputes and protects your purchase.
+Title: Stripe Payment and Dispute Reporting
+Description: Stripe processes buyer payments, and PlankMarket initiates the seller transfer after carrier pickup. Buyers have 48 hours post-delivery to report damage or shortages through the platform with photo evidence for support review.
 
 ---
 
@@ -172,25 +172,25 @@ Company type: Residential home builder, Mid-Atlantic region
 One fee. No surprises.
 
 **Headline**
-You pay 3% on inventory purchases. Freight is quoted separately.
+Clear buyer totals. No surprises.
 
 **Description**
-The 3% buyer fee applies to the inventory subtotal only. Freight is quoted separately at checkout, and that freight quote already includes carrier charges plus marketplace shipping margin. There are no required membership fees, no listing access fees, and no charges to browse. Optional Pro is available for unlimited saved searches, AI monitoring, and advanced automation.
+You pay a 5% buyer fee on inventory purchases. Freight is quoted separately before payment. The displayed freight charge may include carrier charges plus PlankMarket shipping service margin. There are no required membership fees, no listing access fees, and no charges to browse. Optional Pro is available for unlimited saved searches, AI monitoring, and advanced automation.
 
 **Fee Example**
 - Listed lot price: $8,000
-- Buyer fee (3%): $240
+- Buyer fee (5%): $400
 - Freight quote: $600
-- You pay: $8,840 total
-- Seller payout: inventory subtotal minus their 2% seller fee and inventory-only Stripe fee
+- You pay: $9,000 total
+- Seller fees are handled separately from the buyer charge
 
 **Comparison to Alternatives**
-Traditional brokers: Charge 8–15% commission, provide no transparent pricing, and add weeks to the process.
-Calling distributors directly: No central visibility, inconsistent pricing, and no buyer protection on side deals.
+Brokered liquidation channels: Slower communication, less direct lot evidence, and less clarity about the final transaction economics.
+Calling distributors directly: No central visibility, inconsistent pricing, and no shared shipping record or platform dispute workflow on side deals.
 General marketplaces (eBay, Craigslist): Unverified sellers, no flooring-specific specs, no freight integration, no dispute resolution for commercial freight.
 
 **No Hidden Fees Messaging**
-No required subscription. No listing access fees. No renewal charges. You pay 3% only when you complete a purchase.
+No required subscription. No listing access fees. No renewal charges. You pay 5% only when you complete a purchase.
 
 ---
 
@@ -214,11 +214,11 @@ Answer: PlankMarket uses integrated LTL freight. When you check out, you enter y
 
 **Q5**
 Question: What happens if my order arrives damaged or short?
-Answer: Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team will mediate the claim. Payments are held in escrow until carrier pickup, providing an additional layer of protection.
+Answer: Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team will mediate the claim. The transaction record keeps payment, freight, and delivery evidence attached for review.
 
 **Q6**
 Question: Is my payment information secure?
-Answer: Yes. All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses worldwide. PlankMarket never stores your payment card information. Your funds are held in escrow after payment and only released to the seller once carrier pickup is confirmed.
+Answer: Yes. All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses worldwide. PlankMarket never stores your payment card information. Seller transfer is scheduled only after confirmed carrier pickup and the review window.
 
 ---
 
@@ -234,4 +234,4 @@ Create your free buyer account and access hundreds of verified surplus flooring 
 Create Your Free Buyer Account
 
 **Supporting line**
-No required subscription. Browse free. Pay 3% on inventory only when you buy.
+No required subscription. Browse free. Pay 5% on inventory only when you buy.

@@ -44,7 +44,7 @@ describe("getShippingQuotesSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts valid input with manual overrides", () => {
+  it("rejects buyer-supplied freight overrides", () => {
     const result = getShippingQuotesSchema.safeParse({
       listingId: VALID_UUID,
       destinationZip: "90210",
@@ -55,7 +55,7 @@ describe("getShippingQuotesSchema", () => {
       overridePalletWidth: 40,
       overridePalletHeight: 60,
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
   });
 });
 
@@ -75,8 +75,10 @@ describe("createShippingAddressSchema", () => {
   });
 
   it("rejects missing label", () => {
-    const { label: _, ...withoutLabel } = validAddress;
-    const result = createShippingAddressSchema.safeParse(withoutLabel);
+    const result = createShippingAddressSchema.safeParse({
+      ...validAddress,
+      label: undefined,
+    });
     expect(result.success).toBe(false);
   });
 

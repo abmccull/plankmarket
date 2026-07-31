@@ -1,5 +1,5 @@
 ---
-title: Flooring Inventory Carrying Costs: The Complete Guide
+title: 'Flooring Inventory Carrying Costs: The Complete Guide'
 slug: flooring-inventory-carrying-costs-complete-guide
 target_keyword: flooring inventory carrying costs
 secondary_keywords: 'flooring holding costs, flooring storage costs, inventory cost calculator'

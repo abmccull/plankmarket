@@ -15,6 +15,7 @@ const validCreateOrderInput = {
   shippingCity: "Portland",
   shippingState: "OR",
   shippingZip: "97201",
+  selectedQuoteToken: "verified-quote-token",
 };
 
 describe("createOrderSchema", () => {
@@ -24,7 +25,8 @@ describe("createOrderSchema", () => {
   });
 
   it("rejects missing listingId", () => {
-    const { listingId: _, ...input } = validCreateOrderInput;
+    const input = { ...validCreateOrderInput };
+    Reflect.deleteProperty(input, "listingId");
     const result = createOrderSchema.safeParse(input);
     expect(result.success).toBe(false);
   });
@@ -42,6 +44,13 @@ describe("createOrderSchema", () => {
       ...validCreateOrderInput,
       quantitySqFt: 0,
     });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects checkout without a verified quote token", () => {
+    const input = { ...validCreateOrderInput };
+    Reflect.deleteProperty(input, "selectedQuoteToken");
+    const result = createOrderSchema.safeParse(input);
     expect(result.success).toBe(false);
   });
 
@@ -105,7 +114,20 @@ describe("createOrderFromOfferSchema", () => {
       shippingCity: "Seattle",
       shippingState: "WA",
       shippingZip: "98101",
+      selectedQuoteToken: "verified-offer-quote-token",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("rejects an offer order without a verified quote token", () => {
+    const result = createOrderFromOfferSchema.safeParse({
+      offerId: VALID_UUID,
+      shippingName: "Jane Smith",
+      shippingAddress: "456 Oak Avenue",
+      shippingCity: "Seattle",
+      shippingState: "WA",
+      shippingZip: "98101",
+    });
+    expect(result.success).toBe(false);
   });
 });

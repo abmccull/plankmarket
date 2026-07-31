@@ -1,4 +1,5 @@
 import {
+  buyerProcedure,
   createTRPCRouter,
   protectedProcedure,
   messagingProcedure,
@@ -7,16 +8,65 @@ import {
   sendMessageSchema,
   getMessagesSchema,
 } from "@/lib/validators/message";
-import { conversations, messages, listings, media } from "../db/schema";
-import { eq, and, or, desc, asc, gt, lt, sql } from "drizzle-orm";
+import { conversations, messages, listings, media, orders } from "../db/schema";
+import { eq, and, or, desc, asc, gt, lt, sql, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { detectSelfReference } from "@/lib/content-filter";
 import { logContentViolation } from "@/server/services/content-moderation";
+import { toConversationParty } from "@/server/security/public-data";
+import { assertListingVisibleToViewer } from "@/server/security/listing-visibility";
+
+const conversationPartyColumns = {
+  id: true,
+  name: true,
+  role: true,
+  businessCity: true,
+  businessState: true,
+  verificationStatus: true,
+} as const;
+
+function conversationIdentityKey(conversation: {
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+}) {
+  return `${conversation.listingId}:${conversation.buyerId}:${conversation.sellerId}`;
+}
+
+async function canRevealConversationIdentity(
+  db: typeof import("@/server/db").db,
+  conversation: { listingId: string; buyerId: string; sellerId: string },
+) {
+  const deliveredOrder = await db.query.orders.findFirst({
+    where: and(
+      eq(orders.listingId, conversation.listingId),
+      eq(orders.buyerId, conversation.buyerId),
+      eq(orders.sellerId, conversation.sellerId),
+      eq(orders.status, "delivered"),
+    ),
+    columns: { id: true },
+  });
+
+  return Boolean(deliveredOrder);
+}
+
+function shapeConversation<
+  T extends {
+    buyer: Parameters<typeof toConversationParty>[0];
+    seller: Parameters<typeof toConversationParty>[0];
+  },
+>(conversation: T, revealIdentity: boolean) {
+  return {
+    ...conversation,
+    buyer: toConversationParty(conversation.buyer, revealIdentity),
+    seller: toConversationParty(conversation.seller, revealIdentity),
+  };
+}
 
 export const messageRouter = createTRPCRouter({
   // Get or create a conversation for a listing
-  getOrCreateConversation: protectedProcedure
+  getOrCreateConversation: buyerProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       // Get the listing to determine seller
@@ -54,29 +104,30 @@ export const messageRouter = createTRPCRouter({
             },
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
         },
       });
 
       if (existingConversation) {
-        return existingConversation;
+        const revealIdentity = await canRevealConversationIdentity(
+          ctx.db,
+          existingConversation,
+        );
+        return shapeConversation(existingConversation, revealIdentity);
       }
+
+      // Existing participants retain their history after a listing closes, but
+      // a caller cannot use a known UUID to open a new conversation against an
+      // expired, stale, or territory-restricted listing.
+      assertListingVisibleToViewer(
+        listing,
+        ctx.user,
+        "Listing is not available for messaging",
+      );
 
       // Create new conversation
       const [newConversation] = await ctx.db
@@ -100,27 +151,22 @@ export const messageRouter = createTRPCRouter({
             },
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
         },
       });
 
-      return conversation;
+      if (!conversation) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create conversation",
+        });
+      }
+
+      return shapeConversation(conversation, false);
     }),
 
   // Send a message in a conversation (uses messagingProcedure for content policy enforcement)
@@ -225,28 +271,22 @@ export const messageRouter = createTRPCRouter({
             },
             with: {
               media: {
+                columns: {
+                  id: true,
+                  url: true,
+                  altText: true,
+                  sortOrder: true,
+                },
                 limit: 1,
                 orderBy: [asc(media.sortOrder)],
               },
             },
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
           messages: {
             limit: 1,
@@ -254,6 +294,34 @@ export const messageRouter = createTRPCRouter({
           },
         },
       });
+
+      const deliveredOrders = conversationsList.length
+        ? await ctx.db
+            .select({
+              listingId: orders.listingId,
+              buyerId: orders.buyerId,
+              sellerId: orders.sellerId,
+            })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.status, "delivered"),
+                inArray(
+                  orders.listingId,
+                  [...new Set(conversationsList.map((item) => item.listingId))],
+                ),
+              ),
+            )
+        : [];
+      const revealableConversationKeys = new Set(
+        deliveredOrders.map(conversationIdentityKey),
+      );
+      const shapedConversations = conversationsList.map((conversation) =>
+        shapeConversation(
+          conversation,
+          revealableConversationKeys.has(conversationIdentityKey(conversation)),
+        ),
+      );
 
       // Get total count
       const [{ count }] = await ctx.db
@@ -267,7 +335,7 @@ export const messageRouter = createTRPCRouter({
         );
 
       return {
-        conversations: conversationsList,
+        conversations: shapedConversations,
         total: count,
         page: input.page,
         limit: input.limit,
@@ -317,13 +385,7 @@ export const messageRouter = createTRPCRouter({
         limit: input.limit,
         with: {
           sender: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: conversationPartyColumns,
           },
         },
       });
@@ -339,7 +401,14 @@ export const messageRouter = createTRPCRouter({
         )
         .where(eq(conversations.id, input.conversationId));
 
-      return messagesList;
+      const revealIdentity = await canRevealConversationIdentity(
+        ctx.db,
+        conversation,
+      );
+      return messagesList.map((message) => ({
+        ...message,
+        sender: toConversationParty(message.sender, revealIdentity),
+      }));
     }),
 
   // Mark a conversation as read

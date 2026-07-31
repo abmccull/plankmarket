@@ -7,15 +7,9 @@ import { users } from "./db/schema";
 import { eq } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-import { env } from "@/env";
+import { getRedisClient } from "@/lib/redis/client";
 import { checkViolationStatus } from "@/server/services/content-moderation";
-
-function parseRole(value: unknown): "buyer" | "seller" | "admin" {
-  return value === "buyer" || value === "seller" || value === "admin"
-    ? value
-    : "buyer";
-}
+import { resolveRole } from "@/lib/supabase/roles";
 
 function parseZip(value: unknown): string {
   if (typeof value !== "string") return "00000";
@@ -76,84 +70,96 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
     });
 
     if (!result) {
-      const role = parseRole(authUser.app_metadata?.role);
-      const name = parseText(
-        authUser.user_metadata?.name,
-        parseText(authUser.email?.split("@")[0], "PlankMarket User")
-      ).slice(0, 255);
-      const businessName = parseText(authUser.user_metadata?.business_name, "")
-        .slice(0, 255);
-      const phone = parseText(authUser.user_metadata?.phone, "").slice(0, 20);
-      const zipCode = parseZip(
-        authUser.user_metadata?.zip_code ?? authUser.user_metadata?.zipCode
-      );
-
-      try {
-        await db
-          .insert(users)
-          .values({
-            authId: authUser.id,
-            email: authUser.email ?? `${authUser.id}@placeholder.plankmarket.local`,
-            name,
-            role,
-            businessName: businessName || null,
-            phone,
-            businessAddress: "Pending verification",
-            businessCity: "NA",
-            businessState: "NA",
-            businessZip: zipCode,
-            verificationDocUrl: "",
-            verificationRequestedAt: new Date(0),
-            verificationNotes: "",
-            businessWebsite: "",
-            einTaxId: "",
-            verificationStatus: "unverified",
-            verified: false,
-            active: true,
-            zipCode,
-            lat: parseNumber(authUser.user_metadata?.lat, 0),
-            lng: parseNumber(authUser.user_metadata?.lng, 0),
-          })
-          .onConflictDoNothing({ target: users.authId });
-      } catch (error) {
-        console.error("Failed to auto-provision missing user profile", {
+      const role = resolveRole(authUser);
+      if (!role) {
+        // Never turn a partially provisioned or externally-created auth
+        // identity into a buyer by default. Registration writes app_metadata
+        // with the service-role client before the profile is created.
+        console.error("Refusing to auto-provision profile without a trusted role", {
           authUserId: authUser.id,
-          email: authUser.email,
-          error,
+        });
+      } else {
+        const name = parseText(
+          authUser.user_metadata?.name,
+          parseText(authUser.email?.split("@")[0], "PlankMarket User")
+        ).slice(0, 255);
+        const businessName = parseText(
+          authUser.user_metadata?.business_name,
+          "",
+        ).slice(0, 255);
+        const phone = parseText(authUser.user_metadata?.phone, "").slice(0, 20);
+        const zipCode = parseZip(
+          authUser.user_metadata?.zip_code ?? authUser.user_metadata?.zipCode
+        );
+
+        try {
+          await db
+            .insert(users)
+            .values({
+              authId: authUser.id,
+              email:
+                authUser.email ??
+                `${authUser.id}@placeholder.plankmarket.local`,
+              name,
+              role,
+              businessName: businessName || null,
+              phone,
+              businessAddress: "Pending verification",
+              businessCity: "NA",
+              businessState: "NA",
+              businessZip: zipCode,
+              verificationDocUrl: "",
+              verificationRequestedAt: new Date(0),
+              verificationNotes: "",
+              businessWebsite: "",
+              einTaxId: "",
+              verificationStatus: "unverified",
+              verified: false,
+              active: true,
+              zipCode,
+              lat: parseNumber(authUser.user_metadata?.lat, 0),
+              lng: parseNumber(authUser.user_metadata?.lng, 0),
+            })
+            .onConflictDoNothing({ target: users.authId });
+        } catch (error) {
+          console.error("Failed to auto-provision missing user profile", {
+            authUserId: authUser.id,
+            error: error instanceof Error ? error.name : "UnknownError",
+          });
+        }
+
+        result = await db.query.users.findFirst({
+          where: eq(users.authId, authUser.id),
+          columns: {
+            id: true,
+            authId: true,
+            email: true,
+            name: true,
+            phone: true,
+            role: true,
+            businessName: true,
+            businessAddress: true,
+            businessCity: true,
+            businessState: true,
+            businessZip: true,
+            avatarUrl: true,
+            stripeAccountId: true,
+            stripeOnboardingComplete: true,
+            verified: true,
+            active: true,
+            verificationStatus: true,
+            verificationRequestedAt: true,
+            verificationNotes: true,
+            businessWebsite: true,
+            proStatus: true,
+            stripeCustomerId: true,
+            proExpiresAt: true,
+            zipCode: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
       }
-
-      result = await db.query.users.findFirst({
-        where: eq(users.authId, authUser.id),
-        columns: {
-          id: true,
-          authId: true,
-          email: true,
-          name: true,
-          phone: true,
-          role: true,
-          businessName: true,
-          businessAddress: true,
-          businessCity: true,
-          businessState: true,
-          businessZip: true,
-          avatarUrl: true,
-          stripeAccountId: true,
-          stripeOnboardingComplete: true,
-          verified: true,
-          active: true,
-          verificationStatus: true,
-          verificationRequestedAt: true,
-          verificationNotes: true,
-          businessWebsite: true,
-          proStatus: true,
-          stripeCustomerId: true,
-          proExpiresAt: true,
-          zipCode: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
     }
     dbUser = result ?? null;
   }
@@ -175,25 +181,27 @@ export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
 
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
 
-// Create Redis client for rate limiting
-const redis = new Redis({
-  url: env.UPSTASH_REDIS_REST_URL,
-  token: env.UPSTASH_REDIS_REST_TOKEN,
-});
-
 // Standard rate limit: 60 requests per minute per user
-const standardRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(60, "60 s"),
-  prefix: "rl:standard",
-});
+let standardRateLimit: Ratelimit | undefined;
+function getStandardRateLimit(): Ratelimit {
+  standardRateLimit ??= new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(60, "60 s"),
+    prefix: "rl:standard",
+  });
+  return standardRateLimit;
+}
 
 // Strict rate limit: 10 requests per minute (for sensitive operations)
-const strictRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "60 s"),
-  prefix: "rl:strict",
-});
+let strictRateLimit: Ratelimit | undefined;
+function getStrictRateLimit(): Ratelimit {
+  strictRateLimit ??= new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(10, "60 s"),
+    prefix: "rl:strict",
+  });
+  return strictRateLimit;
+}
 
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
@@ -221,14 +229,15 @@ export const rateLimitedPublicProcedure = t.procedure.use(
     const identifier = `ip:${ctx.clientIp}`;
     let success = true;
     try {
-      ({ success } = await strictRateLimit.limit(identifier));
+      ({ success } = await getStrictRateLimit().limit(identifier));
     } catch (error) {
-      // Fail open for rate-limit provider outages to avoid platform-wide auth/API failures.
-      console.error("Public strict rate limit check failed", {
-        identifier,
-        error,
+      console.error("[rate-limit] public strict limiter unavailable", {
+        error: error instanceof Error ? error.name : "UnknownError",
       });
-      return next();
+      throw new TRPCError({
+        code: "SERVICE_UNAVAILABLE",
+        message: "This operation is temporarily unavailable. Please try again.",
+      });
     }
 
     if (!success) {
@@ -268,10 +277,12 @@ const enforceRateLimit = t.middleware(async ({ ctx, next }) => {
   const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
   let success = true;
   try {
-    ({ success } = await standardRateLimit.limit(identifier));
+    ({ success } = await getStandardRateLimit().limit(identifier));
   } catch (error) {
     // Fail open for rate-limit provider outages to keep authenticated APIs available.
-    console.error("Standard rate limit check failed", { identifier, error });
+    console.error("[rate-limit] standard limiter unavailable", {
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
     return next();
   }
 
@@ -289,11 +300,15 @@ const enforceStrictRateLimit = t.middleware(async ({ ctx, next }) => {
   const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
   let success = true;
   try {
-    ({ success } = await strictRateLimit.limit(identifier));
+    ({ success } = await getStrictRateLimit().limit(identifier));
   } catch (error) {
-    // Fail open for rate-limit provider outages to avoid blocking critical writes.
-    console.error("Strict rate limit check failed", { identifier, error });
-    return next();
+    console.error("[rate-limit] strict limiter unavailable", {
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "This operation is temporarily unavailable. Please try again.",
+    });
   }
 
   if (!success) {
@@ -461,6 +476,10 @@ export const verifiedBuyerProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceRateLimit)
   .use(enforceVerifiedBuyer);
+export const strictVerifiedBuyerProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceStrictRateLimit)
+  .use(enforceVerifiedBuyer);
 
 // Admin-only middleware
 const enforceAdmin = t.middleware(({ ctx, next }) => {
@@ -490,11 +509,15 @@ export const adminProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit)
 export const strictRateLimitedProcedure = t.procedure.use(enforceAuth).use(enforceStrictRateLimit);
 
 // Messaging rate limit: 5 messages per hour for users with 3+ content violations
-const messagingRateLimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, "60 m"),
-  prefix: "rl:messaging-restricted",
-});
+let messagingRateLimit: Ratelimit | undefined;
+function getMessagingRateLimit(): Ratelimit {
+  messagingRateLimit ??= new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(5, "60 m"),
+    prefix: "rl:messaging-restricted",
+  });
+  return messagingRateLimit;
+}
 
 // Content policy enforcement middleware
 // Checks user's violation history and applies escalating consequences:
@@ -523,7 +546,7 @@ const enforceContentPolicy = t.middleware(async ({ ctx, next }) => {
   }
 
   if (status.action === "rate_limit") {
-    const { success } = await messagingRateLimit.limit(ctx.user.id);
+    const { success } = await getMessagingRateLimit().limit(ctx.user.id);
     if (!success) {
       throw new TRPCError({
         code: "TOO_MANY_REQUESTS",

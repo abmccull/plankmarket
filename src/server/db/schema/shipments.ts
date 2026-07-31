@@ -7,6 +7,7 @@ import {
   index,
   pgEnum,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { orders } from "./orders";
 
@@ -50,6 +51,9 @@ export const shipments = pgTable(
 
     // Status
     status: shipmentStatusEnum("status").notNull().default("pending"),
+    // Defaults true so legacy rows cannot be treated as live-provider payout
+    // evidence until a current Priority1 response proves otherwise.
+    isDryRun: boolean("is_dry_run").notNull().default(true),
 
     // Document URLs
     bolUrl: text("bol_url"),
@@ -71,6 +75,9 @@ export const shipments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    dispatchAttemptedAt: timestamp("dispatch_attempted_at", {
+      withTimezone: true,
+    }),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     pickupDate: timestamp("pickup_date", { withTimezone: true }),

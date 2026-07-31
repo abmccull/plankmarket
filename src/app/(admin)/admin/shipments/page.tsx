@@ -38,14 +38,22 @@ interface Shipment {
   orderId: string;
   carrierName: string | null;
   status: ShipmentStatus;
+  isDryRun: boolean;
   proNumber: string | null;
   bolUrl: string | null;
+  lastError: string | null;
   createdAt: Date | string;
   order: {
     id: string;
     orderNumber: string;
     carrierRate: number | null;
     shippingPrice: number | null;
+    freightFundingMode:
+      | "buyer_pays"
+      | "seller_pays"
+      | "seller_pays_selected_states";
+    buyerFreightCharge: number;
+    sellerFreightContribution: number;
     shippingMargin: number | null;
   };
 }
@@ -134,6 +142,30 @@ export default function AdminShipmentsPage() {
       },
     },
     {
+      accessorKey: "isDryRun",
+      header: "Provider",
+      cell: ({ row }) => (
+        <Badge variant={row.original.isDryRun ? "warning" : "success"}>
+          {row.original.isDryRun ? "Dry run / unverified" : "Priority1 live"}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "lastError",
+      header: "Attention",
+      cell: ({ row }) =>
+        row.original.lastError ? (
+          <span
+            className="block max-w-64 truncate text-sm text-destructive"
+            title={row.original.lastError}
+          >
+            {row.original.lastError}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
       id: "carrierRate",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Carrier Rate" />
@@ -149,13 +181,52 @@ export default function AdminShipmentsPage() {
     {
       id: "shippingPrice",
       header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Shipping Price" />
+        <DataTableColumnHeader column={column} title="Full Freight" />
       ),
       cell: ({ row }) => (
         <span className="font-medium">
           {row.original.order.shippingPrice != null
             ? formatCurrency(row.original.order.shippingPrice)
             : "—"}
+        </span>
+      ),
+    },
+    {
+      id: "buyerFreightCharge",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Buyer Shipping" />
+      ),
+      cell: ({ row }) => (
+        <span>{formatCurrency(row.original.order.buyerFreightCharge)}</span>
+      ),
+    },
+    {
+      id: "freightFundingMode",
+      header: "Funding",
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap text-sm">
+          {row.original.order.freightFundingMode === "buyer_pays"
+            ? "Buyer"
+            : row.original.order.freightFundingMode === "seller_pays"
+              ? "Seller nationwide"
+              : "Seller selected state"}
+        </span>
+      ),
+    },
+    {
+      id: "sellerFreightContribution",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Seller Contribution" />
+      ),
+      cell: ({ row }) => (
+        <span
+          className={
+            row.original.order.sellerFreightContribution > 0
+              ? "font-medium text-amber-700 dark:text-amber-400"
+              : "text-muted-foreground"
+          }
+        >
+          {formatCurrency(row.original.order.sellerFreightContribution)}
         </span>
       ),
     },
@@ -241,7 +312,7 @@ export default function AdminShipmentsPage() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
@@ -268,12 +339,38 @@ export default function AdminShipmentsPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                 <DollarSign className="h-4 w-4" />
-                Total Shipping Revenue
+                Full Freight Booked
               </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">
-                {formatCurrency(stats.totalRevenue)}
+                {formatCurrency(stats.totalFreightBooked)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <DollarSign className="h-4 w-4" />
+                Buyer Shipping
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">
+                {formatCurrency(stats.totalBuyerFreightCharges)}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                <DollarSign className="h-4 w-4" />
+                Seller Contributions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">
+                {formatCurrency(stats.totalSellerFreightContributions)}
               </p>
             </CardContent>
           </Card>

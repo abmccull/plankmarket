@@ -1,8 +1,9 @@
 import { inngest } from "../client";
 import { db } from "@/server/db";
 import { offers } from "@/server/db/schema/offers";
+import { offerEvents } from "@/server/db/schema/offer-events";
 import { users } from "@/server/db/schema/users";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lte } from "drizzle-orm";
 import { sendOfferAcceptedEmail } from "@/lib/email/send";
 
 interface OfferAcceptedEvent {
@@ -51,43 +52,80 @@ export const offerAccepted = inngest.createFunction(
         estimatedTotal: eventData.estimatedTotal,
         checkoutUrl,
         expiresAt: eventData.expiresAt,
+        idempotencyKey: `offer-accepted-${eventData.offerId}`,
       });
 
       return { sent: true, email: buyer[0].email };
     });
 
-    // Wait 48 hours for the buyer to complete checkout
-    await step.sleep("wait-for-payment", "48h");
+    // Wait until the exact checkout deadline. This stays correct even if
+    // delivery of the accepted event or a retry starts later than acceptance.
+    await step.sleepUntil(
+      "wait-for-payment",
+      new Date(eventData.expiresAt),
+    );
 
     const expiryResult = await step.run("check-and-expire", async () => {
-      const offer = await db.query.offers.findFirst({
-        where: eq(offers.id, eventData.offerId),
-      });
-
-      if (!offer) {
-        return { expired: false, reason: "Offer not found" };
-      }
-
-      // Only expire if still accepted and no order was created
-      if (offer.status === "accepted" && !offer.orderId) {
-        await db
+      const now = new Date();
+      return db.transaction(async (tx) => {
+        const [expiredOffer] = await tx
           .update(offers)
           .set({
             status: "expired",
-            updatedAt: new Date(),
+            updatedAt: now,
           })
-          .where(eq(offers.id, eventData.offerId));
+          .where(
+            and(
+              eq(offers.id, eventData.offerId),
+              eq(offers.status, "accepted"),
+              isNull(offers.orderId),
+              lte(offers.expiresAt, now),
+            ),
+          )
+          .returning({
+            id: offers.id,
+            offerPricePerSqFt: offers.offerPricePerSqFt,
+            counterPricePerSqFt: offers.counterPricePerSqFt,
+            quantitySqFt: offers.quantitySqFt,
+          });
 
-        return { expired: true, offerId: eventData.offerId };
-      }
+        if (expiredOffer) {
+          const pricePerSqFt =
+            expiredOffer.counterPricePerSqFt ??
+            expiredOffer.offerPricePerSqFt;
+          await tx.insert(offerEvents).values({
+            offerId: eventData.offerId,
+            actorId: eventData.buyerId,
+            eventType: "expire",
+            pricePerSqFt,
+            quantitySqFt: expiredOffer.quantitySqFt,
+            totalPrice:
+              Math.round(
+                pricePerSqFt * expiredOffer.quantitySqFt * 100,
+              ) / 100,
+            message:
+              "Automatically expired after the 48-hour checkout window; no order was created.",
+          });
 
-      return {
-        expired: false,
-        reason:
+          return { expired: true, offerId: eventData.offerId };
+        }
+
+        const offer = await tx.query.offers.findFirst({
+          where: eq(offers.id, eventData.offerId),
+        });
+
+        if (!offer) {
+          return { expired: false, reason: "Offer not found" };
+        }
+
+        return {
+          expired: false,
+          reason:
           offer.orderId
             ? "Order already created"
             : `Offer status is ${offer.status}`,
-      };
+        };
+      });
     });
 
     return expiryResult;

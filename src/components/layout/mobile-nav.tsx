@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
-import { getDashboardPath } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import {
   Search,
@@ -26,11 +25,13 @@ import {
   LogOut,
   User,
   Shield,
-  HelpCircle,
   Users,
   TrendingUp,
   Bot,
   Crown,
+  PackageOpen,
+  BookOpen,
+  Calculator,
 } from "lucide-react";
 
 interface NavItem {
@@ -60,38 +61,40 @@ export function MobileNav() {
   // Define navigation items based on user role
   const getNavItems = (): NavItem[] => {
     if (!isAuthenticated || !user) {
-      const isLandingPage = pathname === "/";
       return [
-        { title: "Browse Listings", href: "/listings", icon: Search },
+        { title: "Browse", href: "/listings", icon: Search },
+        { title: "Sell Inventory", href: "/for-sellers", icon: Package },
         { title: "How It Works", href: "/how-it-works", icon: LayoutDashboard },
         { title: "Pricing", href: "/pricing", icon: CreditCard },
-        { title: "Go Pro", href: "/pro", icon: Crown, badge: "Pro" },
-        ...(isLandingPage
-          ? [
-              { title: "Buyers", href: "/for-buyers", icon: ShoppingCart },
-              { title: "Sellers", href: "/for-sellers", icon: Package },
-              { title: "FAQ", href: "/faq", icon: HelpCircle },
-            ]
-          : [{ title: "For Sellers", href: "/for-sellers", icon: Package }]),
-        { title: "Login", href: "/login", icon: User },
-        { title: "Register", href: "/register", icon: User },
+        {
+          title: "Inventory Calculator",
+          href: "/tools/carrying-cost-calculator",
+          icon: Calculator,
+        },
+        { title: "Blog", href: "/blog", icon: BookOpen },
+        { title: "Pro", href: "/pro", icon: Crown, badge: "Pro" },
+        { title: "Create Buyer Account", href: "/register?role=buyer", icon: ShoppingCart },
+        { title: "Sign In", href: "/login", icon: User },
       ];
     }
 
     // Use user role to determine nav items, not just pathname.
     // Shared routes like /preferences, /messages, /offers don't have a role prefix.
     const isAdminUser = user.role === "admin";
+    const isOnAdminRoute = pathname.startsWith("/admin");
     const isOnSellerRoute = pathname.startsWith("/seller");
     const isOnBuyerRoute = pathname.startsWith("/buyer");
     const isSeller = user.role === "seller" || isOnSellerRoute;
 
-    if (pathname.startsWith("/admin")) {
+    if (isAdminUser && isOnAdminRoute) {
       return [
         { title: "Browse Listings", href: "/listings", icon: Search },
-        { title: "Admin Panel", href: "/admin", icon: Shield },
-        { title: "Seller Dashboard", href: "/seller", icon: LayoutDashboard },
-        { title: "Buyer Dashboard", href: "/buyer", icon: LayoutDashboard },
-        { title: "Settings", href: `${getDashboardPath(user.role)}/settings`, icon: Settings },
+        { title: "Admin Dashboard", href: "/admin", icon: LayoutDashboard },
+        { title: "Orders", href: "/admin/orders", icon: ShoppingCart },
+        { title: "Listings", href: "/admin/listings", icon: List },
+        { title: "Verifications", href: "/admin/verifications", icon: Shield },
+        { title: "Shipments", href: "/admin/shipments", icon: Package },
+        { title: "Settings", href: "/admin/settings", icon: Settings },
       ];
     }
 
@@ -110,6 +113,7 @@ export function MobileNav() {
           { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
           { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
           { title: "Orders", href: "/seller/orders", icon: Package },
+          { title: "Samples", href: "/seller/samples", icon: PackageOpen },
           { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
           { title: "Payments", href: "/seller/payments", icon: CreditCard },
           { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
@@ -121,6 +125,7 @@ export function MobileNav() {
         { title: "Browse Listings", href: "/listings", icon: Search },
         { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
         { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
+        { title: "Samples", href: "/buyer/samples", icon: PackageOpen },
         { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
         { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
         { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
@@ -139,6 +144,7 @@ export function MobileNav() {
         { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
         { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
         { title: "Orders", href: "/seller/orders", icon: Package },
+        { title: "Samples", href: "/seller/samples", icon: PackageOpen },
         { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
         { title: "Payments", href: "/seller/payments", icon: CreditCard },
         { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
@@ -150,6 +156,7 @@ export function MobileNav() {
       { title: "Browse Listings", href: "/listings", icon: Search },
       { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
       { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
+      { title: "Samples", href: "/buyer/samples", icon: PackageOpen },
       { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
       { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
       { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },

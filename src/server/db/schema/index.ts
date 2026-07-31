@@ -11,6 +11,8 @@ export {
   conditionTypeEnum,
   reasonCodeEnum,
   moqUnitEnum,
+  sellingTerritoryModeEnum,
+  freightPaymentModeEnum,
 } from "./listings";
 export type { Listing, NewListing } from "./listings";
 
@@ -43,15 +45,37 @@ export type { OfferEvent, NewOfferEvent } from "./offer-events";
 
 export {
   disputes,
+  disputeEvidence,
   disputeMessages,
+  disputeEvidenceTypeEnum,
+  disputeReasonCodeEnum,
+  disputeSourceEnum,
   disputeStatusEnum,
 } from "./disputes";
 export type {
   Dispute,
+  DisputeEvidence,
   NewDispute,
+  NewDisputeEvidence,
   DisputeMessage,
   NewDisputeMessage,
 } from "./disputes";
+
+export {
+  reconciliationCases,
+  reconciliationCaseEvents,
+  reconciliationCaseEventTypeEnum,
+  reconciliationCaseSeverityEnum,
+  reconciliationCaseSourceEnum,
+  reconciliationCaseStatusEnum,
+  reconciliationCaseTypeEnum,
+} from "./reconciliation-cases";
+export type {
+  NewReconciliationCase,
+  NewReconciliationCaseEvent,
+  ReconciliationCase,
+  ReconciliationCaseEvent,
+} from "./reconciliation-cases";
 
 export { feedback } from "./feedback";
 export type { Feedback, NewFeedback } from "./feedback";
@@ -118,15 +142,63 @@ export type {
   StripeWebhookEvent,
   NewStripeWebhookEvent,
 } from "./stripe-webhook-events";
+export {
+  EMAIL_DELIVERY_STATUSES,
+  emailDeliveries,
+  emailRecipientSuppressions,
+  resendWebhookEvents,
+} from "./email-deliveries";
+export type {
+  EmailDelivery,
+  EmailDeliveryStatus,
+  EmailRecipientSuppression,
+  NewEmailDelivery,
+  NewResendWebhookEvent,
+  ResendWebhookEvent,
+} from "./email-deliveries";
 
 export { promotionCredits } from "./promotion-credits";
 export type { PromotionCredit, NewPromotionCredit } from "./promotion-credits";
+
+export { verificationDrafts } from "./verification-drafts";
+export type {
+  VerificationDraft,
+  NewVerificationDraft,
+} from "./verification-drafts";
 
 export { agentConfigs } from "./agent-configs";
 export type { AgentConfig, NewAgentConfig } from "./agent-configs";
 
 export { agentActions } from "./agent-actions";
 export type { AgentAction, NewAgentAction } from "./agent-actions";
+
+export { sampleRequests, sampleRequestStatusEnum } from "./sample-requests";
+export type { SampleRequest, NewSampleRequest } from "./sample-requests";
+
+export {
+  inventoryAdjustments,
+  inventoryIngestBatches,
+  inventoryIngestStatusEnum,
+  inventoryReconciliations,
+  inventoryReconciliationStatusEnum,
+  inventorySources,
+  inventorySourceAuthModeEnum,
+  inventorySourceItems,
+  inventorySourceStatusEnum,
+} from "./inventory-integrations";
+export type {
+  InventoryAdjustment,
+  InventoryIngestBatch,
+  InventoryIngestResult,
+  InventoryReconciliation,
+  InventorySource,
+  InventorySourceItem,
+  NewInventorySource,
+  NewInventorySourceItem,
+} from "./inventory-integrations";
+
+export { auditEvents, auditActorTypeEnum } from "./audit-events";
+export type { AuditEvent, NewAuditEvent } from "./audit-events";
 
 // Relations
 import { relations } from "drizzle-orm";
@@ -141,7 +213,11 @@ import { listingPromotions } from "./promotions";
 import { reviews } from "./reviews";
 import { offers } from "./offers";
 import { offerEvents } from "./offer-events";
-import { disputes, disputeMessages } from "./disputes";
+import { disputeEvidence, disputes, disputeMessages } from "./disputes";
+import {
+  reconciliationCaseEvents,
+  reconciliationCases,
+} from "./reconciliation-cases";
 import { feedback } from "./feedback";
 import { conversations, messages } from "./conversations";
 import { shipments } from "./shipments";
@@ -152,8 +228,11 @@ import { sellerBuyerTags, sellerBuyerNotes, followups } from "./crm";
 import { listingDraftsAi } from "./listing-drafts-ai";
 import { shippingAddresses } from "./shipping-addresses";
 import { promotionCredits } from "./promotion-credits";
+import { verificationDrafts } from "./verification-drafts";
 import { agentConfigs } from "./agent-configs";
 import { agentActions } from "./agent-actions";
+import { sampleRequests } from "./sample-requests";
+import { auditEvents } from "./audit-events";
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   listings: many(listings),
@@ -189,11 +268,20 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   listingDrafts: many(listingDraftsAi),
   shippingAddresses: many(shippingAddresses),
   promotionCredits: many(promotionCredits),
+  verificationDraft: one(verificationDrafts, {
+    fields: [users.id],
+    references: [verificationDrafts.userId],
+  }),
   agentConfig: one(agentConfigs, {
     fields: [users.id],
     references: [agentConfigs.userId],
   }),
   agentActions: many(agentActions),
+  uploadedDisputeEvidence: many(disputeEvidence),
+  uploadedMedia: many(media, { relationName: "uploadedMedia" }),
+  buyerSampleRequests: many(sampleRequests, { relationName: "buyerSampleRequests" }),
+  sellerSampleRequests: many(sampleRequests, { relationName: "sellerSampleRequests" }),
+  auditEvents: many(auditEvents),
 }));
 
 export const listingsRelations = relations(listings, ({ one, many }) => ({
@@ -207,9 +295,15 @@ export const listingsRelations = relations(listings, ({ one, many }) => ({
   promotions: many(listingPromotions),
   offers: many(offers),
   conversations: many(conversations),
+  sampleRequests: many(sampleRequests),
 }));
 
 export const mediaRelations = relations(media, ({ one }) => ({
+  uploader: one(users, {
+    fields: [media.uploaderId],
+    references: [users.id],
+    relationName: "uploadedMedia",
+  }),
   listing: one(listings, {
     fields: [media.listingId],
     references: [listings.id],
@@ -248,6 +342,7 @@ export const ordersRelations = relations(orders, ({ one, many }) => ({
     fields: [orders.id],
     references: [shipments.orderId],
   }),
+  reconciliationCases: many(reconciliationCases),
 }));
 
 export const shipmentsRelations = relations(shipments, ({ one }) => ({
@@ -279,6 +374,23 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, {
     fields: [notifications.userId],
     references: [users.id],
+  }),
+}));
+
+export const sampleRequestsRelations = relations(sampleRequests, ({ one }) => ({
+  listing: one(listings, {
+    fields: [sampleRequests.listingId],
+    references: [listings.id],
+  }),
+  buyer: one(users, {
+    fields: [sampleRequests.buyerId],
+    references: [users.id],
+    relationName: "buyerSampleRequests",
+  }),
+  seller: one(users, {
+    fields: [sampleRequests.sellerId],
+    references: [users.id],
+    relationName: "sellerSampleRequests",
   }),
 }));
 
@@ -365,7 +477,27 @@ export const disputesRelations = relations(disputes, ({ one, many }) => ({
     references: [users.id],
   }),
   messages: many(disputeMessages),
+  evidence: many(disputeEvidence),
+  reconciliationCases: many(reconciliationCases),
 }));
+
+export const disputeEvidenceRelations = relations(
+  disputeEvidence,
+  ({ one }) => ({
+    dispute: one(disputes, {
+      fields: [disputeEvidence.disputeId],
+      references: [disputes.id],
+    }),
+    media: one(media, {
+      fields: [disputeEvidence.mediaId],
+      references: [media.id],
+    }),
+    uploader: one(users, {
+      fields: [disputeEvidence.uploaderId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const disputeMessagesRelations = relations(
   disputeMessages,
@@ -526,6 +658,67 @@ export const shippingAddressesRelations = relations(shippingAddresses, ({ one })
 export const promotionCreditsRelations = relations(promotionCredits, ({ one }) => ({
   user: one(users, {
     fields: [promotionCredits.userId],
+    references: [users.id],
+  }),
+}));
+
+export const verificationDraftsRelations = relations(
+  verificationDrafts,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [verificationDrafts.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const reconciliationCasesRelations = relations(
+  reconciliationCases,
+  ({ one, many }) => ({
+    order: one(orders, {
+      fields: [reconciliationCases.orderId],
+      references: [orders.id],
+    }),
+    dispute: one(disputes, {
+      fields: [reconciliationCases.disputeId],
+      references: [disputes.id],
+    }),
+    assignee: one(users, {
+      fields: [reconciliationCases.assignedTo],
+      references: [users.id],
+      relationName: "reconciliationAssignee",
+    }),
+    creator: one(users, {
+      fields: [reconciliationCases.createdBy],
+      references: [users.id],
+      relationName: "reconciliationCreator",
+    }),
+    resolver: one(users, {
+      fields: [reconciliationCases.resolvedBy],
+      references: [users.id],
+      relationName: "reconciliationResolver",
+    }),
+    events: many(reconciliationCaseEvents),
+  }),
+);
+
+export const reconciliationCaseEventsRelations = relations(
+  reconciliationCaseEvents,
+  ({ one }) => ({
+    case: one(reconciliationCases, {
+      fields: [reconciliationCaseEvents.caseId],
+      references: [reconciliationCases.id],
+    }),
+    actor: one(users, {
+      fields: [reconciliationCaseEvents.actorId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const auditEventsRelations = relations(auditEvents, ({ one }) => ({
+  actor: one(users, {
+    fields: [auditEvents.actorId],
     references: [users.id],
   }),
 }));

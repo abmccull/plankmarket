@@ -1,5 +1,5 @@
 ---
-title: Overstock Engineered Hardwood: Where to Find It and What to Pay
+title: 'Overstock Engineered Hardwood: Where to Find It and What to Pay'
 slug: overstock-engineered-hardwood-where-to-find-it-what-to-pay
 target_keyword: overstock engineered hardwood
 secondary_keywords: >-

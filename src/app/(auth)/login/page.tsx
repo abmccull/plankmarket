@@ -20,7 +20,6 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { getErrorMessage } from "@/lib/utils";
 import { toast } from "sonner";
@@ -31,6 +30,10 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = sanitizeRedirectPath(searchParams.get("redirect"), null);
+  const intendedRole = searchParams.get("role") === "seller" ? "seller" : "buyer";
+  const registerParams = new URLSearchParams({ role: intendedRole });
+  if (redirect) registerParams.set("redirect", redirect);
+  const registerHref = `/register?${registerParams.toString()}`;
   const utils = trpc.useUtils();
 
   const {
@@ -75,7 +78,9 @@ function LoginForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Welcome Back</CardTitle>
+        <h1 className="text-2xl font-semibold leading-none tracking-tight">
+          Welcome Back
+        </h1>
         <CardDescription>
           Sign in to your PlankMarket account
         </CardDescription>
@@ -93,7 +98,11 @@ function LoginForm() {
               aria-invalid={!!errors.email}
             />
             {errors.email && (
-              <p id="email-error" className="text-sm text-destructive">
+              <p
+                id="email-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
                 {errors.email.message}
               </p>
             )}
@@ -117,7 +126,11 @@ function LoginForm() {
               aria-invalid={!!errors.password}
             />
             {errors.password && (
-              <p id="password-error" className="text-sm text-destructive">
+              <p
+                id="password-error"
+                role="alert"
+                className="text-sm text-destructive"
+              >
                 {errors.password.message}
               </p>
             )}
@@ -130,7 +143,10 @@ function LoginForm() {
           </Button>
           <p className="text-sm text-muted-foreground text-center">
             Don&apos;t have an account?{" "}
-            <Link href="/register" className="text-primary hover:underline">
+            <Link
+              href={registerHref}
+              className="text-primary underline underline-offset-4 hover:decoration-2"
+            >
               Create one
             </Link>
           </p>

@@ -148,7 +148,7 @@ describe("logContentViolation", () => {
   it("inserts a violation record and increments the Redis counter", async () => {
     mockRedis.ttl.mockResolvedValue(-1);
     const detections: Detection[] = [
-      { pattern: "test", category: "spam", severity: "medium" },
+      { level: "medium", type: "intent_phrase", match: "test", index: 0 },
     ];
 
     await logContentViolation({

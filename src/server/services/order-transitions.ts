@@ -24,6 +24,84 @@ export function isValidTransition(from: string, to: string): boolean {
   return allowed.includes(to);
 }
 
+interface PaymentIntentTransitionState {
+  orderStatus: string;
+  paymentStatus: string | null | undefined;
+  storedPaymentIntentId: string | null | undefined;
+  eventPaymentIntentId: string;
+  inventoryReleasedAt: Date | string | null | undefined;
+}
+
+const RETRYABLE_PAYMENT_STATUSES = new Set(["pending", "failed", "processing"]);
+
+function hasMatchingPaymentIntent(
+  state: PaymentIntentTransitionState,
+): boolean {
+  return (
+    Boolean(state.storedPaymentIntentId) &&
+    state.storedPaymentIntentId === state.eventPaymentIntentId
+  );
+}
+
+/**
+ * Payment success may only confirm the still-reserved pending order that owns
+ * the PaymentIntent. This prevents late or out-of-order Stripe events from
+ * resurrecting cancelled/refunded orders or inventory that has been released.
+ */
+export function canApplyPaymentIntentSucceeded(
+  state: PaymentIntentTransitionState,
+): boolean {
+  return (
+    hasMatchingPaymentIntent(state) &&
+    state.orderStatus === "pending" &&
+    !state.inventoryReleasedAt &&
+    RETRYABLE_PAYMENT_STATUSES.has(state.paymentStatus ?? "pending")
+  );
+}
+
+/** A failed attempt is retryable and must never regress a captured payment. */
+export function canApplyPaymentIntentFailed(
+  state: PaymentIntentTransitionState,
+): boolean {
+  return (
+    hasMatchingPaymentIntent(state) &&
+    state.orderStatus === "pending" &&
+    !state.inventoryReleasedAt &&
+    RETRYABLE_PAYMENT_STATUSES.has(state.paymentStatus ?? "pending")
+  );
+}
+
+export function canApplyPaymentIntentProcessing(
+  state: PaymentIntentTransitionState,
+): boolean {
+  return (
+    hasMatchingPaymentIntent(state) &&
+    state.orderStatus === "pending" &&
+    !state.inventoryReleasedAt &&
+    (state.paymentStatus === "pending" || state.paymentStatus === "failed")
+  );
+}
+
+export function canApplyPaymentIntentCanceled(
+  state: PaymentIntentTransitionState,
+): boolean {
+  return (
+    hasMatchingPaymentIntent(state) &&
+    state.orderStatus === "pending" &&
+    !state.inventoryReleasedAt &&
+    RETRYABLE_PAYMENT_STATUSES.has(state.paymentStatus ?? "pending")
+  );
+}
+
+export function isStripePaymentIntentCancelable(status: string): boolean {
+  return (
+    status === "requires_payment_method" ||
+    status === "requires_confirmation" ||
+    status === "requires_action" ||
+    status === "requires_capture"
+  );
+}
+
 function hasCapturedPayment(paymentStatus: string | null | undefined): boolean {
   return paymentStatus === "succeeded" || paymentStatus === "partially_refunded";
 }

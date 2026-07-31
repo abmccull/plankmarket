@@ -27,6 +27,7 @@ import { BuyerCrmPanel } from "@/components/crm/buyer-crm-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import type { OrderStatus } from "@/types";
+import { TransactionTimeline } from "@/components/marketplace/transaction-timeline";
 
 export default function SellerOrderDetailPage() {
   const params = useParams();
@@ -138,22 +139,57 @@ export default function SellerOrderDetailPage() {
               <span>{formatCurrency(order.subtotal)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Seller Fee (2%)</span>
+              <span className="text-muted-foreground">
+                Seller marketplace fee
+              </span>
               <span className="text-destructive">
-                -{formatCurrency(order.sellerFee)}
+                -{formatCurrency(order.sellerFinancials?.sellerFee ?? 0)}
               </span>
             </div>
-            {order.shippingPrice && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">
+                Payment processing
+              </span>
+              <span className="text-destructive">
+                -
+                {formatCurrency(
+                  order.sellerFinancials?.sellerStripeFee ?? 0,
+                )}
+              </span>
+            </div>
+            {order.shippingPrice ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Full freight charge
+                  </span>
+                  <span className="text-muted-foreground">
+                    {formatCurrency(order.shippingPrice)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Buyer shipping</span>
+                  <span className="text-muted-foreground">
+                    {formatCurrency(order.buyerFreightCharge)}
+                  </span>
+                </div>
+              </>
+            ) : null}
+            {order.sellerFreightContribution > 0 ? (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Shipping (paid by buyer)</span>
-                <span className="text-muted-foreground">{formatCurrency(order.shippingPrice)}</span>
+                <span className="text-muted-foreground">
+                  Seller shipping contribution
+                </span>
+                <span className="text-destructive">
+                  -{formatCurrency(order.sellerFreightContribution)}
+                </span>
               </div>
-            )}
+            ) : null}
             <Separator />
             <div className="flex justify-between font-semibold">
-              <span>Your Payout</span>
+              <span>Net payout</span>
               <span className="text-primary">
-                {formatCurrency(order.sellerPayout)}
+                {formatCurrency(order.sellerFinancials?.sellerPayout ?? 0)}
               </span>
             </div>
           </CardContent>
@@ -182,14 +218,22 @@ export default function SellerOrderDetailPage() {
             <Separator />
             <div>
               <h4 className="font-medium mb-1">Ship To</h4>
-              <p>{order.shippingName}</p>
-              <p className="text-muted-foreground">{order.shippingAddress}</p>
-              <p className="text-muted-foreground">
-                {order.shippingCity}, {order.shippingState}{" "}
-                {order.shippingZip}
-              </p>
-              {order.shippingPhone && (
-                <p className="text-muted-foreground">{order.shippingPhone}</p>
+              {order.shippingAddress ? (
+                <>
+                  <p>{order.shippingName}</p>
+                  <p className="text-muted-foreground">{order.shippingAddress}</p>
+                  <p className="text-muted-foreground">
+                    {order.shippingCity}, {order.shippingState}{" "}
+                    {order.shippingZip}
+                  </p>
+                  {order.shippingPhone && (
+                    <p className="text-muted-foreground">{order.shippingPhone}</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-muted-foreground">
+                  Delivery details are revealed after payment confirmation.
+                </p>
               )}
             </div>
             {order.selectedCarrier && (
@@ -234,6 +278,8 @@ export default function SellerOrderDetailPage() {
 
       {/* Shipment Tracking (Priority1 orders) */}
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
+
+      <TransactionTimeline order={order} audience="seller" />
 
       {/* Actions */}
       {order.status !== "delivered" && order.status !== "cancelled" && (

@@ -12,6 +12,10 @@ import { reviews, orders } from "../db/schema";
 import { eq, desc, sql, avg, and, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import {
+  publicReviewColumns,
+  toPublicReview,
+} from "@/server/security/public-data";
 
 export const reviewRouter = createTRPCRouter({
   // Create a review for an order (buyer→seller or seller→buyer)
@@ -165,17 +169,10 @@ export const reviewRouter = createTRPCRouter({
 
       const reviewsList = await ctx.db.query.reviews.findMany({
         where: eq(reviews.revieweeId, input.userId),
+        columns: publicReviewColumns,
         orderBy: [desc(reviews.createdAt)],
         limit: input.limit,
         offset,
-        with: {
-          reviewer: {
-            columns: {
-              id: true,
-              role: true,
-            },
-          },
-        },
       });
 
       const [{ count }] = await ctx.db
@@ -184,7 +181,7 @@ export const reviewRouter = createTRPCRouter({
         .where(eq(reviews.revieweeId, input.userId));
 
       return {
-        reviews: reviewsList,
+        reviews: reviewsList.map(toPublicReview),
         total: count,
         page: input.page,
         limit: input.limit,

@@ -12,7 +12,6 @@ import { Loader2, ArrowLeft, ExternalLink, Shield } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { BuyerCrmPanel } from "@/components/crm/buyer-crm-panel";
 import { toast } from "sonner";
-import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 import { getErrorMessage } from "@/lib/utils";
 
 export default function ConversationPage() {
@@ -130,9 +129,7 @@ export default function ConversationPage() {
   const otherParty = isBuyer
     ? conversationData.seller
     : conversationData.buyer;
-  const otherPartyName = otherParty
-    ? getAnonymousDisplayName({ role: otherParty.role, businessState: otherParty.businessState, name: otherParty.name, businessCity: otherParty.businessCity })
-    : "Unknown";
+  const otherPartyName = otherParty?.displayName ?? "Unknown";
 
   return (
     <div className="flex flex-col h-[calc(100dvh-8rem)]">
@@ -174,12 +171,12 @@ export default function ConversationPage() {
       <Card elevation="flat" className="flex-1 flex flex-col border overflow-hidden">
         {/* Messages list */}
         <div className="flex-1 overflow-y-auto p-4 space-y-1">
-          {/* Platform protection system message */}
+          {/* Platform transaction workflow message */}
           <div className="flex items-center gap-2 py-2 mb-2">
             <div className="flex-1 border-t border-muted" />
             <span className="text-xs text-muted-foreground flex items-center gap-1.5 shrink-0">
               <Shield className="h-3 w-3" />
-              Protected by PlankMarket escrow &amp; buyer protection
+              Stripe payment &middot; tracked shipping &middot; dispute reporting
             </span>
             <div className="flex-1 border-t border-muted" />
           </div>
@@ -200,7 +197,7 @@ export default function ConversationPage() {
                   <ChatBubble
                     key={message.id}
                     message={message.body}
-                    senderName={getAnonymousDisplayName({ role: message.sender.role, businessState: message.sender.businessState, name: message.sender.name, businessCity: message.sender.businessCity })}
+                    senderName={message.sender.displayName}
                     timestamp={message.createdAt}
                     isCurrentUser={isCurrentUser}
                     showSenderInfo={showSenderInfo}
@@ -219,7 +216,7 @@ export default function ConversationPage() {
             placeholder={`Message ${otherPartyName}...`}
           />
           <p className="text-xs text-muted-foreground text-center mt-2">
-            Keep transactions on PlankMarket for escrow protection and shipping guarantees.
+            Keep transactions on PlankMarket for Stripe-processed payments, tracked shipping, and in-platform dispute reporting.
           </p>
         </div>
       </Card>

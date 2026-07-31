@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { calculateOrderFees } from "@/lib/fees";
+import {
+  BUYER_MARKETPLACE_FEE_RATE,
+  SELLER_MARKETPLACE_FEE_RATE,
+  applyPlatformLiableTaxToOrderFees,
+  calculateOrderFees,
+} from "@/lib/fees";
 
 describe("calculateOrderFees - edge cases", () => {
   // ---------------------------------------------------------------------------
@@ -7,16 +12,16 @@ describe("calculateOrderFees - edge cases", () => {
   // ---------------------------------------------------------------------------
   describe("rounding edge cases", () => {
     it("rounds correctly when buyer fee lands on half-cent boundary", () => {
-      // 0.03 * 1.6667 = 0.050001 -> rounds to 0.05, not 0.06
+      // 0.05 * 1.6667 = 0.083335 -> rounds to 0.08
       const fees = calculateOrderFees(1.6667, 0);
 
-      expect(fees.buyerFee).toBe(0.05);
-      expect(fees.totalCharge).toBe(1.72);
-      expect(fees.sellerFee).toBe(0.03);
+      expect(fees.buyerFee).toBe(0.08);
+      expect(fees.totalCharge).toBe(1.75);
+      expect(fees.sellerFee).toBe(0.08);
       expect(fees.sellerStripeFee).toBe(0.35);
       expect(fees.totalStripeFee).toBe(0.35);
       expect(fees.platformStripeFee).toBe(0);
-      expect(fees.sellerPayout).toBe(1.29);
+      expect(fees.sellerPayout).toBe(1.24);
     });
 
     it("handles a $0.01 subtotal with $0 shipping without NaN", () => {
@@ -39,7 +44,7 @@ describe("calculateOrderFees - edge cases", () => {
     it("handles near-zero subtotal $0.001", () => {
       const fees = calculateOrderFees(0.001, 0);
 
-      // 0.03 * 0.001 = 0.00003 -> rounds to 0
+      // 0.05 * 0.001 = 0.00005 -> rounds to 0
       expect(fees.buyerFee).toBe(0);
       // 0.001 + 0 + 0 = 0.001 -> rounds to 0
       expect(fees.totalCharge).toBe(0);
@@ -54,13 +59,13 @@ describe("calculateOrderFees - edge cases", () => {
     it("handles fractional-cent inputs (subtotal=$99.99, shipping=$49.99)", () => {
       const fees = calculateOrderFees(99.99, 49.99);
 
-      expect(fees.buyerFee).toBe(3);
-      expect(fees.totalCharge).toBe(152.98);
-      expect(fees.sellerFee).toBe(2);
+      expect(fees.buyerFee).toBe(5);
+      expect(fees.totalCharge).toBe(154.98);
+      expect(fees.sellerFee).toBe(5);
       expect(fees.sellerStripeFee).toBe(3.2);
-      expect(fees.totalStripeFee).toBe(4.74);
-      expect(fees.platformStripeFee).toBe(1.54);
-      expect(fees.sellerPayout).toBe(94.79);
+      expect(fees.totalStripeFee).toBe(4.79);
+      expect(fees.platformStripeFee).toBe(1.59);
+      expect(fees.sellerPayout).toBe(91.79);
     });
   });
 
@@ -92,11 +97,13 @@ describe("calculateOrderFees - edge cases", () => {
       // Negative shipping should produce the same result as shipping=0
       expect(fees).toEqual(feesZero);
 
-      expect(fees.buyerFee).toBe(3);
-      expect(fees.totalCharge).toBe(103);
-      expect(fees.sellerFee).toBe(2);
+      expect(fees.buyerFee).toBe(5);
+      expect(fees.totalCharge).toBe(105);
+      expect(fees.sellerFee).toBe(5);
       expect(fees.sellerStripeFee).toBe(3.2);
-      expect(fees.sellerPayout).toBe(94.8);
+      expect(fees.totalStripeFee).toBe(3.35);
+      expect(fees.platformStripeFee).toBe(0.15);
+      expect(fees.sellerPayout).toBe(91.8);
     });
   });
 
@@ -107,13 +114,13 @@ describe("calculateOrderFees - edge cases", () => {
     it("handles $1,000,000 subtotal with $50,000 shipping without overflow", () => {
       const fees = calculateOrderFees(1_000_000, 50_000);
 
-      expect(fees.buyerFee).toBe(30_000);
-      expect(fees.totalCharge).toBe(1_080_000);
-      expect(fees.sellerFee).toBe(20_000);
+      expect(fees.buyerFee).toBe(50_000);
+      expect(fees.totalCharge).toBe(1_100_000);
+      expect(fees.sellerFee).toBe(50_000);
       expect(fees.sellerStripeFee).toBe(29_000.3);
-      expect(fees.totalStripeFee).toBe(31_320.3);
-      expect(fees.platformStripeFee).toBe(2_320);
-      expect(fees.sellerPayout).toBe(950_999.7);
+      expect(fees.totalStripeFee).toBe(31_900.3);
+      expect(fees.platformStripeFee).toBe(2_900);
+      expect(fees.sellerPayout).toBe(920_999.7);
 
       // No field should be Infinity or NaN
       for (const value of Object.values(fees)) {
@@ -124,13 +131,13 @@ describe("calculateOrderFees - edge cases", () => {
     it("handles near-max subtotal $999,999.99", () => {
       const fees = calculateOrderFees(999_999.99, 0);
 
-      expect(fees.buyerFee).toBe(30_000);
-      expect(fees.totalCharge).toBe(1_029_999.99);
-      expect(fees.sellerFee).toBe(20_000);
+      expect(fees.buyerFee).toBe(50_000);
+      expect(fees.totalCharge).toBe(1_049_999.99);
+      expect(fees.sellerFee).toBe(50_000);
       expect(fees.sellerStripeFee).toBe(29_000.3);
-      expect(fees.totalStripeFee).toBe(29_870.3);
-      expect(fees.platformStripeFee).toBe(870);
-      expect(fees.sellerPayout).toBe(950_999.69);
+      expect(fees.totalStripeFee).toBe(30_450.3);
+      expect(fees.platformStripeFee).toBe(1_450);
+      expect(fees.sellerPayout).toBe(920_999.69);
 
       for (const value of Object.values(fees)) {
         expect(Number.isFinite(value)).toBe(true);
@@ -152,28 +159,34 @@ describe("calculateOrderFees - edge cases", () => {
       [1_000_000, 50_000],
     ];
 
-    it("buyerFee is always 3% of subtotal, rounded", () => {
+    it("buyerFee is always the configured buyer rate on subtotal, rounded", () => {
       for (const [subtotal, shipping] of testCases) {
         const fees = calculateOrderFees(subtotal, shipping);
         const expected =
-          Math.round(0.03 * Math.max(0, subtotal) * 100) / 100;
+          Math.round(BUYER_MARKETPLACE_FEE_RATE * Math.max(0, subtotal) * 100) /
+          100;
         expect(fees.buyerFee).toBe(expected);
       }
     });
 
-    it("sellerFee is always 2% of subtotal, rounded", () => {
+    it("sellerFee is always the configured seller rate on subtotal, rounded", () => {
       for (const [subtotal, shipping] of testCases) {
         const fees = calculateOrderFees(subtotal, shipping);
-        const expected = Math.round(0.02 * subtotal * 100) / 100;
+        const expected =
+          Math.round(
+            SELLER_MARKETPLACE_FEE_RATE * Math.max(0, subtotal) * 100,
+          ) / 100;
         expect(fees.sellerFee).toBe(expected);
       }
     });
 
-    it("totalCharge equals subtotal + shipping + buyerFee", () => {
-      for (const [subtotal, shipping] of testCases) {
-        const fees = calculateOrderFees(subtotal, shipping);
+    it("totalCharge equals subtotal + buyer freight charge + buyerFee", () => {
+      for (const [subtotal, buyerFreightCharge] of testCases) {
+        const fees = calculateOrderFees(subtotal, buyerFreightCharge);
         const expected =
-          Math.round((subtotal + shipping + fees.buyerFee) * 100) / 100;
+          Math.round(
+            (subtotal + buyerFreightCharge + fees.buyerFee) * 100,
+          ) / 100;
         expect(fees.totalCharge).toBe(expected);
       }
     });
@@ -190,7 +203,18 @@ describe("calculateOrderFees - edge cases", () => {
   // Payout consistency
   // ---------------------------------------------------------------------------
   describe("payout consistency", () => {
-    it("sellerPayout equals subtotal minus sellerFee minus sellerStripeFee", () => {
+    it("adds platform-liable tax to buyer charge without increasing seller payout", () => {
+      const beforeTax = calculateOrderFees(5_000, 750);
+      const afterTax = applyPlatformLiableTaxToOrderFees(beforeTax, 412.37);
+
+      expect(afterTax.totalCharge).toBe(6_412.37);
+      expect(afterTax.sellerPayout).toBe(beforeTax.sellerPayout);
+      expect(afterTax.sellerStripeFee).toBe(beforeTax.sellerStripeFee);
+      expect(afterTax.totalStripeFee).toBe(186.26);
+      expect(afterTax.platformStripeFee).toBe(40.96);
+    });
+
+    it("sellerPayout subtracts marketplace, processing, and seller freight", () => {
       const testCases: [number, number][] = [
         [0.01, 0],
         [99.99, 49.99],
@@ -199,12 +223,46 @@ describe("calculateOrderFees - edge cases", () => {
       ];
 
       for (const [subtotal, shipping] of testCases) {
-        const fees = calculateOrderFees(subtotal, shipping);
+        const sellerFreightContribution = shipping / 2;
+        const fees = calculateOrderFees(
+          subtotal,
+          shipping - sellerFreightContribution,
+          sellerFreightContribution,
+        );
         const expected =
           Math.round(
-            (subtotal - fees.sellerFee - fees.sellerStripeFee) * 100,
+            (subtotal -
+              fees.sellerFee -
+              fees.sellerStripeFee -
+              sellerFreightContribution) *
+              100,
           ) / 100;
         expect(fees.sellerPayout).toBe(expected);
+      }
+    });
+
+    it("moves seller-funded freight out of buyer total and seller payout", () => {
+      const buyerPays = calculateOrderFees(5_000, 750);
+      const sellerPays = calculateOrderFees(5_000, 0, 750);
+      const split = calculateOrderFees(5_000, 150, 600);
+
+      expect(buyerPays.totalCharge).toBe(6_000);
+      expect(buyerPays.sellerPayout).toBe(4_604.7);
+
+      expect(sellerPays.totalCharge).toBe(5_250);
+      expect(sellerPays.sellerPayout).toBe(3_854.7);
+
+      expect(split.totalCharge).toBe(5_400);
+      expect(split.sellerPayout).toBe(4_004.7);
+    });
+
+    it("normalizes invalid freight split inputs without propagating NaN", () => {
+      const fees = calculateOrderFees(100, Number.NaN, -50);
+
+      expect(fees.totalCharge).toBe(105);
+      expect(fees.sellerPayout).toBe(91.8);
+      for (const value of Object.values(fees)) {
+        expect(Number.isFinite(value)).toBe(true);
       }
     });
 

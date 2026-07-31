@@ -7,6 +7,13 @@ import { userPreferences } from "../db/schema/user-preferences";
 import { buyerRequests } from "../db/schema/buyer-requests";
 import { listings } from "../db/schema";
 import { and, eq, sql, lte, gte, inArray } from "drizzle-orm";
+import {
+  publicListingColumns,
+  publicMediaColumns,
+  publicSellerColumns,
+  toPublicListing,
+} from "@/server/security/public-data";
+import { publicActiveListingWhere } from "@/server/security/listing-visibility";
 
 /**
  * Maximum number of recommendations to return in each direction.
@@ -31,7 +38,7 @@ export const matchingRouter = createTRPCRouter({
     }
 
     // Build filter conditions
-    const conditions = [eq(listings.status, "active")];
+    const conditions = [publicActiveListingWhere(new Date(), ctx.user)];
 
     // Filter by preferred material types
     if (prefs.preferredMaterialTypes && prefs.preferredMaterialTypes.length > 0) {
@@ -87,6 +94,7 @@ export const matchingRouter = createTRPCRouter({
 
     const items = await ctx.db.query.listings.findMany({
       where: and(...conditions),
+      columns: publicListingColumns,
       orderBy: [
         // Promoted listings first, then newest
         sql`${listings.promotionTier} IS NOT NULL DESC`,
@@ -95,23 +103,18 @@ export const matchingRouter = createTRPCRouter({
       limit: MAX_RECOMMENDATIONS,
       with: {
         media: {
+          columns: publicMediaColumns,
           orderBy: (media, { asc }) => [asc(media.sortOrder)],
           limit: 1,
         },
         seller: {
-          columns: {
-            id: true,
-            name: true,
-            businessName: true,
-            verified: true,
-            businessState: true,
-          },
+          columns: publicSellerColumns,
         },
       },
     });
 
     return {
-      items,
+      items: items.map(toPublicListing),
       prefsIncomplete: false,
     };
   }),

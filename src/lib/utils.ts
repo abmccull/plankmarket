@@ -1,5 +1,11 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import {
+  BUYER_MARKETPLACE_FEE_RATE,
+  PAYMENT_PROCESSING_FIXED_FEE,
+  PAYMENT_PROCESSING_RATE,
+  SELLER_MARKETPLACE_FEE_RATE,
+} from "@/lib/fees";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -70,15 +76,21 @@ export function truncate(text: string, maxLength: number): string {
 }
 
 export function calculateBuyerFee(price: number): number {
-  return Math.round(price * 0.03 * 100) / 100; // 3% buyer fee
+  return Math.round(price * BUYER_MARKETPLACE_FEE_RATE * 100) / 100;
 }
 
 export function calculateSellerFee(price: number): number {
-  return Math.round(price * 0.02 * 100) / 100; // 2% seller fee
+  return Math.round(price * SELLER_MARKETPLACE_FEE_RATE * 100) / 100;
 }
 
 export function calculateStripeFee(totalCharge: number): number {
-  return Math.round((totalCharge * 0.029 + 0.30) * 100) / 100; // Stripe 2.9% + $0.30
+  return (
+    Math.round(
+      (totalCharge * PAYMENT_PROCESSING_RATE +
+        PAYMENT_PROCESSING_FIXED_FEE) *
+        100,
+    ) / 100
+  );
 }
 
 export function calculateTotalWithFees(price: number): number {

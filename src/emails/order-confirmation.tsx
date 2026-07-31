@@ -10,6 +10,10 @@ interface OrderConfirmationEmailProps {
   pricePerSqFt: string;
   subtotal: string;
   buyerFee: string;
+  fullFreightCharge: string;
+  buyerFreightCharge: string;
+  sellerShippingCredit: string;
+  hasSellerShippingCredit: boolean;
   total: string;
   orderUrl: string;
 }
@@ -21,8 +25,12 @@ export default function OrderConfirmationEmail({
   quantity = "2,500 sq ft",
   pricePerSqFt = "$2.50",
   subtotal = "$6,250.00",
-  buyerFee = "$187.50",
-  total = "$6,437.50",
+  buyerFee = "$312.50",
+  fullFreightCharge = "$750.00",
+  buyerFreightCharge = "$250.00",
+  sellerShippingCredit = "$500.00",
+  hasSellerShippingCredit = true,
+  total = "$6,812.50",
   orderUrl = "https://plankmarket.com/buyer/orders/123",
 }: OrderConfirmationEmailProps) {
   return (
@@ -40,8 +48,23 @@ export default function OrderConfirmationEmail({
         <Text style={orderDetail}>Price: {pricePerSqFt}/sq ft</Text>
         <Hr style={divider} />
         <Text style={orderDetail}>Subtotal: {subtotal}</Text>
-        <Text style={orderDetail}>Buyer Fee (3%): {buyerFee}</Text>
-        <Text style={orderTotal}>Total: {total}</Text>
+        <Text style={orderDetail}>Buyer marketplace fee: {buyerFee}</Text>
+        {hasSellerShippingCredit ? (
+          <>
+            <Text style={orderDetail}>
+              Full freight charge: {fullFreightCharge}
+            </Text>
+            <Text style={creditDetail}>
+              Seller shipping credit: -{sellerShippingCredit}
+            </Text>
+            <Text style={orderDetail}>
+              Buyer shipping: {buyerFreightCharge}
+            </Text>
+          </>
+        ) : (
+          <Text style={orderDetail}>Buyer shipping: {buyerFreightCharge}</Text>
+        )}
+        <Text style={orderTotal}>Total paid: {total}</Text>
       </Section>
 
       <Section style={{ textAlign: "center" as const, marginTop: "24px" }}>
@@ -92,6 +115,11 @@ const orderTotal = {
   fontWeight: "bold" as const,
   color: "#5C4033",
   margin: "8px 0 0",
+};
+
+const creditDetail = {
+  ...orderDetail,
+  color: "#287a49",
 };
 
 const divider = {

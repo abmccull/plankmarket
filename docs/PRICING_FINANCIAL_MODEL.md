@@ -1,7 +1,12 @@
 # PlankMarket Pro Membership — Financial Model
 
 **Date:** March 9, 2026
-**Status:** Financial Analysis
+**Status:** Historical financial analysis
+
+> Pricing note (July 30, 2026): this model uses the former 3% buyer / 2%
+> seller fee structure and must not be used for current pricing decisions or
+> customer claims. The current implementation uses 5% buyer / 5% seller
+> marketplace fees. See `src/lib/fees.ts`.
 
 ---
 

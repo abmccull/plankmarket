@@ -144,7 +144,7 @@ export default function AboutPage() {
                 {[
                   { icon: Users, text: "Nationwide platform reaching qualified buyers" },
                   { icon: Zap, text: "Simple listing tools with photos and detailed specs" },
-                  { icon: CreditCard, text: "Secure payment processing with payment protection" },
+                  { icon: CreditCard, text: "Stripe-processed payments with seller transfer after carrier pickup" },
                   { icon: MessageSquare, text: "Built-in messaging and order management" },
                   { icon: DollarSign, text: "Fast, reliable payouts after successful delivery" },
                 ].map((item) => (
@@ -168,7 +168,7 @@ export default function AboutPage() {
                   { icon: Eye, text: "Advanced filters by material, color, finish, lot size, location" },
                   { icon: DollarSign, text: "Transparent pricing with no hidden fees" },
                   { icon: Shield, text: "Verified sellers you can trust" },
-                  { icon: CreditCard, text: "Secure transactions with buyer protection" },
+                  { icon: CreditCard, text: "Stripe-processed payments with tracked shipping and dispute reporting" },
                 ].map((item) => (
                   <li key={item.text} className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
@@ -285,7 +285,7 @@ export default function AboutPage() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
             {[
               { icon: Eye, title: "Transparency", description: "Clear pricing and honest policies" },
-              { icon: Shield, title: "Security", description: "Verified sellers and payment protection" },
+              { icon: Shield, title: "Security", description: "Verified sellers, tracked shipping, and dispute reporting" },
               { icon: Zap, title: "Efficiency", description: "Simple tools that save time" },
               { icon: Leaf, title: "Sustainability", description: "Circular economy in flooring" },
               { icon: Heart, title: "Support", description: "Responsive customer service" },

@@ -36,6 +36,8 @@ import {
   MessageSquare,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
+import { isListingVisibleToBuyers } from "@/lib/listing-freshness";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -116,6 +118,7 @@ type BuyerRequest = {
 type ActiveListing = {
   id: string;
   title: string;
+  materialType: string;
 };
 
 function RespondDialog({
@@ -130,7 +133,10 @@ function RespondDialog({
   listings: ActiveListing[];
 }) {
   const [message, setMessage] = useState("");
-  const [selectedListingId, setSelectedListingId] = useState<string>("none");
+  const [selectedListingId, setSelectedListingId] = useState("");
+  const matchingListings = listings.filter((listing) =>
+    request?.materialTypes?.includes(listing.materialType),
+  );
 
   const respondMutation = trpc.buyerRequest.respond.useMutation();
 
@@ -140,16 +146,20 @@ function RespondDialog({
       toast.error("Please enter a message.");
       return;
     }
+    if (!selectedListingId) {
+      toast.error("Select the active listing that fulfills this request.");
+      return;
+    }
 
     try {
       await respondMutation.mutateAsync({
         requestId: request.id,
         message: message.trim(),
-        listingId: selectedListingId !== "none" ? selectedListingId : undefined,
+        listingId: selectedListingId,
       });
       toast.success("Response sent!");
       setMessage("");
-      setSelectedListingId("none");
+      setSelectedListingId("");
       onOpenChange(false);
     } catch (err: unknown) {
       toast.error(getErrorMessage(err, "Failed to send response."));
@@ -158,7 +168,7 @@ function RespondDialog({
 
   const handleClose = () => {
     setMessage("");
-    setSelectedListingId("none");
+    setSelectedListingId("");
     onOpenChange(false);
   };
 
@@ -189,11 +199,9 @@ function RespondDialog({
             </p>
           </div>
 
-          {listings.length > 0 && (
+          {matchingListings.length > 0 ? (
             <div className="space-y-1.5">
-              <Label htmlFor="respond-listing">
-                Attach a Listing (optional)
-              </Label>
+              <Label htmlFor="respond-listing">Listing to fulfill request</Label>
               <Select
                 value={selectedListingId}
                 onValueChange={setSelectedListingId}
@@ -202,14 +210,30 @@ function RespondDialog({
                   <SelectValue placeholder="Select one of your listings..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No listing</SelectItem>
-                  {listings.map((l) => (
+                  {matchingListings.map((l) => (
                     <SelectItem key={l.id} value={l.id}>
                       {l.title}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                The listing must be active and eligible for the buyer&apos;s
+                destination when they accept.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed p-4 text-sm">
+              <p className="font-medium">
+                A matching active listing is required
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Publish the inventory you can supply before responding so the
+                buyer can review the exact product and start a conversation.
+              </p>
+              <Button asChild variant="outline" size="sm" className="mt-3">
+                <Link href="/seller/listings/new">Create listing</Link>
+              </Button>
             </div>
           )}
         </div>
@@ -218,7 +242,14 @@ function RespondDialog({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={respondMutation.isPending}>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              respondMutation.isPending ||
+              matchingListings.length === 0 ||
+              !selectedListingId
+            }
+          >
             {respondMutation.isPending && (
               <Loader2
                 className="mr-2 h-4 w-4 animate-spin"
@@ -351,9 +382,26 @@ export default function SellerRequestBoardPage() {
     status: "active",
   });
 
-  const activeListings: ActiveListing[] = (myListingsData?.items ?? []).map(
-    (l: { id: string; title: string }) => ({ id: l.id, title: l.title })
-  );
+  const activeListings: ActiveListing[] = (myListingsData?.items ?? [])
+    .filter(
+      (listing: {
+        status: string;
+        lastConfirmedAt: Date | string | null;
+        confirmationDueAt: Date | string | null;
+        totalSqFt: number;
+      }) =>
+        listing.totalSqFt > 0 &&
+        isListingVisibleToBuyers({
+          status: listing.status,
+          lastConfirmedAt: listing.lastConfirmedAt,
+          confirmationDueAt: listing.confirmationDueAt,
+        }),
+    )
+    .map((listing: { id: string; title: string; materialType: string }) => ({
+      id: listing.id,
+      title: listing.title,
+      materialType: listing.materialType,
+    }));
 
   const requests: BuyerRequest[] = data?.items ?? [];
 

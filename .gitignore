@@ -12,6 +12,25 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
+/blob-report
+/design-audit-capture/
+/design-audit-final-*/
+/design-audit-report.md
+/design-audit-summary.json
+/design-audit-screen-by-screen-*.md
+/design-audit-screen-by-screen-*.json
+/competitive-audit-*/
+
+# Internal strategy, launch evidence, and operational runbooks
+/docs/COMPETITIVE_CLAIMS_GUARDRAIL_*.md
+/docs/LAUNCH_GATE_EXECUTION_*.md
+/docs/PLANKMARKET_BUSINESS_REVIEW_*.md
+/docs/PLANKMARKET_CONTROLLED_BETA_LAUNCH_PLAYBOOK_*.md
+/docs/PRODUCTION_READINESS_RUNBOOKS.md
+/docs/SALES_TAX_READINESS_DECISION.md
+/docs/UI_UX_10_OUT_OF_10_IMPROVEMENT_PLAN_*.md
 
 # next.js
 /.next/
@@ -23,6 +42,8 @@
 # misc
 .DS_Store
 *.pem
+/null/
+/supabase/.temp/
 
 # debug
 npm-debug.log*
@@ -34,11 +55,7 @@ yarn-error.log*
 .env*
 !.env.example
 
-# drizzle
-/drizzle/*.sql
-!/drizzle/0001_free_wonder_man.sql
-!/drizzle/0010_fee_verification_hardening.sql
-!/drizzle/0011_relax_users_registration_constraints.sql
+# Drizzle SQL migrations are source artifacts and must remain trackable.
 
 # scripts with hardcoded credentials
 scripts/test-stripe-e2e.ts

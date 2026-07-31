@@ -126,6 +126,11 @@ describe("LoginPage", () => {
         screen.getByText(/please enter a valid email address/i)
       ).toBeInTheDocument();
     });
+    expect(screen.getByLabelText(/email/i)).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByRole("alert")).toHaveAttribute("id", "email-error");
 
     expect(mockSignInWithPassword).not.toHaveBeenCalled();
   });
@@ -148,6 +153,11 @@ describe("LoginPage", () => {
         screen.getByText(/password is required/i)
       ).toBeInTheDocument();
     });
+    expect(screen.getByLabelText(/password/i)).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(screen.getByRole("alert")).toHaveAttribute("id", "password-error");
 
     expect(mockSignInWithPassword).not.toHaveBeenCalled();
   });
@@ -257,6 +267,50 @@ describe("LoginPage", () => {
 
     const registerLink = screen.getByRole("link", { name: /create one/i });
     expect(registerLink).toBeInTheDocument();
-    expect(registerLink).toHaveAttribute("href", "/register");
+    expect(registerLink).toHaveAttribute("href", "/register?role=buyer");
+  });
+
+  it("preserves role and redirect context in the registration link", () => {
+    vi.mocked(useSearchParams).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === "role") return "seller";
+        if (key === "redirect") {
+          return "/seller/listings/new?source=zero_results&materialType=hardwood";
+        }
+        return null;
+      }),
+    } as unknown as ReturnType<typeof useSearchParams>);
+
+    render(<LoginPage />);
+
+    const registerLink = screen.getByRole("link", { name: /create one/i });
+    const registrationUrl = new URL(
+      registerLink.getAttribute("href")!,
+      "https://plankmarket.test",
+    );
+    expect(registrationUrl.searchParams.get("role")).toBe("seller");
+    expect(registrationUrl.searchParams.get("redirect")).toBe(
+      "/seller/listings/new?source=zero_results&materialType=hardwood",
+    );
+  });
+
+  it("supports keyboard-first navigation through the login form", async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.tab();
+    expect(screen.getByLabelText(/email/i)).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole("link", { name: /forgot password/i })).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByLabelText(/password/i)).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: /sign in/i })).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole("link", { name: /create one/i })).toHaveFocus();
   });
 });

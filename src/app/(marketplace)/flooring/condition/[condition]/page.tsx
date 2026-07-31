@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Script from "next/script";
 import { createServerCaller } from "@/lib/trpc/server";
 import { ListingCard } from "@/components/search/listing-card";
 import { Button } from "@/components/ui/button";
@@ -88,7 +89,8 @@ export default async function ConditionPage(props: ConditionPageProps) {
   return (
     <>
       {/* BreadcrumbList JSON-LD */}
-      <script
+      <Script
+        id={`condition-${condition}-breadcrumb-json-ld`}
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify({
@@ -120,7 +122,7 @@ export default async function ConditionPage(props: ConditionPageProps) {
                 item: `${BASE_URL}/flooring/condition/${condition}`,
               },
             ],
-          }),
+          }).replace(/</g, "\\u003c"),
         }}
       />
 

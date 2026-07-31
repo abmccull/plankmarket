@@ -2,20 +2,34 @@ import {
   createTRPCRouter,
   publicProcedure,
   protectedProcedure,
-  verifiedProcedure,
-  verifiedBuyerProcedure,
   sellerProcedure,
+  verifiedProcedure,
+  strictSellerProcedure,
+  strictVerifiedBuyerProcedure,
 } from "../trpc";
 import { orders, users, notifications } from "../db/schema";
-import { eq, and, gt, desc, sql } from "drizzle-orm";
+import { eq, and, gt, desc, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import Stripe from "stripe";
-import { env } from "@/env";
-
-const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-01-28.clover" as const,
-});
+import { stripe } from "@/lib/stripe";
+import {
+  ShippingBookingReviewError,
+  SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
+  requireShippingBookingSnapshotForOrder,
+} from "@/server/services/shipping-workflow";
+import { cancelUncapturedOrderPayment } from "@/server/services/payment-intent-cancellation";
+import { releaseReservedInventory } from "@/server/services/inventory-reservation";
+import { inngest } from "@/lib/inngest/client";
+import { buildCheckoutStartedEvent } from "@/lib/inngest/events";
+import { appendAuditEvent } from "@/server/services/audit-ledger";
+import {
+  getConnectAccountIdempotencyKey,
+  isStripeConnectAccountReady,
+} from "@/server/services/stripe-connect-policy";
+import {
+  requirePaymentIntentTaxCalculation,
+  TaxReadinessError,
+} from "@/server/services/stripe-tax";
 
 export const paymentRouter = createTRPCRouter({
   // Check if seller has completed payment setup
@@ -35,10 +49,10 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   // Create (or reuse) a payment intent for an order
-  createPaymentIntent: verifiedBuyerProcedure
+  createPaymentIntent: strictVerifiedBuyerProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.transaction(async (tx) => {
+      const result = await ctx.db.transaction(async (tx) => {
         const orderRows = await tx
           .select({
             id: orders.id,
@@ -46,10 +60,27 @@ export const paymentRouter = createTRPCRouter({
             buyerId: orders.buyerId,
             sellerId: orders.sellerId,
             totalPrice: orders.totalPrice,
+            listingId: orders.listingId,
+            quantitySqFt: orders.quantitySqFt,
             status: orders.status,
             paymentStatus: orders.paymentStatus,
+            escrowStatus: orders.escrowStatus,
+            inventoryReleasedAt: orders.inventoryReleasedAt,
             stripePaymentIntentId: orders.stripePaymentIntentId,
+            selectedQuoteId: orders.selectedQuoteId,
+            selectedCarrier: orders.selectedCarrier,
+            carrierRate: orders.carrierRate,
+            shippingPrice: orders.shippingPrice,
+            shippingZip: orders.shippingZip,
+            quoteExpiresAt: orders.quoteExpiresAt,
+            shippingBookingSnapshot: orders.shippingBookingSnapshot,
+            taxStatus: orders.taxStatus,
+            taxLiability: orders.taxLiability,
+            taxAmount: orders.taxAmount,
+            stripeTaxCalculationId: orders.stripeTaxCalculationId,
+            taxCalculationEvidence: orders.taxCalculationEvidence,
             sellerStripeAccountId: users.stripeAccountId,
+            sellerStripeOnboardingComplete: users.stripeOnboardingComplete,
           })
           .from(orders)
           .innerJoin(users, eq(users.id, orders.sellerId))
@@ -78,6 +109,14 @@ export const paymentRouter = createTRPCRouter({
           });
         }
 
+        if (order.inventoryReleasedAt || order.escrowStatus !== "held") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "This order no longer has reserved inventory and cannot be paid.",
+          });
+        }
+
         if (
           order.paymentStatus === "succeeded" ||
           order.paymentStatus === "refunded" ||
@@ -89,10 +128,91 @@ export const paymentRouter = createTRPCRouter({
           });
         }
 
-        if (!order.sellerStripeAccountId) {
+        if (
+          !order.sellerStripeAccountId ||
+          !order.sellerStripeOnboardingComplete
+        ) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Seller has not completed payment setup",
+          });
+        }
+
+        try {
+          requireShippingBookingSnapshotForOrder({
+            snapshot: order.shippingBookingSnapshot,
+            order: {
+              selectedQuoteId: order.selectedQuoteId,
+              listingId: order.listingId,
+              buyerId: order.buyerId,
+              quantitySqFt: order.quantitySqFt,
+              shippingZip: order.shippingZip,
+              carrierRate: order.carrierRate,
+              shippingPrice: order.shippingPrice,
+              selectedCarrier: order.selectedCarrier,
+              quoteExpiresAt: order.quoteExpiresAt,
+            },
+            // The quote must remain usable long enough for Stripe confirmation
+            // and asynchronous shipment dispatch to reach Priority1.
+            now: new Date(Date.now() + SHIPPING_DISPATCH_SAFETY_BUFFER_MS),
+          });
+        } catch (error) {
+          if (!(error instanceof ShippingBookingReviewError)) throw error;
+          await cancelUncapturedOrderPayment({
+            orderId: order.id,
+            paymentIntentId: order.stripePaymentIntentId,
+            expectedAmountCents: Math.round(Number(order.totalPrice) * 100),
+          });
+          await tx
+            .update(orders)
+            .set({
+              status: "cancelled",
+              paymentStatus: "failed",
+              escrowStatus: "refunded",
+              cancelledAt: new Date(),
+              updatedAt: new Date(),
+              notes:
+                "Cancelled automatically: shipping quote requires a fresh checkout",
+            })
+            .where(
+              and(
+                eq(orders.id, order.id),
+                eq(orders.status, "pending"),
+                sql`${orders.inventoryReleasedAt} IS NULL`,
+                sql`${orders.paymentStatus} NOT IN ('succeeded', 'refunded', 'partially_refunded')`,
+              ),
+            );
+          await releaseReservedInventory({
+            db: tx,
+            orderId: order.id,
+            reason: "shipping_quote_requires_fresh_checkout",
+          });
+          return { requoteRequired: true as const };
+        }
+
+        let taxCalculationId: string | null;
+        try {
+          taxCalculationId = requirePaymentIntentTaxCalculation(order);
+        } catch (error) {
+          if (!(error instanceof TaxReadinessError)) throw error;
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: error.message,
+            cause: error,
+          });
+        }
+
+
+        const sellerAccount = await stripe.accounts.retrieve(
+          order.sellerStripeAccountId,
+        );
+        if (
+          !sellerAccount.payouts_enabled ||
+          sellerAccount.capabilities?.transfers !== "active"
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Seller payout account is not ready to receive funds",
           });
         }
 
@@ -107,6 +227,22 @@ export const paymentRouter = createTRPCRouter({
           const existingIntent = await stripe.paymentIntents.retrieve(
             order.stripePaymentIntentId,
           );
+
+          const expectedAmount = Math.round(Number(order.totalPrice) * 100);
+          if (
+            existingIntent.metadata.orderId !== order.id ||
+            existingIntent.amount !== expectedAmount ||
+            existingIntent.currency !== "usd" ||
+            (taxCalculationId
+              ? existingIntent.hooks?.inputs?.tax?.calculation !==
+                taxCalculationId
+              : Boolean(existingIntent.hooks?.inputs?.tax?.calculation))
+          ) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Stored payment intent does not match this order",
+            });
+          }
 
           if (existingIntent.status === "succeeded") {
             throw new TRPCError({
@@ -124,14 +260,27 @@ export const paymentRouter = createTRPCRouter({
             }
 
             return {
+              requoteRequired: false as const,
               clientSecret: existingIntent.client_secret,
               paymentIntentId: existingIntent.id,
+              checkoutEvent: {
+                checkoutId: order.id,
+                buyerId: order.buyerId,
+                listingId: order.listingId,
+                quantitySqFt: Number(order.quantitySqFt),
+                totalPrice: Number(order.totalPrice),
+              },
             };
           }
+
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Payment intent cannot be reused in "${existingIntent.status}" status`,
+          });
         }
 
-        // Create Stripe PaymentIntent — funds stay on platform for escrow.
-        // Seller payout is transferred separately after shipment pickup.
+        // Create a platform charge. The seller transfer occurs separately
+        // after the configured shipment milestone.
         const paymentIntent = await stripe.paymentIntents.create(
           {
             amount: Math.round(Number(order.totalPrice) * 100),
@@ -141,7 +290,21 @@ export const paymentRouter = createTRPCRouter({
               orderNumber: order.orderNumber,
               buyerId: order.buyerId,
               sellerId: order.sellerId,
+              taxLiability: order.taxLiability,
+              taxAmountCents: String(
+                Math.round(Number(order.taxAmount) * 100),
+              ),
             },
+            ...(taxCalculationId
+              ? {
+                  hooks: {
+                    inputs: {
+                      tax: { calculation: taxCalculationId },
+                    },
+                  },
+                }
+              : {}),
+            transfer_group: `order_${order.id}`,
           },
           {
             idempotencyKey: `order-payment-intent:${order.id}`,
@@ -158,10 +321,44 @@ export const paymentRouter = createTRPCRouter({
           .where(eq(orders.id, order.id));
 
         return {
+          requoteRequired: false as const,
           clientSecret: paymentIntent.client_secret,
           paymentIntentId: paymentIntent.id,
+          checkoutEvent: {
+            checkoutId: order.id,
+            buyerId: order.buyerId,
+            listingId: order.listingId,
+            quantitySqFt: Number(order.quantitySqFt),
+            totalPrice: Number(order.totalPrice),
+          },
         };
       });
+
+      if (result.requoteRequired) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "This shipping quote can no longer be safely booked. The old order was cancelled and its inventory was released; please start checkout again with a fresh shipping option.",
+        });
+      }
+      try {
+        await inngest.send(
+          buildCheckoutStartedEvent({
+            ...result.checkoutEvent,
+            paymentIntentId: result.paymentIntentId,
+          }),
+        );
+      } catch {
+        // Reminder analytics must never turn a successfully prepared Stripe
+        // checkout into a buyer-visible payment failure.
+        console.error("Failed to enqueue checkout/started event", {
+          checkoutId: result.checkoutEvent.checkoutId,
+        });
+      }
+      return {
+        clientSecret: result.clientSecret,
+        paymentIntentId: result.paymentIntentId,
+      };
     }),
 
   // Get payment status for an order
@@ -205,39 +402,87 @@ export const paymentRouter = createTRPCRouter({
     }),
 
   // Create Stripe Connect account for seller (embedded onboarding — no redirect)
-  createConnectAccount: sellerProcedure.mutation(async ({ ctx }) => {
+  createConnectAccount: strictSellerProcedure.mutation(async ({ ctx }) => {
     if (ctx.user.stripeAccountId) {
       return { alreadyExists: true, accountId: ctx.user.stripeAccountId };
     }
 
     // Create new connected account
-    const account = await stripe.accounts.create({
-      type: "express",
-      email: ctx.user.email,
-      metadata: {
-        userId: ctx.user.id,
-        businessName: ctx.user.businessName || "",
+    const account = await stripe.accounts.create(
+      {
+        type: "express",
+        email: ctx.user.email,
+        metadata: {
+          userId: ctx.user.id,
+          businessName: ctx.user.businessName || "",
+        },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
       },
-      capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
+      {
+        idempotencyKey: getConnectAccountIdempotencyKey(ctx.user.id),
       },
+    );
+
+    // A conditional claim plus Stripe idempotency prevents concurrent
+    // onboarding requests from creating or attaching different accounts.
+    const claimed = await ctx.db.transaction(async (tx) => {
+      const [claimedAccount] = await tx
+        .update(users)
+        .set({
+          stripeAccountId: account.id,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(users.id, ctx.user.id),
+            isNull(users.stripeAccountId),
+          ),
+        )
+        .returning({ stripeAccountId: users.stripeAccountId });
+
+      if (claimedAccount) {
+        await appendAuditEvent(tx, {
+          actorType: "user",
+          actorId: ctx.user.id,
+          action: "stripe_connect_account.attached",
+          entityType: "user",
+          entityId: ctx.user.id,
+          summary: "Attached a Stripe Connect account to the seller.",
+          metadata: {
+            stripeAccountId: account.id,
+          },
+        });
+      }
+
+      return claimedAccount;
     });
 
-    // Save account ID to user
-    await ctx.db
-      .update(users)
-      .set({
-        stripeAccountId: account.id,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, ctx.user.id));
+    if (!claimed) {
+      const current = await ctx.db.query.users.findFirst({
+        where: eq(users.id, ctx.user.id),
+        columns: { stripeAccountId: true },
+      });
+      if (!current?.stripeAccountId) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Payment onboarding changed concurrently. Please refresh and try again.",
+        });
+      }
+      return {
+        alreadyExists: true,
+        accountId: current.stripeAccountId,
+      };
+    }
 
     return { alreadyExists: false, accountId: account.id };
   }),
 
   // Create Stripe Account Session for embedded components
-  createAccountSession: sellerProcedure.mutation(async ({ ctx }) => {
+  createAccountSession: strictSellerProcedure.mutation(async ({ ctx }) => {
     if (!ctx.user.stripeAccountId) {
       throw new TRPCError({
         code: "BAD_REQUEST",
@@ -278,7 +523,7 @@ export const paymentRouter = createTRPCRouter({
   }),
 
   // Check Stripe Connect account status
-  getConnectStatus: sellerProcedure.query(async ({ ctx }) => {
+  getConnectStatus: strictSellerProcedure.query(async ({ ctx }) => {
     if (!ctx.user.stripeAccountId) {
       return { connected: false, onboardingComplete: false };
     }
@@ -288,8 +533,7 @@ export const paymentRouter = createTRPCRouter({
         ctx.user.stripeAccountId
       );
 
-      const onboardingComplete =
-        account.charges_enabled && account.payouts_enabled;
+      const onboardingComplete = isStripeConnectAccountReady(account);
 
       // Update DB if status changed
       if (onboardingComplete !== ctx.user.stripeOnboardingComplete) {
@@ -313,6 +557,7 @@ export const paymentRouter = createTRPCRouter({
         onboardingComplete,
         chargesEnabled: account.charges_enabled,
         payoutsEnabled: account.payouts_enabled,
+        transfersEnabled: account.capabilities?.transfers === "active",
         requiresAction,
         pastDue: pastDue.length > 0,
         disabledReason,
@@ -323,7 +568,7 @@ export const paymentRouter = createTRPCRouter({
   }),
 
   // Create Stripe Express Dashboard login link for seller
-  createLoginLink: sellerProcedure.mutation(async ({ ctx }) => {
+  createLoginLink: strictSellerProcedure.mutation(async ({ ctx }) => {
     if (!ctx.user.stripeAccountId) {
       throw new TRPCError({
         code: "BAD_REQUEST",
@@ -370,6 +615,10 @@ export const paymentRouter = createTRPCRouter({
           columns: {
             id: true,
             orderNumber: true,
+            subtotal: true,
+            sellerFee: true,
+            sellerStripeFee: true,
+            sellerFreightContribution: true,
             sellerPayout: true,
             stripeTransferId: true,
             escrowStatus: true,
@@ -388,6 +637,8 @@ export const paymentRouter = createTRPCRouter({
         ctx.db
           .select({
             totalEarned: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
+            totalSellerFreightContributions:
+              sql<number>`coalesce(sum(${orders.sellerFreightContribution}), 0)::float`,
             totalOrders: sql<number>`count(*)::int`,
           })
           .from(orders)
@@ -398,6 +649,8 @@ export const paymentRouter = createTRPCRouter({
       const [pendingResult] = await ctx.db
         .select({
           pendingAmount: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
+          pendingSellerFreightContributions:
+            sql<number>`coalesce(sum(${orders.sellerFreightContribution}), 0)::float`,
           pendingCount: sql<number>`count(*)::int`,
         })
         .from(orders)
@@ -409,8 +662,16 @@ export const paymentRouter = createTRPCRouter({
         );
 
       const total = countResult[0]?.count ?? 0;
-      const summary = summaryResult[0] ?? { totalEarned: 0, totalOrders: 0 };
-      const pending = pendingResult ?? { pendingAmount: 0, pendingCount: 0 };
+      const summary = summaryResult[0] ?? {
+        totalEarned: 0,
+        totalSellerFreightContributions: 0,
+        totalOrders: 0,
+      };
+      const pending = pendingResult ?? {
+        pendingAmount: 0,
+        pendingSellerFreightContributions: 0,
+        pendingCount: 0,
+      };
 
       return {
         items,
@@ -420,8 +681,12 @@ export const paymentRouter = createTRPCRouter({
         totalPages: Math.ceil(total / input.limit),
         summary: {
           totalEarned: summary.totalEarned,
+          totalSellerFreightContributions:
+            summary.totalSellerFreightContributions,
           completedPayouts: summary.totalOrders,
           pendingEscrow: pending.pendingAmount,
+          pendingSellerFreightContributions:
+            pending.pendingSellerFreightContributions,
           pendingCount: pending.pendingCount,
         },
       };

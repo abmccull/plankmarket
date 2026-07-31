@@ -46,7 +46,7 @@ This is my last email about PlankMarket.
 
 Here is what it is: a B2B marketplace where flooring manufacturers and distributors list closeout, overstock, and discontinued inventory at 30-60% below wholesale. Verified sellers. Detailed specs. Integrated freight quotes.
 
-Here is what it costs: nothing to join, nothing to browse. 3% fee only when you buy.
+Here is what it costs: nothing to join, nothing to browse. 5% fee only when you buy.
 
 Closeout inventory is finite. Lots sell and they do not come back. The retailers who see them first get the best margins.
 

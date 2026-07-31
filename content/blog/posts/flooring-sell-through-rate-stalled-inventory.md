@@ -1,5 +1,5 @@
 ---
-title: Flooring Sell-Through Rate: How to Know When Inventory Has Stalled
+title: 'Flooring Sell-Through Rate: How to Know When Inventory Has Stalled'
 slug: flooring-sell-through-rate-stalled-inventory
 target_keyword: flooring sell-through rate
 secondary_keywords: 'flooring inventory turnover, stalled flooring inventory, slow moving flooring'

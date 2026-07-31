@@ -3,7 +3,7 @@ import {
   protectedProcedure,
   buyerProcedure,
   sellerProcedure,
-  verifiedBuyerProcedure,
+  strictVerifiedBuyerProcedure,
 } from "../trpc";
 import {
   createOrderSchema,
@@ -14,45 +14,620 @@ import { orders, listings, offers, shippingAddresses } from "../db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { calculateOrderFees } from "@/lib/fees";
+import {
+  applyPlatformLiableTaxToOrderFees,
+  calculateOrderFees,
+} from "@/lib/fees";
+import type { FreightFundingMode } from "@/lib/freight-funding";
+import { resolveListingUnitPrice } from "@/lib/listing-pricing";
+import { resolveSellingTerritoryEligibility } from "@/lib/selling-territory";
 import { nanoid } from "nanoid";
-import { sendOrderConfirmationEmail } from "@/lib/email/send";
-import { inngest } from "@/lib/inngest/client";
 import { redis } from "@/lib/redis/client";
 import { maskUserForOrder } from "@/lib/contact-masking";
-import { releaseReservedInventory } from "@/server/services/inventory-reservation";
+import {
+  releaseReservedInventory,
+  reserveListingInventory,
+} from "@/server/services/inventory-reservation";
 import { canSellerUpdateOrderStatus } from "@/server/services/order-transitions";
+import {
+  getShippingBookingSnapshotKey,
+  getSellerFreightFundingIneligibilityReason,
+  freightFundingMatchesQuotedTerms,
+  SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
+  requireShippingStateMatchesZip,
+  resolveListingFreightFunding,
+  shippingBookingSnapshotSchema,
+  type ShippingBookingSnapshot,
+} from "@/server/services/shipping-workflow";
+import { cancelUncapturedOrderPayment } from "@/server/services/payment-intent-cancellation";
+import type { Database } from "@/server/db";
+import {
+  canCreatePendingOrder,
+  MAX_PENDING_UNPAID_ORDERS,
+} from "@/server/services/pending-order-policy";
+import { assertListingVisibleToBuyer } from "@/server/security/listing-visibility";
+import {
+  captureCommercialPolicy,
+  CURRENT_COMMERCIAL_POLICY,
+  type CommercialPolicy,
+} from "@/lib/commercial-policy";
+import {
+  calculateOrderTax,
+  TaxReadinessError,
+  type CalculateOrderTaxInput,
+} from "@/server/services/stripe-tax";
+import { validateThenCompareDeletePair } from "@/server/services/verified-artifact-consumption";
+
+type DbExecutor =
+  | Database
+  | Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+const QUANTITY_TOLERANCE_SQFT = 0.01;
+
+function getMinimumOrderQuantitySqFt(listing: {
+  moq: number | null;
+  moqUnit: "pallets" | "sqft" | null;
+  sqFtPerBox: number | null;
+  boxesPerPallet: number | null;
+}): number {
+  if (!listing.moq || listing.moq <= 0) {
+    return 0;
+  }
+
+  if (listing.moqUnit === "pallets") {
+    return (
+      listing.moq *
+      (listing.sqFtPerBox ?? 20) *
+      (listing.boxesPerPallet ?? 30)
+    );
+  }
+
+  return listing.moq;
+}
+
+async function enforcePendingOrderLimit(
+  db: DbExecutor,
+  buyerId: string,
+): Promise<void> {
+  // Serialize reservation creation per buyer so concurrent requests cannot
+  // all pass the count before inserting. Pending orders expire separately.
+  await db.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`pending-orders:${buyerId}`}))`,
+  );
+  const [result] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(orders)
+    .where(and(eq(orders.buyerId, buyerId), eq(orders.status, "pending")));
+
+  if (!canCreatePendingOrder(result?.count ?? 0)) {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: `You already have ${MAX_PENDING_UNPAID_ORDERS} unpaid checkout reservations. Complete one or allow it to expire before reserving more inventory.`,
+    });
+  }
+}
 
 function generateOrderNumber(): string {
   return `PM-${nanoid(8).toUpperCase()}`;
 }
 
-const cachedQuoteSchema = z.object({
-  quoteId: z.number().int().optional(),
-  quoteToken: z.string().optional(),
-  carrierRate: z.number(),
-  shippingPrice: z.number(),
-  carrierName: z.string(),
-  carrierScac: z.string().optional(),
-  transitDays: z.number().int().optional(),
-  estimatedDelivery: z.string().optional(),
-  quoteExpiresAt: z.string().optional(),
-  listingId: z.string().uuid(),
-  buyerId: z.string().uuid().optional(),
-  quantitySqFt: z.number().positive().optional(),
-  destinationZip: z.string().optional(),
-});
+function getSellerTransferStatus(holdStatus: string, paymentStatus: string | null) {
+  if (holdStatus === "refunded") return "refunded" as const;
+  if (!paymentStatus || !["succeeded", "partially_refunded"].includes(paymentStatus)) {
+    return "awaiting_payment" as const;
+  }
+  if (holdStatus === "released") return "transferred" as const;
+  if (holdStatus === "held") return "scheduled_after_pickup" as const;
+  return "awaiting_payment" as const;
+}
+
+interface SellerStatusTransitionOrder {
+  id: string;
+  status: string;
+  escrowStatus: string;
+  paymentStatus: string | null;
+  selectedQuoteId: string | null;
+  stripePaymentIntentId: string | null;
+  totalPrice: number;
+}
+
+function assertSellerStatusTransition(
+  order: SellerStatusTransitionOrder,
+  nextStatus: z.infer<typeof updateOrderStatusSchema>["status"],
+): void {
+  if (
+    !canSellerUpdateOrderStatus({
+      currentStatus: order.status,
+      nextStatus,
+      paymentStatus: order.paymentStatus,
+    })
+  ) {
+    if (
+      nextStatus === "cancelled" &&
+      (order.paymentStatus === "succeeded" ||
+        order.paymentStatus === "partially_refunded")
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "Paid orders must be cancelled by an admin so the refund can be processed.",
+      });
+    }
+
+    if (
+      nextStatus !== "cancelled" &&
+      order.paymentStatus !== "succeeded" &&
+      order.paymentStatus !== "partially_refunded"
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "Order payment must succeed before it can move to the next fulfillment stage.",
+      });
+    }
+
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Cannot transition order from "${order.status}" to "${nextStatus}"`,
+    });
+  }
+
+  if (
+    order.selectedQuoteId &&
+    (nextStatus === "shipped" || nextStatus === "delivered")
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Integrated shipment status is controlled by the carrier tracking provider.",
+    });
+  }
+}
+
+const cachedQuoteSchema = z
+  .object({
+    quoteId: z.number().int().positive(),
+    quoteToken: z.string().optional(),
+    carrierRate: z.number().nonnegative(),
+    shippingPrice: z.number().positive(),
+    freightFundingMode: z.enum([
+      "buyer_pays",
+      "seller_pays",
+      "seller_pays_selected_states",
+    ]),
+    buyerFreightCharge: z.number().nonnegative(),
+    sellerFreightContribution: z.number().nonnegative(),
+    freightFundingReason: z.string().min(1),
+    appliedBuyerDropCharge: z.number().nonnegative(),
+    carrierName: z.string(),
+    carrierScac: z.string().optional(),
+    transitDays: z.number().int().optional(),
+    estimatedDelivery: z.string().optional(),
+    quoteExpiresAt: z.string().optional(),
+    listingId: z.string().uuid(),
+    buyerId: z.string().uuid(),
+    quantitySqFt: z.number().positive(),
+    destinationZip: z.string().min(5),
+    destinationState: z.string().length(2),
+  })
+  .superRefine((quote, ctx) => {
+    if (
+      Math.round(
+        (quote.buyerFreightCharge +
+          quote.sellerFreightContribution) *
+          100,
+      ) !== Math.round(quote.shippingPrice * 100)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Freight funding split does not match the full quote",
+      });
+    }
+    if (
+      quote.freightFundingMode === "buyer_pays" &&
+      quote.sellerFreightContribution > 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Buyer-funded quote cannot include a seller contribution",
+      });
+    }
+  });
 
 function normalizeZip(zip: string): string {
   return zip.trim().slice(0, 5);
 }
 
+function territoryFailureMessage(
+  territoryDecision: ReturnType<typeof resolveSellingTerritoryEligibility>,
+): string {
+  return territoryDecision.reason === "destination_blocked"
+    ? `This seller is not currently selling to ${territoryDecision.normalizedDestinationState}.`
+    : "This listing's territory settings are incomplete for the selected destination.";
+}
+
+function getVerifiedDestinationState(params: {
+  shippingState: string;
+  shippingZip: string;
+}): string {
+  try {
+    return requireShippingStateMatchesZip(params);
+  } catch (error) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Enter a valid US shipping destination.",
+    });
+  }
+}
+
+function calculateFreightFundedOrderFees(params: {
+  listing: Parameters<typeof resolveListingFreightFunding>[0]["listing"];
+  subtotal: number;
+  fullFreightCharge: number;
+  destinationState: string;
+  commercialPolicy?: CommercialPolicy;
+  quotedFreightFunding?: {
+    freightFundingMode: FreightFundingMode;
+    buyerFreightCharge: number;
+    sellerFreightContribution: number;
+    destinationState: string;
+  };
+}) {
+  const resolvedFreightFunding = resolveListingFreightFunding({
+    listing: params.listing,
+    fullFreightCharge: params.fullFreightCharge,
+    destinationState: params.destinationState,
+  });
+  if (
+    params.quotedFreightFunding &&
+    (params.quotedFreightFunding.destinationState !==
+      params.destinationState ||
+      !freightFundingMatchesQuotedTerms({
+        applied: resolvedFreightFunding,
+        quoted: params.quotedFreightFunding,
+      }))
+  ) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        "The seller's freight terms changed after this quote was shown. Request a new shipping quote before checkout.",
+    });
+  }
+  const freightFunding = params.quotedFreightFunding
+    ? {
+        ...resolvedFreightFunding,
+        appliedMode: params.quotedFreightFunding.freightFundingMode,
+        buyerFreightCharge:
+          params.quotedFreightFunding.buyerFreightCharge,
+        sellerFreightContribution:
+          params.quotedFreightFunding.sellerFreightContribution,
+      }
+    : resolvedFreightFunding;
+  const feeBreakdown = calculateOrderFees(
+    params.subtotal,
+    freightFunding.buyerFreightCharge,
+    freightFunding.sellerFreightContribution,
+    params.commercialPolicy,
+  );
+  const freightFundingIneligibility =
+    getSellerFreightFundingIneligibilityReason({
+      sellerFreightContribution: freightFunding.sellerFreightContribution,
+      sellerPayout: feeBreakdown.sellerPayout,
+    });
+  if (freightFundingIneligibility) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: freightFundingIneligibility,
+    });
+  }
+  return { freightFunding, feeBreakdown };
+}
+
+async function calculateCheckoutTax(input: CalculateOrderTaxInput) {
+  try {
+    return await calculateOrderTax(input);
+  } catch (error) {
+    if (!(error instanceof TaxReadinessError)) throw error;
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: error.message,
+      cause: error,
+    });
+  }
+}
+
+const SHIPPING_QUOTE_EXPIRED_MESSAGE =
+  "Shipping quote has expired. Please select a new shipping option.";
+const SHIPPING_QUOTE_INVALID_MESSAGE =
+  "Shipping quote is invalid. Please request shipping options again.";
+const SHIPPING_BOOKING_EXPIRED_MESSAGE =
+  "Shipping booking details have expired. Please select a new shipping option.";
+const SHIPPING_BOOKING_INVALID_MESSAGE =
+  "Shipping booking details are invalid. Please request shipping options again.";
+
+function parseRedisJsonValue(
+  value: unknown,
+  invalidMessage: string,
+): { parsed: unknown; raw: string } {
+  if (typeof value === "string") {
+    try {
+      return { parsed: JSON.parse(value), raw: value };
+    } catch {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: invalidMessage,
+      });
+    }
+  }
+
+  try {
+    return { parsed: value, raw: JSON.stringify(value) };
+  } catch {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: invalidMessage,
+    });
+  }
+}
+
+async function consumeAcceptedOfferShippingArtifacts<T>(params: {
+  selectedQuoteToken?: string;
+  selectedQuoteId?: string;
+  buyerId: string;
+  listingId: string;
+  quantitySqFt: number;
+  destinationZip: string;
+  validateBeforeConsume: (quote: {
+    fullFreightCharge: number;
+    freightFundingMode: FreightFundingMode;
+    buyerFreightCharge: number;
+    sellerFreightContribution: number;
+    destinationState: string;
+    commercialPolicy: CommercialPolicy;
+  }) => Promise<T> | T;
+}): Promise<{
+  quoteId: string;
+  shippingPrice: number;
+  carrierRate: number;
+  shippingMargin: number;
+  selectedCarrier: string;
+  estimatedTransitDays: number | undefined;
+  quoteExpiresAt: Date;
+  bookingSnapshot: ShippingBookingSnapshot;
+  quotedFreightFunding: {
+    freightFundingMode: FreightFundingMode;
+    buyerFreightCharge: number;
+    sellerFreightContribution: number;
+    destinationState: string;
+  };
+  validationResult: T;
+}> {
+  const quoteKey = params.selectedQuoteToken
+    ? `shipping-quote-token:${params.selectedQuoteToken}`
+    : params.selectedQuoteId
+      ? `shipping-quote:${params.selectedQuoteId}`
+      : null;
+
+  if (!quoteKey) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "A valid shipping quote is required before checkout.",
+    });
+  }
+
+  const cachedQuote = await redis.get(quoteKey);
+  if (!cachedQuote) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: SHIPPING_QUOTE_EXPIRED_MESSAGE,
+    });
+  }
+
+  const { parsed: rawQuote, raw: rawQuoteString } = parseRedisJsonValue(
+    cachedQuote,
+    SHIPPING_QUOTE_INVALID_MESSAGE,
+  );
+  const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
+  if (!parsedQuote.success) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: SHIPPING_QUOTE_INVALID_MESSAGE,
+    });
+  }
+
+  const quote = parsedQuote.data;
+  if (quote.buyerId !== params.buyerId) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Shipping quote does not belong to this buyer.",
+    });
+  }
+
+  if (quote.listingId !== params.listingId) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Shipping quote does not match this listing.",
+    });
+  }
+
+  if (Math.abs(quote.quantitySqFt - params.quantitySqFt) > 0.01) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Shipping quote quantity does not match the offer.",
+    });
+  }
+
+  if (
+    normalizeZip(quote.destinationZip) !== normalizeZip(params.destinationZip)
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Shipping quote destination does not match the shipping ZIP.",
+    });
+  }
+
+  if (
+    !quote.quoteExpiresAt ||
+    Number.isNaN(new Date(quote.quoteExpiresAt).getTime()) ||
+    new Date(quote.quoteExpiresAt) <= new Date()
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: SHIPPING_QUOTE_EXPIRED_MESSAGE,
+    });
+  }
+
+  const quoteId = String(quote.quoteId);
+  const quoteExpiresAt = new Date(quote.quoteExpiresAt);
+  const snapshotKey = getShippingBookingSnapshotKey(quoteId);
+  const cachedSnapshot = await redis.get(snapshotKey);
+  if (!cachedSnapshot) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: SHIPPING_BOOKING_EXPIRED_MESSAGE,
+    });
+  }
+
+  const { parsed: rawSnapshot, raw: rawSnapshotString } = parseRedisJsonValue(
+    cachedSnapshot,
+    SHIPPING_BOOKING_INVALID_MESSAGE,
+  );
+  const parsedSnapshot = shippingBookingSnapshotSchema.safeParse(rawSnapshot);
+  if (!parsedSnapshot.success) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: SHIPPING_BOOKING_INVALID_MESSAGE,
+    });
+  }
+
+  const bookingSnapshot = parsedSnapshot.data;
+  const matchesVerifiedQuote =
+    String(bookingSnapshot.quoteId) === quoteId &&
+    bookingSnapshot.listingId === params.listingId &&
+    bookingSnapshot.buyerId === params.buyerId &&
+    Math.abs(bookingSnapshot.quantitySqFt - params.quantitySqFt) <= 0.01 &&
+    normalizeZip(bookingSnapshot.destinationZip) ===
+      normalizeZip(params.destinationZip) &&
+    bookingSnapshot.carrierName === quote.carrierName &&
+    Math.abs(bookingSnapshot.carrierRate - quote.carrierRate) <= 0.01 &&
+    Math.abs(bookingSnapshot.shippingPrice - quote.shippingPrice) <= 0.01 &&
+    bookingSnapshot.transitDays === quote.transitDays &&
+    new Date(bookingSnapshot.quoteExpiresAt).getTime() ===
+      quoteExpiresAt.getTime() &&
+    quoteExpiresAt.getTime() >
+      Date.now() + SHIPPING_DISPATCH_SAFETY_BUFFER_MS;
+  if (!matchesVerifiedQuote) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "Shipping booking details do not match the selected quote. Please request shipping options again.",
+    });
+  }
+
+  const consumption = await validateThenCompareDeletePair({
+    redisClient: redis,
+    firstKey: quoteKey,
+    firstExpectedValue: rawQuoteString,
+    secondKey: snapshotKey,
+    secondExpectedValue: rawSnapshotString,
+    validate: () =>
+      params.validateBeforeConsume({
+        fullFreightCharge: quote.shippingPrice,
+        freightFundingMode: quote.freightFundingMode,
+        buyerFreightCharge: quote.buyerFreightCharge,
+        sellerFreightContribution: quote.sellerFreightContribution,
+        destinationState: quote.destinationState,
+        commercialPolicy:
+          bookingSnapshot.commercialPolicy ?? CURRENT_COMMERCIAL_POLICY,
+      }),
+  });
+
+  if (!consumption.consumed) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: SHIPPING_QUOTE_EXPIRED_MESSAGE,
+    });
+  }
+
+  return {
+    quoteId,
+    shippingPrice: quote.shippingPrice,
+    carrierRate: quote.carrierRate,
+    shippingMargin:
+      Math.round((quote.shippingPrice - quote.carrierRate) * 100) / 100,
+    selectedCarrier: quote.carrierName,
+    estimatedTransitDays: quote.transitDays,
+    quoteExpiresAt,
+    bookingSnapshot,
+    quotedFreightFunding: {
+      freightFundingMode: quote.freightFundingMode,
+      buyerFreightCharge: quote.buyerFreightCharge,
+      sellerFreightContribution: quote.sellerFreightContribution,
+      destinationState: quote.destinationState,
+    },
+    validationResult: consumption.validationResult,
+  };
+}
+
+async function saveShippingAddressBestEffort(params: {
+  db: Database;
+  userId: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  phone?: string;
+}): Promise<void> {
+  try {
+    await params.db.transaction(async (tx) => {
+      await tx.execute(sql`set local statement_timeout = '2000ms'`);
+      await tx.execute(sql`set local lock_timeout = '1500ms'`);
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${`shipping-address:${params.userId}`}))`,
+      );
+      const [existing] = await tx
+        .select({ id: shippingAddresses.id })
+        .from(shippingAddresses)
+        .where(
+          and(
+            eq(shippingAddresses.userId, params.userId),
+            eq(shippingAddresses.address, params.address),
+            eq(shippingAddresses.zip, params.zip),
+          ),
+        )
+        .limit(1);
+      if (existing) return;
+
+      await tx.insert(shippingAddresses).values({
+        userId: params.userId,
+        label: `${params.city}, ${params.state}`,
+        name: params.name,
+        address: params.address,
+        city: params.city,
+        state: params.state,
+        zip: params.zip,
+        phone: params.phone ?? null,
+        isDefault: false,
+      });
+    });
+  } catch {
+    console.error("Best-effort shipping address save failed");
+  }
+}
+
 export const orderRouter = createTRPCRouter({
   // Create a new order (Buy Now) — wrapped in a transaction with row locking
-  create: verifiedBuyerProcedure
+  create: strictVerifiedBuyerProcedure
     .input(createOrderSchema)
     .mutation(async ({ ctx, input }) => {
       const order = await ctx.db.transaction(async (tx) => {
+        await enforcePendingOrderLimit(tx, ctx.user.id);
+
         // Lock the listing row to prevent concurrent purchases (SELECT ... FOR UPDATE)
         const [listing] = await tx
           .select()
@@ -69,6 +644,27 @@ export const orderRouter = createTRPCRouter({
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Listing not found or no longer available",
+          });
+        }
+
+        assertListingVisibleToBuyer(
+          listing,
+          "Listing not found or no longer available",
+        );
+
+        const destinationState = getVerifiedDestinationState({
+          shippingState: input.shippingState,
+          shippingZip: input.shippingZip,
+        });
+        const territoryDecision = resolveSellingTerritoryEligibility({
+          destinationState,
+          mode: listing.territoryMode,
+          allowedStates: listing.allowedDestinationStates,
+        });
+        if (!territoryDecision.eligible) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: territoryFailureMessage(territoryDecision),
           });
         }
 
@@ -111,169 +707,99 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
-        // SECURITY: Verify shipping quote from server-side cache
-        // Prevents client from manipulating shipping prices
-        let verifiedShippingPrice = 0;
-        let verifiedCarrierRate = 0;
-        let verifiedShippingMargin = 0;
-        let verifiedSelectedCarrier = input.selectedCarrier;
-        let verifiedEstimatedTransitDays = input.estimatedTransitDays;
-        let verifiedQuoteId: string | undefined;
-        let quoteExpiresAt: Date | undefined;
-
-        if (input.selectedQuoteToken) {
-          const cachedQuote = await redis.get(
-            `shipping-quote-token:${input.selectedQuoteToken}`,
-          );
-
-          if (!cachedQuote) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Shipping quote has expired. Please select a new shipping option.",
-            });
-          }
-
-          const rawQuote =
-            typeof cachedQuote === "string"
-              ? JSON.parse(cachedQuote)
-              : cachedQuote;
-          const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
-          if (!parsedQuote.success) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Shipping quote is invalid. Please request shipping options again.",
-            });
-          }
-
-          const quote = parsedQuote.data;
-          if (quote.listingId !== input.listingId) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Shipping quote does not match the selected listing.",
-            });
-          }
-
-          if (quote.buyerId && quote.buyerId !== ctx.user.id) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message: "Shipping quote does not belong to this buyer.",
-            });
-          }
-
-          if (
-            typeof quote.quantitySqFt === "number" &&
-            Math.abs(quote.quantitySqFt - input.quantitySqFt) > 0.01
-          ) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Shipping quote does not match the selected quantity.",
-            });
-          }
-
-          if (
-            quote.destinationZip &&
-            normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
-          ) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Shipping quote destination does not match the shipping ZIP.",
-            });
-          }
-
-          // Consume token immediately to prevent replay.
-          await redis.del(`shipping-quote-token:${input.selectedQuoteToken}`);
-
-          verifiedQuoteId = quote.quoteId ? String(quote.quoteId) : undefined;
-          verifiedShippingPrice = quote.shippingPrice;
-          verifiedCarrierRate = quote.carrierRate;
-          verifiedShippingMargin =
-            Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
-          verifiedSelectedCarrier = quote.carrierName;
-          verifiedEstimatedTransitDays = quote.transitDays;
-          quoteExpiresAt = quote.quoteExpiresAt
-            ? new Date(quote.quoteExpiresAt)
-            : undefined;
-        } else if (input.selectedQuoteId) {
-          // Deprecated fallback path for short-lived older clients.
-          const cachedQuote = await redis.get(`shipping-quote:${input.selectedQuoteId}`);
-          if (!cachedQuote) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Shipping quote has expired. Please select a new shipping option.",
-            });
-          }
-
-          const rawQuote =
-            typeof cachedQuote === "string"
-              ? JSON.parse(cachedQuote)
-              : cachedQuote;
-          const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
-          if (!parsedQuote.success) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Shipping quote is invalid. Please request shipping options again.",
-            });
-          }
-          const quote = parsedQuote.data;
-
-          if (quote.listingId !== input.listingId) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Shipping quote does not match the selected listing.",
-            });
-          }
-          if (quote.buyerId && quote.buyerId !== ctx.user.id) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message: "Shipping quote does not belong to this buyer.",
-            });
-          }
-          if (
-            typeof quote.quantitySqFt === "number" &&
-            Math.abs(quote.quantitySqFt - input.quantitySqFt) > 0.01
-          ) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Shipping quote does not match the selected quantity.",
-            });
-          }
-          if (
-            quote.destinationZip &&
-            normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
-          ) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Shipping quote destination does not match the shipping ZIP.",
-            });
-          }
-
-          // Consume token to prevent replay attacks (matches primary path behavior)
-          await redis.del(`shipping-quote:${input.selectedQuoteId}`);
-
-          verifiedQuoteId = input.selectedQuoteId;
-          verifiedShippingPrice = quote.shippingPrice;
-          verifiedCarrierRate = quote.carrierRate;
-          verifiedShippingMargin =
-            Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
-          verifiedSelectedCarrier = quote.carrierName;
-          verifiedEstimatedTransitDays = quote.transitDays;
-          quoteExpiresAt = quote.quoteExpiresAt
-            ? new Date(quote.quoteExpiresAt)
-            : undefined;
+        const resolvedListingPrice = resolveListingUnitPrice({
+          baseUnitPrice: listing.buyNowPrice ?? listing.askPricePerSqFt,
+          availableQuantity: listing.totalSqFt,
+          requestedQuantity: input.quantitySqFt,
+          fullLotOnly: listing.fullLotOnly,
+          partialQuantityMarkupPercent: listing.partialQuantityMarkupPercent,
+        });
+        if (!resolvedListingPrice.isValid || !resolvedListingPrice.purchaseAllowed) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              resolvedListingPrice.reason === "blocked_full_lot_only"
+                ? "This seller currently sells this inventory only as a full lot."
+                : "The selected quantity or pricing configuration is not valid for this listing.",
+          });
         }
 
-        // buyNowPrice is already stored as per-sq-ft
-        const pricePerSqFt = listing.buyNowPrice ?? listing.askPricePerSqFt;
+        const pricePerSqFt = resolvedListingPrice.finalUnitPrice!;
         const subtotal =
           Math.round(input.quantitySqFt * pricePerSqFt * 100) / 100;
-        const shippingPrice = verifiedShippingPrice; // Use verified value
-        const feeBreakdown = calculateOrderFees(subtotal, shippingPrice);
+        // Every business/provider check runs while the quote and booking
+        // snapshot remain in Redis. Only a successful validation reaches the
+        // compare-and-delete CAS, so a tax readiness failure is retryable.
+        const {
+          quoteId: verifiedQuoteId,
+          shippingPrice: verifiedShippingPrice,
+          carrierRate: verifiedCarrierRate,
+          shippingMargin: verifiedShippingMargin,
+          selectedCarrier: verifiedSelectedCarrier,
+          estimatedTransitDays: verifiedEstimatedTransitDays,
+          quoteExpiresAt,
+          bookingSnapshot: verifiedBookingSnapshot,
+          validationResult: {
+            freightFunding,
+            feeBreakdown,
+            checkoutTax,
+          },
+        } = await consumeAcceptedOfferShippingArtifacts({
+          selectedQuoteToken: input.selectedQuoteToken,
+          selectedQuoteId: input.selectedQuoteId,
+          buyerId: ctx.user.id,
+          listingId: listing.id,
+          quantitySqFt: input.quantitySqFt,
+          destinationZip: input.shippingZip,
+          validateBeforeConsume: async (quotedFreightFunding) => {
+            const {
+              freightFunding,
+              feeBreakdown: preTaxFeeBreakdown,
+            } = calculateFreightFundedOrderFees({
+              listing: {
+                freightPaymentMode: listing.freightPaymentMode,
+                sellerFreightStates: listing.sellerFreightStates,
+                freightDropCharge: listing.freightDropCharge,
+              },
+              subtotal,
+              fullFreightCharge:
+                quotedFreightFunding.fullFreightCharge,
+              destinationState,
+              commercialPolicy: quotedFreightFunding.commercialPolicy,
+              quotedFreightFunding,
+            });
+            const checkoutTax = await calculateCheckoutTax({
+              checkoutReference:
+                input.selectedQuoteToken ?? input.selectedQuoteId!,
+              listingId: listing.id,
+              inventoryAmount: subtotal,
+              buyerFreightAmount: freightFunding.buyerFreightCharge,
+              buyerMarketplaceFeeAmount: preTaxFeeBreakdown.buyerFee,
+              inventoryTaxCode: listing.stripeTaxCode,
+              inventoryTaxCodeStatus: listing.taxCodeStatus,
+              shipFrom: {
+                city: listing.locationCity,
+                state: listing.locationState,
+                postalCode: listing.locationZip,
+              },
+              shipTo: {
+                line1: input.shippingAddress,
+                city: input.shippingCity,
+                state: destinationState,
+                postalCode: input.shippingZip,
+              },
+            });
+            const feeBreakdown =
+              checkoutTax.taxLiability === "platform"
+                ? applyPlatformLiableTaxToOrderFees(
+                    preTaxFeeBreakdown,
+                    checkoutTax.taxAmount,
+                    quotedFreightFunding.commercialPolicy,
+                  )
+                : preTaxFeeBreakdown;
+            return { freightFunding, feeBreakdown, checkoutTax };
+          },
+        });
 
         // Create the order within the transaction
         const [newOrder] = await tx
@@ -292,7 +818,12 @@ export const orderRouter = createTRPCRouter({
             sellerStripeFee: feeBreakdown.sellerStripeFee,
             platformStripeFee: feeBreakdown.platformStripeFee,
             totalPrice: feeBreakdown.totalCharge,
+            originalSellerPayout: feeBreakdown.sellerPayout,
             sellerPayout: feeBreakdown.sellerPayout,
+            commercialPolicySnapshot:
+              verifiedBookingSnapshot.commercialPolicy ??
+              captureCommercialPolicy(),
+            ...checkoutTax,
             shippingName: input.shippingName,
             shippingAddress: input.shippingAddress,
             shippingCity: input.shippingCity,
@@ -306,221 +837,61 @@ export const orderRouter = createTRPCRouter({
               selectedCarrier: verifiedSelectedCarrier,
               carrierRate: verifiedCarrierRate,
               shippingPrice: verifiedShippingPrice,
+              freightFundingMode: freightFunding.appliedMode,
+              buyerFreightCharge: freightFunding.buyerFreightCharge,
+              sellerFreightContribution:
+                freightFunding.sellerFreightContribution,
               shippingMargin: verifiedShippingMargin,
               estimatedTransitDays: verifiedEstimatedTransitDays,
               quoteExpiresAt,
+              shippingBookingSnapshot: verifiedBookingSnapshot,
             }),
             status: "pending",
             escrowStatus: "held",
           })
           .returning();
 
-        // Update listing within the same transaction
-        if (input.quantitySqFt >= listing.totalSqFt) {
-          await tx
-            .update(listings)
-            .set({
-              status: "sold",
-              soldAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(listings.id, listing.id));
-        } else {
-          await tx
-            .update(listings)
-            .set({
-              totalSqFt: listing.totalSqFt - input.quantitySqFt,
-              updatedAt: new Date(),
-            })
-            .where(eq(listings.id, listing.id));
-        }
+        await reserveListingInventory({
+          db: tx,
+          listingId: listing.id,
+          availableQuantity: listing.totalSqFt,
+          reservedQuantity: input.quantitySqFt,
+        });
 
         return newOrder;
       });
 
-      // Auto-save shipping address if it doesn't exist (fire-and-forget)
-      (async () => {
-        try {
-          const existing = await ctx.db.query.shippingAddresses.findFirst({
-            where: and(
-              eq(shippingAddresses.userId, ctx.user.id),
-              eq(shippingAddresses.address, input.shippingAddress),
-              eq(shippingAddresses.zip, input.shippingZip)
-            ),
-          });
-          if (!existing) {
-            await ctx.db.insert(shippingAddresses).values({
-              userId: ctx.user.id,
-              label: `${input.shippingCity}, ${input.shippingState}`,
-              name: input.shippingName,
-              address: input.shippingAddress,
-              city: input.shippingCity,
-              state: input.shippingState,
-              zip: input.shippingZip,
-              phone: input.shippingPhone ?? null,
-              isDefault: false,
-            });
-          }
-        } catch (err) {
-          console.error("Failed to auto-save shipping address:", err);
-        }
-      })();
-
-      // Send order confirmation email (fire-and-forget, outside transaction)
-      sendOrderConfirmationEmail({
-        to: ctx.user.email,
-        buyerName: ctx.user.name,
-        orderNumber: order.orderNumber,
-        listingTitle: "Order",
-        quantity: `${order.quantitySqFt}`,
-        pricePerSqFt: `${order.pricePerSqFt}`,
-        subtotal: `${order.subtotal}`,
-        buyerFee: `${order.buyerFee}`,
-        total: `${order.totalPrice}`,
-        orderId: order.id,
-      }).catch((err) => {
-        console.error("Failed to send order confirmation email:", err);
+      await saveShippingAddressBestEffort({
+        db: ctx.db,
+        userId: ctx.user.id,
+        name: input.shippingName,
+        address: input.shippingAddress,
+        city: input.shippingCity,
+        state: input.shippingState,
+        zip: input.shippingZip,
+        phone: input.shippingPhone,
       });
 
-      return order;
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        totalPrice: order.totalPrice,
+        taxAmount: order.taxAmount,
+        taxStatus: order.taxStatus,
+        taxLiability: order.taxLiability,
+        taxJurisdictionSummary: order.taxJurisdictionSummary,
+      };
     }),
 
   // Create an order from an accepted offer
-  createFromOffer: verifiedBuyerProcedure
+  createFromOffer: strictVerifiedBuyerProcedure
     .input(createOrderFromOfferSchema)
     .mutation(async ({ ctx, input }) => {
-      // Verify shipping quote from server-side cache (same pattern as Buy Now)
-      let verifiedShippingPrice = 0;
-      let verifiedCarrierRate = 0;
-      let verifiedShippingMargin = 0;
-      let verifiedSelectedCarrier = input.selectedCarrier;
-      let verifiedEstimatedTransitDays = input.estimatedTransitDays;
-      let verifiedQuoteId: string | undefined;
-      let quoteExpiresAt: Date | undefined;
-      let quoteListingId: string | undefined;
-      let quoteQuantitySqFt: number | undefined;
-
-      if (input.selectedQuoteToken) {
-        const cachedQuote = await redis.get(
-          `shipping-quote-token:${input.selectedQuoteToken}`,
-        );
-
-        if (!cachedQuote) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Shipping quote has expired. Please select a new shipping option.",
-          });
-        }
-
-        const rawQuote =
-          typeof cachedQuote === "string"
-            ? JSON.parse(cachedQuote)
-            : cachedQuote;
-        const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
-        if (!parsedQuote.success) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Shipping quote is invalid. Please request shipping options again.",
-          });
-        }
-
-        const quote = parsedQuote.data;
-
-        if (quote.buyerId && quote.buyerId !== ctx.user.id) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Shipping quote does not belong to this buyer.",
-          });
-        }
-
-        if (
-          quote.destinationZip &&
-          normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Shipping quote destination does not match the shipping ZIP.",
-          });
-        }
-
-        // Consume token immediately to prevent replay
-        await redis.del(`shipping-quote-token:${input.selectedQuoteToken}`);
-
-        verifiedQuoteId = quote.quoteId ? String(quote.quoteId) : undefined;
-        verifiedShippingPrice = quote.shippingPrice;
-        verifiedCarrierRate = quote.carrierRate;
-        verifiedShippingMargin =
-          Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
-        verifiedSelectedCarrier = quote.carrierName;
-        verifiedEstimatedTransitDays = quote.transitDays;
-        quoteExpiresAt = quote.quoteExpiresAt
-          ? new Date(quote.quoteExpiresAt)
-          : undefined;
-        quoteListingId = quote.listingId;
-        quoteQuantitySqFt = quote.quantitySqFt;
-      } else if (input.selectedQuoteId) {
-        // Deprecated fallback path
-        const cachedQuote = await redis.get(`shipping-quote:${input.selectedQuoteId}`);
-        if (!cachedQuote) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Shipping quote has expired. Please select a new shipping option.",
-          });
-        }
-
-        const rawQuote =
-          typeof cachedQuote === "string"
-            ? JSON.parse(cachedQuote)
-            : cachedQuote;
-        const parsedQuote = cachedQuoteSchema.safeParse(rawQuote);
-        if (!parsedQuote.success) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Shipping quote is invalid. Please request shipping options again.",
-          });
-        }
-        const quote = parsedQuote.data;
-
-        if (quote.buyerId && quote.buyerId !== ctx.user.id) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Shipping quote does not belong to this buyer.",
-          });
-        }
-        if (
-          quote.destinationZip &&
-          normalizeZip(quote.destinationZip) !== normalizeZip(input.shippingZip)
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Shipping quote destination does not match the shipping ZIP.",
-          });
-        }
-
-        // Consume token to prevent replay
-        await redis.del(`shipping-quote:${input.selectedQuoteId}`);
-
-        verifiedQuoteId = input.selectedQuoteId;
-        verifiedShippingPrice = quote.shippingPrice;
-        verifiedCarrierRate = quote.carrierRate;
-        verifiedShippingMargin =
-          Math.round((verifiedShippingPrice - verifiedCarrierRate) * 100) / 100;
-        verifiedSelectedCarrier = quote.carrierName;
-        verifiedEstimatedTransitDays = quote.transitDays;
-        quoteExpiresAt = quote.quoteExpiresAt
-          ? new Date(quote.quoteExpiresAt)
-          : undefined;
-        quoteListingId = quote.listingId;
-        quoteQuantitySqFt = quote.quantitySqFt;
-      }
-
       const order = await ctx.db.transaction(async (tx) => {
+        await enforcePendingOrderLimit(tx, ctx.user.id);
+
         // Lock offer row with FOR UPDATE
         const [offer] = await tx
           .select()
@@ -573,21 +944,6 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
-        // Validate shipping quote matches the offer's listing and quantity
-        if (quoteListingId && quoteListingId !== offer.listingId) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Shipping quote does not match this listing.",
-          });
-        }
-
-        if (typeof quoteQuantitySqFt === "number" && Math.abs(Number(quoteQuantitySqFt) - Number(offer.quantitySqFt)) > 0.01) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Shipping quote quantity does not match the offer.",
-          });
-        }
-
         // Lock listing row with FOR UPDATE
         const [listing] = await tx
           .select()
@@ -607,20 +963,141 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
+        assertListingVisibleToBuyer(
+          listing,
+          "Listing not found or no longer available",
+        );
+
+        const destinationState = getVerifiedDestinationState({
+          shippingState: input.shippingState,
+          shippingZip: input.shippingZip,
+        });
+        const territoryDecision = resolveSellingTerritoryEligibility({
+          destinationState,
+          mode: listing.territoryMode,
+          allowedStates: listing.allowedDestinationStates,
+        });
+        if (!territoryDecision.eligible) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: territoryFailureMessage(territoryDecision),
+          });
+        }
+
         // Validate sufficient quantity
-        if (offer.quantitySqFt > listing.totalSqFt) {
+        const minimumOrderQtySqFt = getMinimumOrderQuantitySqFt(listing);
+
+        if (
+          minimumOrderQtySqFt > 0 &&
+          Number(offer.quantitySqFt) <
+            minimumOrderQtySqFt - QUANTITY_TOLERANCE_SQFT
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Minimum order quantity is ${minimumOrderQtySqFt} sq ft`,
+          });
+        }
+
+        if (
+          Number(offer.quantitySqFt) >
+          Number(listing.totalSqFt) + QUANTITY_TOLERANCE_SQFT
+        ) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: `Insufficient inventory. Only ${listing.totalSqFt} sq ft available.`,
           });
         }
 
-        // Determine accepted price from offer
-        const pricePerSqFt = offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
+        if (
+          listing.fullLotOnly &&
+          Number(offer.quantitySqFt) <
+            Number(listing.totalSqFt) - QUANTITY_TOLERANCE_SQFT
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This seller currently sells this inventory only as a full lot.",
+          });
+        }
+
+        // Price and freight funding are both locked before the quote artifacts
+        // are atomically consumed, so a business-rule rejection remains
+        // retryable with the same verified quote.
+        const pricePerSqFt =
+          offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
         const subtotal =
           Math.round(offer.quantitySqFt * pricePerSqFt * 100) / 100;
-        const shippingPrice = verifiedShippingPrice;
-        const feeBreakdown = calculateOrderFees(subtotal, shippingPrice);
+        const listingFreightSnapshot = {
+          freightPaymentMode: listing.freightPaymentMode,
+          sellerFreightStates: listing.sellerFreightStates,
+          freightDropCharge: listing.freightDropCharge,
+        };
+        const {
+          quoteId: verifiedQuoteId,
+          shippingPrice: verifiedShippingPrice,
+          carrierRate: verifiedCarrierRate,
+          shippingMargin: verifiedShippingMargin,
+          selectedCarrier: verifiedSelectedCarrier,
+          estimatedTransitDays: verifiedEstimatedTransitDays,
+          quoteExpiresAt,
+          bookingSnapshot: verifiedBookingSnapshot,
+          validationResult: {
+            freightFunding,
+            feeBreakdown,
+            checkoutTax,
+          },
+        } = await consumeAcceptedOfferShippingArtifacts({
+          selectedQuoteToken: input.selectedQuoteToken,
+          selectedQuoteId: input.selectedQuoteId,
+          buyerId: ctx.user.id,
+          listingId: offer.listingId,
+          quantitySqFt: offer.quantitySqFt,
+          destinationZip: input.shippingZip,
+          validateBeforeConsume: async (quotedFreightFunding) => {
+            const {
+              freightFunding,
+              feeBreakdown: preTaxFeeBreakdown,
+            } = calculateFreightFundedOrderFees({
+              listing: listingFreightSnapshot,
+              subtotal,
+              fullFreightCharge:
+                quotedFreightFunding.fullFreightCharge,
+              destinationState,
+              commercialPolicy:
+                quotedFreightFunding.commercialPolicy,
+              quotedFreightFunding,
+            });
+            const checkoutTax = await calculateCheckoutTax({
+              checkoutReference:
+                input.selectedQuoteToken ?? input.selectedQuoteId!,
+              listingId: listing.id,
+              inventoryAmount: subtotal,
+              buyerFreightAmount: freightFunding.buyerFreightCharge,
+              buyerMarketplaceFeeAmount: preTaxFeeBreakdown.buyerFee,
+              inventoryTaxCode: listing.stripeTaxCode,
+              inventoryTaxCodeStatus: listing.taxCodeStatus,
+              shipFrom: {
+                city: listing.locationCity,
+                state: listing.locationState,
+                postalCode: listing.locationZip,
+              },
+              shipTo: {
+                line1: input.shippingAddress,
+                city: input.shippingCity,
+                state: destinationState,
+                postalCode: input.shippingZip,
+              },
+            });
+            const feeBreakdown =
+              checkoutTax.taxLiability === "platform"
+                ? applyPlatformLiableTaxToOrderFees(
+                    preTaxFeeBreakdown,
+                    checkoutTax.taxAmount,
+                    quotedFreightFunding.commercialPolicy,
+                  )
+                : preTaxFeeBreakdown;
+            return { freightFunding, feeBreakdown, checkoutTax };
+          },
+        });
 
         // Create the order with offerId linked
         const [newOrder] = await tx
@@ -640,7 +1117,12 @@ export const orderRouter = createTRPCRouter({
             sellerStripeFee: feeBreakdown.sellerStripeFee,
             platformStripeFee: feeBreakdown.platformStripeFee,
             totalPrice: feeBreakdown.totalCharge,
+            originalSellerPayout: feeBreakdown.sellerPayout,
             sellerPayout: feeBreakdown.sellerPayout,
+            commercialPolicySnapshot:
+              verifiedBookingSnapshot.commercialPolicy ??
+              captureCommercialPolicy(),
+            ...checkoutTax,
             shippingName: input.shippingName,
             shippingAddress: input.shippingAddress,
             shippingCity: input.shippingCity,
@@ -653,9 +1135,14 @@ export const orderRouter = createTRPCRouter({
               selectedCarrier: verifiedSelectedCarrier,
               carrierRate: verifiedCarrierRate,
               shippingPrice: verifiedShippingPrice,
+              freightFundingMode: freightFunding.appliedMode,
+              buyerFreightCharge: freightFunding.buyerFreightCharge,
+              sellerFreightContribution:
+                freightFunding.sellerFreightContribution,
               shippingMargin: verifiedShippingMargin,
               estimatedTransitDays: verifiedEstimatedTransitDays,
               quoteExpiresAt,
+              shippingBookingSnapshot: verifiedBookingSnapshot,
             }),
             status: "pending",
             escrowStatus: "held",
@@ -671,74 +1158,38 @@ export const orderRouter = createTRPCRouter({
           })
           .where(eq(offers.id, offer.id));
 
-        // Update listing inventory (same as Buy Now flow)
-        if (offer.quantitySqFt >= listing.totalSqFt) {
-          await tx
-            .update(listings)
-            .set({
-              status: "sold",
-              soldAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(listings.id, listing.id));
-        } else {
-          await tx
-            .update(listings)
-            .set({
-              totalSqFt: listing.totalSqFt - offer.quantitySqFt,
-              updatedAt: new Date(),
-            })
-            .where(eq(listings.id, listing.id));
-        }
+        await reserveListingInventory({
+          db: tx,
+          listingId: listing.id,
+          availableQuantity: listing.totalSqFt,
+          reservedQuantity: offer.quantitySqFt,
+        });
 
         return newOrder;
       });
 
-      // Auto-save shipping address if it doesn't exist (fire-and-forget)
-      (async () => {
-        try {
-          const existing = await ctx.db.query.shippingAddresses.findFirst({
-            where: and(
-              eq(shippingAddresses.userId, ctx.user.id),
-              eq(shippingAddresses.address, input.shippingAddress),
-              eq(shippingAddresses.zip, input.shippingZip)
-            ),
-          });
-          if (!existing) {
-            await ctx.db.insert(shippingAddresses).values({
-              userId: ctx.user.id,
-              label: `${input.shippingCity}, ${input.shippingState}`,
-              name: input.shippingName,
-              address: input.shippingAddress,
-              city: input.shippingCity,
-              state: input.shippingState,
-              zip: input.shippingZip,
-              phone: input.shippingPhone ?? null,
-              isDefault: false,
-            });
-          }
-        } catch (err) {
-          console.error("Failed to auto-save shipping address:", err);
-        }
-      })();
-
-      // Send order confirmation email (fire-and-forget)
-      sendOrderConfirmationEmail({
-        to: ctx.user.email,
-        buyerName: ctx.user.name,
-        orderNumber: order!.orderNumber,
-        listingTitle: "Order",
-        quantity: `${order!.quantitySqFt}`,
-        pricePerSqFt: `${order!.pricePerSqFt}`,
-        subtotal: `${order!.subtotal}`,
-        buyerFee: `${order!.buyerFee}`,
-        total: `${order!.totalPrice}`,
-        orderId: order!.id,
-      }).catch((err) => {
-        console.error("Failed to send order confirmation email:", err);
+      await saveShippingAddressBestEffort({
+        db: ctx.db,
+        userId: ctx.user.id,
+        name: input.shippingName,
+        address: input.shippingAddress,
+        city: input.shippingCity,
+        state: input.shippingState,
+        zip: input.shippingZip,
+        phone: input.shippingPhone,
       });
 
-      return order;
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        totalPrice: order.totalPrice,
+        taxAmount: order.taxAmount,
+        taxStatus: order.taxStatus,
+        taxLiability: order.taxLiability,
+        taxJurisdictionSummary: order.taxJurisdictionSummary,
+      };
     }),
 
   // Get order by ID
@@ -766,6 +1217,12 @@ export const orderRouter = createTRPCRouter({
           subtotal: true,
           buyerFee: true,
           sellerFee: true,
+          sellerStripeFee: true,
+          taxAmount: true,
+          taxStatus: true,
+          taxLiability: true,
+          taxJurisdictionSummary: true,
+          taxReversalStatus: true,
           totalPrice: true,
           sellerPayout: true,
           shippingName: true,
@@ -777,6 +1234,9 @@ export const orderRouter = createTRPCRouter({
           trackingNumber: true,
           carrier: true,
           shippingPrice: true,
+          freightFundingMode: true,
+          buyerFreightCharge: true,
+          sellerFreightContribution: true,
           carrierRate: true,
           shippingMargin: true,
           selectedQuoteId: true,
@@ -798,13 +1258,43 @@ export const orderRouter = createTRPCRouter({
           paymentStatus: true,
           stripePaymentIntentId: true,
           stripeTransferId: true,
+          stripeTransferReversalId: true,
+          transferReversedAmount: true,
           transferFailedAt: true,
           transferError: true,
         },
         with: {
           listing: {
+            columns: {
+              id: true,
+              slug: true,
+              title: true,
+              description: true,
+              materialType: true,
+              species: true,
+              finish: true,
+              grade: true,
+              color: true,
+              colorFamily: true,
+              thickness: true,
+              width: true,
+              length: true,
+              wearLayer: true,
+              brand: true,
+              modelNumber: true,
+              sqFtPerBox: true,
+              boxesPerPallet: true,
+              condition: true,
+              certifications: true,
+            },
             with: {
               media: {
+                columns: {
+                  id: true,
+                  url: true,
+                  altText: true,
+                  sortOrder: true,
+                },
                 orderBy: (media, { asc }) => [asc(media.sortOrder)],
                 limit: 1,
               },
@@ -834,6 +1324,21 @@ export const orderRouter = createTRPCRouter({
               businessState: true,
             },
           },
+          shipment: {
+            columns: {
+              status: true,
+              dispatchedAt: true,
+              pickupDate: true,
+              deliveredAt: true,
+            },
+          },
+          dispute: {
+            columns: {
+              status: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
         },
       });
 
@@ -845,11 +1350,73 @@ export const orderRouter = createTRPCRouter({
       }
 
       const isAdmin = ctx.user.role === "admin";
+      const isSeller = ctx.user.id === order.sellerId;
+      const {
+        sellerFee,
+        sellerStripeFee,
+        sellerPayout,
+        carrierRate,
+        shippingMargin,
+        stripePaymentIntentId,
+        stripeTransferId,
+        stripeTransferReversalId,
+        transferReversedAmount,
+        transferFailedAt,
+        transferError,
+        stripeRefundId,
+        notes,
+        escrowStatus,
+        shippingName,
+        shippingAddress,
+        shippingCity,
+        shippingState,
+        shippingZip,
+        shippingPhone,
+        ...participantOrder
+      } = order;
+      const canSeeShippingDestination =
+        isAdmin || !isSeller || Boolean(order.confirmedAt);
 
       return {
-        ...order,
+        ...participantOrder,
+        shippingName: canSeeShippingDestination ? shippingName : null,
+        shippingAddress: canSeeShippingDestination ? shippingAddress : null,
+        shippingCity: canSeeShippingDestination ? shippingCity : null,
+        shippingState: canSeeShippingDestination ? shippingState : null,
+        shippingZip: canSeeShippingDestination ? shippingZip : null,
+        shippingPhone: canSeeShippingDestination ? shippingPhone : null,
+        sellerTransferStatus: getSellerTransferStatus(
+          escrowStatus,
+          participantOrder.paymentStatus,
+        ),
         buyer: maskUserForOrder(order.buyer, order.status, isAdmin),
         seller: maskUserForOrder(order.seller, order.status, isAdmin),
+        sellerFinancials:
+          isSeller || isAdmin
+            ? {
+                sellerFee,
+                sellerStripeFee,
+                sellerFreightContribution:
+                  participantOrder.sellerFreightContribution,
+                sellerPayout,
+                payoutStatus: order.escrowStatus,
+                payoutNeedsAttention: Boolean(transferFailedAt),
+              }
+            : null,
+        adminFinancials: isAdmin
+          ? {
+              carrierRate,
+              shippingMargin,
+              stripePaymentIntentId,
+              stripeTransferId,
+              stripeTransferReversalId,
+              transferReversedAmount,
+              transferFailedAt,
+              transferError,
+              stripeRefundId,
+              notes,
+            }
+          : null,
       };
     }),
 
@@ -889,6 +1456,10 @@ export const orderRouter = createTRPCRouter({
             orderNumber: true,
             quantitySqFt: true,
             totalPrice: true,
+            shippingPrice: true,
+            freightFundingMode: true,
+            buyerFreightCharge: true,
+            sellerFreightContribution: true,
             status: true,
             createdAt: true,
           },
@@ -901,6 +1472,12 @@ export const orderRouter = createTRPCRouter({
               },
               with: {
                 media: {
+                  columns: {
+                    id: true,
+                    url: true,
+                    altText: true,
+                    sortOrder: true,
+                  },
                   orderBy: (media, { asc }) => [asc(media.sortOrder)],
                   limit: 1,
                 },
@@ -929,7 +1506,10 @@ export const orderRouter = createTRPCRouter({
       const total = countResult[0]?.count ?? 0;
 
       return {
-        items,
+        items: items.map((item) => ({
+          ...item,
+          seller: maskUserForOrder(item.seller, item.status, false),
+        })),
         total,
         page: input.page,
         limit: input.limit,
@@ -973,8 +1553,15 @@ export const orderRouter = createTRPCRouter({
             id: true,
             orderNumber: true,
             quantitySqFt: true,
+            subtotal: true,
             totalPrice: true,
+            sellerFee: true,
+            sellerStripeFee: true,
             sellerPayout: true,
+            shippingPrice: true,
+            freightFundingMode: true,
+            buyerFreightCharge: true,
+            sellerFreightContribution: true,
             status: true,
             createdAt: true,
           },
@@ -987,6 +1574,12 @@ export const orderRouter = createTRPCRouter({
               },
               with: {
                 media: {
+                  columns: {
+                    id: true,
+                    url: true,
+                    altText: true,
+                    sortOrder: true,
+                  },
                   orderBy: (media, { asc }) => [asc(media.sortOrder)],
                   limit: 1,
                 },
@@ -1015,7 +1608,10 @@ export const orderRouter = createTRPCRouter({
       const total = countResult[0]?.count ?? 0;
 
       return {
-        items,
+        items: items.map((item) => ({
+          ...item,
+          buyer: maskUserForOrder(item.buyer, item.status, false),
+        })),
         total,
         page: input.page,
         limit: input.limit,
@@ -1028,7 +1624,7 @@ export const orderRouter = createTRPCRouter({
   updateStatus: sellerProcedure
     .input(updateOrderStatusSchema)
     .mutation(async ({ ctx, input }) => {
-      const order = await ctx.db.query.orders.findFirst({
+      const initialOrder = await ctx.db.query.orders.findFirst({
         where: and(
           eq(orders.id, input.orderId),
           eq(orders.sellerId, ctx.user.id)
@@ -1038,94 +1634,127 @@ export const orderRouter = createTRPCRouter({
           status: true,
           escrowStatus: true,
           paymentStatus: true,
+          selectedQuoteId: true,
+          stripePaymentIntentId: true,
+          totalPrice: true,
         },
       });
 
-      if (!order) {
+      if (!initialOrder) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Order not found",
         });
       }
 
-      if (
-        !canSellerUpdateOrderStatus({
-          currentStatus: order.status,
-          nextStatus: input.status,
-          paymentStatus: order.paymentStatus,
-        })
-      ) {
-        if (
-          input.status === "cancelled" &&
-          (order.paymentStatus === "succeeded" ||
-            order.paymentStatus === "partially_refunded")
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Paid orders must be cancelled by an admin so the refund can be processed.",
-          });
-        }
+      assertSellerStatusTransition(initialOrder, input.status);
 
-        if (
-          input.status !== "cancelled" &&
-          order.paymentStatus !== "succeeded" &&
-          order.paymentStatus !== "partially_refunded"
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Order payment must succeed before it can move to the next fulfillment stage.",
-          });
-        }
-
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Cannot transition order from "${order.status}" to "${input.status}"`,
+      if (input.status === "cancelled") {
+        await cancelUncapturedOrderPayment({
+          orderId: initialOrder.id,
+          paymentIntentId: initialOrder.stripePaymentIntentId,
+          expectedAmountCents: Math.round(Number(initialOrder.totalPrice) * 100),
         });
       }
 
-      const updateData: Record<string, unknown> = {
-        status: input.status,
-        updatedAt: new Date(),
-      };
+      return ctx.db.transaction(async (tx) => {
+        // Re-read under a row lock after any provider cancellation. Refund and
+        // webhook handlers lock/update this same order, so stale seller actions
+        // cannot overwrite a newer terminal financial state.
+        const [lockedOrder] = await tx
+          .select({
+            id: orders.id,
+            status: orders.status,
+            escrowStatus: orders.escrowStatus,
+            paymentStatus: orders.paymentStatus,
+            selectedQuoteId: orders.selectedQuoteId,
+            stripePaymentIntentId: orders.stripePaymentIntentId,
+            totalPrice: orders.totalPrice,
+          })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.id, input.orderId),
+              eq(orders.sellerId, ctx.user.id),
+            ),
+          )
+          .for("update");
 
-      if (input.trackingNumber) {
-        updateData.trackingNumber = input.trackingNumber;
-      }
-      if (input.carrier) {
-        updateData.carrier = input.carrier;
-      }
-      if (input.notes) {
-        updateData.notes = input.notes;
-      }
+        if (!lockedOrder) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Order not found",
+          });
+        }
 
-      // Set timestamp and escrow status based on status transition
-      switch (input.status) {
-        case "confirmed":
-          updateData.confirmedAt = new Date();
-          break;
-        case "shipped":
-          updateData.shippedAt = new Date();
-          break;
-        case "delivered":
-          updateData.deliveredAt = new Date();
-          break;
-        case "cancelled":
-          updateData.cancelledAt = new Date();
-          // Release escrow back to buyer on cancellation
-          if (order.escrowStatus === "held") {
-            updateData.escrowStatus = "refunded";
-          }
-          break;
-      }
+        assertSellerStatusTransition(lockedOrder, input.status);
 
-      const [updated] = await ctx.db.transaction(async (tx) => {
-        const [nextOrder] = await tx
+        if (
+          input.status === "cancelled" &&
+          (lockedOrder.stripePaymentIntentId !==
+            initialOrder.stripePaymentIntentId ||
+            Math.round(Number(lockedOrder.totalPrice) * 100) !==
+              Math.round(Number(initialOrder.totalPrice) * 100))
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Order payment details changed while cancellation was in progress. Please refresh and retry.",
+          });
+        }
+
+        const transitionedAt = new Date();
+        const updateData: Record<string, unknown> = {
+          status: input.status,
+          updatedAt: transitionedAt,
+        };
+
+        if (input.trackingNumber) {
+          updateData.trackingNumber = input.trackingNumber;
+        }
+        if (input.carrier) {
+          updateData.carrier = input.carrier;
+        }
+        if (input.notes) {
+          updateData.notes = input.notes;
+        }
+
+        switch (input.status) {
+          case "confirmed":
+            updateData.confirmedAt = transitionedAt;
+            break;
+          case "shipped":
+            updateData.shippedAt = transitionedAt;
+            break;
+          case "delivered":
+            updateData.deliveredAt = transitionedAt;
+            break;
+          case "cancelled":
+            updateData.cancelledAt = transitionedAt;
+            if (lockedOrder.escrowStatus === "held") {
+              updateData.escrowStatus = "refunded";
+            }
+            break;
+        }
+
+        const [updated] = await tx
           .update(orders)
           .set(updateData)
-          .where(eq(orders.id, input.orderId))
+          .where(
+            and(
+              eq(orders.id, input.orderId),
+              eq(orders.sellerId, ctx.user.id),
+              eq(orders.status, lockedOrder.status),
+            ),
+          )
           .returning();
+
+        if (!updated) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Order changed while it was being updated. Please retry.",
+          });
+        }
 
         if (input.status === "cancelled") {
           await releaseReservedInventory({
@@ -1135,23 +1764,8 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
-        return [nextOrder];
+        return updated;
       });
-
-      // Fire Inngest event for escrow release on shipment pickup
-      if (input.status === "shipped") {
-        inngest.send({
-          name: "order/picked-up",
-          data: {
-            orderId: order.id,
-            pickedUpAt: new Date().toISOString(),
-          },
-        }).catch((err) => {
-          console.error("Failed to send escrow release event:", err);
-        });
-      }
-
-      return updated;
     }),
 
   // Get seller order stats

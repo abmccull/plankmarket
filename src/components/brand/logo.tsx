@@ -14,6 +14,8 @@ const sizeMap = {
   xl: { icon: 48, text: "text-3xl", gap: "gap-3" },
 };
 
+const LOGO_ICON_ASPECT_RATIO = 620 / 600;
+
 function LogoWordmark({ className }: { className?: string }) {
   return (
     <span className={cn("font-bold leading-none", className)}>
@@ -32,7 +34,7 @@ export function Logo({ variant = "full", size = "md", className }: LogoProps) {
         <Image
           src="/logo-icon.png"
           alt="PlankMarket"
-          width={s.icon}
+          width={Math.round(s.icon * LOGO_ICON_ASPECT_RATIO)}
           height={s.icon}
           className="object-contain"
           priority
@@ -50,7 +52,7 @@ export function Logo({ variant = "full", size = "md", className }: LogoProps) {
       <Image
         src="/logo-icon.png"
         alt=""
-        width={s.icon}
+        width={Math.round(s.icon * LOGO_ICON_ASPECT_RATIO)}
         height={s.icon}
         className="object-contain"
         priority

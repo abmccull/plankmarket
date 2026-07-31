@@ -1,14 +1,57 @@
 import { createTRPCRouter, adminProcedure } from "../trpc";
-import { users, listings, orders, notifications, platformSettings, shipments, shipmentStatusEnum, contentViolations } from "../db/schema";
-import { desc, sql, eq, like, or, and, asc } from "drizzle-orm";
+import {
+  users,
+  listings,
+  orders,
+  notifications,
+  platformSettings,
+  shipments,
+  shipmentStatusEnum,
+  contentViolations,
+  buyerRequests,
+  buyerRequestResponses,
+  offers,
+  disputes,
+} from "../db/schema";
+import {
+  desc,
+  sql,
+  eq,
+  like,
+  or,
+  and,
+  asc,
+  notInArray,
+  isNull,
+  gte,
+} from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { priority1 } from "@/server/services/priority1";
+import { selectPriority1Shipment } from "@/server/services/priority1-selection";
 import { inngest } from "@/lib/inngest/client";
 import { sendVerificationApprovedEmail, sendVerificationRejectedEmail, sendRefundEmail } from "@/lib/email/send";
 import { processOrderRefund } from "@/server/services/refund";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
-import type { TrackingEvent } from "@/server/db/schema";
+import { cancelPriority1ShipmentForOrder } from "@/server/services/shipment-cancellation";
+import { cancelUncapturedOrderPayment } from "@/server/services/payment-intent-cancellation";
+import {
+  mapPriority1ShipmentStatus,
+  mergeTrackingEvents,
+  shouldEmitProviderPickupEvent,
+} from "@/server/services/shipping-workflow";
+import {
+  type VerificationStatus,
+  verificationStateUpdate,
+} from "@/server/services/verification-state";
+import { calculateMarketplaceHealth } from "@/server/services/marketplace-health";
+import { appendAuditEvent } from "@/server/services/audit-ledger";
+import {
+  parseMutablePlatformSetting,
+  platformSettingUpdateInput,
+} from "@/server/services/platform-settings-policy";
+import { getConfiguredTaxPolicy } from "@/server/services/stripe-tax";
+import { getTaxPolicyReadinessIssues } from "@/lib/tax-policy";
 
 /**
  * Escapes special LIKE wildcards in user input to prevent unintended pattern matching
@@ -45,8 +88,8 @@ function isMissingColumnError(error: unknown): boolean {
 
 /** Default platform settings */
 const DEFAULT_SETTINGS: Record<string, unknown> = {
-  buyerFeePercent: 3,
-  sellerFeePercent: 2,
+  buyerFeePercent: 5,
+  sellerFeePercent: 5,
   listingExpiryDays: 90,
   maxPhotosPerListing: 20,
   platformName: "PlankMarket",
@@ -55,16 +98,67 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
 };
 
 export const adminRouter = createTRPCRouter({
+  getTaxReadiness: adminProcedure.query(async ({ ctx }) => {
+    const policy = getConfiguredTaxPolicy();
+    const [listingReadiness] = await ctx.db
+      .select({
+        activeListings:
+          sql<number>`count(*) filter (where ${listings.status} = 'active')::int`,
+        verifiedTaxCodeListings:
+          sql<number>`count(*) filter (where ${listings.status} = 'active' and ${listings.taxCodeStatus} = 'verified')::int`,
+        unreadyTaxCodeListings:
+          sql<number>`count(*) filter (where ${listings.status} = 'active' and ${listings.taxCodeStatus} <> 'verified')::int`,
+      })
+      .from(listings);
+
+    const configurationIssues = getTaxPolicyReadinessIssues(policy);
+    if (policy.mode === "disabled") {
+      configurationIssues.push(
+        "Production tax mode is disabled; production checkout preflight will fail.",
+      );
+    }
+    if (policy.mode === "connected_account_liable") {
+      configurationIssues.push(
+        "Connected-account calculations are available only for certification; checkout transaction/reversal commitment is intentionally blocked.",
+      );
+    }
+
+    return {
+      policy,
+      liabilityOwner:
+        policy.mode === "platform_liable"
+          ? ("platform" as const)
+          : policy.mode === "connected_account_liable"
+            ? ("connected_account" as const)
+            : ("none" as const),
+      checkoutImplementation:
+        policy.mode === "platform_liable"
+          ? ("implemented_requires_provider_certification" as const)
+          : policy.mode === "connected_account_liable"
+            ? ("calculation_only_checkout_blocked" as const)
+            : ("disabled" as const),
+      configurationIssues,
+      listings: {
+        active: listingReadiness?.activeListings ?? 0,
+        verifiedTaxCode:
+          listingReadiness?.verifiedTaxCodeListings ?? 0,
+        unreadyTaxCode: listingReadiness?.unreadyTaxCodeListings ?? 0,
+      },
+    };
+  }),
+
   // Get dashboard statistics
   getStats: adminProcedure.query(async ({ ctx }) => {
     // Get user counts
-    const [{ totalUsers, buyerCount, sellerCount }] = await ctx.db
+    const [{ totalUsers, buyerCount, sellerCount, pendingVerificationCount }] = await ctx.db
       .select({
         totalUsers: sql<number>`cast(count(*) as integer)`,
         buyerCount:
           sql<number>`cast(count(*) filter (where role = 'buyer') as integer)`,
         sellerCount:
           sql<number>`cast(count(*) filter (where role = 'seller') as integer)`,
+        pendingVerificationCount:
+          sql<number>`cast(count(*) filter (where verification_status = 'pending') as integer)`,
       })
       .from(users);
 
@@ -77,15 +171,16 @@ export const adminRouter = createTRPCRouter({
       })
       .from(listings);
 
-    // Get order counts and revenue
-    const [{ totalOrders, completedOrders, totalRevenue, pendingRevenue }] =
+    // Get order counts and gross merchandise value. This is buyer order value,
+    // not platform revenue or cash available to the business.
+    const [{ totalOrders, completedOrders, totalGmv, pendingGmv }] =
       await ctx.db
         .select({
           totalOrders: sql<number>`cast(count(*) as integer)`,
           completedOrders:
             sql<number>`cast(count(*) filter (where status = 'delivered') as integer)`,
-          totalRevenue: sql<number>`coalesce(sum(total_price), 0)`,
-          pendingRevenue:
+          totalGmv: sql<number>`coalesce(sum(total_price), 0)`,
+          pendingGmv:
             sql<number>`coalesce(sum(total_price) filter (where status IN ('pending', 'confirmed', 'processing', 'shipped')), 0)`,
         })
         .from(orders);
@@ -95,6 +190,7 @@ export const adminRouter = createTRPCRouter({
         total: totalUsers,
         buyers: buyerCount,
         sellers: sellerCount,
+        pendingVerifications: pendingVerificationCount,
       },
       listings: {
         total: totalListings,
@@ -104,11 +200,136 @@ export const adminRouter = createTRPCRouter({
         total: totalOrders,
         completed: completedOrders,
       },
-      revenue: {
-        total: totalRevenue,
-        pending: pendingRevenue,
+      gmv: {
+        total: totalGmv,
+        pending: pendingGmv,
       },
     };
+  }),
+
+  // Database-backed marketplace liquidity and operating health.
+  getMarketplaceHealth: adminProcedure.query(async ({ ctx }) => {
+    const windowDays = 30;
+    const periodStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+    const firstRequestResponse = ctx.db
+      .select({
+        id: buyerRequests.id,
+        createdAt: buyerRequests.createdAt,
+        status: buyerRequests.status,
+        firstResponseAt:
+          sql<Date | null>`min(${buyerRequestResponses.createdAt})`.as(
+            "first_response_at",
+          ),
+      })
+      .from(buyerRequests)
+      .leftJoin(
+        buyerRequestResponses,
+        eq(buyerRequestResponses.requestId, buyerRequests.id),
+      )
+      .where(gte(buyerRequests.createdAt, periodStart))
+      .groupBy(
+        buyerRequests.id,
+        buyerRequests.createdAt,
+        buyerRequests.status,
+      )
+      .as("request_first_response");
+
+    const [
+      [supply],
+      [demand],
+      [requestStats],
+      [listingStats],
+      [offerStats],
+      [orderStats],
+    ] = await Promise.all([
+      ctx.db
+        .select({
+          count: sql<number>`count(*)::int`,
+          totalSqFt: sql<number>`coalesce(sum(${listings.totalSqFt}), 0)::float`,
+        })
+        .from(listings)
+        .where(eq(listings.status, "active")),
+      ctx.db
+        .select({
+          count: sql<number>`count(*)::int`,
+          minimumSqFt: sql<number>`coalesce(sum(${buyerRequests.minTotalSqFt}), 0)::float`,
+        })
+        .from(buyerRequests)
+        .where(eq(buyerRequests.status, "open")),
+      ctx.db
+        .select({
+          total: sql<number>`count(*)::int`,
+          responded:
+            sql<number>`count(${firstRequestResponse.firstResponseAt})::int`,
+          matched:
+            sql<number>`count(*) filter (where ${firstRequestResponse.status} = 'matched')::int`,
+          averageHoursToResponse:
+            sql<number | null>`avg(extract(epoch from (${firstRequestResponse.firstResponseAt} - ${firstRequestResponse.createdAt})) / 3600)::float`,
+        })
+        .from(firstRequestResponse),
+      ctx.db
+        .select({
+          total: sql<number>`count(*)::int`,
+          withOffers:
+            sql<number>`count(*) filter (where ${listings.offerCount} > 0)::int`,
+        })
+        .from(listings)
+        .where(gte(listings.createdAt, periodStart)),
+      ctx.db
+        .select({
+          total: sql<number>`count(*)::int`,
+          responded:
+            sql<number>`count(*) filter (where ${offers.status} in ('accepted', 'rejected', 'countered'))::int`,
+          averageHoursToResponse:
+            sql<number | null>`(avg(extract(epoch from (${offers.updatedAt} - ${offers.createdAt})) / 3600) filter (where ${offers.status} in ('accepted', 'rejected', 'countered')))::float`,
+        })
+        .from(offers)
+        .where(gte(offers.createdAt, periodStart)),
+      ctx.db
+        .select({
+          paid:
+            sql<number>`count(*) filter (where ${orders.paymentStatus} in ('succeeded', 'partially_refunded', 'refunded'))::int`,
+          delivered:
+            sql<number>`count(*) filter (where ${orders.paymentStatus} in ('succeeded', 'partially_refunded', 'refunded') and ${orders.status} = 'delivered')::int`,
+          withIssues:
+            sql<number>`count(*) filter (where ${orders.paymentStatus} in ('succeeded', 'partially_refunded', 'refunded') and (${orders.status} = 'refunded' or coalesce(${orders.refundedAmount}, 0) > 0 or ${disputes.id} is not null))::int`,
+          averageHoursToPickup:
+            sql<number | null>`(avg(extract(epoch from (${orders.shippedAt} - ${orders.confirmedAt})) / 3600) filter (where ${orders.paymentStatus} in ('succeeded', 'partially_refunded', 'refunded') and ${orders.confirmedAt} is not null and ${orders.shippedAt} is not null and ${orders.shippedAt} >= ${orders.confirmedAt}))::float`,
+        })
+        .from(orders)
+        .leftJoin(disputes, eq(disputes.orderId, orders.id))
+        .where(gte(orders.createdAt, periodStart)),
+    ]);
+
+    return calculateMarketplaceHealth({
+      windowDays,
+      activeListings: supply?.count ?? 0,
+      activeSupplySqFt: Number(supply?.totalSqFt ?? 0),
+      openBuyerRequests: demand?.count ?? 0,
+      openDemandSqFt: Number(demand?.minimumSqFt ?? 0),
+      requests: {
+        total: requestStats?.total ?? 0,
+        responded: requestStats?.responded ?? 0,
+        matched: requestStats?.matched ?? 0,
+        averageHoursToResponse:
+          requestStats?.averageHoursToResponse ?? null,
+      },
+      listings: {
+        total: listingStats?.total ?? 0,
+        withOffers: listingStats?.withOffers ?? 0,
+      },
+      offers: {
+        total: offerStats?.total ?? 0,
+        responded: offerStats?.responded ?? 0,
+        averageHoursToResponse: offerStats?.averageHoursToResponse ?? null,
+      },
+      orders: {
+        paid: orderStats?.paid ?? 0,
+        delivered: orderStats?.delivered ?? 0,
+        withIssues: orderStats?.withIssues ?? 0,
+        averageHoursToPickup: orderStats?.averageHoursToPickup ?? null,
+      },
+    });
   }),
 
   // Get paginated user list with filters
@@ -364,6 +585,7 @@ export const adminRouter = createTRPCRouter({
     .input(
       z.object({
         userId: z.string().uuid(),
+        submissionId: z.string().uuid().nullable(),
         status: z.enum(["verified", "rejected"]),
         notes: z.string().optional(),
       })
@@ -388,60 +610,81 @@ export const adminRouter = createTRPCRouter({
         });
       }
 
-      // Update verification status
-      const [updatedUser] = await ctx.db
-        .update(users)
-        .set({
-          verificationStatus: input.status,
-          verificationNotes: input.notes,
-          verified: input.status === "verified",
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, input.userId))
-        .returning();
+      // Commit the authorization decision and its user-visible audit event
+      // together. Draft listings remain drafts until the seller explicitly
+      // publishes them through the normal photo/readiness checks.
+      const updatedUser = await ctx.db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(users)
+          .set({
+            ...verificationStateUpdate(input.status),
+            verificationNotes: input.notes,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(users.id, input.userId),
+              eq(users.verificationStatus, "pending"),
+              input.submissionId === null
+                ? isNull(users.verificationSubmissionId)
+                : eq(users.verificationSubmissionId, input.submissionId),
+            ),
+          )
+          .returning();
 
-      // Insert notification and send email
-      if (input.status === "verified") {
-        // Auto-promote draft listings to active
-        await ctx.db
-          .update(listings)
-          .set({ status: "active" })
-          .where(and(eq(listings.sellerId, input.userId), eq(listings.status, "draft")));
+        if (!updated) return null;
 
-        await ctx.db.insert(notifications).values({
+        await tx.insert(notifications).values({
           userId: input.userId,
           type: "system",
-          title: "Account Verified",
+          title:
+            input.status === "verified"
+              ? "Account Verified"
+              : "Verification Not Approved",
           message:
-            "Your business has been verified. You now have full access to PlankMarket.",
+            input.status === "verified"
+              ? "Your business has been verified. You now have full access to PlankMarket. Review and publish any draft listings when they are ready."
+              : input.notes
+                ? `Your verification request was not approved. Reason: ${input.notes}`
+                : "Your verification request was not approved. Please contact support for more information.",
           read: false,
+          data: {
+            type: "verification_decision",
+            submissionId: input.submissionId,
+            status: input.status,
+          },
         });
 
-        // Send verification approved email (fire-and-forget)
-        sendVerificationApprovedEmail({
+        return updated;
+      });
+
+      if (!updatedUser) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "This verification submission changed while you were reviewing it. Refresh and review the current submission.",
+        });
+      }
+
+      // Email is a best-effort side effect after the durable decision commits.
+      if (input.status === "verified") {
+        // Await provider acceptance so serverless teardown cannot discard it.
+        await sendVerificationApprovedEmail({
           to: user.email,
           name: user.name,
           role: user.role as "buyer" | "seller",
+          idempotencyKey: `verification-approved-${input.submissionId}`,
         }).catch((err) => {
           console.error("Failed to send verification approved email:", err);
         });
       } else {
-        await ctx.db.insert(notifications).values({
-          userId: input.userId,
-          type: "system",
-          title: "Verification Not Approved",
-          message: input.notes
-            ? `Your verification request was not approved. Reason: ${input.notes}`
-            : "Your verification request was not approved. Please contact support for more information.",
-          read: false,
-        });
-
-        // Send verification rejected email (fire-and-forget)
-        sendVerificationRejectedEmail({
+        // Await provider acceptance so serverless teardown cannot discard it.
+        await sendVerificationRejectedEmail({
           to: user.email,
           name: user.name,
           reason: input.notes,
           role: user.role as "buyer" | "seller",
+          idempotencyKey: `verification-rejected-${input.submissionId}`,
         }).catch((err) => {
           console.error("Failed to send verification rejected email:", err);
         });
@@ -458,6 +701,9 @@ export const adminRouter = createTRPCRouter({
         role: z.enum(["buyer", "seller", "admin"]).optional(),
         active: z.boolean().optional(),
         verified: z.boolean().optional(),
+        verificationStatus: z
+          .enum(["unverified", "pending", "verified", "rejected"])
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -486,16 +732,72 @@ export const adminRouter = createTRPCRouter({
         updateData.active = input.active;
       }
 
-      if (input.verified !== undefined) {
-        updateData.verified = input.verified;
+      const requestedVerificationStatus: VerificationStatus | undefined =
+        input.verificationStatus ??
+        (input.verified === undefined
+          ? undefined
+          : input.verified
+            ? "verified"
+            : "unverified");
+      if (requestedVerificationStatus) {
+        Object.assign(
+          updateData,
+          verificationStateUpdate(requestedVerificationStatus),
+        );
       }
 
-      // Update user
-      const [updatedUser] = await ctx.db
-        .update(users)
-        .set(updateData)
-        .where(eq(users.id, input.userId))
-        .returning();
+      let previousAppMetadata: Record<string, unknown> | undefined;
+      if (input.role !== undefined && input.role !== user.role) {
+        const { createServiceClient } = await import("@/lib/supabase/server");
+        const serviceClient = await createServiceClient();
+        const { data: authData, error: getAuthUserError } =
+          await serviceClient.auth.admin.getUserById(user.authId);
+        if (getAuthUserError || !authData.user) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Could not synchronize the user's authorization role.",
+          });
+        }
+        previousAppMetadata = authData.user.app_metadata;
+        const { error: metadataError } =
+          await serviceClient.auth.admin.updateUserById(user.authId, {
+            app_metadata: {
+              ...previousAppMetadata,
+              role: input.role,
+            },
+          });
+        if (metadataError) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Could not synchronize the user's authorization role.",
+          });
+        }
+      }
+
+      let updatedUser;
+      try {
+        [updatedUser] = await ctx.db
+          .update(users)
+          .set(updateData)
+          .where(eq(users.id, input.userId))
+          .returning();
+      } catch (error) {
+        if (previousAppMetadata) {
+          const { createServiceClient } = await import("@/lib/supabase/server");
+          const serviceClient = await createServiceClient();
+          await serviceClient.auth.admin
+            .updateUserById(user.authId, {
+              app_metadata: previousAppMetadata,
+            })
+            .catch((rollbackError) => {
+              console.error("Failed to roll back Supabase role metadata", {
+                userId: user.id,
+                rollbackError,
+              });
+            });
+        }
+        throw error;
+      }
 
       return updatedUser;
     }),
@@ -577,8 +879,16 @@ export const adminRouter = createTRPCRouter({
             totalPlatformStripeFees:
               sql<number>`coalesce(sum(platform_stripe_fee), 0)`,
             platformRevenue:
-              sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+              sql<number>`coalesce(sum(buyer_fee), 0) + coalesce(sum(seller_fee), 0) + coalesce(sum(shipping_margin), 0)`,
+            totalShippingMargin:
+              sql<number>`coalesce(sum(shipping_margin), 0)`,
             totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+            totalFreightBooked:
+              sql<number>`coalesce(sum(shipping_price), 0)`,
+            totalBuyerFreightCharges:
+              sql<number>`coalesce(sum(buyer_freight_charge), 0)`,
+            totalSellerFreightContributions:
+              sql<number>`coalesce(sum(seller_freight_contribution), 0)`,
             avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
             orderCount: sql<number>`cast(count(*) as integer)`,
           })
@@ -630,8 +940,15 @@ export const adminRouter = createTRPCRouter({
                 sql<number>`coalesce(sum(stripe_processing_fee), 0)`,
               totalPlatformStripeFees: sql<number>`0`,
               platformRevenue:
-                sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+                sql<number>`coalesce(sum(buyer_fee), 0) + coalesce(sum(seller_fee), 0) + coalesce(sum(shipping_margin), 0)`,
+              totalShippingMargin:
+                sql<number>`coalesce(sum(shipping_margin), 0)`,
               totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+              totalFreightBooked:
+                sql<number>`coalesce(sum(shipping_price), 0)`,
+              totalBuyerFreightCharges:
+                sql<number>`coalesce(sum(shipping_price), 0)`,
+              totalSellerFreightContributions: sql<number>`0`,
               avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
               orderCount: sql<number>`cast(count(*) as integer)`,
             })
@@ -669,8 +986,15 @@ export const adminRouter = createTRPCRouter({
               totalSellerStripeFees: sql<number>`0`,
               totalPlatformStripeFees: sql<number>`0`,
               platformRevenue:
-                sql<number>`coalesce(sum(buyer_fee) + sum(seller_fee), 0)`,
+                sql<number>`coalesce(sum(buyer_fee), 0) + coalesce(sum(seller_fee), 0) + coalesce(sum(shipping_margin), 0)`,
+              totalShippingMargin:
+                sql<number>`coalesce(sum(shipping_margin), 0)`,
               totalPayouts: sql<number>`coalesce(sum(seller_payout), 0)`,
+              totalFreightBooked:
+                sql<number>`coalesce(sum(shipping_price), 0)`,
+              totalBuyerFreightCharges:
+                sql<number>`coalesce(sum(shipping_price), 0)`,
+              totalSellerFreightContributions: sql<number>`0`,
               avgOrderValue: sql<number>`coalesce(avg(total_price), 0)`,
               orderCount: sql<number>`cast(count(*) as integer)`,
             })
@@ -757,6 +1081,13 @@ export const adminRouter = createTRPCRouter({
         stripeProcessingFee: number;
         sellerStripeFee: number;
         platformStripeFee: number;
+        shippingPrice: number | null;
+        freightFundingMode:
+          | "buyer_pays"
+          | "seller_pays"
+          | "seller_pays_selected_states";
+        buyerFreightCharge: number;
+        sellerFreightContribution: number;
         totalPrice: number;
         sellerPayout: number;
         status:
@@ -792,6 +1123,10 @@ export const adminRouter = createTRPCRouter({
             stripeProcessingFee: true,
             sellerStripeFee: true,
             platformStripeFee: true,
+            shippingPrice: true,
+            freightFundingMode: true,
+            buyerFreightCharge: true,
+            sellerFreightContribution: true,
             totalPrice: true,
             sellerPayout: true,
             status: true,
@@ -834,6 +1169,7 @@ export const adminRouter = createTRPCRouter({
               buyerFee: true,
               sellerFee: true,
               stripeProcessingFee: true,
+              shippingPrice: true,
               totalPrice: true,
               sellerPayout: true,
               status: true,
@@ -858,6 +1194,9 @@ export const adminRouter = createTRPCRouter({
             ...tx,
             sellerStripeFee: tx.stripeProcessingFee,
             platformStripeFee: 0,
+            freightFundingMode: "buyer_pays" as const,
+            buyerFreightCharge: tx.shippingPrice ?? 0,
+            sellerFreightContribution: 0,
           }));
         } catch (legacyError) {
           if (!isMissingColumnError(legacyError)) {
@@ -877,6 +1216,7 @@ export const adminRouter = createTRPCRouter({
               subtotal: true,
               buyerFee: true,
               sellerFee: true,
+              shippingPrice: true,
               totalPrice: true,
               sellerPayout: true,
               status: true,
@@ -902,6 +1242,9 @@ export const adminRouter = createTRPCRouter({
             stripeProcessingFee: 0,
             sellerStripeFee: 0,
             platformStripeFee: 0,
+            freightFundingMode: "buyer_pays" as const,
+            buyerFreightCharge: tx.shippingPrice ?? 0,
+            sellerFreightContribution: 0,
           }));
         }
       }
@@ -923,6 +1266,94 @@ export const adminRouter = createTRPCRouter({
   // ==========================================
   // Moderation Actions
   // ==========================================
+
+  // Flag a listing (set to archived with moderation note)
+  setListingTaxCode: adminProcedure
+    .input(
+      z.discriminatedUnion("action", [
+        z.object({
+          action: z.literal("verify"),
+          listingId: z.string().uuid(),
+          taxCode: z.string().trim().regex(/^txcd_\d+$/),
+        }),
+        z.object({
+          action: z.literal("clear"),
+          listingId: z.string().uuid(),
+          reason: z.string().trim().min(10).max(500),
+        }),
+      ]),
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.transaction(async (tx) => {
+        const [listing] = await tx
+          .select({
+            id: listings.id,
+            title: listings.title,
+            stripeTaxCode: listings.stripeTaxCode,
+            taxCodeStatus: listings.taxCodeStatus,
+          })
+          .from(listings)
+          .where(eq(listings.id, input.listingId))
+          .for("update");
+        if (!listing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Listing not found",
+          });
+        }
+
+        const now = new Date();
+        const next =
+          input.action === "verify"
+            ? {
+                stripeTaxCode: input.taxCode,
+                taxCodeStatus: "verified" as const,
+                taxCodeVerifiedAt: now,
+                taxCodeVerifiedBy: ctx.user.id,
+              }
+            : {
+                stripeTaxCode: null,
+                taxCodeStatus: "unassigned" as const,
+                taxCodeVerifiedAt: null,
+                taxCodeVerifiedBy: null,
+              };
+        const [updated] = await tx
+          .update(listings)
+          .set({ ...next, updatedAt: now })
+          .where(eq(listings.id, listing.id))
+          .returning({
+            id: listings.id,
+            stripeTaxCode: listings.stripeTaxCode,
+            taxCodeStatus: listings.taxCodeStatus,
+            taxCodeVerifiedAt: listings.taxCodeVerifiedAt,
+            taxCodeVerifiedBy: listings.taxCodeVerifiedBy,
+          });
+
+        await appendAuditEvent(tx, {
+          actorType: "admin",
+          actorId: ctx.user.id,
+          action:
+            input.action === "verify"
+              ? "listing.tax_code_verified"
+              : "listing.tax_code_cleared",
+          entityType: "listing",
+          entityId: listing.id,
+          summary:
+            input.action === "verify"
+              ? `Verified Stripe Tax code for ${listing.title}.`
+              : `Cleared Stripe Tax code for ${listing.title}.`,
+          metadata: {
+            previousCode: listing.stripeTaxCode,
+            previousStatus: listing.taxCodeStatus,
+            nextCode: updated?.stripeTaxCode ?? null,
+            nextStatus: updated?.taxCodeStatus ?? null,
+            ...(input.action === "clear" ? { reason: input.reason } : {}),
+          },
+        });
+
+        return updated;
+      });
+    }),
 
   // Flag a listing (set to archived with moderation note)
   flagListing: adminProcedure
@@ -1119,6 +1550,7 @@ export const adminRouter = createTRPCRouter({
           paymentStatus: true,
           status: true,
           escrowStatus: true,
+          totalPrice: true,
         },
       });
 
@@ -1137,63 +1569,78 @@ export const adminRouter = createTRPCRouter({
         });
       }
 
-      // Issue actual Stripe refund if payment was successful
-      if (
+      const refundedPaidOrder = Boolean(
         order.stripePaymentIntentId &&
-        order.paymentStatus === "succeeded"
-      ) {
+          (order.paymentStatus === "succeeded" ||
+            order.paymentStatus === "partially_refunded"),
+      );
+      if (refundedPaidOrder) {
         await processOrderRefund({
           db: ctx.db,
           orderId: input.orderId,
           reason: `Admin force-cancel: ${input.reason}`,
         });
+      } else {
+        await cancelUncapturedOrderPayment({
+          orderId: order.id,
+          paymentIntentId: order.stripePaymentIntentId,
+          expectedAmountCents: Math.round(Number(order.totalPrice) * 100),
+        });
+        await cancelPriority1ShipmentForOrder(input.orderId);
       }
 
-      const updateData: Record<string, unknown> = {
-        status: "cancelled",
-        cancelledAt: new Date(),
-        updatedAt: new Date(),
-        notes: `Admin force-cancelled: ${input.reason}`,
-      };
-
-      // Mark escrow as refunded if it was held (and no payment to refund)
-      if (
-        order.escrowStatus === "held" &&
-        order.paymentStatus !== "succeeded"
-      ) {
-        updateData.escrowStatus = "refunded";
-      }
-
+      const adminAuditNote = refundedPaidOrder
+        ? `[Admin force-cancel completed as full refund: ${input.reason}]`
+        : `[Admin force-cancelled unpaid order: ${input.reason}]`;
       await ctx.db
         .update(orders)
-        .set(updateData)
+        .set({
+          ...(refundedPaidOrder
+            ? {}
+            : {
+                status: "cancelled" as const,
+                cancelledAt: new Date(),
+                ...(order.escrowStatus === "held"
+                  ? { escrowStatus: "refunded" }
+                  : {}),
+              }),
+          notes: sql`concat_ws(E'\n', nullif(${orders.notes}, ''), ${adminAuditNote})`,
+          updatedAt: new Date(),
+        })
         .where(eq(orders.id, input.orderId));
 
-      await releaseReservedInventory({
-        db: ctx.db,
-        orderId: input.orderId,
-        reason: "admin_force_cancelled_before_delivery",
-      });
+      if (
+        !refundedPaidOrder &&
+        ["pending", "confirmed", "processing"].includes(order.status)
+      ) {
+        await releaseReservedInventory({
+          db: ctx.db,
+          orderId: input.orderId,
+          reason: "admin_force_cancelled_before_shipment",
+        });
+      }
 
-      // Notify both buyer and seller
-      await ctx.db.insert(notifications).values([
-        {
-          userId: order.buyerId,
-          type: "system" as const,
-          title: "Order Cancelled by Admin",
-          message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
-          data: { orderId: order.id },
-          read: false,
-        },
-        {
-          userId: order.sellerId,
-          type: "system" as const,
-          title: "Order Cancelled by Admin",
-          message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
-          data: { orderId: order.id },
-          read: false,
-        },
-      ]);
+      // Full refunds already create durable buyer/seller refund notifications.
+      if (!refundedPaidOrder) {
+        await ctx.db.insert(notifications).values([
+          {
+            userId: order.buyerId,
+            type: "system" as const,
+            title: "Order Cancelled by Admin",
+            message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
+            data: { orderId: order.id },
+            read: false,
+          },
+          {
+            userId: order.sellerId,
+            type: "system" as const,
+            title: "Order Cancelled by Admin",
+            message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
+            data: { orderId: order.id },
+            read: false,
+          },
+        ]);
+      }
 
       return { success: true };
     }),
@@ -1234,28 +1681,38 @@ export const adminRouter = createTRPCRouter({
         reason: input.reason,
       });
 
-      // Send refund confirmation emails (fire-and-forget)
+      // Await both provider submissions so serverless teardown cannot discard
+      // them. Stable Resend keys make a retried admin request harmless.
       const refundAmountFormatted = `$${result.amountRefunded.toFixed(2)}`;
-      sendRefundEmail({
-        to: order.buyer.email,
-        name: order.buyer.name,
-        orderNumber: order.orderNumber,
-        refundAmount: refundAmountFormatted,
-        reason: input.reason,
-        orderId: order.id,
-      }).catch((err) => {
-        console.error("Failed to send buyer refund email:", err);
-      });
-
-      sendRefundEmail({
-        to: order.seller.email,
-        name: order.seller.name,
-        orderNumber: order.orderNumber,
-        refundAmount: refundAmountFormatted,
-        reason: input.reason,
-        orderId: order.id,
-      }).catch((err) => {
-        console.error("Failed to send seller refund email:", err);
+      const emailResults = await Promise.allSettled([
+        sendRefundEmail({
+          to: order.buyer.email,
+          name: order.buyer.name,
+          recipientRole: "buyer",
+          orderNumber: order.orderNumber,
+          refundAmount: refundAmountFormatted,
+          reason: input.reason,
+          orderId: order.id,
+          idempotencyKey: `refund-buyer-${result.refundId}`,
+        }),
+        sendRefundEmail({
+          to: order.seller.email,
+          name: order.seller.name,
+          recipientRole: "seller",
+          orderNumber: order.orderNumber,
+          refundAmount: refundAmountFormatted,
+          reason: input.reason,
+          orderId: order.id,
+          idempotencyKey: `refund-seller-${result.refundId}`,
+        }),
+      ]);
+      emailResults.forEach((emailResult, index) => {
+        if (emailResult.status === "rejected") {
+          console.error(
+            `Failed to send ${index === 0 ? "buyer" : "seller"} refund email:`,
+            emailResult.reason,
+          );
+        }
       });
 
       return {
@@ -1275,6 +1732,7 @@ export const adminRouter = createTRPCRouter({
           id: true,
           escrowStatus: true,
           transferFailedAt: true,
+          shippedAt: true,
         },
       });
 
@@ -1299,26 +1757,28 @@ export const adminRouter = createTRPCRouter({
         });
       }
 
-      // Clear error fields
-      await ctx.db
-        .update(orders)
-        .set({
-          transferFailedAt: null,
-          transferError: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(orders.id, input.orderId));
+      if (!order.shippedAt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot retry transfer without provider pickup evidence",
+        });
+      }
 
       // Re-fire the order/picked-up Inngest event
       await inngest.send({
+        id: `retry-order-payout-${order.id}-${order.transferFailedAt.getTime()}`,
         name: "order/picked-up",
         data: {
           orderId: order.id,
-          pickedUpAt: new Date().toISOString(),
+          pickedUpAt: order.shippedAt.toISOString(),
+          pickupConfirmed: true,
+          source: "priority1",
         },
       });
 
-      return { success: true };
+      // The payout worker clears the failure marker only after a validated
+      // transfer is persisted. Enqueue acceptance alone is not payout success.
+      return { success: true, queued: true };
     }),
 
   // Get orders with failed transfers
@@ -1368,36 +1828,47 @@ export const adminRouter = createTRPCRouter({
 
   // Update a single setting (upsert)
   updateSetting: adminProcedure
-    .input(
-      z.object({
-        key: z.string().min(1).max(100),
-        value: z.unknown(),
-      })
-    )
+    .input(platformSettingUpdateInput)
     .mutation(async ({ ctx, input }) => {
-      // Check if setting exists
-      const existing = await ctx.db
-        .select()
-        .from(platformSettings)
-        .where(eq(platformSettings.key, input.key))
-        .limit(1);
+      const value = parseMutablePlatformSetting(input.key, input.value);
 
-      if (existing.length > 0) {
-        await ctx.db
-          .update(platformSettings)
-          .set({
-            value: input.value,
+      await ctx.db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select({ value: platformSettings.value })
+          .from(platformSettings)
+          .where(eq(platformSettings.key, input.key))
+          .for("update");
+
+        await tx
+          .insert(platformSettings)
+          .values({
+            key: input.key,
+            value,
             updatedAt: new Date(),
             updatedBy: ctx.user.id,
           })
-          .where(eq(platformSettings.key, input.key));
-      } else {
-        await ctx.db.insert(platformSettings).values({
-          key: input.key,
-          value: input.value,
-          updatedBy: ctx.user.id,
+          .onConflictDoUpdate({
+            target: platformSettings.key,
+            set: {
+              value,
+              updatedAt: new Date(),
+              updatedBy: ctx.user.id,
+            },
+          });
+
+        await appendAuditEvent(tx, {
+          actorType: "admin",
+          actorId: ctx.user.id,
+          action: "platform_setting.updated",
+          entityType: "platform_setting",
+          entityId: input.key,
+          summary: `Updated platform setting ${input.key}.`,
+          metadata: {
+            previousValue: existing?.value ?? null,
+            nextValue: value,
+          },
         });
-      }
+      });
 
       return { success: true };
     }),
@@ -1405,40 +1876,67 @@ export const adminRouter = createTRPCRouter({
   // Batch update settings
   updateSettings: adminProcedure
     .input(
-      z.array(
-        z.object({
-          key: z.string().min(1).max(100),
-          value: z.unknown(),
-        })
-      )
+      z
+        .array(platformSettingUpdateInput)
+        .min(1)
+        .max(10)
+        .superRefine((updates, ctx) => {
+          const keys = updates.map((update) => update.key);
+          if (new Set(keys).size !== keys.length) {
+            ctx.addIssue({
+              code: "custom",
+              message: "Each platform setting may be updated only once per request.",
+            });
+          }
+        }),
     )
     .mutation(async ({ ctx, input }) => {
-      for (const { key, value } of input) {
-        const existing = await ctx.db
-          .select()
-          .from(platformSettings)
-          .where(eq(platformSettings.key, key))
-          .limit(1);
+      const parsedUpdates = input.map(({ key, value }) => ({
+        key,
+        value: parseMutablePlatformSetting(key, value),
+      }));
 
-        if (existing.length > 0) {
-          await ctx.db
-            .update(platformSettings)
-            .set({
+      await ctx.db.transaction(async (tx) => {
+        for (const { key, value } of parsedUpdates) {
+          const [existing] = await tx
+            .select({ value: platformSettings.value })
+            .from(platformSettings)
+            .where(eq(platformSettings.key, key))
+            .for("update");
+
+          await tx
+            .insert(platformSettings)
+            .values({
+              key,
               value,
               updatedAt: new Date(),
               updatedBy: ctx.user.id,
             })
-            .where(eq(platformSettings.key, key));
-        } else {
-          await ctx.db.insert(platformSettings).values({
-            key,
-            value,
-            updatedBy: ctx.user.id,
+            .onConflictDoUpdate({
+              target: platformSettings.key,
+              set: {
+                value,
+                updatedAt: new Date(),
+                updatedBy: ctx.user.id,
+              },
+            });
+
+          await appendAuditEvent(tx, {
+            actorType: "admin",
+            actorId: ctx.user.id,
+            action: "platform_setting.updated",
+            entityType: "platform_setting",
+            entityId: key,
+            summary: `Updated platform setting ${key}.`,
+            metadata: {
+              previousValue: existing?.value ?? null,
+              nextValue: value,
+            },
           });
         }
-      }
+      });
 
-      return { success: true, count: input.length };
+      return { success: true, count: parsedUpdates.length };
     }),
 
   // ==========================================
@@ -1479,6 +1977,9 @@ export const adminRouter = createTRPCRouter({
               sellerId: true,
               carrierRate: true,
               shippingPrice: true,
+              freightFundingMode: true,
+              buyerFreightCharge: true,
+              sellerFreightContribution: true,
               shippingMargin: true,
             },
           },
@@ -1510,6 +2011,17 @@ export const adminRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const shipment = await ctx.db.query.shipments.findFirst({
         where: eq(shipments.id, input.shipmentId),
+        with: {
+          order: {
+            columns: {
+              id: true,
+              orderNumber: true,
+              status: true,
+              shippedAt: true,
+              deliveredAt: true,
+            },
+          },
+        },
       });
 
       if (!shipment) {
@@ -1519,71 +2031,113 @@ export const adminRouter = createTRPCRouter({
         });
       }
 
-      if (!shipment.proNumber && !shipment.priority1ShipmentId) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Shipment has no tracking identifier (PRO number or Priority1 ID)",
-        });
-      }
-
       // Get status from Priority1
       const statusResponse = await priority1.getStatus({
-        identifierType: "BILL_OF_LADING",
-        identifierValue: shipment.proNumber || shipment.priority1ShipmentId!,
+        identifierType: "CUSTOMER_REFERENCE",
+        identifierValue: shipment.order.orderNumber,
       });
 
-      if (!statusResponse.shipments || statusResponse.shipments.length === 0) {
+      const providerDryRun = priority1.isDryRun();
+      let p1Shipment;
+      try {
+        p1Shipment = selectPriority1Shipment(
+          statusResponse,
+          providerDryRun ? null : shipment.priority1ShipmentId,
+        );
+      } catch (error) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Priority1 shipment identity is ambiguous",
+          cause: error,
+        });
+      }
+      if (!p1Shipment) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "No tracking information found from Priority1",
         });
       }
 
-      const p1Shipment = statusResponse.shipments[0];
+      const statusUpdate = mapPriority1ShipmentStatus(
+        shipment.status,
+        p1Shipment,
+      );
+      const terminalOrder = ["cancelled", "refunded"].includes(
+        shipment.order.status,
+      );
+      const pickupAt = statusUpdate.pickupConfirmedAt ?? new Date();
+      const deliveredAt = statusUpdate.deliveredAt ?? new Date();
 
-      // Map Priority1 status to our status enum (same logic as shipment-tracking.ts)
-      let mappedStatus = shipment.status;
-      const p1Status = p1Shipment.status?.toLowerCase() || "";
-      if (p1Status.includes("deliver") || p1Status === "completed") {
-        mappedStatus = "delivered";
-      } else if (p1Status.includes("out for delivery")) {
-        mappedStatus = "out_for_delivery";
-      } else if (
-        p1Status.includes("transit") ||
-        p1Status.includes("en-route") ||
-        p1Status.includes("picked up")
-      ) {
-        mappedStatus = "in_transit";
-      } else if (
-        p1Status.includes("exception") ||
-        p1Status.includes("error")
-      ) {
-        mappedStatus = "exception";
-      }
+      const needsPickupEvent = shouldEmitProviderPickupEvent({
+        statusUpdate,
+        orderStatus: shipment.order.status,
+        shippedAt: shipment.order.shippedAt,
+        dryRun: providerDryRun,
+      });
 
-      // Map tracking events
-      const trackingEvents: TrackingEvent[] = (
-        p1Shipment.trackingStatuses || []
-      ).map((ts) => ({
-        timestamp: ts.timeStamp,
-        status: ts.status,
-        location: [ts.city, ts.state].filter(Boolean).join(", "),
-        description: ts.statusReason || ts.status,
-      }));
-
-      // Update shipment
+      // Commit live-provider evidence before the payout event can execute.
       const [updatedShipment] = await ctx.db
         .update(shipments)
         .set({
-          status: mappedStatus,
-          trackingEvents,
+          status: statusUpdate.mappedStatus,
+          trackingEvents: mergeTrackingEvents(
+            shipment.trackingEvents,
+            statusUpdate.trackingEvents,
+          ),
           carrierScac: p1Shipment.carrierCode || shipment.carrierScac,
           carrierName: p1Shipment.carrierName || shipment.carrierName,
-          lastError: null,
+          priority1ShipmentId: String(p1Shipment.id),
+          isDryRun: providerDryRun,
+          deliveredAt: statusUpdate.delivered
+            ? deliveredAt
+            : shipment.deliveredAt,
+          lastError:
+            statusUpdate.mappedStatus === "cancelled"
+              ? "Priority1 shipment is cancelled; order requires reconciliation"
+              : null,
           updatedAt: new Date(),
         })
         .where(eq(shipments.id, input.shipmentId))
         .returning();
+
+      if (needsPickupEvent) {
+        await inngest.send({
+          id: `priority1-pickup-${shipment.id}`,
+          name: "order/picked-up",
+          data: {
+            orderId: shipment.orderId,
+            pickedUpAt: pickupAt.toISOString(),
+            pickupConfirmed: true,
+            source: "priority1",
+          },
+        });
+      }
+
+      if (
+        statusUpdate.pickupConfirmed &&
+        statusUpdate.mappedStatus !== "cancelled" &&
+        !terminalOrder
+      ) {
+        await ctx.db
+          .update(orders)
+          .set({
+            status: statusUpdate.delivered ? "delivered" : "shipped",
+            shippedAt: shipment.order.shippedAt ?? pickupAt,
+            deliveredAt: statusUpdate.delivered
+              ? deliveredAt
+              : shipment.order.deliveredAt,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(orders.id, shipment.orderId),
+              notInArray(orders.status, ["cancelled", "refunded"]),
+            ),
+          );
+      }
 
       return updatedShipment;
     }),
@@ -1601,7 +2155,12 @@ export const adminRouter = createTRPCRouter({
     // Get revenue totals from orders with shipments (join to ensure they have shipping)
     const [revenueTotals] = await ctx.db
       .select({
-        totalRevenue: sql<number>`coalesce(sum(${orders.shippingPrice}), 0)`,
+        totalFreightBooked:
+          sql<number>`coalesce(sum(${orders.shippingPrice}), 0)`,
+        totalBuyerFreightCharges:
+          sql<number>`coalesce(sum(${orders.buyerFreightCharge}), 0)`,
+        totalSellerFreightContributions:
+          sql<number>`coalesce(sum(${orders.sellerFreightContribution}), 0)`,
         totalMargin: sql<number>`coalesce(sum(${orders.shippingMargin}), 0)`,
       })
       .from(orders)
@@ -1610,7 +2169,10 @@ export const adminRouter = createTRPCRouter({
     return {
       totalShipments: shipmentCounts.totalShipments,
       activeShipments: shipmentCounts.activeShipments,
-      totalRevenue: revenueTotals.totalRevenue,
+      totalFreightBooked: revenueTotals.totalFreightBooked,
+      totalBuyerFreightCharges: revenueTotals.totalBuyerFreightCharges,
+      totalSellerFreightContributions:
+        revenueTotals.totalSellerFreightContributions,
       totalMargin: revenueTotals.totalMargin,
     };
   }),

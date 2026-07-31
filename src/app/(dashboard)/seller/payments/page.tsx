@@ -20,6 +20,10 @@ import {
   ConnectAccountManagement,
   ConnectNotificationBanner,
 } from "@stripe/react-connect-js";
+import {
+  PAYMENT_PROCESSING_RATE,
+  SELLER_MARKETPLACE_FEE_PERCENT,
+} from "@/lib/fees";
 
 export default function SellerPaymentsPage() {
   const {
@@ -66,7 +70,12 @@ export default function SellerPaymentsPage() {
               Connect Stripe Account
             </CardTitle>
             <CardDescription>
-              We use Stripe to securely process payments and send you payouts. Sellers pay a 2% platform fee on inventory subtotal and Stripe processing on inventory subtotal only. PlankMarket absorbs shipping-related processor costs.
+              We use Stripe to securely process payments and send you payouts.
+              Sellers pay a {SELLER_MARKETPLACE_FEE_PERCENT}% marketplace fee on
+              inventory subtotal plus {(PAYMENT_PROCESSING_RATE * 100).toFixed(1)}
+              % payment processing on inventory subtotal only. Each order shows
+              the buyer shipping charge, any seller shipping contribution, and
+              the resulting net payout.
             </CardDescription>
           </CardHeader>
           <CardContent>

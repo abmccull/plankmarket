@@ -1,6 +1,13 @@
 import { Suspense } from "react";
-import { notFound, redirect, RedirectType } from "next/navigation";
+import {
+  notFound,
+  redirect,
+  RedirectType,
+  unstable_rethrow,
+} from "next/navigation";
 import type { Metadata } from "next";
+import Script from "next/script";
+import { TRPCError } from "@trpc/server";
 import { createServerCaller } from "@/lib/trpc/server";
 import {
   formatCurrency,
@@ -11,8 +18,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, Truck } from "lucide-react";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { ListingDetailClient } from "@/components/listings/listing-detail-client";
+import { ListingEvidence } from "@/components/listings/listing-evidence";
 import { ImageGallery } from "@/components/listings/image-gallery";
+import { TransactionTimelineExplainer } from "@/components/marketplace/transaction-timeline";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 
 const materialLabels: Record<string, string> = {
   hardwood: "Hardwood",
@@ -63,6 +73,10 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof TRPCError && error.code === "NOT_FOUND";
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
   try {
@@ -76,26 +90,28 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
     const materialLabel = materialLabels[listing.materialType] || listing.materialType;
     const conditionLabel = conditionLabels[listing.condition] || listing.condition;
+    const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
 
     // Use slug for canonical URL if available, otherwise use ID
     const canonicalUrl = `/listings/${listing.slug || listing.id}`;
 
     return {
       title: listing.title,
-      description: `${listing.title} - ${materialLabel} flooring, ${formatSqFt(listing.totalSqFt)}, ${formatCurrency(listing.askPricePerSqFt)}/sq ft. ${conditionLabel} condition.`,
+      description: `${listing.title} - ${materialLabel} flooring, ${formatSqFt(listing.totalSqFt)}, ${formatCurrency(directPurchaseUnitPrice)}/sq ft direct purchase. ${conditionLabel} condition.`,
       openGraph: {
         title: listing.title,
-        description: `${materialLabel} flooring - ${formatSqFt(listing.totalSqFt)} available at ${formatCurrency(listing.askPricePerSqFt)}/sq ft`,
+        description: `${materialLabel} flooring - ${formatSqFt(listing.totalSqFt)} available at ${formatCurrency(directPurchaseUnitPrice)}/sq ft direct purchase`,
         images: listing.media?.[0]?.url ? [listing.media[0].url] : [],
       },
       alternates: {
         canonical: canonicalUrl,
       },
     };
-  } catch {
-    return {
-      title: "Listing Not Found",
-    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return { title: "Listing Not Found" };
+    }
+    throw error;
   }
 }
 
@@ -118,8 +134,14 @@ async function ListingContent({ id }: { id: string }) {
       // Fetch by slug
       listing = await caller.listing.getBySlug({ slug: id });
     }
-  } catch {
-    notFound();
+  } catch (error) {
+    // redirect() is implemented as an internal exception. Preserve it before
+    // applying ordinary application error handling.
+    unstable_rethrow(error);
+    if (isNotFoundError(error)) {
+      notFound();
+    }
+    throw error;
   }
 
   if (!listing) {
@@ -128,6 +150,7 @@ async function ListingContent({ id }: { id: string }) {
 
   const materialLabel = materialLabels[listing.materialType] || listing.materialType;
   const conditionLabel = conditionLabels[listing.condition] || listing.condition;
+  const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
 
   // Product JSON-LD
   const jsonLd = {
@@ -141,7 +164,7 @@ async function ListingContent({ id }: { id: string }) {
     category: `Flooring > ${materialLabel}`,
     offers: {
       "@type": "Offer",
-      price: listing.askPricePerSqFt * listing.totalSqFt,
+      price: directPurchaseUnitPrice * listing.totalSqFt,
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
       itemCondition: listing.condition === "new_overstock"
@@ -149,14 +172,15 @@ async function ListingContent({ id }: { id: string }) {
         : "https://schema.org/UsedCondition",
       seller: listing.seller ? {
         "@type": "Organization",
-        name: "Verified Seller",
+        name: listing.seller.displayName,
       } : undefined,
     },
   };
 
   return (
     <>
-      <script
+      <Script
+        id={`listing-${listing.id}-product-json-ld`}
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
       />
@@ -198,6 +222,19 @@ async function ListingContent({ id }: { id: string }) {
                 </p>
               </div>
             )}
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl">Listing evidence</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Decision details supplied by this listing and the seller
+                  account. Confirm condition and freight details before paying.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ListingEvidence listing={listing} />
+              </CardContent>
+            </Card>
 
             {/* Product Specifications */}
             <Card>
@@ -264,10 +301,10 @@ async function ListingContent({ id }: { id: string }) {
                     />
                   )}
                 </div>
-                {listing.palletWeight && listing.palletLength && (
+                {listing.freightEstimateStatus === "quote_request_ready" && (
                   <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                     <Truck className="h-4 w-4" />
-                    <span>Instant shipping quotes available at checkout</span>
+                    <span>Freight quote request ready at checkout</span>
                   </div>
                 )}
               </CardContent>
@@ -291,6 +328,13 @@ async function ListingContent({ id }: { id: string }) {
                 </CardContent>
               </Card>
             )}
+
+            <section aria-labelledby="transaction-process-title">
+              <h2 id="transaction-process-title" className="mb-3 text-xl font-semibold">
+                How this transaction moves
+              </h2>
+              <TransactionTimelineExplainer />
+            </section>
           </div>
 
           {/* Sidebar - CLIENT ISLAND for interactive purchase actions */}

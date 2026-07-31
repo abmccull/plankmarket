@@ -32,6 +32,16 @@ export function getNotificationHref(
     return "/seller/listings";
   }
 
+  // Direct sample-request workflow. Creation notifications always go to the
+  // seller; subsequent updates go to whichever counterpart received them.
+  if (data?.type === "sample_request_created") {
+    return "/seller/samples";
+  }
+
+  if (data?.type === "sample_request_updated") {
+    return role === "seller" ? "/seller/samples" : "/buyer/samples";
+  }
+
   // Order-related notifications
   if (data?.orderId) {
     const base = role === "seller" ? "/seller" : "/buyer";
@@ -45,7 +55,7 @@ export function getNotificationHref(
 
   // Conversation messages
   if (data?.conversationId) {
-    return `/messages?conversation=${data.conversationId}`;
+    return `/messages/${data.conversationId}`;
   }
 
   // Seller request board responses

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { useUploadThing } from "@/lib/uploadthing";
 import {
@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import { useDropzone } from "react-dropzone";
 import Image from "next/image";
 import Link from "next/link";
+import { useTrack } from "@/lib/analytics/use-track";
+import { parseBuyerRequestPrefill } from "@/lib/marketplace/search-gap";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -54,8 +56,12 @@ const FINISH_TYPES = [
   { value: "gloss", label: "Gloss" },
   { value: "wire_brushed", label: "Wire Brushed" },
   { value: "hand_scraped", label: "Hand Scraped" },
+  { value: "distressed", label: "Distressed" },
   { value: "smooth", label: "Smooth" },
+  { value: "textured", label: "Textured" },
+  { value: "oiled", label: "Oiled" },
   { value: "unfinished", label: "Unfinished" },
+  { value: "other", label: "Other" },
 ] as const;
 
 type FinishType = (typeof FINISH_TYPES)[number]["value"];
@@ -175,8 +181,31 @@ const defaultForm: FormState = {
 
 export default function NewBuyerRequestPage() {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(defaultForm);
-  const [specsOpen, setSpecsOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const track = useTrack();
+  const [initialPrefill] = useState(() =>
+    parseBuyerRequestPrefill(new URLSearchParams(searchParams.toString())),
+  );
+  const [form, setForm] = useState<FormState>(() => ({
+    ...defaultForm,
+    materialTypes: initialPrefill.materialTypes,
+    minTotalSqFt: initialPrefill.minTotalSqFt,
+    maxTotalSqFt: initialPrefill.maxTotalSqFt,
+    priceMaxPerSqFt: initialPrefill.priceMaxPerSqFt,
+    priceMinPerSqFt: initialPrefill.priceMinPerSqFt,
+    destinationZip: initialPrefill.destinationZip,
+    species: initialPrefill.species,
+    finishTypes: initialPrefill.finishTypes,
+    certifications: initialPrefill.certifications,
+    notes: initialPrefill.notes,
+  }));
+  const [specsOpen, setSpecsOpen] = useState(
+    Boolean(
+      initialPrefill.species ||
+        initialPrefill.finishTypes.length ||
+        initialPrefill.certifications.length,
+    ),
+  );
 
   const [refImages, setRefImages] = useState<UploadedRefImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -189,26 +218,20 @@ export default function NewBuyerRequestPage() {
     },
   });
 
-  const recordBuyerUpload = trpc.upload.recordBuyerUpload.useMutation();
   const deleteBuyerMedia = trpc.upload.deleteBuyerMedia.useMutation();
 
   const { startUpload } = useUploadThing("buyerRequestImageUploader", {
     onClientUploadComplete: async (files) => {
       if (!files) return;
       try {
-        const records = await recordBuyerUpload.mutateAsync({
-          files: files.map((file) => ({
-            url: file.url,
-            key: file.key,
-            fileName: file.name,
-            fileSize: file.size,
-            mimeType: file.type,
-          })),
-        });
+        const records = files.map((file) => file.serverData);
+        if (records.some((record) => !record)) {
+          throw new Error("Upload metadata was not confirmed by the server");
+        }
         const newImages = records.map((r) => ({
-          id: r.id,
-          url: r.url,
-          fileName: r.fileName || "Untitled",
+          id: r!.id,
+          url: r!.url,
+          fileName: r!.fileName || "Untitled",
         }));
         setRefImages((prev) => [...prev, ...newImages]);
         toast.success(`${files.length} photo${files.length > 1 ? "s" : ""} uploaded`);
@@ -327,7 +350,7 @@ export default function NewBuyerRequestPage() {
           }
         : undefined;
 
-      await createMutation.mutateAsync({
+      const request = await createMutation.mutateAsync({
         materialTypes: form.materialTypes,
         minTotalSqFt: Number(form.minTotalSqFt),
         maxTotalSqFt: form.maxTotalSqFt ? Number(form.maxTotalSqFt) : undefined,
@@ -347,6 +370,25 @@ export default function NewBuyerRequestPage() {
         mediaIds: refImages.length > 0 ? refImages.map((img) => img.id) : undefined,
       });
 
+      track("buyer_request_created", {
+        request_id: request.id,
+        source:
+          initialPrefill.source === "zero_results" ? "zero_results" : "direct",
+        material_types: form.materialTypes,
+        min_total_sqft: Number(form.minTotalSqFt),
+        max_total_sqft: form.maxTotalSqFt
+          ? Number(form.maxTotalSqFt)
+          : undefined,
+        price_min_per_sqft: form.priceMinPerSqFt
+          ? Number(form.priceMinPerSqFt)
+          : undefined,
+        price_max_per_sqft: Number(form.priceMaxPerSqFt),
+        pickup_ok: form.pickupOk,
+        shipping_ok: form.shippingOk,
+        urgency: form.urgency,
+        has_notes: Boolean(form.notes.trim()),
+        reference_photo_count: refImages.length,
+      });
       toast.success("Request posted! Sellers will respond soon.");
       router.push("/buyer/requests");
     } catch (err: unknown) {
@@ -371,6 +413,20 @@ export default function NewBuyerRequestPage() {
           </p>
         </div>
       </div>
+
+      {initialPrefill.source === "zero_results" && (
+        <div
+          className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm"
+          role="status"
+        >
+          <p className="font-medium">Your marketplace search is ready to refine.</p>
+          <p className="mt-1 text-muted-foreground">
+            We carried over validated product, quantity, price, and location
+            fields. Review the details and complete any required fields before
+            posting.
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} noValidate className="space-y-6">
         {/* Material Types */}

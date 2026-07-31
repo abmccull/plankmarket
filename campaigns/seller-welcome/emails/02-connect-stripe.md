@@ -4,11 +4,11 @@ sequence: seller-welcome
 purpose: Prompt Stripe Connect setup for payouts
 send_day: 1
 send_time: "Tuesday at 9:00 AM ET"
-subject_line_a: "Set up payouts -- 3-5 day deposits"
+subject_line_a: "Set up seller transfers through Stripe"
 subject_line_b: "Your inventory is depreciating right now"
 subject_line_c: "One more step before your first listing"
 recommended_subject: "a"
-preview_text: "Connect Stripe to receive payouts within 3-5 business days of each sale."
+preview_text: "Connect Stripe so PlankMarket can initiate seller transfers after the configured shipment milestone."
 cta: "Connect Stripe Account"
 status: draft
 ---
@@ -17,7 +17,7 @@ status: draft
 
 ## Subject Line Variants
 
-### A: "Set up payouts -- 3-5 day deposits" -- recommended
+### A: "Set up seller transfers through Stripe" -- recommended
 Leads with the benefit (fast payouts) and includes a specific number. Sellers care about cash flow. This subject line speaks directly to that.
 
 ### B: "Your inventory is depreciating right now"
@@ -30,7 +30,7 @@ Task-oriented, progress-focused. Sellers who are motivated to list will open to 
 **Reason:** Tests benefit-driven (payout speed) against pain-driven (depreciation cost). Reveals whether this audience is motivated more by the upside of selling or the cost of not selling.
 
 ## Preview Text
-"Connect Stripe to receive payouts within 3-5 business days of each sale."
+"Connect Stripe so PlankMarket can initiate seller transfers after the configured shipment milestone."
 
 ## Send Timing
 Day 1 -- Tuesday at 9:00 AM ET
@@ -45,11 +45,11 @@ Your business is verified. Next step: connect your Stripe account so you can get
 PlankMarket uses Stripe Connect for all seller payouts. Here is how it works:
 
 - Buyer purchases your listing
-- Funds are held in escrow until carrier pickup is confirmed
-- Payout hits your Stripe account in 3-5 business days
-- 2% seller fee is deducted automatically -- no invoices, no surprises
+- Stripe processes the buyer payment on PlankMarket before the configured transfer milestone
+- Seller transfer is initiated after the configured shipment event and delay; Stripe and bank availability vary
+- The 5% seller fee and disclosed payment processing are deducted automatically
 
-There are no listing fees. No subscription. No monthly minimum. You pay 2% only when inventory sells.
+There are no listing fees. No subscription. No monthly minimum. You pay the 5% seller fee plus disclosed payment processing only when inventory sells.
 
 [Connect Stripe Account]
 

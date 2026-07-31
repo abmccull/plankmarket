@@ -21,8 +21,8 @@ See How It Works
 
 **Trust Signals**
 - Shield icon — Verified buyers only — no tire-kickers
-- CreditCard icon — Stripe payments, funds held securely until pickup
-- Zap icon — 2% commission, no listing fees, no monthly costs
+- CreditCard icon — Stripe payments, seller transfer after pickup
+- Zap icon — 5% seller fee, no listing fees, no monthly costs
 
 ---
 
@@ -66,8 +66,8 @@ Supporting detail: AI-powered listing creation, up to 20 photos per listing, and
 
 **Value Proposition 3**
 Title: Get paid fast. No cash flow surprises.
-Description: Buyers pay through Stripe at checkout. Your funds are held securely until the carrier picks up the shipment — then payment is released to your Stripe Connect account automatically. No chasing invoices, no net-30 terms, no collections calls.
-Supporting detail: Funds typically arrive in your bank within 3–5 business days after carrier pickup. Your seller dashboard shows real-time earnings, payout status, and full transaction history.
+Description: Stripe processes buyer payments at checkout. After carrier pickup is confirmed, PlankMarket initiates the seller transfer to your Stripe Connect account. No chasing invoices, no net-30 terms, no collections calls.
+Supporting detail: After confirmed pickup and the configured delay, PlankMarket rechecks the transaction and initiates the seller transfer through Stripe Connect. Bank availability depends on Stripe and your connected account payout schedule.
 
 ---
 
@@ -94,7 +94,7 @@ Description: Buyers can purchase at your listed price or submit an offer. You ac
 **Step 4**
 Number: 4
 Title: Ship it. Get paid.
-Description: Coordinate LTL freight through the platform's integrated carrier network. Once the carrier picks up the shipment, payment is automatically released. Funds arrive in your bank within 3–5 business days.
+Description: Coordinate LTL freight through the platform's integrated carrier network. After pickup is confirmed and the configured delay passes, PlankMarket rechecks the transaction and initiates the seller transfer through Stripe Connect.
 
 ---
 
@@ -125,8 +125,8 @@ Description: All communication happens on-platform. Buyers can ask questions via
 
 **Feature 5**
 Icon: CreditCard
-Title: Secure Stripe Payments with Escrow
-Description: Buyers pay via Stripe at checkout. Funds are held in escrow until carrier pickup is confirmed — then automatically released to your Stripe Connect account. No net terms, no payment chasing, no wire transfer friction.
+Title: Secure Stripe Payment and Seller Transfer
+Description: Buyers pay via Stripe at checkout. After carrier pickup is confirmed and the release window passes, PlankMarket initiates the transfer to your Stripe Connect account. No net terms, no payment chasing, no wire transfer friction.
 
 **Feature 6**
 Icon: BarChart
@@ -159,8 +159,8 @@ Role: Owner
 Company type: Flooring wholesale and distribution, Midwest
 
 **Stats Bar**
-- Stat 1: 2% — Seller commission, only on completed sales. No listing fees.
-- Stat 2: 3–5 business days — Typical payout timeline after carrier pickup
+- Stat 1: 5% — Seller fee, only on completed sales. No listing fees.
+- Stat 2: Milestone-based payout — Transfer begins after confirmed pickup, the configured delay, and transaction checks
 - Stat 3: 44 data fields — Flooring-specific spec fields per listing for buyer confidence
 - Stat 4: All 50 states — Access to verified buyers coast to coast
 
@@ -169,28 +169,28 @@ Company type: Flooring wholesale and distribution, Midwest
 ## Section 7: Pricing Transparency
 
 **Section Title**
-2% on what you sell. Zero on what you don't.
+Know your projected seller transfer before you accept.
 
 **Headline**
-No listing fees. No required monthly subscription. Pay 2% only when a sale completes.
+No listing fees. No required monthly subscription. Pay 5% only when a sale completes.
 
 **Description**
-PlankMarket charges a 2% commission on completed sales, calculated on the inventory subtotal only. Sellers also pay Stripe processing on the inventory subtotal only. Freight is quoted separately with marketplace margin already built in, and PlankMarket absorbs the shipping-related processor cost. You pay nothing to list, nothing required monthly, and nothing on inventory that does not sell.
+PlankMarket charges a 5% seller fee on completed sales, calculated on the inventory subtotal only. Sellers also pay Stripe processing on the inventory subtotal only. Buyers pay the listed price plus a separate 5% buyer fee, and freight is quoted separately before payment. The displayed freight charge may include carrier charges plus PlankMarket shipping service margin. You pay nothing to list, nothing required monthly, and nothing on inventory that does not sell.
 
 **Fee Example**
 - Your listed price: $12,000
-- Seller commission (2%): $240
+- Seller fee (5%): $600
 - Seller Stripe fee: $348.30
-- Your payout: $11,411.70 (transferred to your Stripe Connect account)
-- Buyer pays: listed price plus the 3% buyer fee on inventory only; freight is quoted separately with margin built in
+- Your payout: $11,051.70 (transferred to your Stripe Connect account)
+- Buyer pays: listed price plus the 5% buyer fee on inventory only; freight is quoted separately and may include carrier charges plus PlankMarket shipping service margin
 
 **Comparison to Alternatives**
-Traditional liquidators: Typically pay 30–50 cents on the dollar for your inventory — a fraction of what you'd recover through direct sale.
+Manual liquidation channels: Lower visibility, slower response cycles, and less control over the final transaction record.
 Freight brokers and middlemen: Add markup layers, provide no buyer network, and give you no visibility into the transaction.
-Open classifieds or general marketplaces: No flooring-specific tooling, no verified buyers, no freight integration, no payment protection.
+Open classifieds or general marketplaces: No flooring-specific tooling, no verified buyers, no tracked freight workflow, and no platform dispute reporting.
 
 **Volume Sellers Note**
-High-volume sellers with large inventories or frequent transactions may be eligible for reduced commission rates. Contact our partnerships team at partnerships@plankmarket.com to discuss custom pricing.
+High-volume sellers with large inventories or frequent transactions may be eligible for reduced seller-fee rates. Contact our partnerships team at partnerships@plankmarket.com to discuss custom pricing.
 
 **No Hidden Fees Messaging**
 No required subscription fee. No listing or insertion fee. No renewal fee on unsold inventory. No payout or withdrawal fee. No featured placement charges. Pro is optional for unlimited listings and advanced seller tools.
@@ -213,11 +213,11 @@ Answer: Yes. When creating a listing, you can specify whether the lot must be so
 
 **Q4**
 Question: When do I get paid?
-Answer: Once the carrier picks up your shipment, payment is automatically released from escrow and transferred to your connected Stripe account. Funds are typically available in your bank within 3–5 business days of pickup. You can view real-time payout status in your seller dashboard.
+Answer: After the carrier confirms pickup and the configured review window passes, PlankMarket initiates the transfer to your connected Stripe account. Stripe payout timing to your bank depends on your connected-account schedule. You can view real-time transfer status in your seller dashboard.
 
 **Q5**
 Question: What if a buyer disputes the order?
-Answer: Buyers have 48 hours after delivery to open a dispute, supported by photo evidence and delivery receipt notes. Our support team mediates the dispute. Freight damage must be noted on the Bill of Lading at time of delivery. If no dispute is filed within 5 business days of delivery, the transaction closes automatically and your funds are confirmed.
+Answer: Buyers have 48 hours after delivery to open a dispute, supported by photo evidence and delivery receipt notes. Our support team reviews the order and submitted evidence. Freight damage must be noted on the Bill of Lading at time of delivery. Seller-transfer timing is governed separately by confirmed pickup and the configured release delay.
 
 **Q6**
 Question: Is there a limit to how many lots I can list?
@@ -237,4 +237,4 @@ Every day your overstock stays in the warehouse is a day it's costing you. List 
 Create Your Seller Account Free
 
 **Supporting line**
-No listing fees. No required monthly cost. Pay 2% on inventory only when you sell.
+No listing fees. No required monthly cost. Pay 5% on inventory only when you sell.

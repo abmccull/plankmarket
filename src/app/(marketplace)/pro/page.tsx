@@ -21,7 +21,7 @@ const FREE_FEATURES = [
   "3 saved searches",
   "AI-assisted search & listing creation",
   "AI offer insights",
-  "Standard fees (3% buyer, 2% seller)",
+  "Marketplace transaction fees shown separately by role",
   "Unlimited transactions",
 ] as const;
 
@@ -125,7 +125,7 @@ export default function ProPricingPage() {
       <div className="text-center">
         <h1 className="text-display-md">PlankMarket Pro</h1>
         <p className="mt-3 text-base text-muted-foreground">
-          Unlock advanced tools to buy and sell smarter on PlankMarket.
+          Unlock advanced tools to buy and sell smarter on PlankMarket. Marketplace transaction fees remain separate from Pro.
         </p>
       </div>
 

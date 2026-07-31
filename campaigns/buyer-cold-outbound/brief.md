@@ -23,7 +23,7 @@ The Hidden Channel -- "Retailers are leaving margin on the table by paying full 
 N/A -- cold outbound. No opt-in. Free platform access is the offer.
 
 ## Paid Offer
-Free to browse and join PlankMarket. 3% buyer fee only when a purchase is made. The "conversion" is a free account signup.
+Free to browse and join PlankMarket. 5% buyer fee only when a purchase is made. The "conversion" is a free account signup.
 
 ## Bridge Logic
 Cold prospect -> sees margin opportunity they are currently missing -> signs up for free buyer account -> browses closeout inventory -> makes first purchase

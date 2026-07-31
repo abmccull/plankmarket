@@ -30,7 +30,7 @@ interface EditSavedSearchDialogProps {
 }
 
 const FREQUENCY_OPTIONS: { value: AlertFrequency; label: string }[] = [
-  { value: "instant", label: "Instant" },
+  { value: "instant", label: "As listings go live" },
   { value: "daily", label: "Daily digest" },
   { value: "weekly", label: "Weekly digest" },
 ];

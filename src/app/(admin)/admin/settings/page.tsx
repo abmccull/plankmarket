@@ -21,7 +21,13 @@ import {
   FileText,
   Loader2,
   Save,
+  ReceiptText,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  basisPointsToPercent,
+  CURRENT_COMMERCIAL_POLICY,
+} from "@/lib/commercial-policy";
 
 interface SettingsForm {
   buyerFeePercent: number;
@@ -53,8 +59,8 @@ function formReducer(state: { form: SettingsForm; isDirty: boolean }, action: Fo
 
 function deriveFormFromSettings(settings: Record<string, unknown> | undefined): SettingsForm {
   return {
-    buyerFeePercent: (settings?.buyerFeePercent as number) ?? 3,
-    sellerFeePercent: (settings?.sellerFeePercent as number) ?? 2,
+    buyerFeePercent: (settings?.buyerFeePercent as number) ?? 5,
+    sellerFeePercent: (settings?.sellerFeePercent as number) ?? 5,
     listingExpiryDays: (settings?.listingExpiryDays as number) ?? 90,
     maxPhotosPerListing: (settings?.maxPhotosPerListing as number) ?? 20,
     platformName: (settings?.platformName as string) ?? "PlankMarket",
@@ -65,6 +71,7 @@ function deriveFormFromSettings(settings: Record<string, unknown> | undefined): 
 
 export default function AdminSettingsPage() {
   const { data: settings, isLoading } = trpc.admin.getSettings.useQuery();
+  const { data: taxReadiness } = trpc.admin.getTaxReadiness.useQuery();
   const utils = trpc.useUtils();
 
   const initialForm = deriveFormFromSettings(settings);
@@ -93,10 +100,20 @@ export default function AdminSettingsPage() {
   };
 
   const handleSave = () => {
-    const settingsArray = Object.entries(form).map(([key, value]) => ({
-      key,
-      value,
-    }));
+    const settingsArray = Object.entries(form)
+      .filter(
+        ([key]) =>
+          key !== "buyerFeePercent" && key !== "sellerFeePercent",
+      )
+      .map(([key, value]) => ({
+        key: key as
+          | "listingExpiryDays"
+          | "maxPhotosPerListing"
+          | "platformName"
+          | "supportEmail"
+          | "escrowReleaseDays",
+        value,
+      }));
     updateMutation.mutate(settingsArray);
   };
 
@@ -150,11 +167,12 @@ export default function AdminSettingsPage() {
             <CardTitle>Fee Structure</CardTitle>
           </div>
           <CardDescription>
-            Current platform fee policy. These values are fixed in the current release and shown here for reference.
+            Version {CURRENT_COMMERCIAL_POLICY.version} is immutable for every
+            order that uses it. A pricing change requires a new policy version.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div className="space-y-2">
               <Label htmlFor="buyerFeePercent">Buyer Fee (%)</Label>
               <Input
@@ -168,7 +186,11 @@ export default function AdminSettingsPage() {
                 readOnly
               />
               <p className="text-xs text-muted-foreground">
-                Fixed at 3% of inventory subtotal only
+                Fixed at{" "}
+                {basisPointsToPercent(
+                  CURRENT_COMMERCIAL_POLICY.buyerMarketplaceFeeBps,
+                )}
+                % of inventory subtotal only
               </p>
             </div>
             <div className="space-y-2">
@@ -184,7 +206,11 @@ export default function AdminSettingsPage() {
                 readOnly
               />
               <p className="text-xs text-muted-foreground">
-                Fixed at 2% of inventory subtotal
+                Fixed at{" "}
+                {basisPointsToPercent(
+                  CURRENT_COMMERCIAL_POLICY.sellerMarketplaceFeeBps,
+                )}
+                % of inventory subtotal
               </p>
             </div>
             <div className="rounded-lg border p-4">
@@ -194,7 +220,96 @@ export default function AdminSettingsPage() {
                 Seller share applies to inventory subtotal only. Platform absorbs shipping-related processor cost.
               </p>
             </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground">Freight markup</p>
+              <p className="text-2xl font-bold">
+                {basisPointsToPercent(
+                  CURRENT_COMMERCIAL_POLICY.shippingMarkupBps,
+                )}
+                %
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Applied to the carrier rate and snapshotted with the order.
+              </p>
+            </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Payment Configuration */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <ReceiptText className="h-5 w-5 text-primary" />
+            <CardTitle>Sales-tax readiness</CardTitle>
+          </div>
+          <CardDescription>
+            Configuration visibility only. The liability decision and approved
+            tax codes are controlled deployment and review evidence, not
+            editable fee settings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground">Liability mode</p>
+              <p className="mt-1 font-medium">
+                {taxReadiness?.policy.mode ?? "Unavailable"}
+              </p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground">Policy version</p>
+              <p className="mt-1 font-medium">
+                {taxReadiness?.policy.version ?? "—"}
+              </p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground">
+                Legal decision acknowledged
+              </p>
+              <Badge
+                className="mt-1"
+                variant={
+                  taxReadiness?.policy.legalDecisionAcknowledged
+                    ? "success"
+                    : "destructive"
+                }
+              >
+                {taxReadiness?.policy.legalDecisionAcknowledged
+                  ? "Acknowledged"
+                  : "Not acknowledged"}
+              </Badge>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground">
+                Active listing tax codes
+              </p>
+              <p className="mt-1 font-medium">
+                {taxReadiness?.listings.verifiedTaxCode ?? 0} verified /{" "}
+                {taxReadiness?.listings.active ?? 0} active
+              </p>
+            </div>
+          </div>
+          {taxReadiness?.configurationIssues &&
+            taxReadiness.configurationIssues.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                <div className="flex items-center gap-2 font-medium">
+                  <AlertTriangle className="h-4 w-4" />
+                  Production tax gates remain
+                </div>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                  {taxReadiness.configurationIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          <p className="text-xs text-muted-foreground">
+            Checkout verifies the listing code, buyer and ship-from addresses,
+            and the active Stripe registration in the selected liability
+            context. A zero-dollar tax result is accepted only as a persisted
+            provider calculation with jurisdiction evidence.
+          </p>
         </CardContent>
       </Card>
 
@@ -220,9 +335,9 @@ export default function AdminSettingsPage() {
           <Separator />
           <div className="flex items-center justify-between py-2">
             <div className="flex-1">
-              <Label htmlFor="escrowReleaseDays">Escrow Release (days after delivery)</Label>
+              <Label htmlFor="escrowReleaseDays">Payment release delay (days after carrier pickup)</Label>
               <p className="text-xs text-muted-foreground">
-                Wait time before auto-releasing escrow funds
+                Review window before transferring held payment funds to the seller
               </p>
             </div>
             <Input

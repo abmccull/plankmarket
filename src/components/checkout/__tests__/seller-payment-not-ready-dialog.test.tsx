@@ -54,7 +54,9 @@ describe("SellerPaymentNotReadyDialog", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useRouter).mockReturnValue({ push: mockPush } as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue(
+      { push: mockPush } as unknown as ReturnType<typeof useRouter>,
+    );
     vi.mocked(trpc.useUtils).mockReturnValue({
       watchlist: {
         isWatchlisted: {

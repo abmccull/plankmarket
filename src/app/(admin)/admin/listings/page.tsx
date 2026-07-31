@@ -23,8 +23,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Loader2, MoreHorizontal, Flag, FlagOff, ExternalLink } from "lucide-react";
+import {
+  Loader2,
+  MoreHorizontal,
+  Flag,
+  FlagOff,
+  ExternalLink,
+  ReceiptText,
+} from "lucide-react";
 import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { ListingStatus } from "@/types";
@@ -38,6 +47,8 @@ interface Listing {
   };
   askPricePerSqFt: number;
   status: ListingStatus;
+  stripeTaxCode: string | null;
+  taxCodeStatus: "unassigned" | "pending_review" | "verified";
   createdAt: Date | string;
   [key: string]: unknown;
 }
@@ -50,6 +61,12 @@ export default function AdminListingsPage() {
   const [unflagDialogOpen, setUnflagDialogOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [flagReason, setFlagReason] = useState("");
+  const [taxDialogOpen, setTaxDialogOpen] = useState(false);
+  const [taxReviewAction, setTaxReviewAction] = useState<
+    "verify" | "clear"
+  >("verify");
+  const [taxCode, setTaxCode] = useState("");
+  const [taxClearReason, setTaxClearReason] = useState("");
 
   const flagMutation = trpc.admin.flagListing.useMutation({
     onSuccess: () => {
@@ -68,6 +85,24 @@ export default function AdminListingsPage() {
       toast.success("Listing restored to marketplace");
       utils.admin.getListings.invalidate();
       setUnflagDialogOpen(false);
+    },
+    onError: (err) => {
+      toast.error(getErrorMessage(err));
+    },
+  });
+
+  const taxCodeMutation = trpc.admin.setListingTaxCode.useMutation({
+    onSuccess: () => {
+      toast.success(
+        taxReviewAction === "verify"
+          ? "Tax code verified"
+          : "Tax code cleared",
+      );
+      utils.admin.getListings.invalidate();
+      utils.admin.getTaxReadiness.invalidate();
+      setTaxDialogOpen(false);
+      setTaxCode("");
+      setTaxClearReason("");
     },
     onError: (err) => {
       toast.error(getErrorMessage(err));
@@ -103,6 +138,30 @@ export default function AdminListingsPage() {
       cell: ({ row }) => <ListingStatusBadge status={row.original.status} />,
     },
     {
+      accessorKey: "taxCodeStatus",
+      header: "Tax code",
+      cell: ({ row }) => (
+        <div className="space-y-1">
+          <Badge
+            variant={
+              row.original.taxCodeStatus === "verified"
+                ? "success"
+                : "outline"
+            }
+          >
+            {row.original.taxCodeStatus === "verified"
+              ? "Verified"
+              : "Not ready"}
+          </Badge>
+          {row.original.stripeTaxCode && (
+            <p className="font-mono text-xs text-muted-foreground">
+              {row.original.stripeTaxCode}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
       accessorKey: "createdAt",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Created" />
@@ -125,6 +184,30 @@ export default function AdminListingsPage() {
                 View Listing
               </a>
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setSelectedListing(row.original);
+                setTaxReviewAction("verify");
+                setTaxCode(row.original.stripeTaxCode ?? "");
+                setTaxDialogOpen(true);
+              }}
+            >
+              <ReceiptText className="mr-2 h-4 w-4" />
+              Review tax code
+            </DropdownMenuItem>
+            {row.original.taxCodeStatus === "verified" && (
+              <DropdownMenuItem
+                onClick={() => {
+                  setSelectedListing(row.original);
+                  setTaxReviewAction("clear");
+                  setTaxClearReason("");
+                  setTaxDialogOpen(true);
+                }}
+              >
+                <ReceiptText className="mr-2 h-4 w-4" />
+                Clear tax code
+              </DropdownMenuItem>
+            )}
             {row.original.status === "active" && (
               <DropdownMenuItem
                 className="text-destructive"
@@ -176,6 +259,86 @@ export default function AdminListingsPage() {
           <p className="text-muted-foreground">No listings found</p>
         </div>
       )}
+
+      {/* Flag Listing Dialog */}
+      <AlertDialog open={taxDialogOpen} onOpenChange={setTaxDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {taxReviewAction === "verify"
+                ? "Verify listing tax code"
+                : "Clear listing tax code"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {taxReviewAction === "verify"
+                ? "Enter only the Stripe Tax code approved for this flooring inventory. This administrative decision is audited; PlankMarket will not infer or auto-assign a category."
+                : "Clearing the code immediately makes this listing ineligible for tax-enabled checkout. Record why the prior verification is no longer valid."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 py-2">
+            {taxReviewAction === "verify" ? (
+              <>
+                <Label htmlFor="listingTaxCode">Stripe Tax code</Label>
+                <Input
+                  id="listingTaxCode"
+                  value={taxCode}
+                  onChange={(event) => setTaxCode(event.target.value)}
+                  placeholder="txcd_..."
+                  autoComplete="off"
+                />
+              </>
+            ) : (
+              <>
+                <Label htmlFor="taxClearReason">Reason</Label>
+                <Textarea
+                  id="taxClearReason"
+                  value={taxClearReason}
+                  onChange={(event) =>
+                    setTaxClearReason(event.target.value)
+                  }
+                  rows={3}
+                  placeholder="Why is this tax code no longer approved?"
+                />
+              </>
+            )}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                taxCodeMutation.isPending ||
+                (taxReviewAction === "verify"
+                  ? !/^txcd_\d+$/.test(taxCode.trim())
+                  : taxClearReason.trim().length < 10)
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                if (!selectedListing) return;
+                if (taxReviewAction === "verify") {
+                  taxCodeMutation.mutate({
+                    action: "verify",
+                    listingId: selectedListing.id,
+                    taxCode: taxCode.trim(),
+                  });
+                } else {
+                  taxCodeMutation.mutate({
+                    action: "clear",
+                    listingId: selectedListing.id,
+                    reason: taxClearReason.trim(),
+                  });
+                }
+              }}
+            >
+              {taxCodeMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {taxReviewAction === "verify"
+                ? "Verify code"
+                : "Clear code"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Flag Listing Dialog */}
       <AlertDialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>

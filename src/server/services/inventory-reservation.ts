@@ -3,6 +3,10 @@ import { and, eq } from "drizzle-orm";
 import { listings, orders } from "@/server/db/schema";
 
 type DbExecutor = Database | Parameters<Parameters<Database["transaction"]>[0]>[0];
+type ListingInventoryStatus = "active" | "sold";
+
+const INVENTORY_QUANTITY_SCALE = 10_000;
+const INVENTORY_QUANTITY_TOLERANCE = 1 / INVENTORY_QUANTITY_SCALE;
 
 interface ReleaseReservedInventoryInput {
   db: DbExecutor;
@@ -15,8 +19,124 @@ interface ReleaseReservedInventoryResult {
   reason: string;
 }
 
+interface ReserveListingInventoryInput {
+  db: DbExecutor;
+  listingId: string;
+  availableQuantity: number;
+  reservedQuantity: number;
+  reservedAt?: Date;
+}
+
+export interface ListingInventoryReservation {
+  remainingQuantity: number;
+  status: ListingInventoryStatus;
+}
+
 function roundQuantity(value: number): number {
-  return Math.round(value * 10000) / 10000;
+  return Math.round(value * INVENTORY_QUANTITY_SCALE) / INVENTORY_QUANTITY_SCALE;
+}
+
+function assertValidQuantity(value: number, label: string): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a finite, non-negative number`);
+  }
+}
+
+/**
+ * Calculates the available inventory persisted on a listing after checkout.
+ * A full-lot reservation must persist zero availability. Keeping the original
+ * quantity on a sold listing causes a later cancellation to add the same
+ * inventory a second time.
+ */
+export function calculateInventoryAfterReservation(params: {
+  availableQuantity: number;
+  reservedQuantity: number;
+}): ListingInventoryReservation {
+  assertValidQuantity(params.availableQuantity, "Available quantity");
+  assertValidQuantity(params.reservedQuantity, "Reserved quantity");
+
+  if (params.reservedQuantity <= 0) {
+    throw new Error("Reserved quantity must be greater than zero");
+  }
+
+  if (
+    params.reservedQuantity >
+    params.availableQuantity + INVENTORY_QUANTITY_TOLERANCE
+  ) {
+    throw new Error("Reserved quantity exceeds available inventory");
+  }
+
+  const roundedRemainingQuantity = Math.max(
+    0,
+    roundQuantity(params.availableQuantity - params.reservedQuantity),
+  );
+  const isSold =
+    roundedRemainingQuantity <= INVENTORY_QUANTITY_TOLERANCE;
+  const remainingQuantity = isSold ? 0 : roundedRemainingQuantity;
+
+  return {
+    remainingQuantity,
+    status: isSold ? "sold" : "active",
+  };
+}
+
+export function calculateInventoryAfterRelease(params: {
+  availableQuantity: number;
+  reservedQuantity: number;
+  listingStatus: string;
+}): number {
+  assertValidQuantity(params.availableQuantity, "Available quantity");
+  assertValidQuantity(params.reservedQuantity, "Reserved quantity");
+
+  // Orders created before full-lot reservations began persisting zero left the
+  // original quantity on a sold listing. In that legacy state the inventory is
+  // already present and must only be reopened, not added again.
+  if (
+    params.listingStatus === "sold" &&
+    params.availableQuantity > INVENTORY_QUANTITY_TOLERANCE
+  ) {
+    return roundQuantity(params.availableQuantity);
+  }
+
+  return roundQuantity(params.availableQuantity + params.reservedQuantity);
+}
+
+export async function reserveListingInventory({
+  db,
+  listingId,
+  availableQuantity,
+  reservedQuantity,
+  reservedAt = new Date(),
+}: ReserveListingInventoryInput): Promise<ListingInventoryReservation> {
+  const nextInventory = calculateInventoryAfterReservation({
+    availableQuantity,
+    reservedQuantity,
+  });
+
+  const [updated] = await db
+    .update(listings)
+    .set({
+      totalSqFt: nextInventory.remainingQuantity,
+      status: nextInventory.status,
+      soldAt: nextInventory.status === "sold" ? reservedAt : null,
+      updatedAt: reservedAt,
+    })
+    .where(
+      and(
+        eq(listings.id, listingId),
+        eq(listings.status, "active"),
+        eq(listings.totalSqFt, availableQuantity),
+      ),
+    )
+    .returning({ id: listings.id });
+
+  if (!updated) {
+    throw new Error(
+      "Listing inventory changed while the checkout reservation was being created",
+    );
+  }
+
+  return nextInventory;
 }
 
 export async function releaseReservedInventory({
@@ -55,9 +175,15 @@ export async function releaseReservedInventory({
       return { released: false, reason: "order_already_delivered" };
     }
 
-    const restoredTotalSqFt = roundQuantity(
-      Number(row.listingTotalSqFt) + Number(row.quantitySqFt),
-    );
+    if (row.orderStatus !== "cancelled" && row.orderStatus !== "refunded") {
+      return { released: false, reason: "order_not_releasable" };
+    }
+
+    const restoredTotalSqFt = calculateInventoryAfterRelease({
+      availableQuantity: Number(row.listingTotalSqFt),
+      reservedQuantity: Number(row.quantitySqFt),
+      listingStatus: row.listingStatus,
+    });
     const shouldReopenListing =
       row.listingStatus === "sold" && restoredTotalSqFt > 0;
 

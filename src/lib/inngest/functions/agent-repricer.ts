@@ -46,6 +46,7 @@ export const agentRepricer = inngest.createFunction(
           where: and(
             eq(listings.sellerId, user.id),
             eq(listings.status, "active"),
+            eq(listings.automaticMarkdownEnabled, false),
             lt(listings.updatedAt, staleDate),
             eq(listings.offerCount, 0)
           ),

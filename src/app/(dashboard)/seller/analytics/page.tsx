@@ -67,7 +67,7 @@ export default function SellerAnalyticsPage() {
         <div>
           <h1 className="text-3xl font-bold">Analytics</h1>
           <p className="text-muted-foreground mt-1">
-            Track your performance and revenue
+            Track your performance and net payouts
           </p>
         </div>
         <DateRangeSelector
@@ -79,7 +79,7 @@ export default function SellerAnalyticsPage() {
       <Tabs value={tab} onValueChange={(t) => setParams({ tab: t })}>
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="revenue">Revenue</TabsTrigger>
+          <TabsTrigger value="revenue">Payouts</TabsTrigger>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
           <TabsTrigger value="offers">Offers</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
@@ -124,27 +124,27 @@ function OverviewTab({ period }: { period: Period }) {
     <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          title="Revenue"
+          title="Captured net proceeds"
           value={formatCurrency(kpis.revenue)}
           icon={DollarSign}
           trend={revenueTrend}
           accentColor="secondary"
         />
         <StatsCard
-          title="Orders"
+          title="Paid orders"
           value={formatNumber(kpis.orders)}
           icon={ShoppingCart}
           trend={ordersTrend}
           accentColor="primary"
         />
         <StatsCard
-          title="Total Views"
+          title="All-time views"
           value={formatNumber(kpis.views)}
           icon={Eye}
           accentColor="accent"
         />
         <StatsCard
-          title="Conversion Rate"
+          title="All-time paid conversion"
           value={`${kpis.conversionRate}%`}
           icon={TrendingUp}
           accentColor="warning"
@@ -152,7 +152,7 @@ function OverviewTab({ period }: { period: Period }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard title="Revenue Over Time">
+        <ChartCard title="Captured Net Proceeds Over Time">
           <AreaChart
             data={timeSeries}
             dataKey="revenue"
@@ -160,7 +160,7 @@ function OverviewTab({ period }: { period: Period }) {
           />
         </ChartCard>
 
-        <ChartCard title="Orders by Status">
+        <ChartCard title="Paid Orders by Fulfillment Status">
           <BarChart
             data={ordersByStatus.map((s) => ({
               name: s.status,
@@ -184,28 +184,34 @@ function RevenueTab({ period }: { period: Period }) {
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          title="Total Revenue"
+          title="Captured Net Proceeds"
           value={formatCurrency(kpis.totalRevenue)}
           icon={DollarSign}
           accentColor="secondary"
         />
         <StatsCard
-          title="Avg Order Value"
-          value={formatCurrency(kpis.avgOrderValue)}
+          title="Transferred Proceeds"
+          value={formatCurrency(kpis.transferredNetProceeds)}
           icon={ShoppingCart}
           accentColor="primary"
         />
         <StatsCard
-          title="Shipping Margin"
-          value={formatCurrency(kpis.shippingMargin)}
+          title="All-time Buyer Charges Refunded"
+          value={formatCurrency(kpis.refundedBuyerCharges)}
+          icon={DollarSign}
+          accentColor="warning"
+        />
+        <StatsCard
+          title="Seller Shipping Contributions"
+          value={formatCurrency(kpis.sellerFreightContribution)}
           icon={Package}
           accentColor="accent"
         />
       </div>
 
-      <ChartCard title="Revenue Over Time">
+      <ChartCard title="Captured Net Proceeds Over Time">
         <AreaChart
           data={timeSeries}
           dataKey="revenue"
@@ -214,7 +220,7 @@ function RevenueTab({ period }: { period: Period }) {
       </ChartCard>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <ChartCard title="Revenue by Material Type">
+        <ChartCard title="Captured Net Proceeds by Material Type">
           <BarChart
             data={byMaterialType.map((m) => ({
               name: formatMaterialType(m.materialType),
@@ -225,7 +231,7 @@ function RevenueTab({ period }: { period: Period }) {
           />
         </ChartCard>
 
-        <ChartCard title="Revenue by Order Status">
+        <ChartCard title="Captured Net Proceeds by Fulfillment Status">
           <div className="space-y-3">
             {byOrderStatus.map((s) => (
               <div key={s.status} className="flex items-center justify-between">

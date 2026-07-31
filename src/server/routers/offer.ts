@@ -16,20 +16,186 @@ import {
   offerEvents,
   listings,
   notifications,
+  orders,
 } from "@/server/db/schema";
-import { eq, and, or, desc, sql, gt } from "drizzle-orm";
+import {
+  eq,
+  and,
+  or,
+  desc,
+  sql,
+  gt,
+  inArray,
+  isNull,
+  lte,
+} from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { inngest } from "@/lib/inngest/client";
+import {
+  buildOfferResponseDeadlineEvent,
+  OFFER_RESPONSE_WINDOW_MS,
+} from "@/lib/offer-lifecycle";
+import { toConversationParty } from "@/server/security/public-data";
+import {
+  assertListingVisibleToViewer,
+} from "@/server/security/listing-visibility";
+
+const offerPartyColumns = {
+  id: true,
+  name: true,
+  role: true,
+  businessCity: true,
+  businessState: true,
+  verificationStatus: true,
+} as const;
+
+async function canRevealOfferIdentity(
+  db: typeof import("@/server/db").db,
+  orderId: string | null,
+) {
+  if (!orderId) return false;
+  const deliveredOrder = await db.query.orders.findFirst({
+    where: and(eq(orders.id, orderId), eq(orders.status, "delivered")),
+    columns: { id: true },
+  });
+  return Boolean(deliveredOrder);
+}
+
+function shapeOfferParties<
+  T extends {
+    buyer: Parameters<typeof toConversationParty>[0];
+    seller: Parameters<typeof toConversationParty>[0];
+  },
+>(offer: T, revealIdentity: boolean) {
+  return {
+    ...offer,
+    buyer: toConversationParty(offer.buyer, revealIdentity),
+    seller: toConversationParty(offer.seller, revealIdentity),
+  };
+}
+
+type NegotiationOfferForExpiry = {
+  id: string;
+  buyerId: string;
+  sellerId: string;
+  lastActorId: string | null;
+  offerPricePerSqFt: number;
+  counterPricePerSqFt: number | null;
+  quantitySqFt: number;
+};
+
+function responseDeadlineActorId(offer: NegotiationOfferForExpiry): string {
+  return offer.lastActorId === offer.buyerId
+    ? offer.sellerId
+    : offer.buyerId;
+}
+
+const QUANTITY_TOLERANCE_SQFT = 0.01;
+
+function getMinimumOrderQuantitySqFt(listing: {
+  moq: number | null;
+  moqUnit: "pallets" | "sqft" | null;
+  sqFtPerBox: number | null;
+  boxesPerPallet: number | null;
+}): number {
+  if (!listing.moq || listing.moq <= 0) {
+    return 0;
+  }
+
+  if (listing.moqUnit === "pallets") {
+    return (
+      listing.moq *
+      (listing.sqFtPerBox ?? 20) *
+      (listing.boxesPerPallet ?? 30)
+    );
+  }
+
+  return listing.moq;
+}
+
+/**
+ * Lazily expires a negotiation and records the transition atomically.
+ *
+ * The conditional update is the idempotency boundary: only the request that
+ * changes an actionable offer to expired inserts the corresponding event.
+ */
+async function expireNegotiationOffer(
+  db: typeof import("@/server/db").db,
+  offer: NegotiationOfferForExpiry,
+  now: Date,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [expiredOffer] = await tx
+      .update(offers)
+      .set({ status: "expired", updatedAt: now })
+      .where(
+        and(
+          eq(offers.id, offer.id),
+          inArray(offers.status, ["pending", "countered"]),
+          lte(offers.expiresAt, now),
+        ),
+      )
+      .returning({ id: offers.id });
+
+    if (!expiredOffer) return false;
+
+    const pricePerSqFt =
+      offer.counterPricePerSqFt ?? offer.offerPricePerSqFt;
+    await tx.insert(offerEvents).values({
+      offerId: offer.id,
+      actorId: responseDeadlineActorId(offer),
+      eventType: "expire",
+      pricePerSqFt,
+      quantitySqFt: offer.quantitySqFt,
+      totalPrice:
+        Math.round(pricePerSqFt * offer.quantitySqFt * 100) / 100,
+      message: "Automatically expired after the 48-hour response window.",
+    });
+
+    return true;
+  });
+}
+
+async function enqueueOfferResponseDeadline(
+  offerId: string,
+  expiresAt: Date,
+): Promise<void> {
+  try {
+    await inngest.send(buildOfferResponseDeadlineEvent(offerId, expiresAt));
+  } catch {
+    console.error("Failed to enqueue offer response deadline", {
+      offerId,
+      expiresAt: expiresAt.toISOString(),
+    });
+  }
+}
 
 /**
  * Helper function to validate that the current user is allowed to act on an offer.
  * After an initial offer, only the other party can respond (turn-based system).
  */
+function validateOfferParty(
+  offer: { buyerId: string; sellerId: string },
+  currentUserId: string,
+): void {
+  if (
+    currentUserId !== offer.buyerId &&
+    currentUserId !== offer.sellerId
+  ) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You are not a party to this offer",
+    });
+  }
+}
+
 function validateTurn(
   offer: { lastActorId: string | null; buyerId: string; sellerId: string },
   currentUserId: string
 ): void {
+  validateOfferParty(offer, currentUserId);
+
   // If lastActorId is null, this is a new offer and only seller can respond
   if (!offer.lastActorId) {
     throw new TRPCError({
@@ -46,16 +212,6 @@ function validateTurn(
     });
   }
 
-  // Verify user is either buyer or seller
-  if (
-    currentUserId !== offer.buyerId &&
-    currentUserId !== offer.sellerId
-  ) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "You are not a party to this offer",
-    });
-  }
 }
 
 /**
@@ -120,6 +276,12 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
+      assertListingVisibleToViewer(
+        listing,
+        ctx.user,
+        "Listing not found or no longer available",
+      );
+
       // Check if offers are allowed
       if (!listing.allowOffers) {
         throw new TRPCError({
@@ -136,6 +298,40 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
+      const minimumOrderQtySqFt = getMinimumOrderQuantitySqFt(listing);
+
+      if (
+        minimumOrderQtySqFt > 0 &&
+        Number(input.quantitySqFt) <
+          minimumOrderQtySqFt - QUANTITY_TOLERANCE_SQFT
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Minimum order quantity is ${minimumOrderQtySqFt} sq ft`,
+        });
+      }
+
+      if (
+        Number(input.quantitySqFt) >
+        Number(listing.totalSqFt) + QUANTITY_TOLERANCE_SQFT
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Maximum available quantity is ${listing.totalSqFt} sq ft`,
+        });
+      }
+
+      if (
+        listing.fullLotOnly &&
+        Number(input.quantitySqFt) <
+          Number(listing.totalSqFt) - QUANTITY_TOLERANCE_SQFT
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This seller currently negotiates this inventory only as a full lot.",
+        });
+      }
+
       // Check floor price
       if (
         listing.floorPrice &&
@@ -143,7 +339,7 @@ export const offerRouter = createTRPCRouter({
       ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Offer must be at least ${listing.floorPrice} per sq ft`,
+          message: "Offer does not meet the seller's minimum.",
         });
       }
 
@@ -166,10 +362,11 @@ export const offerRouter = createTRPCRouter({
       // Calculate total price
       const totalPrice =
         Math.round(input.offerPricePerSqFt * input.quantitySqFt * 100) / 100;
+      const expiresAt = new Date(Date.now() + OFFER_RESPONSE_WINDOW_MS);
 
       // Use transaction to create offer + event atomically
       const result = await ctx.db.transaction(async (tx) => {
-        // Create the offer (no expiration — offers don't expire unless a counter sets a deadline)
+        // Create the offer with the same 48-hour response window advertised publicly.
         const [offer] = await tx
           .insert(offers)
           .values({
@@ -183,6 +380,7 @@ export const offerRouter = createTRPCRouter({
             currentRound: 1,
             lastActorId: ctx.user.id,
             status: "pending",
+            expiresAt,
           })
           .returning();
 
@@ -208,6 +406,8 @@ export const offerRouter = createTRPCRouter({
         return offer;
       });
 
+      await enqueueOfferResponseDeadline(result!.id, expiresAt);
+
       // Create notification for seller
       await createOfferNotification(ctx.db, {
         recipientId: listing.sellerId,
@@ -220,12 +420,17 @@ export const offerRouter = createTRPCRouter({
       });
 
       // Fire event for AI agent auto-handling (Pro sellers)
-      inngest.send({
-        name: "offer/created",
-        data: { offerId: result!.id },
-      }).catch((err) => {
-        console.error("Failed to send offer/created event:", err);
-      });
+      try {
+        await inngest.send({
+          id: `offer-created:${result!.id}`,
+          name: "offer/created",
+          data: { offerId: result!.id },
+        });
+      } catch {
+        console.error("Failed to enqueue offer/created event", {
+          offerId: result!.id,
+        });
+      }
 
       return result;
     }),
@@ -248,22 +453,10 @@ export const offerRouter = createTRPCRouter({
             },
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
@@ -275,6 +468,8 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
+      validateOfferParty(offer, ctx.user.id);
+
       // Validate status
       if (offer.status !== "pending" && offer.status !== "countered") {
         throw new TRPCError({
@@ -283,12 +478,12 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check expiration (only if an expiration was set)
-      if (offer.expiresAt && new Date() > offer.expiresAt) {
-        await ctx.db
-          .update(offers)
-          .set({ status: "expired", updatedAt: new Date() })
-          .where(eq(offers.id, input.offerId));
+      const transitionAt = new Date();
+      if (
+        offer.expiresAt &&
+        transitionAt.getTime() >= offer.expiresAt.getTime()
+      ) {
+        await expireNegotiationOffer(ctx.db, offer, transitionAt);
 
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -304,8 +499,9 @@ export const offerRouter = createTRPCRouter({
         Math.round(input.pricePerSqFt * offer.quantitySqFt * 100) / 100;
 
       // Set new expiration (48 hours from now)
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 48);
+      const expiresAt = new Date(
+        transitionAt.getTime() + OFFER_RESPONSE_WINDOW_MS,
+      );
 
       // Transaction: update offer + create event
       const result = await ctx.db.transaction(async (tx) => {
@@ -317,10 +513,25 @@ export const offerRouter = createTRPCRouter({
             currentRound: offer.currentRound + 1,
             lastActorId: ctx.user.id,
             expiresAt,
-            updatedAt: new Date(),
+            updatedAt: transitionAt,
           })
-          .where(eq(offers.id, input.offerId))
+          .where(
+            and(
+              eq(offers.id, input.offerId),
+              inArray(offers.status, ["pending", "countered"]),
+              eq(offers.currentRound, offer.currentRound),
+              eq(offers.lastActorId, offer.lastActorId!),
+              or(isNull(offers.expiresAt), gt(offers.expiresAt, transitionAt)),
+            ),
+          )
           .returning();
+
+        if (!updatedOffer) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This offer changed or expired. Refresh before responding.",
+          });
+        }
 
         await tx.insert(offerEvents).values({
           offerId: input.offerId,
@@ -334,6 +545,8 @@ export const offerRouter = createTRPCRouter({
 
         return updatedOffer;
       });
+
+      await enqueueOfferResponseDeadline(input.offerId, expiresAt);
 
       // Notify the other party
       const recipientId =
@@ -371,22 +584,10 @@ export const offerRouter = createTRPCRouter({
             },
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
@@ -398,6 +599,8 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
+      validateOfferParty(offer, ctx.user.id);
+
       // Validate status
       if (offer.status !== "pending" && offer.status !== "countered") {
         throw new TRPCError({
@@ -406,12 +609,12 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check expiration (only if an expiration was set)
-      if (offer.expiresAt && new Date() > offer.expiresAt) {
-        await ctx.db
-          .update(offers)
-          .set({ status: "expired", updatedAt: new Date() })
-          .where(eq(offers.id, input.offerId));
+      const transitionAt = new Date();
+      if (
+        offer.expiresAt &&
+        transitionAt.getTime() >= offer.expiresAt.getTime()
+      ) {
+        await expireNegotiationOffer(ctx.db, offer, transitionAt);
 
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -428,7 +631,9 @@ export const offerRouter = createTRPCRouter({
         Math.round(acceptedPrice * offer.quantitySqFt * 100) / 100;
 
       // Set 48-hour expiration for buyer to complete checkout
-      const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      const expiresAt = new Date(
+        transitionAt.getTime() + OFFER_RESPONSE_WINDOW_MS,
+      );
 
       // Transaction: update offer + create event
       const result = await ctx.db.transaction(async (tx) => {
@@ -438,10 +643,25 @@ export const offerRouter = createTRPCRouter({
             status: "accepted",
             lastActorId: ctx.user.id,
             expiresAt,
-            updatedAt: new Date(),
+            updatedAt: transitionAt,
           })
-          .where(eq(offers.id, input.offerId))
+          .where(
+            and(
+              eq(offers.id, input.offerId),
+              inArray(offers.status, ["pending", "countered"]),
+              eq(offers.currentRound, offer.currentRound),
+              eq(offers.lastActorId, offer.lastActorId!),
+              or(isNull(offers.expiresAt), gt(offers.expiresAt, transitionAt)),
+            ),
+          )
           .returning();
+
+        if (!updatedOffer) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This offer changed or expired. Refresh before responding.",
+          });
+        }
 
         await tx.insert(offerEvents).values({
           offerId: input.offerId,
@@ -456,22 +676,27 @@ export const offerRouter = createTRPCRouter({
       });
 
       // Fire Inngest event for accepted offer processing (fire-and-forget)
-      inngest.send({
-        name: "offer/accepted",
-        data: {
+      try {
+        await inngest.send({
+          id: `offer-accepted:${input.offerId}`,
+          name: "offer/accepted",
+          data: {
+            offerId: input.offerId,
+            buyerId: offer.buyerId,
+            sellerId: offer.sellerId,
+            listingId: offer.listingId,
+            listingTitle: offer.listing.title,
+            acceptedPrice: `$${Number(acceptedPrice).toFixed(2)}/sq ft`,
+            quantity: `${Number(offer.quantitySqFt).toLocaleString()} sq ft`,
+            estimatedTotal: `$${(Number(acceptedPrice) * Number(offer.quantitySqFt)).toFixed(2)}`,
+            expiresAt: expiresAt.toISOString(),
+          },
+        });
+      } catch {
+        console.error("Failed to enqueue offer/accepted event", {
           offerId: input.offerId,
-          buyerId: offer.buyerId,
-          sellerId: offer.sellerId,
-          listingId: offer.listingId,
-          listingTitle: offer.listing.title,
-          acceptedPrice: `$${Number(acceptedPrice).toFixed(2)}/sq ft`,
-          quantity: `${Number(offer.quantitySqFt).toLocaleString()} sq ft`,
-          estimatedTotal: `$${(Number(acceptedPrice) * Number(offer.quantitySqFt)).toFixed(2)}`,
-          expiresAt: expiresAt.toISOString(),
-        },
-      }).catch((err) => {
-        console.error("Failed to send offer/accepted event:", err);
-      });
+        });
+      }
 
       // Notify the other party
       const recipientId =
@@ -509,22 +734,10 @@ export const offerRouter = createTRPCRouter({
             },
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
@@ -536,6 +749,8 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
+      validateOfferParty(offer, ctx.user.id);
+
       // Validate status
       if (offer.status !== "pending" && offer.status !== "countered") {
         throw new TRPCError({
@@ -544,12 +759,12 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      // Check expiration (only if an expiration was set)
-      if (offer.expiresAt && new Date() > offer.expiresAt) {
-        await ctx.db
-          .update(offers)
-          .set({ status: "expired", updatedAt: new Date() })
-          .where(eq(offers.id, input.offerId));
+      const transitionAt = new Date();
+      if (
+        offer.expiresAt &&
+        transitionAt.getTime() >= offer.expiresAt.getTime()
+      ) {
+        await expireNegotiationOffer(ctx.db, offer, transitionAt);
 
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -567,10 +782,25 @@ export const offerRouter = createTRPCRouter({
           .set({
             status: "rejected",
             lastActorId: ctx.user.id,
-            updatedAt: new Date(),
+            updatedAt: transitionAt,
           })
-          .where(eq(offers.id, input.offerId))
+          .where(
+            and(
+              eq(offers.id, input.offerId),
+              inArray(offers.status, ["pending", "countered"]),
+              eq(offers.currentRound, offer.currentRound),
+              eq(offers.lastActorId, offer.lastActorId!),
+              or(isNull(offers.expiresAt), gt(offers.expiresAt, transitionAt)),
+            ),
+          )
           .returning();
+
+        if (!updatedOffer) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This offer changed or expired. Refresh before responding.",
+          });
+        }
 
         await tx.insert(offerEvents).values({
           offerId: input.offerId,
@@ -618,13 +848,7 @@ export const offerRouter = createTRPCRouter({
             },
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
@@ -652,6 +876,19 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
+      const transitionAt = new Date();
+      if (
+        offer.expiresAt &&
+        transitionAt.getTime() >= offer.expiresAt.getTime()
+      ) {
+        await expireNegotiationOffer(ctx.db, offer, transitionAt);
+
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This offer has expired",
+        });
+      }
+
       // Transaction: update offer + create event
       const result = await ctx.db.transaction(async (tx) => {
         const [updatedOffer] = await tx
@@ -659,10 +896,25 @@ export const offerRouter = createTRPCRouter({
           .set({
             status: "withdrawn",
             lastActorId: ctx.user.id,
-            updatedAt: new Date(),
+            updatedAt: transitionAt,
           })
-          .where(eq(offers.id, input.offerId))
+          .where(
+            and(
+              eq(offers.id, input.offerId),
+              inArray(offers.status, ["pending", "countered"]),
+              eq(offers.currentRound, offer.currentRound),
+              eq(offers.lastActorId, offer.lastActorId!),
+              or(isNull(offers.expiresAt), gt(offers.expiresAt, transitionAt)),
+            ),
+          )
           .returning();
+
+        if (!updatedOffer) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "This offer changed or expired. Refresh before responding.",
+          });
+        }
 
         await tx.insert(offerEvents).values({
           offerId: input.offerId,
@@ -707,34 +959,16 @@ export const offerRouter = createTRPCRouter({
             },
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           events: {
             orderBy: [desc(offerEvents.createdAt)],
             with: {
               actor: {
-                columns: {
-                  id: true,
-                  name: true,
-                  role: true,
-                  businessCity: true,
-                  businessState: true,
-                },
+                columns: offerPartyColumns,
               },
             },
           },
@@ -756,7 +990,15 @@ export const offerRouter = createTRPCRouter({
         });
       }
 
-      return offer;
+      const revealIdentity = await canRevealOfferIdentity(ctx.db, offer.orderId);
+      const shapedOffer = shapeOfferParties(offer, revealIdentity);
+      return {
+        ...shapedOffer,
+        events: offer.events.map((event) => ({
+          ...event,
+          actor: toConversationParty(event.actor, revealIdentity),
+        })),
+      };
     }),
 
   /**
@@ -773,6 +1015,7 @@ export const offerRouter = createTRPCRouter({
           id: true,
           buyerId: true,
           sellerId: true,
+          orderId: true,
         },
       });
 
@@ -796,18 +1039,16 @@ export const offerRouter = createTRPCRouter({
         orderBy: [desc(offerEvents.createdAt)],
         with: {
           actor: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
 
-      return events;
+      const revealIdentity = await canRevealOfferIdentity(ctx.db, offer.orderId);
+      return events.map((event) => ({
+        ...event,
+        actor: toConversationParty(event.actor, revealIdentity),
+      }));
     }),
 
   /**
@@ -869,25 +1110,38 @@ export const offerRouter = createTRPCRouter({
             },
           },
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
+
+      const orderIds = offersList
+        .map((offer) => offer.orderId)
+        .filter((orderId): orderId is string => Boolean(orderId));
+      const deliveredOrderIds = orderIds.length
+        ? new Set(
+            (
+              await ctx.db
+                .select({ id: orders.id })
+                .from(orders)
+                .where(
+                  and(
+                    inArray(orders.id, orderIds),
+                    eq(orders.status, "delivered"),
+                  ),
+                )
+            ).map((order) => order.id),
+          )
+        : new Set<string>();
+      const shapedOffers = offersList.map((offer) =>
+        shapeOfferParties(
+          offer,
+          Boolean(offer.orderId && deliveredOrderIds.has(offer.orderId)),
+        ),
+      );
 
       // Get total count
       const [{ count }] = await ctx.db
@@ -896,7 +1150,7 @@ export const offerRouter = createTRPCRouter({
         .where(whereClause);
 
       return {
-        offers: offersList,
+        offers: shapedOffers,
         total: count,
         page: input.page,
         limit: input.limit,
@@ -936,26 +1190,38 @@ export const offerRouter = createTRPCRouter({
         orderBy: [desc(offers.updatedAt)],
         with: {
           buyer: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              role: true,
-              businessCity: true,
-              businessState: true,
-            },
+            columns: offerPartyColumns,
           },
         },
       });
 
-      return offersList;
+      const orderIds = offersList
+        .map((offer) => offer.orderId)
+        .filter((orderId): orderId is string => Boolean(orderId));
+      const deliveredOrderIds = orderIds.length
+        ? new Set(
+            (
+              await ctx.db
+                .select({ id: orders.id })
+                .from(orders)
+                .where(
+                  and(
+                    inArray(orders.id, orderIds),
+                    eq(orders.status, "delivered"),
+                  ),
+                )
+            ).map((order) => order.id),
+          )
+        : new Set<string>();
+
+      return offersList.map((offer) =>
+        shapeOfferParties(
+          offer,
+          Boolean(offer.orderId && deliveredOrderIds.has(offer.orderId)),
+        ),
+      );
     }),
 });

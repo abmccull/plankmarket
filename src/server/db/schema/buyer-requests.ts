@@ -9,8 +9,10 @@ import {
   real,
   jsonb,
   index,
+  uniqueIndex,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 import { listings } from "./listings";
 
@@ -114,6 +116,13 @@ export const buyerRequestResponses = pgTable(
   (table) => [
     index("buyer_request_responses_request_id_idx").on(table.requestId),
     index("buyer_request_responses_seller_id_idx").on(table.sellerId),
+    uniqueIndex("buyer_request_responses_request_seller_unique_idx").on(
+      table.requestId,
+      table.sellerId,
+    ),
+    uniqueIndex("buyer_request_responses_one_accepted_per_request_idx")
+      .on(table.requestId)
+      .where(sql`${table.status} = 'accepted'`),
   ]
 );
 

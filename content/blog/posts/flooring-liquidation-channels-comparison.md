@@ -1,5 +1,5 @@
 ---
-title: Liquidation Comparison: Traditional Closeout Buyers vs. B2B Marketplace
+title: 'Liquidation Comparison: Traditional Closeout Buyers vs. B2B Marketplace'
 slug: flooring-liquidation-channels-comparison
 target_keyword: flooring liquidation options
 secondary_keywords: 'sell surplus flooring, flooring closeout buyers, B2B flooring marketplace'

@@ -7,6 +7,7 @@ import type { Mock } from "vitest";
 
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
+    listing: { getPurchaseConfig: { useQuery: vi.fn() } },
     review: { getUserReputation: { useQuery: vi.fn() } },
     watchlist: {
       isWatchlisted: { useQuery: vi.fn() },
@@ -87,6 +88,8 @@ function createListing(
     buyNowPrice: null as number | null,
     allowOffers: false,
     moq: 200,
+    moqUnit: "sqft" as const,
+    freightEstimateStatus: "quote_request_ready" as const,
     locationCity: "Portland",
     locationState: "OR",
     viewsCount: 42,
@@ -94,7 +97,7 @@ function createListing(
     createdAt: "2025-06-15T00:00:00.000Z",
     seller: {
       id: "seller-456",
-      name: "Test Seller Co",
+      displayName: "Verified Seller",
       verified: true,
       createdAt: "2024-01-01T00:00:00.000Z",
       stripeOnboardingComplete: true,
@@ -122,6 +125,7 @@ function setupMocks(
   (useRouter as Mock).mockReturnValue({ push: vi.fn() });
 
   const trpcMock = trpc as unknown as {
+    listing: { getPurchaseConfig: { useQuery: Mock } };
     review: { getUserReputation: { useQuery: Mock } };
     watchlist: {
       isWatchlisted: { useQuery: Mock };
@@ -132,6 +136,15 @@ function setupMocks(
     useUtils: Mock;
   };
 
+  trpcMock.listing.getPurchaseConfig.useQuery.mockReturnValue({
+    data: {
+      canSplitLots: true,
+      partialQuantityMarkupPercent: null,
+      allowSampleRequests: true,
+      sellingTerritoryMode: "unrestricted",
+      allowedDestinationStates: [],
+    },
+  });
   trpcMock.review.getUserReputation.useQuery.mockReturnValue({
     data: undefined,
   });
@@ -171,8 +184,8 @@ describe("ListingDetailClient", () => {
     // Price per sq ft: $2.50/sq ft
     expect(screen.getByText("$2.50/sq ft")).toBeInTheDocument();
     // Lot value: 2.5 * 1000 = $2,500.00
-    expect(screen.getByText(/Lot value:/)).toHaveTextContent(
-      "Lot value: $2,500.00"
+    expect(screen.getByText(/Direct purchase lot:/)).toHaveTextContent(
+      "Direct purchase lot: $2,500.00"
     );
   });
 
@@ -188,6 +201,13 @@ describe("ListingDetailClient", () => {
       screen.getByRole("button", { name: /Buy Now/ })
     ).toBeInTheDocument();
     expect(screen.getByText(/Buy Now - \$3\.00\/sq ft/)).toBeInTheDocument();
+    expect(screen.getByText("$3.00/sq ft")).toBeInTheDocument();
+    expect(screen.getByText(/Direct purchase lot:/)).toHaveTextContent(
+      "Direct purchase lot: $3,000.00",
+    );
+    expect(screen.getByText(/Seller ask for offers:/)).toHaveTextContent(
+      "Seller ask for offers: $2.50/sq ft",
+    );
   });
 
   it("shows Make Offer button when allowOffers is true", () => {
@@ -201,6 +221,14 @@ describe("ListingDetailClient", () => {
       screen.getByRole("button", { name: /Make an offer on this listing/ })
     ).toBeInTheDocument();
     expect(screen.getByText("Make Offer")).toBeInTheDocument();
+  });
+
+  it("shows Request Sample when the listing allows it", () => {
+    render(<ListingDetailClient listing={createListing()} />);
+
+    expect(
+      screen.getByRole("button", { name: /Request Sample/i }),
+    ).toBeInTheDocument();
   });
 
   it("hides Make Offer button when allowOffers is false", () => {
@@ -248,7 +276,7 @@ describe("ListingDetailClient", () => {
     const listing = createListing({
       seller: {
         id: "seller-456",
-        name: "Test Seller Co",
+        displayName: "Verified Seller",
         verified: true,
         createdAt: "2024-01-01T00:00:00.000Z",
         stripeOnboardingComplete: true,
@@ -260,7 +288,7 @@ describe("ListingDetailClient", () => {
 
     render(<ListingDetailClient listing={listing} />);
 
-    // Anonymous display name is mocked to return "Verified Seller"
+    // Display name is shaped and approved by the server.
     expect(screen.getByText("Verified Seller")).toBeInTheDocument();
     // Initials are mocked to return "VS"
     expect(screen.getByText("VS")).toBeInTheDocument();

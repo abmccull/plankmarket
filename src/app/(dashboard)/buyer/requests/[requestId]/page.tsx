@@ -256,8 +256,15 @@ export default function BuyerRequestDetailPage({
   const handleAccept = async (responseId: string) => {
     setActingResponseId(responseId);
     try {
-      await acceptMutation.mutateAsync({ responseId });
-      toast.success("Response accepted!");
+      const result = await acceptMutation.mutateAsync({ responseId });
+      toast.success("Response accepted. Other responses were closed.", {
+        action: result.conversationId
+          ? {
+              label: "Message seller",
+              onClick: () => router.push(`/messages/${result.conversationId}`),
+            }
+          : undefined,
+      });
       refetch();
     } catch {
       toast.error("Failed to accept response.");

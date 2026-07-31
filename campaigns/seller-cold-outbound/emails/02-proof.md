@@ -56,4 +56,4 @@ The alternative was another quarter of carrying costs and a lower recovery next 
 
 ---
 
-**P.S.** Listing is free. There is no fee until your inventory sells. The 2% seller fee only applies on completed transactions.
+**P.S.** Listing is free. The 5% seller fee and disclosed payment processing apply when a transaction completes.

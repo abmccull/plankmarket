@@ -1,6 +1,6 @@
 # PlankMarket Brand Voice Profile
 
-Last updated: 2026-02-26
+Last updated: 2026-07-30
 
 ---
 
@@ -160,7 +160,7 @@ Our audience knows these terms. Using them without explanation signals that we a
 - Liquidate overstock and closeout inventory fast
 - Reach verified buyers across all 50 states
 - Get paid in 3-5 days after order completion
-- 2% fee only when you sell -- no listing fees
+- 5% seller marketplace fee only when you sell, plus disclosed payment processing -- no listing fees
 - Guided listing form -- upload specs, photos, and go live
 
 **Tone:** Efficient, results-focused. Emphasize speed of liquidation and breadth of buyer reach.
@@ -168,8 +168,8 @@ Our audience knows these terms. Using them without explanation signals that we a
 **Pain points to address:**
 - "Will my surplus actually sell?" -> Buyer network size, saved search alerts that notify buyers, request board where buyers post what they need
 - "I don't want to spend hours creating listings" -> Guided form, AI spec sheet extraction, CSV bulk upload
-- "When do I get paid?" -> 3-5 day payouts via Stripe
-- "How much does it cost?" -> 2% seller fee, no listing fees, transparent pricing
+- "When do I get paid?" -> PlankMarket initiates the seller transfer after the configured shipment milestone and delay; Stripe and the seller's bank control final availability
+- "How much does it cost?" -> 5% seller marketplace fee plus disclosed payment processing, no listing fees
 
 ---
 
@@ -239,7 +239,7 @@ The brand's visual identity reinforces the voice:
 
 ### Ads (Paid Search / Social)
 - Lead with the value proposition, not the brand name
-- Include a specific number: "30-60% below wholesale" / "2% seller fee" / "3-5 day payouts"
+- Include only verified numbers: "5% buyer marketplace fee" / "5% seller marketplace fee" / current listing-specific savings
 - Separate buyer and seller ad sets -- different pain points, different CTAs
 - Buyer ads: margin opportunity, product quality, verified sellers
 - Seller ads: speed of liquidation, buyer reach, low fees
@@ -277,12 +277,12 @@ The brand's visual identity reinforces the voice:
 - "Tips to find the best deals on PlankMarket"
 
 ### Short-form ad copy (buyer)
-- "Surplus hardwood, engineered, LVP, and more -- 30-60% below wholesale. Verified sellers. Integrated freight quotes. Browse PlankMarket."
-- "Why pay full wholesale? Source closeout flooring from verified distributors. All 50 states. Browse inventory now."
+- "Surplus hardwood, engineered, LVP, and more from verified sellers, with integrated freight quotes. Browse PlankMarket."
+- "Source priced closeout flooring from verified distributors. Review the lot, seller evidence, and freight before checkout."
 
 ### Short-form ad copy (seller)
-- "Surplus inventory tying up warehouse space? List on PlankMarket. 2% fee. 3-5 day payouts. Reach thousands of verified retailers."
-- "Closeout flooring sitting in your warehouse? Reach buyers across all 50 states. No listing fees. List your first lot in minutes."
+- "Surplus inventory tying up warehouse space? List on PlankMarket. No listing fee; 5% seller marketplace fee plus disclosed processing when it sells."
+- "Closeout flooring sitting in your warehouse? Reach verified trade buyers through a nationwide marketplace. List your first lot in minutes."
 
 ### Button / CTA copy
 - "Browse Listings" / "View All Inventory"
@@ -306,7 +306,7 @@ The brand's visual identity reinforces the voice:
 
 5. **Never make promises we can't back up.** "Thousands of buyers" only when we have thousands of buyers. "Nationwide coverage" only when we actually serve all 50 states. Every stat on the site should be defensible.
 
-6. **Never hide fees.** The 3% buyer fee and 2% seller fee are features, not fine print. State them prominently.
+6. **Never hide fees.** The 5% buyer fee and 5% seller fee are features, not fine print. State them prominently, and disclose seller payment processing separately.
 
 7. **Never use stock photos of smiling people pointing at laptops.** Real warehouses, real flooring, real trade environments.
 

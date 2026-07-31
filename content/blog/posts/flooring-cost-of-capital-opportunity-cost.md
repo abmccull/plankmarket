@@ -1,5 +1,5 @@
 ---
-title: Cost of Capital on Flooring Inventory: The Opportunity Cost Nobody Calculates
+title: 'Cost of Capital on Flooring Inventory: The Opportunity Cost Nobody Calculates'
 slug: flooring-cost-of-capital-opportunity-cost
 target_keyword: flooring inventory cost of capital
 secondary_keywords: 'opportunity cost inventory, flooring inventory financing, tied up capital flooring'

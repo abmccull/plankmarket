@@ -6,9 +6,13 @@ import {
   integer,
   timestamp,
   index,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { listings } from "./listings";
 import { buyerRequests } from "./buyer-requests";
+import { users } from "./users";
 
 export const media = pgTable(
   "media",
@@ -18,6 +22,9 @@ export const media = pgTable(
       .references(() => listings.id, { onDelete: "cascade" }),
     buyerRequestId: uuid("buyer_request_id")
       .references(() => buyerRequests.id, { onDelete: "cascade" }),
+    uploaderId: uuid("uploader_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
     url: text("url").notNull(),
     key: varchar("key", { length: 500 }),
     fileName: varchar("file_name", { length: 255 }),
@@ -33,6 +40,14 @@ export const media = pgTable(
     index("media_listing_id_idx").on(table.listingId),
     index("media_sort_order_idx").on(table.listingId, table.sortOrder),
     index("media_buyer_request_id_idx").on(table.buyerRequestId),
+    index("media_uploader_id_idx").on(table.uploaderId),
+    uniqueIndex("media_uploadthing_key_unique_idx")
+      .on(table.key)
+      .where(sql`${table.key} is not null`),
+    check(
+      "media_uploader_required_check",
+      sql`${table.uploaderId} is not null`,
+    ),
   ]
 );
 

@@ -6,7 +6,7 @@ interface StatsOverviewProps {
   totalUsers: number;
   activeListings: number;
   totalOrders: number;
-  revenue: number;
+  grossMerchandiseValue: number;
   pendingVerifications: number;
 }
 
@@ -14,7 +14,7 @@ export function StatsOverview({
   totalUsers,
   activeListings,
   totalOrders,
-  revenue,
+  grossMerchandiseValue,
   pendingVerifications,
 }: StatsOverviewProps) {
   const stats = [
@@ -37,10 +37,10 @@ export function StatsOverview({
       description: "All-time orders",
     },
     {
-      title: "Revenue",
-      value: formatCurrency(revenue),
+      title: "Gross Merchandise Value",
+      value: formatCurrency(grossMerchandiseValue),
       icon: DollarSign,
-      description: "Platform fees collected",
+      description: "Buyer order value, all time",
     },
     {
       title: "Pending Verifications",

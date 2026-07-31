@@ -17,6 +17,8 @@ import {
   formatPricePerSqFt,
   calculateBuyerFee,
 } from "@/lib/utils";
+import { BUYER_MARKETPLACE_FEE_PERCENT } from "@/lib/fees";
+import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 import {
   Heart,
   Share2,
@@ -30,7 +32,8 @@ import {
 } from "lucide-react";
 import { StarRating } from "@/components/shared/star-rating";
 import { toast } from "sonner";
-import { getAnonymousDisplayName, getAnonymousInitials } from "@/lib/identity/display-name";
+import { getAnonymousInitials } from "@/lib/identity/display-name";
+import type { FreightEstimateStatus } from "@/components/listings/listing-evidence";
 
 interface ListingDetailClientProps {
   listing: {
@@ -45,6 +48,8 @@ interface ListingDetailClientProps {
     buyNowPrice: number | null;
     allowOffers: boolean;
     moq: number | null;
+    moqUnit: "pallets" | "sqft" | null;
+    freightEstimateStatus: FreightEstimateStatus;
     locationCity: string | null;
     locationState: string | null;
     viewsCount: number;
@@ -52,7 +57,7 @@ interface ListingDetailClientProps {
     createdAt: Date | string;
     seller: {
       id: string;
-      name: string;
+      displayName: string;
       verified: boolean;
       createdAt: Date | string;
       stripeOnboardingComplete: boolean;
@@ -72,7 +77,16 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   const [showPaymentNotReadyDialog, setShowPaymentNotReadyDialog] = useState(false);
   const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
   const [isContactingLoading, setIsContactingLoading] = useState(false);
+  const [isRequestingSample, setIsRequestingSample] = useState(false);
   const [viewingAsBuyer, setViewingAsBuyer] = useState(false);
+
+  const {
+    data: purchaseConfig,
+    isLoading: isPurchaseConfigLoading,
+  } = trpc.listing.getPurchaseConfig.useQuery(
+    { listingId },
+    { enabled: !!listingId },
+  );
 
   const { data: sellerReputation } = trpc.review.getUserReputation.useQuery(
     { userId: listing.sellerId },
@@ -168,14 +182,35 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
       return;
     }
 
+    if (!purchaseConfig) {
+      toast.error(
+        "We are still verifying this listing's purchase rules. Please try again.",
+      );
+      return;
+    }
+
     setShowMakeOfferModal(true);
+  };
+
+  const handleRequestSample = async () => {
+    if (!isAuthenticated) {
+      router.push(`/login?redirect=/listings/${listingId}`);
+      return;
+    }
+
+    setIsRequestingSample(true);
+    router.push(`/buyer/samples/new?listingId=${listingId}`);
   };
 
   // Check if current user is the seller
   const isOwner = user && listing?.sellerId === user.id;
   const isOwnListing = isOwner && !viewingAsBuyer;
+  const canRequestSample =
+    purchaseConfig?.allowSampleRequests &&
+    (!user || user.role === "buyer" || user.role === "admin");
 
-  const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
+  const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
+  const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
   const buyerFee = calculateBuyerFee(lotValue);
 
   return (
@@ -216,11 +251,18 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
             {/* Price */}
             <div>
               <div className="text-3xl font-display font-bold text-primary tabular-nums">
-                {formatPricePerSqFt(listing.askPricePerSqFt)}
+                {formatPricePerSqFt(directPurchaseUnitPrice)}
               </div>
               <p className="text-sm text-muted-foreground tabular-nums">
-                Lot value: {formatCurrency(lotValue)}
+                Direct purchase lot: {formatCurrency(lotValue)}
               </p>
+              {listing.buyNowPrice != null &&
+                listing.buyNowPrice !== listing.askPricePerSqFt && (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Seller ask for offers:{" "}
+                    {formatPricePerSqFt(listing.askPricePerSqFt)}
+                  </p>
+                )}
             </div>
 
             <Separator />
@@ -237,19 +279,51 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Min Order</span>
                   <span className="font-medium tabular-nums">
-                    {formatSqFt(listing.moq)}
+                    {listing.moqUnit === "pallets"
+                      ? `${listing.moq.toLocaleString()} pallet${listing.moq === 1 ? "" : "s"}`
+                      : formatSqFt(listing.moq)}
                   </span>
                 </div>
               )}
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Buyer Fee (3%)</span>
+                <span className="text-muted-foreground">
+                  Buyer Fee ({BUYER_MARKETPLACE_FEE_PERCENT}%)
+                </span>
                 <span className="font-medium tabular-nums">
                   {formatCurrency(buyerFee)}
                 </span>
               </div>
+              {purchaseConfig?.canSplitLots === false && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lot Policy</span>
+                  <span className="font-medium text-right">Full lot only</span>
+                </div>
+              )}
+              {purchaseConfig?.canSplitLots &&
+                purchaseConfig.partialQuantityMarkupPercent != null && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Partial Orders</span>
+                    <span className="font-medium text-right">
+                      +{purchaseConfig.partialQuantityMarkupPercent}% below full lot
+                    </span>
+                  </div>
+                )}
+              {purchaseConfig?.sellingTerritoryMode === "allowed_states" &&
+                purchaseConfig.allowedDestinationStates.length > 0 && (
+                  <div className="flex justify-between items-start gap-4">
+                    <span className="text-muted-foreground">Selling Territory</span>
+                    <span className="font-medium text-right">
+                      {purchaseConfig.allowedDestinationStates.join(", ")}
+                    </span>
+                  </div>
+                )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Shipping</span>
-                <span className="font-medium">Quoted at checkout</span>
+                <span className="font-medium text-right">
+                  {listing.freightEstimateStatus === "quote_request_ready"
+                    ? "Quote request at checkout"
+                    : "Contact seller for freight"}
+                </span>
               </div>
               <Separator />
               <div className="flex justify-between font-semibold tabular-nums">
@@ -316,6 +390,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                       className="w-full"
                       size="lg"
                       onClick={handleMakeOfferClick}
+                      disabled={isPurchaseConfigLoading || !purchaseConfig}
                       aria-label="Make an offer on this listing"
                     >
                       <HandCoins className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -344,6 +419,28 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     )}
                   </Button>
                 </div>
+
+                {canRequestSample && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    size="lg"
+                    onClick={handleRequestSample}
+                    disabled={isRequestingSample}
+                  >
+                    {isRequestingSample ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        Opening sample request...
+                      </>
+                    ) : (
+                      <>
+                        <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                        Request Sample
+                      </>
+                    )}
+                  </Button>
+                )}
 
                 {viewingAsBuyer && (
                   <Button
@@ -400,12 +497,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                   </div>
                   <div>
                     <div className="text-sm font-medium flex items-center gap-1">
-                      {getAnonymousDisplayName({
-                        role: listing.seller.role,
-                        businessState: listing.seller.businessState,
-                        name: listing.seller.name,
-                        businessCity: listing.seller.businessCity
-                      })}
+                      {listing.seller.displayName}
                       {listing.seller.verified && (
                         <Shield className="h-3 w-3 text-secondary" />
                       )}
@@ -461,12 +553,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
           open={showPaymentNotReadyDialog}
           onOpenChange={setShowPaymentNotReadyDialog}
           sellerId={listing.seller.id}
-          sellerName={getAnonymousDisplayName({
-            role: listing.seller.role,
-            businessState: listing.seller.businessState,
-            name: listing.seller.name,
-            businessCity: listing.seller.businessCity
-          })}
+          sellerName={listing.seller.displayName}
           listingId={listing.id}
         />
       )}
@@ -480,6 +567,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
         askPricePerSqFt={listing.askPricePerSqFt}
         totalSqFt={listing.totalSqFt}
         moq={listing.moq}
+        fullLotOnly={purchaseConfig?.fullLotOnly ?? true}
       />
     </>
   );

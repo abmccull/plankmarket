@@ -5,6 +5,12 @@ import {
 import { watchlist, listings, offers, orders } from "../db/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
+import {
+  publicListingColumns,
+  publicMediaColumns,
+  publicSellerColumns,
+  toPublicListing,
+} from "@/server/security/public-data";
 
 type BuyerStatus =
   | "delivered"
@@ -106,20 +112,15 @@ export const watchlistRouter = createTRPCRouter({
           where: eq(watchlist.userId, ctx.user.id),
           with: {
             listing: {
+              columns: publicListingColumns,
               with: {
                 media: {
+                  columns: publicMediaColumns,
                   orderBy: (media, { asc }) => [asc(media.sortOrder)],
                   limit: 1,
                 },
                 seller: {
-                  columns: {
-                    id: true,
-                    name: true,
-                    verified: true,
-                    role: true,
-                    businessCity: true,
-                    businessState: true,
-                  },
+                  columns: publicSellerColumns,
                 },
               },
             },
@@ -212,7 +213,11 @@ export const watchlistRouter = createTRPCRouter({
           buyerStatus = "sold";
         }
 
-        return { ...item, buyerStatus };
+        return {
+          ...item,
+          listing: toPublicListing(item.listing),
+          buyerStatus,
+        };
       });
 
       return {

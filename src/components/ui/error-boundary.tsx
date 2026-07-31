@@ -4,6 +4,7 @@ import React, { Component, ErrorInfo, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
+import posthog from "posthog-js";
 
 interface Props {
   children: ReactNode;
@@ -27,6 +28,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
+    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+      posthog.captureException(error, {
+        componentStack: errorInfo.componentStack ?? undefined,
+      });
+    }
   }
 
   render(): ReactNode {

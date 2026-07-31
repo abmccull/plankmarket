@@ -5,8 +5,13 @@ import { userPreferences } from "@/server/db/schema/user-preferences";
 import { notifications } from "@/server/db/schema/notifications";
 import { users } from "@/server/db/schema/users";
 import { eq, and, sql } from "drizzle-orm";
-import { resend } from "@/lib/email/client";
+import { sendEmailOrThrow } from "@/lib/email/delivery";
+import { buildEmailIdempotencyKey } from "@/lib/email/delivery-policy";
+import { env } from "@/env";
 import { escapeHtml } from "@/lib/utils";
+import { isListingVisibleToBuyers } from "@/lib/listing-freshness";
+import { isListingTerritoryVisibleToViewer } from "@/server/security/listing-visibility";
+import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 
 export const preferenceMatchAlerts = inngest.createFunction(
   {
@@ -15,7 +20,7 @@ export const preferenceMatchAlerts = inngest.createFunction(
   },
   { event: "listing/created" },
   async ({ event, step }) => {
-    const { listingId } = event.data as { listingId: string };
+    const { listingId } = event.data;
 
     const listing = await step.run("fetch-listing", async () => {
       return db.query.listings.findFirst({
@@ -28,9 +33,10 @@ export const preferenceMatchAlerts = inngest.createFunction(
       });
     });
 
-    if (!listing || listing.status !== "active") {
+    if (!listing || !isListingVisibleToBuyers(listing)) {
       return { skipped: true, reason: "Listing not found or not active" };
     }
+    const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
 
     const matchingBuyers = await step.run("find-matching-buyers", async () => {
       // Fetch all buyer preferences
@@ -44,6 +50,9 @@ export const preferenceMatchAlerts = inngest.createFunction(
           preferredRadiusMiles: userPreferences.preferredRadiusMiles,
           buyerEmail: users.email,
           buyerName: users.name,
+          buyerRole: users.role,
+          buyerVerificationStatus: users.verificationStatus,
+          buyerBusinessState: users.businessState,
         })
         .from(userPreferences)
         .innerJoin(users, eq(userPreferences.userId, users.id))
@@ -58,9 +67,20 @@ export const preferenceMatchAlerts = inngest.createFunction(
         );
 
       // Apply price range and radius filters in-process
-      const listingPrice = Number(listing.askPricePerSqFt);
+      const listingPrice = directPurchaseUnitPrice;
 
       return allBuyerPrefs.filter((pref) => {
+        if (
+          !isListingTerritoryVisibleToViewer(listing, {
+            id: pref.userId,
+            role: pref.buyerRole,
+            verificationStatus: pref.buyerVerificationStatus,
+            businessState: pref.buyerBusinessState,
+          })
+        ) {
+          return false;
+        }
+
         // Price range filter
         if (
           pref.priceMinPerSqFt !== null &&
@@ -110,9 +130,9 @@ export const preferenceMatchAlerts = inngest.createFunction(
       async () => {
         let notifCount = 0;
         let emailCount = 0;
+        const failures: unknown[] = [];
 
-        const appUrl =
-          process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const appUrl = env.NEXT_PUBLIC_APP_URL;
         const listingUrl = `${appUrl}/listings/${listing.slug ?? listing.id}`;
 
         for (const buyer of matchingBuyers) {
@@ -122,21 +142,36 @@ export const preferenceMatchAlerts = inngest.createFunction(
           }
 
           try {
-            // Create in-app notification
-            await db.insert(notifications).values({
-              userId: buyer.userId,
-              type: "listing_match",
-              title: "New listing matches your preferences",
-              message: `A new ${escapeHtml(listing.materialType.replace("_", " "))} listing "${escapeHtml(listing.title)}" is available for $${Number(listing.askPricePerSqFt).toFixed(2)}/sq ft.`,
-              data: {
-                listingId: listing.id,
-                listingSlug: listing.slug,
-                materialType: listing.materialType,
-                askPricePerSqFt: Number(listing.askPricePerSqFt),
-              },
-            });
-            notifCount++;
+            const existingNotification = await db
+              .select({ id: notifications.id })
+              .from(notifications)
+              .where(
+                and(
+                  eq(notifications.userId, buyer.userId),
+                  eq(notifications.type, "listing_match"),
+                  sql`${notifications.data}->>'listingId' = ${listing.id}`,
+                ),
+              )
+              .limit(1);
+
+            if (existingNotification.length === 0) {
+              await db.insert(notifications).values({
+                userId: buyer.userId,
+                type: "listing_match",
+                title: "New listing matches your preferences",
+                message: `A new ${escapeHtml(listing.materialType.replace("_", " "))} listing "${escapeHtml(listing.title)}" is available for $${directPurchaseUnitPrice.toFixed(2)}/sq ft direct purchase.`,
+                data: {
+                  listingId: listing.id,
+                  listingSlug: listing.slug,
+                  materialType: listing.materialType,
+                  askPricePerSqFt: Number(listing.askPricePerSqFt),
+                  directPurchasePricePerSqFt: directPurchaseUnitPrice,
+                },
+              });
+              notifCount++;
+            }
           } catch (notifError) {
+            failures.push(notifError);
             console.error(
               `Failed to create notification for buyer ${buyer.userId}:`,
               notifError
@@ -145,11 +180,18 @@ export const preferenceMatchAlerts = inngest.createFunction(
 
           try {
             // Send email notification
-            await resend.emails.send({
-              from: "PlankMarket <noreply@plankmarket.com>",
-              to: buyer.buyerEmail,
-              subject: `New listing matches your preferences: ${escapeHtml(listing.title)}`,
-              html: `
+            await sendEmailOrThrow({
+              category: "preference_match_alert",
+              idempotencyKey: buildEmailIdempotencyKey(
+                "preference_match_alert",
+                listing.id,
+                buyer.userId,
+              ),
+              message: {
+                from: env.EMAIL_FROM,
+                to: buyer.buyerEmail,
+                subject: `New listing matches your preferences: ${escapeHtml(listing.title)}`,
+                html: `
                 <p>Hi ${escapeHtml(buyer.buyerName ?? "")},</p>
                 <p>A new listing that matches your material preferences just went live on PlankMarket.</p>
                 <table style="border-collapse:collapse;width:100%;max-width:480px;">
@@ -163,7 +205,7 @@ export const preferenceMatchAlerts = inngest.createFunction(
                   </tr>
                   <tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Price</td>
-                    <td style="padding:8px 0;">$${Number(listing.askPricePerSqFt).toFixed(2)}/sq ft</td>
+                    <td style="padding:8px 0;">$${directPurchaseUnitPrice.toFixed(2)}/sq ft direct purchase</td>
                   </tr>
                   <tr>
                     <td style="padding:8px 0;font-weight:bold;color:#555;">Total Available</td>
@@ -196,17 +238,26 @@ export const preferenceMatchAlerts = inngest.createFunction(
                 <br/><br/>
                 <p style="color:#888;font-size:12px;">
                   You're receiving this because this listing matches your buyer preferences on PlankMarket.
-                  <a href="${appUrl}/buyer/preferences">Manage your preferences</a>.
+                  <a href="${appUrl}/preferences">Manage your preferences</a>.
                 </p>
               `,
+              },
             });
             emailCount++;
           } catch (emailError) {
+            failures.push(emailError);
             console.error(
               `Failed to send preference match email to buyer ${buyer.userId}:`,
               emailError
             );
           }
+        }
+
+        if (failures.length > 0) {
+          throw new AggregateError(
+            failures,
+            "One or more preference alerts could not be delivered",
+          );
         }
 
         return { notifCount, emailCount };

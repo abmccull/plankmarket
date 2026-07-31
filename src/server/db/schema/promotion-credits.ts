@@ -4,6 +4,7 @@ import {
   varchar,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { money } from "../custom-types";
 import { users } from "./users";
@@ -20,6 +21,7 @@ export const promotionCredits = pgTable(
     source: varchar("source", { length: 30 })
       .notNull()
       .default("subscription"), // "subscription" | "admin_grant" | "refund"
+    stripeInvoiceId: varchar("stripe_invoice_id", { length: 255 }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -28,6 +30,9 @@ export const promotionCredits = pgTable(
   (table) => [
     index("promotion_credits_user_id_idx").on(table.userId),
     index("promotion_credits_expires_at_idx").on(table.expiresAt),
+    uniqueIndex("promotion_credits_stripe_invoice_id_unique_idx").on(
+      table.stripeInvoiceId,
+    ),
   ]
 );
 

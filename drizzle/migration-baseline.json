@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "baselineRequired": true,
+  "knownMissingJournalSql": [
+    "0000_amusing_domino.sql",
+    "0002_yummy_wallop.sql",
+    "0003_absent_retro_girl.sql",
+    "0004_material_mattie_franklin.sql",
+    "0005_amused_drax.sql",
+    "0006_messy_garia.sql",
+    "0007_brief_domino.sql"
+  ],
+  "knownUnjournaledSql": [
+    "0003_add_listing_slugs.sql",
+    "0003_backfill_slugs.sql",
+    "0010_fee_verification_hardening.sql",
+    "0011_relax_users_registration_constraints.sql",
+    "0013_pro_fixes.sql",
+    "0014_auth_data_hardening.sql",
+    "0015_order_financial_reconciliation.sql",
+    "0016_shipping_booking_evidence.sql",
+    "0017_webhook_inbox_idempotency.sql",
+    "0018_progressive_verification_drafts.sql",
+    "0019_listing_freshness_trust.sql",
+    "0020_seller_commerce_preferences.sql",
+    "0021_selling_rules_foundation.sql",
+    "0022_sample_requests.sql",
+    "0023_order_freight_funding.sql",
+    "0024_marketplace_control_plane.sql",
+    "0025_inventory_integrations.sql",
+    "0026_tax_readiness.sql"
+  ],
+  "forwardMigrations": [
+    "0014_auth_data_hardening.sql",
+    "0015_order_financial_reconciliation.sql",
+    "0016_shipping_booking_evidence.sql",
+    "0017_webhook_inbox_idempotency.sql",
+    "0018_progressive_verification_drafts.sql",
+    "0019_listing_freshness_trust.sql",
+    "0020_seller_commerce_preferences.sql",
+    "0021_selling_rules_foundation.sql",
+    "0022_sample_requests.sql",
+    "0023_order_freight_funding.sql",
+    "0024_marketplace_control_plane.sql",
+    "0025_inventory_integrations.sql",
+    "0026_tax_readiness.sql"
+  ]
+}

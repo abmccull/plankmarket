@@ -6,7 +6,12 @@
 import { describe, it, expect } from "vitest";
 import {
   VALID_STATUS_TRANSITIONS,
+  canApplyPaymentIntentCanceled,
+  canApplyPaymentIntentFailed,
+  canApplyPaymentIntentProcessing,
+  canApplyPaymentIntentSucceeded,
   canSellerUpdateOrderStatus,
+  isStripePaymentIntentCancelable,
   isValidTransition,
 } from "../order-transitions";
 
@@ -165,5 +170,79 @@ describe("canSellerUpdateOrderStatus", () => {
         paymentStatus: "pending",
       }),
     ).toBe(false);
+  });
+});
+
+const basePaymentState = {
+  orderStatus: "pending",
+  paymentStatus: "pending",
+  storedPaymentIntentId: "pi_expected",
+  eventPaymentIntentId: "pi_expected",
+  inventoryReleasedAt: null,
+};
+
+describe("PaymentIntent transition guards", () => {
+  it("accepts a matching success only while the pending inventory is reserved", () => {
+    expect(canApplyPaymentIntentSucceeded(basePaymentState)).toBe(true);
+    expect(
+      canApplyPaymentIntentSucceeded({
+        ...basePaymentState,
+        inventoryReleasedAt: new Date(),
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects success from a different PaymentIntent", () => {
+    expect(
+      canApplyPaymentIntentSucceeded({
+        ...basePaymentState,
+        eventPaymentIntentId: "pi_unrelated",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not let late events regress terminal or captured orders", () => {
+    expect(
+      canApplyPaymentIntentFailed({
+        ...basePaymentState,
+        paymentStatus: "succeeded",
+      }),
+    ).toBe(false);
+    expect(
+      canApplyPaymentIntentProcessing({
+        ...basePaymentState,
+        orderStatus: "cancelled",
+      }),
+    ).toBe(false);
+    expect(
+      canApplyPaymentIntentCanceled({
+        ...basePaymentState,
+        paymentStatus: "partially_refunded",
+      }),
+    ).toBe(false);
+  });
+
+  it("treats failed attempts as retryable until explicit cancellation", () => {
+    expect(
+      canApplyPaymentIntentProcessing({
+        ...basePaymentState,
+        paymentStatus: "failed",
+      }),
+    ).toBe(true);
+    expect(
+      canApplyPaymentIntentSucceeded({
+        ...basePaymentState,
+        paymentStatus: "failed",
+      }),
+    ).toBe(true);
+  });
+
+  it("allows only Stripe statuses that can be safely cancelled", () => {
+    expect(isStripePaymentIntentCancelable("requires_payment_method")).toBe(
+      true,
+    );
+    expect(isStripePaymentIntentCancelable("requires_action")).toBe(true);
+    expect(isStripePaymentIntentCancelable("processing")).toBe(false);
+    expect(isStripePaymentIntentCancelable("succeeded")).toBe(false);
   });
 });

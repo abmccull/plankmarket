@@ -20,6 +20,7 @@ import {
 import { getErrorMessage } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2, ArrowLeft } from "lucide-react";
+import { buildCanonicalAppUrl } from "@/lib/auth/canonical-app-url";
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -44,7 +45,7 @@ export default function ForgotPasswordPage() {
     try {
       const supabase = createClient();
       const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: buildCanonicalAppUrl("/reset-password"),
       });
 
       if (error) {

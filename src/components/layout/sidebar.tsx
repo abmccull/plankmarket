@@ -24,11 +24,13 @@ import {
   Clock,
   FileText,
   FileSpreadsheet,
+  PackageOpen,
   SlidersHorizontal,
   TrendingUp,
   Bot,
   Users,
   Shield,
+  Database,
 } from "lucide-react";
 
 interface SidebarItem {
@@ -43,6 +45,7 @@ const sellerItems: SidebarItem[] = [
   { title: "My Listings", href: "/seller/listings", icon: List },
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
   { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
+  { title: "Inventory Feeds", href: "/seller/inventory", icon: Database },
   { title: "Request Board", href: "/seller/request-board", icon: ClipboardList },
   { title: "Buyer CRM", href: "/seller/crm", icon: Users, badge: "Pro" },
   { title: "Follow-ups", href: "/seller/followups", icon: Clock, badge: "Pro" },
@@ -50,6 +53,7 @@ const sellerItems: SidebarItem[] = [
   { title: "Offers", href: "/offers", icon: Handshake },
   { title: "Messages", href: "/messages", icon: MessageSquare },
   { title: "Orders", href: "/seller/orders", icon: Package },
+  { title: "Samples", href: "/seller/samples", icon: PackageOpen },
   { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
   { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
   { title: "Payments", href: "/seller/payments", icon: CreditCard },
@@ -63,6 +67,7 @@ const buyerItems: SidebarItem[] = [
   { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
   { title: "Offers", href: "/offers", icon: Handshake },
   { title: "Messages", href: "/messages", icon: MessageSquare },
+  { title: "Samples", href: "/buyer/samples", icon: PackageOpen },
   { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
   { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
   { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },

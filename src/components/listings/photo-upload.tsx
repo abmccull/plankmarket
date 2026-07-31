@@ -29,7 +29,6 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const recordUploadMutation = trpc.upload.recordUpload.useMutation();
   const deleteMediaMutation = trpc.upload.deleteMedia.useMutation();
 
   const { startUpload } = useUploadThing("listingImageUploader", {
@@ -37,23 +36,18 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
       if (!files) return;
 
       try {
-        // Record uploads in database
-        const records = await recordUploadMutation.mutateAsync({
-          listingId,
-          files: files.map((file) => ({
-            url: file.url,
-            key: file.key,
-            fileName: file.name,
-            fileSize: file.size,
-            mimeType: file.type,
-          })),
-        });
+        // Upload records are created by UploadThing's signed server callback.
+        // Never send client-asserted URLs or keys back to be trusted.
+        const records = files.map((file) => file.serverData);
+        if (records.some((record) => !record)) {
+          throw new Error("Upload metadata was not confirmed by the server");
+        }
 
         // Add to uploaded images list
         const newImages = records.map((record, index) => ({
-          id: record.id,
-          url: record.url,
-          fileName: record.fileName || "Untitled",
+          id: record!.id,
+          url: record!.url,
+          fileName: record!.fileName || "Untitled",
           sortOrder: uploadedImages.length + index,
         }));
 
@@ -103,9 +97,9 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
         return;
       }
 
-      await startUpload(acceptedFiles);
+      await startUpload(acceptedFiles, { listingId });
     },
-    [uploadedImages.length, startUpload]
+    [listingId, uploadedImages.length, startUpload]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

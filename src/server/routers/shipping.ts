@@ -1,7 +1,8 @@
 import {
   createTRPCRouter,
-  buyerProcedure,
   protectedProcedure,
+  strictProtectedProcedure,
+  strictBuyerProcedure,
 } from "../trpc";
 import {
   getShippingQuotesSchema,
@@ -14,31 +15,45 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { redis } from "@/lib/redis/client";
 import { randomUUID } from "crypto";
+import {
+  applyShippingMarkup,
+  captureCommercialPolicy,
+} from "@/lib/commercial-policy";
+import { resolveSellingTerritoryEligibility } from "@/lib/selling-territory";
+import { assertListingVisibleToBuyer } from "@/server/security/listing-visibility";
+import {
+  addBusinessDays,
+  computePalletsNeeded,
+  formatPriority1Date,
+  formatPriority1DateValue,
+  getNextBusinessDay,
+  getShippingBookingSnapshotKey,
+  normalizeUsZip,
+  parseNmfcCode,
+  resolveListingFreightFunding,
+  resolveUsStateForZip,
+  shippingBookingSnapshotSchema,
+} from "@/server/services/shipping-workflow";
 
-/**
- * Calculate next business day (skip weekends) for pickup date
- */
-function getNextBusinessDay(): Date {
-  const date = new Date();
-  date.setDate(date.getDate() + 1); // Tomorrow
+function listingConditionIsUsed(condition: string): boolean {
+  return ["slight_damage", "returns", "seconds", "remnants", "other"].includes(
+    condition,
+  );
+}
 
-  const dayOfWeek = date.getDay();
-  // If Saturday (6), add 2 days; if Sunday (0), add 1 day
-  if (dayOfWeek === 6) {
-    date.setDate(date.getDate() + 2);
-  } else if (dayOfWeek === 0) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  return date;
+function territoryFailureMessage(
+  territoryDecision: ReturnType<typeof resolveSellingTerritoryEligibility>,
+): string {
+  return territoryDecision.reason === "destination_blocked"
+    ? `This seller is not currently selling to ${territoryDecision.normalizedDestinationState}.`
+    : "This listing's territory settings are incomplete for the selected destination.";
 }
 
 export const shippingRouter = createTRPCRouter({
   // Get shipping quotes for a listing
-  getQuotes: buyerProcedure
+  getQuotes: strictBuyerProcedure
     .input(getShippingQuotesSchema)
     .query(async ({ ctx, input }) => {
-      // Fetch listing with seller relation
       const listing = await ctx.db.query.listings.findFirst({
         where: eq(listings.id, input.listingId),
         with: {
@@ -46,7 +61,10 @@ export const shippingRouter = createTRPCRouter({
             columns: {
               id: true,
               name: true,
+              email: true,
+              phone: true,
               businessName: true,
+              businessAddress: true,
             },
           },
         },
@@ -67,64 +85,119 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      // Get listing freight data, with manual overrides as fallback
-      const palletWeight = listing.palletWeight ?? input.overridePalletWeight;
-      const palletLength = listing.palletLength ?? input.overridePalletLength;
-      const palletWidth = listing.palletWidth ?? input.overridePalletWidth;
-      const palletHeight = listing.palletHeight ?? input.overridePalletHeight;
-      const locationZip = listing.locationZip ?? input.overrideOriginZip;
-      const { freightClass, nmfcCode, totalPallets, sqFtPerBox, boxesPerPallet } = listing;
+      assertListingVisibleToBuyer(listing);
 
-      // Check if required freight data is still missing after overrides
+      let destinationState: string;
+      try {
+        destinationState = resolveUsStateForZip(input.destinationZip);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Enter a valid US shipping ZIP code.",
+        });
+      }
+      const territoryDecision = resolveSellingTerritoryEligibility({
+        destinationState,
+        mode: listing.territoryMode,
+        allowedStates: listing.allowedDestinationStates,
+      });
+      if (!territoryDecision.eligible) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: territoryFailureMessage(territoryDecision),
+        });
+      }
+
+      const {
+        palletWeight,
+        palletLength,
+        palletWidth,
+        palletHeight,
+        locationZip,
+        locationCity,
+        locationState,
+        freightClass,
+        nmfcCode,
+        totalPallets,
+        sqFtPerBox,
+        boxesPerPallet,
+      } = listing;
+
       if (
         !palletWeight ||
         !palletLength ||
         !palletWidth ||
         !palletHeight ||
-        !locationZip
+        !locationZip ||
+        !locationCity ||
+        !locationState ||
+        !freightClass ||
+        !totalPallets ||
+        !sqFtPerBox ||
+        !boxesPerPallet ||
+        !listing.seller.businessAddress ||
+        !listing.seller.phone
       ) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message:
-            "Listing does not have complete freight information. Please fill in the missing shipping details.",
+            "The seller must complete this listing's freight and pickup information before checkout.",
         });
       }
 
-      // Calculate pallets needed
-      const sqFtPerPallet = (sqFtPerBox ?? 20) * (boxesPerPallet ?? 30);
-      let palletsNeeded = Math.ceil(input.quantitySqFt / sqFtPerPallet);
+      let palletsNeeded: number;
+      let originZip: string;
+      let destinationZip: string;
+      try {
+        palletsNeeded = computePalletsNeeded({
+          quantitySqFt: input.quantitySqFt,
+          sqFtPerBox,
+          boxesPerPallet,
+          totalPallets,
+        });
+        originZip = normalizeUsZip(locationZip);
+        destinationZip = normalizeUsZip(input.destinationZip);
+      } catch (error) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Listing freight information is invalid.",
+        });
+      }
 
-      // Clamp to min 1, max listing.totalPallets
-      palletsNeeded = Math.max(1, Math.min(palletsNeeded, totalPallets ?? 1));
-
-      // Build next-business-day pickup date
-      const pickupDate = getNextBusinessDay();
+      const now = new Date();
+      const pickupDate = getNextBusinessDay(now);
       const pickupDateISO = pickupDate.toISOString();
-
-      // Call priority1.getRates() with pallet items
-      const items = Array.from({ length: palletsNeeded }, () => ({
+      const nmfc = parseNmfcCode(nmfcCode);
+      const rateItem = {
         freightClass: freightClass ?? "125",
         packagingType: "Pallet",
-        units: 1,
+        units: palletsNeeded,
         pieces: 1,
-        totalWeight: palletWeight,
+        totalWeight: palletWeight * palletsNeeded,
         length: palletLength,
         width: palletWidth,
         height: palletHeight,
-        isStackable: true,
+        description: `${listing.title} - Flooring`,
+        isStackable: false,
         isHazardous: false,
-        isUsed: false,
+        isUsed: listingConditionIsUsed(listing.condition),
         isMachinery: false,
-        ...(nmfcCode ? { nmfcItemCode: nmfcCode } : {}),
-      }));
+        ...(nmfc ?? {}),
+      };
 
       let ratesResponse;
       try {
         ratesResponse = await priority1.getRates({
-          originZipCode: locationZip,
-          destinationZipCode: input.destinationZip,
+          originZipCode: originZip,
+          destinationZipCode: destinationZip,
           pickupDate: pickupDateISO,
-          items,
+          items: [rateItem],
         });
       } catch (error) {
         console.error("Failed to fetch shipping rates from Priority1:", error);
@@ -134,23 +207,130 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      // Apply 25% margin and build internal quotes with carrierRate
-      const SHIPPING_MARGIN = 1.25;
-      const allQuotes = ratesResponse.rateQuotes.map((quote) => {
+      const allQuotes = (ratesResponse.rateQuotes ?? []).flatMap((quote) => {
         const carrierRate = quote.rateQuoteDetail.total;
-        const shippingPrice = Math.round(carrierRate * SHIPPING_MARGIN * 100) / 100;
+        if (
+          !quote.id ||
+          !quote.carrierName ||
+          !quote.carrierCode ||
+          !Number.isFinite(carrierRate) ||
+          carrierRate < 0 ||
+          !Number.isInteger(quote.transitDays) ||
+          quote.transitDays < 0
+        ) {
+          return [];
+        }
 
-        return {
+        const shippingPrice = applyShippingMarkup(carrierRate);
+        const freightFunding = resolveListingFreightFunding({
+          listing: {
+            freightPaymentMode: listing.freightPaymentMode,
+            sellerFreightStates: listing.sellerFreightStates,
+            freightDropCharge: listing.freightDropCharge,
+          },
+          fullFreightCharge: shippingPrice,
+          destinationState,
+        });
+        const quoteExpiresAt = quote.expirationDate
+          ? new Date(quote.expirationDate)
+          : new Date(now.getTime() + 30 * 60 * 1000);
+        if (
+          Number.isNaN(quoteExpiresAt.getTime()) ||
+          quoteExpiresAt.getTime() <= now.getTime()
+        ) {
+          return [];
+        }
+        const estimatedDeliveryDate = quote.deliveryDate
+          ? new Date(quote.deliveryDate)
+          : addBusinessDays(pickupDate, quote.transitDays);
+        if (Number.isNaN(estimatedDeliveryDate.getTime())) {
+          return [];
+        }
+        const estimatedDeliveryWindowDate =
+          formatPriority1DateValue(estimatedDeliveryDate);
+        if (estimatedDeliveryWindowDate < formatPriority1Date(pickupDate)) {
+          return [];
+        }
+        const estimatedDelivery = estimatedDeliveryDate.toISOString();
+        const quoteToken = randomUUID();
+        const snapshot = shippingBookingSnapshotSchema.parse({
+          version: 1,
           quoteId: quote.id,
-          quoteToken: randomUUID(),
+          listingId: input.listingId,
+          buyerId: ctx.user.id,
+          quantitySqFt: input.quantitySqFt,
+          destinationZip,
+          carrierName: quote.carrierName,
+          carrierScac: quote.carrierCode,
+          carrierRate,
+          shippingPrice,
+          commercialPolicy: captureCommercialPolicy(now),
+          transitDays: quote.transitDays,
+          quoteExpiresAt: quoteExpiresAt.toISOString(),
+          originLocation: {
+            address: {
+              addressLine1: listing.seller.businessAddress!,
+              city: locationCity,
+              state: locationState,
+              postalCode: originZip,
+              country: "US",
+            },
+            contact: {
+              companyName: listing.seller.businessName || listing.seller.name,
+              contactName: listing.seller.name,
+              phoneNumber: listing.seller.phone!,
+              email: listing.seller.email,
+            },
+          },
+          lineItems: [
+            {
+              freightClass,
+              packagingType: "Pallet",
+              units: palletsNeeded,
+              pieces: 1,
+              totalWeight: palletWeight * palletsNeeded,
+              length: palletLength,
+              width: palletWidth,
+              height: palletHeight,
+              description: `${listing.title} - Flooring`,
+              isStackable: false,
+              isHazardous: false,
+              isUsed: listingConditionIsUsed(listing.condition),
+              ...(nmfc ?? {}),
+            },
+          ],
+          pickupWindow: {
+            date: formatPriority1Date(pickupDate),
+            startTime: "08:00",
+            endTime: "17:00",
+          },
+          deliveryWindow: {
+            date: estimatedDeliveryWindowDate,
+            startTime: "08:00",
+            endTime: "17:00",
+          },
+        });
+
+        return [{
+          quoteId: quote.id,
+          quoteToken,
           carrierName: quote.carrierName,
           carrierScac: quote.carrierCode,
           shippingPrice,
+          buyerFreightCharge: freightFunding.buyerFreightCharge,
+          sellerFreightContribution:
+            freightFunding.sellerFreightContribution,
+          freightFundingMode: freightFunding.appliedMode,
+          freightFundingReason: freightFunding.reason,
+          appliedBuyerDropCharge:
+            freightFunding.appliedBuyerDropCharge,
+          destinationState,
           carrierRate,
           transitDays: quote.transitDays,
-          estimatedDelivery: quote.deliveryDate,
-          quoteExpiresAt: quote.expirationDate,
-        };
+          estimatedDelivery,
+          quoteExpiresAt: quoteExpiresAt.toISOString(),
+          snapshot,
+        }];
       });
 
       // Select top 3: cheapest, fastest, and best value middle option
@@ -174,56 +354,67 @@ export const shippingRouter = createTRPCRouter({
       const topQuotes = Array.from(selectedMap.values())
         .sort((a, b) => a.shippingPrice - b.shippingPrice);
 
-      // Cache ALL quotes in Redis (not just top 3) for server-side verification
-      // This enables order creation to verify any selected quote
       try {
         await Promise.all(
-          allQuotes.map((quote) =>
+          topQuotes.map((quote) => {
+            const secondsUntilProviderExpiry = Math.max(
+              1,
+              Math.floor(
+                (new Date(quote.quoteExpiresAt).getTime() - Date.now()) / 1000,
+              ),
+            );
+            const ttlSeconds = Math.min(1800, secondsUntilProviderExpiry);
+            const cachedQuote = JSON.stringify({
+              quoteId: quote.quoteId,
+              quoteToken: quote.quoteToken,
+              carrierRate: quote.carrierRate,
+              shippingPrice: quote.shippingPrice,
+              freightFundingMode: quote.freightFundingMode,
+              buyerFreightCharge: quote.buyerFreightCharge,
+              sellerFreightContribution:
+                quote.sellerFreightContribution,
+              freightFundingReason: quote.freightFundingReason,
+              appliedBuyerDropCharge:
+                quote.appliedBuyerDropCharge,
+              carrierName: quote.carrierName,
+              carrierScac: quote.carrierScac,
+              transitDays: quote.transitDays,
+              estimatedDelivery: quote.estimatedDelivery,
+              quoteExpiresAt: quote.quoteExpiresAt,
+              listingId: input.listingId,
+              buyerId: ctx.user.id,
+              quantitySqFt: input.quantitySqFt,
+              destinationZip,
+              destinationState: quote.destinationState,
+            });
+
+            return (
             Promise.all([
               redis.set(
                 `shipping-quote-token:${quote.quoteToken}`,
-                JSON.stringify({
-                  quoteId: quote.quoteId,
-                  quoteToken: quote.quoteToken,
-                  carrierRate: quote.carrierRate,
-                  shippingPrice: quote.shippingPrice,
-                  carrierName: quote.carrierName,
-                  carrierScac: quote.carrierScac,
-                  transitDays: quote.transitDays,
-                  estimatedDelivery: quote.estimatedDelivery,
-                  quoteExpiresAt: quote.quoteExpiresAt,
-                  listingId: input.listingId,
-                  buyerId: ctx.user.id,
-                  quantitySqFt: input.quantitySqFt,
-                  destinationZip: input.destinationZip,
-                }),
-                { ex: 1800 }, // 30 minutes TTL
+                cachedQuote,
+                { ex: ttlSeconds },
               ),
-              // Deprecated fallback path for older clients still posting selectedQuoteId.
               redis.set(
                 `shipping-quote:${quote.quoteId}`,
-                JSON.stringify({
-                  quoteId: quote.quoteId,
-                  carrierRate: quote.carrierRate,
-                  shippingPrice: quote.shippingPrice,
-                  carrierName: quote.carrierName,
-                  carrierScac: quote.carrierScac,
-                  transitDays: quote.transitDays,
-                  estimatedDelivery: quote.estimatedDelivery,
-                  quoteExpiresAt: quote.quoteExpiresAt,
-                  listingId: input.listingId,
-                  buyerId: ctx.user.id,
-                  quantitySqFt: input.quantitySqFt,
-                  destinationZip: input.destinationZip,
-                }),
-                { ex: 1800 },
+                cachedQuote,
+                { ex: ttlSeconds },
+              ),
+              redis.set(
+                getShippingBookingSnapshotKey(quote.quoteId),
+                JSON.stringify(quote.snapshot),
+                { ex: secondsUntilProviderExpiry },
               ),
             ])
-          )
+            );
+          }),
         );
       } catch (error) {
-        // Log cache error but don't fail the request
         console.error("Failed to cache shipping quotes in Redis:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Unable to secure shipping quotes. Please try again.",
+        });
       }
 
       // Return top 3 quotes WITHOUT carrierRate (internal cost stays server-side)
@@ -233,6 +424,9 @@ export const shippingRouter = createTRPCRouter({
         carrierName: quote.carrierName,
         carrierScac: quote.carrierScac,
         shippingPrice: quote.shippingPrice,
+        buyerFreightCharge: quote.buyerFreightCharge,
+        sellerFreightContribution: quote.sellerFreightContribution,
+        freightFundingMode: quote.freightFundingMode,
         transitDays: quote.transitDays,
         estimatedDelivery: quote.estimatedDelivery,
         quoteExpiresAt: quote.quoteExpiresAt,
@@ -257,6 +451,8 @@ export const shippingRouter = createTRPCRouter({
         ),
         columns: {
           id: true,
+          status: true,
+          trackingNumber: true,
         },
       });
 
@@ -277,16 +473,25 @@ export const shippingRouter = createTRPCRouter({
         return null;
       }
 
-      // Return shipment data
+      const canSeeFreightDocuments =
+        ctx.user.role === "admin" ||
+        ctx.user.role === "seller" ||
+        order.status === "delivered";
+
+      // Tracking milestones are participant-visible. Provider internals and
+      // freight documents stay hidden from buyers until identity release.
       return {
         status: shipment.status,
         carrierName: shipment.carrierName,
         carrierScac: shipment.carrierScac,
         proNumber: shipment.proNumber,
-        priority1ShipmentId: shipment.priority1ShipmentId,
-        bolUrl: shipment.bolUrl,
-        labelUrl: shipment.labelUrl,
-        deliveryReceiptUrl: shipment.deliveryReceiptUrl,
+        priority1ShipmentId:
+          ctx.user.role === "admin" ? shipment.priority1ShipmentId : null,
+        bolUrl: canSeeFreightDocuments ? shipment.bolUrl : null,
+        labelUrl: canSeeFreightDocuments ? shipment.labelUrl : null,
+        deliveryReceiptUrl: canSeeFreightDocuments
+          ? shipment.deliveryReceiptUrl
+          : null,
         trackingEvents: shipment.trackingEvents,
         dispatchedAt: shipment.dispatchedAt,
         deliveredAt: shipment.deliveredAt,
@@ -295,7 +500,7 @@ export const shippingRouter = createTRPCRouter({
     }),
 
   // Get shipping documents (BOL, Delivery Receipt)
-  getDocuments: protectedProcedure
+  getDocuments: strictProtectedProcedure
     .input(
       z.object({
         orderId: z.string().uuid(),
@@ -315,6 +520,8 @@ export const shippingRouter = createTRPCRouter({
         ),
         columns: {
           id: true,
+          status: true,
+          trackingNumber: true,
         },
       });
 
@@ -325,15 +532,42 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      // Fetch shipment to get proNumber
       const shipment = await ctx.db.query.shipments.findFirst({
         where: eq(shipments.orderId, input.orderId),
       });
 
-      if (!shipment || !shipment.proNumber) {
+      if (!shipment) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Shipment not found or PRO number not available",
+          message: "Shipment not found",
+        });
+      }
+
+      const isAdmin = ctx.user.role === "admin";
+      const isSeller = ctx.user.role === "seller";
+      const isDelivered = order.status === "delivered";
+      const canAccessDocument =
+        isAdmin ||
+        (input.documentType === "BillOfLading" && isSeller) ||
+        (input.documentType === "DeliveryReceipt" &&
+          (isSeller || isDelivered));
+      if (!canAccessDocument) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "This freight document is not available for your order role and status.",
+        });
+      }
+
+      const identifier = shipment.proNumber
+        ? { proNumber: shipment.proNumber }
+        : order.trackingNumber
+          ? { bolNumber: order.trackingNumber }
+          : null;
+      if (!identifier) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Shipment does not have a PRO or BOL identifier",
         });
       }
 
@@ -342,12 +576,20 @@ export const shippingRouter = createTRPCRouter({
         const documentsResponse = await priority1.getDocuments({
           shipmentImageTypeId: input.documentType,
           imageFormatTypeId: "PDF",
-          proNumber: shipment.proNumber,
+          ...identifier,
         });
 
+        if (!documentsResponse.imageUrl) {
+          throw new Error("Priority1 did not return a document URL");
+        }
         return { imageUrl: documentsResponse.imageUrl };
       } catch (error) {
-        console.error("Failed to fetch shipping document from Priority1:", error);
+        if (error instanceof TRPCError) throw error;
+        console.error("Failed to fetch shipping document from Priority1", {
+          orderId: input.orderId,
+          documentType: input.documentType,
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Unable to fetch shipping document. Please try again later.",

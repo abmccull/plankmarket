@@ -1,28 +1,14 @@
 import { inngest } from "../client";
 import { db } from "@/server/db";
 import { users, listings, orders } from "@/server/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { sendMilestoneCongratsEmail } from "@/lib/email/send";
-
-interface ListingCreatedEvent {
-  data: {
-    listingId: string;
-    sellerId: string;
-  };
-}
-
-interface OrderConfirmedEvent {
-  data: {
-    orderId: string;
-    buyerId: string;
-  };
-}
 
 export const firstListingCongrats = inngest.createFunction(
   { id: "first-listing-congrats", name: "First Listing Congratulation Email" },
   { event: "listing/created" },
   async ({ event, step }) => {
-    const { sellerId } = event.data as ListingCreatedEvent["data"];
+    const { listingId, sellerId } = event.data;
 
     const shouldSend = await step.run("check-first-listing", async () => {
       const [count] = await db
@@ -47,6 +33,7 @@ export const firstListingCongrats = inngest.createFunction(
           to: seller.email,
           name: seller.name,
           milestone: "first_listing",
+          idempotencyKey: `first-listing-${listingId}`,
         });
       }
     });
@@ -59,13 +46,21 @@ export const firstPurchaseCongrats = inngest.createFunction(
   { id: "first-purchase-congrats", name: "First Purchase Congratulation Email" },
   { event: "order/confirmed" },
   async ({ event, step }) => {
-    const { buyerId } = event.data as OrderConfirmedEvent["data"];
+    const { orderId, buyerId } = event.data;
 
     const shouldSend = await step.run("check-first-purchase", async () => {
       const [count] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(orders)
-        .where(eq(orders.buyerId, buyerId));
+        .where(
+          and(
+            eq(orders.buyerId, buyerId),
+            inArray(orders.paymentStatus, [
+              "succeeded",
+              "partially_refunded",
+            ]),
+          ),
+        );
 
       // Only send if this is their first order (count === 1)
       return (count?.count ?? 0) === 1;
@@ -84,6 +79,7 @@ export const firstPurchaseCongrats = inngest.createFunction(
           to: buyer.email,
           name: buyer.name,
           milestone: "first_purchase",
+          idempotencyKey: `first-purchase-${orderId}`,
         });
       }
     });

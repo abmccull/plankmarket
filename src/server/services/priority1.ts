@@ -1,11 +1,33 @@
 import { env } from "@/env";
+import { z } from "zod";
 
 // Base configuration
 const PRIORITY1_BASE_URL = "https://api.priority1.com";
 const REQUEST_TIMEOUT_MS = 30000;
+const PRIORITY1_MAX_ATTEMPTS = 3;
+const PRIORITY1_RETRY_BASE_DELAY_MS = 250;
+const PRIORITY1_RETRY_MAX_DELAY_MS = 2000;
 
 function isDryRun(): boolean {
-  return env.PRIORITY1_DRY_RUN === "true";
+  const enabled = env.PRIORITY1_DRY_RUN === "true";
+  const isLiveProduction =
+    env.NODE_ENV === "production" && process.env.VERCEL_ENV !== "preview";
+
+  if (enabled && isLiveProduction) {
+    throw new Error(
+      "PRIORITY1_DRY_RUN must never be enabled in production",
+    );
+  }
+
+  return enabled;
+}
+
+function getApiKey(): string {
+  if (!env.PRIORITY1_API_KEY) {
+    throw new Error("PRIORITY1_API_KEY is not configured");
+  }
+
+  return env.PRIORITY1_API_KEY;
 }
 
 function getDryRunStatusOverride(): string | undefined {
@@ -165,6 +187,22 @@ function buildDryRunTrackingStatuses(status: string): TrackingStatus[] {
     ];
   }
 
+  if (status === "Canceled" || status === "Exception") {
+    return [
+      {
+        timeStamp: baseTime.toISOString(),
+        city: "Salt Lake City",
+        state: "UT",
+        postalCode: "84101",
+        status,
+        statusReason:
+          status === "Canceled"
+            ? "Shipment cancelled in dry-run mode"
+            : "Simulated carrier exception",
+      },
+    ];
+  }
+
   return [
     {
       timeStamp: baseTime.toISOString(),
@@ -226,6 +264,7 @@ export interface RateQuoteItem {
   isHazardous: boolean;
   isUsed: boolean;
   isMachinery: boolean;
+  description?: string | null;
   nmfcItemCode?: string | null;
   nmfcSubCode?: string | null;
 }
@@ -277,14 +316,23 @@ export interface P1LineItem {
 }
 
 export interface P1PickupWindow {
-  date: string; // "MM/DD/YYYY"
+  date: string; // "yyyy-MM-dd" in the applicable location's timezone
   startTime: string; // "HH:mm"
   endTime: string; // "HH:mm"
 }
 
+export type ShipmentIdentifierType =
+  | "PRO"
+  | "BILL_OF_LADING"
+  | "CUSTOMER_REFERENCE"
+  | "PICKUP"
+  | "PURCHASE_ORDER"
+  | "EXTERNAL"
+  | "SALES_ORDER";
+
 export interface ShipmentIdentifier {
-  type: string;
-  value: string;
+  type: ShipmentIdentifierType;
+  value: string | null;
   primaryForType: boolean;
 }
 
@@ -293,7 +341,7 @@ export interface DispatchRequest {
   destinationLocation: P1Location;
   lineItems: P1LineItem[];
   pickupWindow: P1PickupWindow;
-  deliveryWindow?: P1PickupWindow;
+  deliveryWindow: P1PickupWindow;
   shipmentIdentifiers: ShipmentIdentifier[];
   shipmentEmergencyContact?: { name: string; phoneNumber: string };
   pickupNote?: string | null;
@@ -303,7 +351,7 @@ export interface DispatchRequest {
 }
 
 export interface StatusRequest {
-  identifierType: "BILL_OF_LADING" | "PRO_NUMBER" | "SHIPMENT_ID";
+  identifierType: ShipmentIdentifierType;
   identifierValue: string;
 }
 
@@ -327,9 +375,9 @@ export interface SuggestedClassResponse {
 }
 
 export interface RateQuoteCharge {
-  code: string;
-  description: string;
-  amount: number;
+  code: string | null;
+  description: string | null;
+  amount: number | null;
 }
 
 export interface RateQuoteDetail {
@@ -339,20 +387,26 @@ export interface RateQuoteDetail {
 
 export interface RateQuote {
   id: number;
-  carrierName: string;
-  carrierCode: string;
-  serviceLevel: string;
+  carrierName: string | null;
+  carrierCode: string | null;
+  serviceLevel: string | null;
   transitDays: number;
-  deliveryDate: string;
-  effectiveDate: string;
-  expirationDate: string;
+  deliveryDate: string | null;
+  effectiveDate: string | null;
+  expirationDate: string | null;
   rateQuoteDetail: RateQuoteDetail;
 }
 
 export interface InvalidRateQuote {
-  carrierCode: string;
-  carrierName: string;
-  errorMessages: { severity: string; text: string; source: string }[];
+  carrierCode: string | null;
+  carrierName: string | null;
+  errorMessages: Priority1Message[];
+}
+
+export interface Priority1Message {
+  severity: string | null;
+  text: string | null;
+  source: string | null;
 }
 
 export interface RatesResponse {
@@ -364,35 +418,37 @@ export interface RatesResponse {
 export interface DispatchResponse {
   id: number;
   shipmentIdentifiers: ShipmentIdentifier[];
-  capacityProviderBolUrl: string;
-  capacityProviderPalletLabelUrl: string;
+  capacityProviderBolUrl: string | null;
+  capacityProviderPalletLabelUrl: string | null;
   capacityProviderPalletLabelExtendedUrl: string | null;
   capacityProviderPalletLabelsUrl: string | null;
   pickupNote: string | null;
   estimatedDeliveryDate: string | null;
-  infoMessages?: { severity: string; text: string; source: string }[];
+  infoMessages?: Priority1Message[];
+  shipmentInsurance?: number;
+  totalCost?: number;
 }
 
 export interface TrackingStatus {
   timeStamp: string;
-  addressLineOne?: string;
+  addressLineOne?: string | null;
   addressLineTwo?: string | null;
-  city: string;
-  state: string;
-  postalCode?: string;
-  status: string;
-  statusReason: string;
+  city: string | null;
+  state: string | null;
+  postalCode?: string | null;
+  status: string | null;
+  statusReason: string | null;
 }
 
 export interface P1ShipmentStatus {
   id: number;
-  carrierCode: string;
-  carrierName: string;
-  status: string;
+  carrierCode: string | null;
+  carrierName: string | null;
+  status: string | null;
   actualPickupDate: string | null;
   actualDeliveryDate: string | null;
-  shipmentIdentifiers: ShipmentIdentifier[];
-  trackingStatuses: TrackingStatus[];
+  shipmentIdentifiers: ShipmentIdentifier[] | null;
+  trackingStatuses: TrackingStatus[] | null;
   totalCost: number;
 }
 
@@ -401,7 +457,277 @@ export interface StatusResponse {
 }
 
 export interface DocumentsResponse {
-  imageUrl: string;
+  imageUrl: string | null;
+}
+
+export class Priority1ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = "Priority1ApiError";
+  }
+
+  get retryable(): boolean {
+    return (
+      this.status === undefined ||
+      this.status === 408 ||
+      this.status === 425 ||
+      this.status === 429 ||
+      (this.status ?? 0) >= 500
+    );
+  }
+}
+
+const freightClassSchema = z.enum([
+  "50",
+  "55",
+  "60",
+  "65",
+  "70",
+  "77.5",
+  "85",
+  "92.5",
+  "100",
+  "110",
+  "125",
+  "150",
+  "175",
+  "200",
+  "250",
+  "300",
+  "400",
+  "500",
+]);
+const shipmentIdentifierTypeSchema = z.enum([
+  "PRO",
+  "BILL_OF_LADING",
+  "CUSTOMER_REFERENCE",
+  "PICKUP",
+  "PURCHASE_ORDER",
+  "EXTERNAL",
+  "SALES_ORDER",
+]);
+const nonEmptyStringSchema = z.string().trim().min(1);
+const nullableNonEmptyStringSchema = nonEmptyStringSchema.nullable();
+const optionalNullableNonEmptyStringSchema = nullableNonEmptyStringSchema
+  .optional()
+  .transform((value) => value ?? null);
+const finiteNumberSchema = z.number().finite();
+const nonNegativeNumberSchema = finiteNumberSchema.nonnegative();
+const MIN_PROVIDER_DATE_MS = Date.UTC(2000, 0, 1);
+const MAX_PROVIDER_DATE_MS = Date.UTC(2100, 0, 1);
+const providerDateSchema = nonEmptyStringSchema.refine(
+  (value) => {
+    const timestamp = new Date(value).getTime();
+    return (
+      !Number.isNaN(timestamp) &&
+      timestamp >= MIN_PROVIDER_DATE_MS &&
+      timestamp < MAX_PROVIDER_DATE_MS
+    );
+  },
+  "Invalid or implausible provider date",
+);
+const httpUrlSchema = nonEmptyStringSchema.url().refine(
+  (value) => value.startsWith("https://") || value.startsWith("http://"),
+  "Expected an HTTP(S) URL",
+);
+
+const priority1MessageSchema = z.object({
+  severity: z.string().nullish().transform((value) => value ?? null),
+  text: z.string().nullish().transform((value) => value ?? null),
+  source: z.string().nullish().transform((value) => value ?? null),
+});
+
+const shipmentIdentifierSchema = z.object({
+  type: shipmentIdentifierTypeSchema,
+  value: nullableNonEmptyStringSchema,
+  primaryForType: z.boolean(),
+});
+
+const rateQuoteChargeSchema = z.object({
+  code: optionalNullableNonEmptyStringSchema,
+  description: optionalNullableNonEmptyStringSchema,
+  amount: finiteNumberSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+});
+
+const rateQuoteSchema = z.object({
+  id: z.number().int().positive(),
+  carrierName: optionalNullableNonEmptyStringSchema,
+  carrierCode: optionalNullableNonEmptyStringSchema,
+  serviceLevel: optionalNullableNonEmptyStringSchema,
+  transitDays: z.number().int().nonnegative(),
+  deliveryDate: providerDateSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  effectiveDate: providerDateSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  expirationDate: providerDateSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  rateQuoteDetail: z.object({
+    total: nonNegativeNumberSchema,
+    charges: z
+      .array(rateQuoteChargeSchema)
+      .nullish()
+      .transform((charges) => charges ?? []),
+  }),
+});
+
+const invalidRateQuoteSchema = z.object({
+  carrierCode: optionalNullableNonEmptyStringSchema,
+  carrierName: optionalNullableNonEmptyStringSchema,
+  errorMessages: z
+    .array(priority1MessageSchema)
+    .nullish()
+    .transform((messages) => messages ?? []),
+});
+
+const suggestedClassResponseSchema = z.object({
+  suggestedClass: freightClassSchema,
+});
+
+const ratesResponseSchema = z.object({
+  id: z.number().int().positive(),
+  rateQuotes: z
+    .array(rateQuoteSchema)
+    .nullish()
+    .transform((quotes) => quotes ?? []),
+  invalidRateQuotes: z
+    .array(invalidRateQuoteSchema)
+    .nullish()
+    .transform((quotes) => quotes ?? []),
+});
+
+const dispatchResponseSchema = z.object({
+  id: z.number().int().positive(),
+  shipmentIdentifiers: z
+    .array(shipmentIdentifierSchema)
+    .nullish()
+    .transform((identifiers) => identifiers ?? []),
+  capacityProviderBolUrl: httpUrlSchema
+    .nullish()
+    .transform((value) => value ?? null),
+  capacityProviderPalletLabelUrl: httpUrlSchema
+    .nullish()
+    .transform((value) => value ?? null),
+  capacityProviderPalletLabelExtendedUrl: httpUrlSchema
+    .nullish()
+    .transform((value) => value ?? null),
+  capacityProviderPalletLabelsUrl: httpUrlSchema
+    .nullish()
+    .transform((value) => value ?? null),
+  pickupNote: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  estimatedDeliveryDate: providerDateSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  infoMessages: z
+    .array(priority1MessageSchema)
+    .nullish()
+    .transform((messages) => messages ?? []),
+  shipmentInsurance: nonNegativeNumberSchema.optional(),
+  totalCost: nonNegativeNumberSchema,
+});
+
+const trackingStatusSchema = z.object({
+  timeStamp: providerDateSchema,
+  addressLineOne: z.string().nullish(),
+  addressLineTwo: z.string().nullish(),
+  city: z.string().nullish().transform((value) => value ?? null),
+  state: z.string().nullish().transform((value) => value ?? null),
+  postalCode: z.string().nullish(),
+  status: z.string().nullish().transform((value) => value ?? null),
+  statusReason: z.string().nullish().transform((value) => value ?? null),
+});
+
+const shipmentStatusSchema = z.object({
+  id: z.number().int().positive(),
+  carrierCode: nullableNonEmptyStringSchema
+    .optional()
+    .transform((value) => value ?? null),
+  carrierName: nullableNonEmptyStringSchema
+    .optional()
+    .transform((value) => value ?? null),
+  status: nullableNonEmptyStringSchema
+    .optional()
+    .transform((value) => value ?? null),
+  actualPickupDate: providerDateSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  actualDeliveryDate: providerDateSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+  shipmentIdentifiers: z
+    .array(shipmentIdentifierSchema)
+    .nullish()
+    .transform((identifiers) => identifiers ?? []),
+  trackingStatuses: z
+    .array(trackingStatusSchema)
+    .nullish()
+    .transform((statuses) => statuses ?? []),
+  totalCost: nonNegativeNumberSchema,
+});
+
+const statusResponseSchema = z.object({
+  shipments: z
+    .array(shipmentStatusSchema)
+    .nullish()
+    .transform((shipments) => shipments ?? []),
+});
+
+const documentsResponseSchema = z.object({
+  imageUrl: httpUrlSchema
+    .nullable()
+    .optional()
+    .transform((value) => value ?? null),
+});
+
+const cancelResponseSchema = z.object({
+  id: z.number().int().positive().optional(),
+  pickupNote: z.string().nullish(),
+  shipmentIdentifiers: z
+    .array(shipmentIdentifierSchema)
+    .nullish()
+    .transform((identifiers) => identifiers ?? []),
+  cancellationSuccess: z.literal(true),
+});
+
+function invalidProviderResponse(endpoint: string, detail: string) {
+  return new Priority1ApiError(
+    `Priority1 API returned an invalid response for ${endpoint}: ${detail}`,
+    502,
+  );
+}
+
+function parseProviderResponse<TSchema extends z.ZodType>(
+  endpoint: string,
+  schema: TSchema,
+  payload: unknown,
+): z.output<TSchema> {
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) {
+    const paths = parsed.error.issues
+      .slice(0, 3)
+      .map((issue) => issue.path.join(".") || "response")
+      .join(", ");
+    throw invalidProviderResponse(endpoint, `malformed field(s): ${paths}`);
+  }
+  return parsed.data;
 }
 
 // ============================================================================
@@ -411,10 +737,10 @@ export interface DocumentsResponse {
 /**
  * Internal fetch helper with authentication, timeout, and error handling
  */
-async function priority1Fetch<T>(
+async function priority1FetchOnce(
   endpoint: string,
   body: object
-): Promise<T> {
+): Promise<unknown> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -422,19 +748,19 @@ async function priority1Fetch<T>(
     const response = await fetch(`${PRIORITY1_BASE_URL}${endpoint}`, {
       method: "POST",
       headers: {
-        "X-API-KEY": env.PRIORITY1_API_KEY!,
+        "X-API-KEY": getApiKey(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
+    const responseBody = await response.text();
 
     if (!response.ok) {
       let errorMessage = `Priority1 API error: ${response.status} ${response.statusText}`;
       try {
-        const errorData = (await response.json()) as {
+        const errorData = JSON.parse(responseBody) as {
           message?: string;
           error?: string;
         };
@@ -446,24 +772,77 @@ async function priority1Fetch<T>(
       } catch {
         // If JSON parsing fails, use the generic error message
       }
-      throw new Error(errorMessage);
+      throw new Priority1ApiError(errorMessage, response.status);
     }
 
-    const data = (await response.json()) as T;
-    return data;
+    if (!responseBody.trim()) return undefined;
+    try {
+      return JSON.parse(responseBody) as unknown;
+    } catch {
+      throw invalidProviderResponse(endpoint, "response body is not valid JSON");
+    }
   } catch (error) {
-    clearTimeout(timeoutId);
-
     if (error instanceof Error) {
       if (error.name === "AbortError") {
-        throw new Error(
+        throw new Priority1ApiError(
           `Priority1 API request timeout after ${REQUEST_TIMEOUT_MS}ms`
         );
       }
-      throw error;
+      if (error instanceof Priority1ApiError) {
+        throw error;
+      }
+      throw new Priority1ApiError(
+        `Priority1 API network error: ${error.message}`,
+      );
     }
-    throw new Error("Unknown error calling Priority1 API");
+    throw new Priority1ApiError("Unknown error calling Priority1 API");
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
+
+function getRetryDelayMs(failedAttempt: number): number {
+  const exponentialDelay = Math.min(
+    PRIORITY1_RETRY_MAX_DELAY_MS,
+    PRIORITY1_RETRY_BASE_DELAY_MS * 2 ** (failedAttempt - 1),
+  );
+  // Equal jitter keeps retries bounded while avoiding synchronized retry waves.
+  return Math.round(exponentialDelay / 2 + Math.random() * exponentialDelay / 2);
+}
+
+function waitForRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+/**
+ * Retry only calls that are safe to repeat. Dispatch and cancellation opt out
+ * because Priority1 does not expose an idempotency key for those mutations;
+ * their workflow-level recovery must reconcile provider state first.
+ */
+async function priority1Fetch(
+  endpoint: string,
+  body: object,
+  options: { safeToRetry?: boolean } = {},
+): Promise<unknown> {
+  const safeToRetry = options.safeToRetry !== false;
+  const maxAttempts = safeToRetry ? PRIORITY1_MAX_ATTEMPTS : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await priority1FetchOnce(endpoint, body);
+    } catch (error) {
+      const shouldRetry =
+        error instanceof Priority1ApiError &&
+        error.retryable &&
+        attempt < maxAttempts;
+      if (!shouldRetry) throw error;
+      await waitForRetry(getRetryDelayMs(attempt));
+    }
+  }
+
+  throw new Priority1ApiError(
+    `Priority1 API request exhausted ${maxAttempts} attempt(s)`,
+  );
 }
 
 // ============================================================================
@@ -476,9 +855,14 @@ async function priority1Fetch<T>(
 async function getSuggestedClass(
   request: SuggestedClassRequest
 ): Promise<SuggestedClassResponse> {
-  return priority1Fetch<SuggestedClassResponse>(
-    "/v2/ltl/quotes/suggestedclass",
-    request
+  if (isDryRun()) {
+    return { suggestedClass: "125" };
+  }
+  const endpoint = "/v2/ltl/quotes/suggestedclass";
+  return parseProviderResponse(
+    endpoint,
+    suggestedClassResponseSchema,
+    await priority1Fetch(endpoint, request),
   );
 }
 
@@ -493,7 +877,17 @@ async function getRates(request: RatesRequest): Promise<RatesResponse> {
     );
     return response;
   }
-  return priority1Fetch<RatesResponse>("/v2/ltl/quotes/rates", request);
+  const endpoint = "/v2/ltl/quotes/rates";
+  const response = parseProviderResponse(
+    endpoint,
+    ratesResponseSchema,
+    await priority1Fetch(endpoint, request),
+  );
+  const quoteIds = new Set(response.rateQuotes.map((quote) => quote.id));
+  if (quoteIds.size !== response.rateQuotes.length) {
+    throw invalidProviderResponse(endpoint, "duplicate rate quote IDs");
+  }
+  return response;
 }
 
 /**
@@ -509,8 +903,7 @@ async function dispatch(request: DispatchRequest): Promise<DispatchResponse> {
       id: mockId,
       shipmentIdentifiers: [
         { type: "BILL_OF_LADING", value: bolNumber, primaryForType: true },
-        { type: "PRO_NUMBER", value: `DRY-${mockId}`, primaryForType: true },
-        { type: "SHIPMENT_ID", value: String(mockId), primaryForType: true },
+        { type: "PRO", value: `DRY-${mockId}`, primaryForType: true },
       ],
       capacityProviderBolUrl: `https://dry-run.local/bol/${bolNumber}.pdf`,
       capacityProviderPalletLabelUrl: `https://dry-run.local/label/${mockId}.pdf`,
@@ -521,7 +914,12 @@ async function dispatch(request: DispatchRequest): Promise<DispatchResponse> {
       infoMessages: [{ severity: "INFO", text: "DRY-RUN: No real shipment was created", source: "local" }],
     };
   }
-  return priority1Fetch<DispatchResponse>("/v2/ltl/shipments/dispatch", request);
+  const endpoint = "/v2/ltl/shipments/dispatch";
+  return parseProviderResponse(
+    endpoint,
+    dispatchResponseSchema,
+    await priority1Fetch(endpoint, request, { safeToRetry: false }),
+  );
 }
 
 /**
@@ -540,16 +938,18 @@ async function getStatus(request: StatusRequest): Promise<StatusResponse> {
       override ||
       (phase < 3 ? "Dispatched" : phase < 7 ? "InTransit" : "Delivered");
     const trackingStatuses = buildDryRunTrackingStatuses(status);
+    const pickedUp = status === "InTransit" || status === "Delivered";
+    const delivered = status === "Delivered";
 
     console.log(`[Priority1 DRY-RUN] getStatus(${request.identifierValue}) → ${status}`);
     return {
       shipments: [{
-        id: parseInt(request.identifierValue) || 99000,
+        id: parseInt(request.identifierValue, 10) || 99000,
         carrierCode: "DRY-CARRIER",
         carrierName: "Dry Run Freight Co.",
         status,
-        actualPickupDate: phase >= 3 ? baseTime.toISOString() : null,
-        actualDeliveryDate: phase >= 7 ? new Date(now - 10 * 60 * 1000).toISOString() : null,
+        actualPickupDate: pickedUp ? baseTime.toISOString() : null,
+        actualDeliveryDate: delivered ? new Date(now - 10 * 60 * 1000).toISOString() : null,
         shipmentIdentifiers: [
           { type: request.identifierType, value: request.identifierValue, primaryForType: true },
         ],
@@ -558,7 +958,42 @@ async function getStatus(request: StatusRequest): Promise<StatusResponse> {
       }],
     };
   }
-  return priority1Fetch<StatusResponse>("/v2/ltl/shipments/status", request);
+  const endpoint = "/v2/ltl/shipments/status";
+  const response = parseProviderResponse(
+    endpoint,
+    statusResponseSchema,
+    await priority1Fetch(endpoint, request),
+  );
+  if (response.shipments.length === 0) return response;
+
+  const matchingShipments = response.shipments.filter((shipment) =>
+    shipment.shipmentIdentifiers.some(
+      (identifier) =>
+        identifier.type === request.identifierType &&
+        identifier.value === request.identifierValue,
+    ),
+  );
+  if (matchingShipments.length === 0) {
+    throw invalidProviderResponse(
+      endpoint,
+      "no returned shipment matched the requested tracking identifier",
+    );
+  }
+
+  for (const shipment of matchingShipments) {
+    if (
+      shipment.actualPickupDate &&
+      shipment.actualDeliveryDate &&
+      new Date(shipment.actualPickupDate).getTime() >
+        new Date(shipment.actualDeliveryDate).getTime()
+    ) {
+      throw invalidProviderResponse(
+        endpoint,
+        "actual pickup date is after actual delivery date",
+      );
+    }
+  }
+  return { shipments: matchingShipments };
 }
 
 /**
@@ -570,7 +1005,19 @@ async function cancel(request: CancelRequest): Promise<void> {
     console.log(`[Priority1 DRY-RUN] cancel(${request.id}) → no-op`);
     return;
   }
-  await priority1Fetch<void>("/v2/ltl/shipments/cancel", request);
+  const endpoint = "/v2/ltl/shipments/cancel";
+  const response = await priority1Fetch(endpoint, request, {
+    safeToRetry: false,
+  });
+  if (response === undefined) return;
+
+  const parsed = parseProviderResponse(endpoint, cancelResponseSchema, response);
+  if (parsed.id !== undefined && parsed.id !== request.id) {
+    throw invalidProviderResponse(
+      endpoint,
+      "cancelled shipment ID did not match the request",
+    );
+  }
 }
 
 /**
@@ -585,7 +1032,12 @@ async function getDocuments(
     console.log(`[Priority1 DRY-RUN] getDocuments(${request.shipmentImageTypeId}, ${id}) → placeholder`);
     return { imageUrl: `https://dry-run.local/documents/${request.shipmentImageTypeId}/${id}.pdf` };
   }
-  return priority1Fetch<DocumentsResponse>("/v2/ltl/shipments/images", request);
+  const endpoint = "/v2/ltl/shipments/images";
+  return parseProviderResponse(
+    endpoint,
+    documentsResponseSchema,
+    await priority1Fetch(endpoint, request),
+  );
 }
 
 // ============================================================================
@@ -593,6 +1045,7 @@ async function getDocuments(
 // ============================================================================
 
 export const priority1 = {
+  isDryRun,
   getSuggestedClass,
   getRates,
   dispatch,

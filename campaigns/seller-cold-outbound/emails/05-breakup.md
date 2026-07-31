@@ -44,7 +44,7 @@ Three weeks after the first email. The full cycle is complete. Tuesday morning f
 
 I have sent a few emails about moving surplus flooring through PlankMarket. This is the last one.
 
-The short version: PlankMarket connects manufacturers and distributors with verified retailers looking for closeout, overstock, and discontinued flooring. 2% seller fee. No listing costs. Payout in 3-5 days.
+The short version: PlankMarket connects manufacturers and distributors with verified retailers looking for closeout, overstock, and discontinued flooring. 5% seller fee plus disclosed payment processing. No listing costs.
 
 Three weeks have passed since my first email. If {{company_name}} has closeout inventory in the warehouse, the carrying costs have continued. The recovery value has not gone up.
 

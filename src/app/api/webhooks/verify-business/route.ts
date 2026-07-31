@@ -1,29 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
-import { timingSafeEqual } from "crypto";
-import { db } from "@/server/db";
-import { users, notifications, listings } from "@/server/db/schema";
-import { eq, and } from "drizzle-orm";
-import { verifyBusiness } from "@/server/services/ai-verification";
-import { sendVerificationApprovedEmail } from "@/lib/email/send";
+import { z } from "zod";
+import { getRedisClient } from "@/lib/redis/client";
+import { processBusinessVerification } from "@/server/services/business-verification";
+import {
+  VERIFICATION_WEBHOOK_MAX_BODY_BYTES,
+  VERIFICATION_WEBHOOK_REPLAY_TTL_SECONDS,
+  verificationWebhookReplayKey,
+  verifyVerificationWebhookSignature,
+} from "@/server/security/verification-webhook";
 
-/**
- * Performs constant-time string comparison to prevent timing attacks
- */
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const requestSchema = z.object({
+  userId: z.string().uuid(),
+  submissionId: z.string().uuid(),
+});
+
+const deliveryIdSchema = z.string().uuid();
+
+async function readBoundedBody(
+  request: NextRequest,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array();
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 /**
- * Internal webhook for AI-powered business verification
- * Triggers Claude AI analysis of a user's verification submission
- *
- * Security: Requires x-webhook-secret header to match VERIFICATION_WEBHOOK_SECRET
+ * Compatibility endpoint for trusted internal callers. New submissions use
+ * Inngest, but both paths share the same pending-status/submission-ID CAS and
+ * can only generate evidence for human review. Callers sign
+ * `${x-plankmarket-timestamp}.${rawBody}` with HMAC-SHA256 and provide a
+ * unique UUID in x-plankmarket-delivery-id.
  */
 export async function POST(request: NextRequest) {
   try {
-    // Validate webhook secret
-    const webhookSecret = request.headers.get("x-webhook-secret");
     const expectedSecret = process.env.VERIFICATION_WEBHOOK_SECRET;
 
     if (!expectedSecret) {
@@ -34,149 +64,153 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!webhookSecret || !safeCompare(webhookSecret, expectedSecret)) {
+    if (
+      !request.headers
+        .get("content-type")
+        ?.toLowerCase()
+        .startsWith("application/json")
+    ) {
       return NextResponse.json(
-        { error: { code: "UNAUTHORIZED", message: "Invalid webhook secret" } },
+        {
+          error: {
+            code: "UNSUPPORTED_MEDIA_TYPE",
+            message: "Expected an application/json request",
+          },
+        },
+        { status: 415 },
+      );
+    }
+
+    const declaredLength = Number(request.headers.get("content-length"));
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > VERIFICATION_WEBHOOK_MAX_BODY_BYTES
+    ) {
+      return NextResponse.json(
+        { error: { code: "PAYLOAD_TOO_LARGE", message: "Payload too large" } },
+        { status: 413 },
+      );
+    }
+
+    const rawBody = await readBoundedBody(
+      request,
+      VERIFICATION_WEBHOOK_MAX_BODY_BYTES,
+    );
+    if (!rawBody) {
+      return NextResponse.json(
+        { error: { code: "PAYLOAD_TOO_LARGE", message: "Payload too large" } },
+        { status: 413 },
+      );
+    }
+
+    const timestamp = request.headers.get("x-plankmarket-timestamp");
+    const signature = request.headers.get("x-plankmarket-signature");
+    const deliveryId = deliveryIdSchema.safeParse(
+      request.headers.get("x-plankmarket-delivery-id"),
+    );
+    if (
+      !deliveryId.success ||
+      !verifyVerificationWebhookSignature({
+        secret: expectedSecret,
+        timestamp,
+        signature,
+        body: rawBody,
+      })
+    ) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Invalid webhook signature",
+          },
+        },
         { status: 401 },
       );
     }
 
-    // Parse request body
-    const body = await request.json();
-    const { userId } = body;
-
-    if (!userId || typeof userId !== "string") {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawBody));
+    } catch {
       return NextResponse.json(
         {
           error: {
             code: "BAD_REQUEST",
-            message: "userId is required and must be a string",
+            message: "Request body must be valid UTF-8 JSON",
           },
         },
         { status: 400 },
       );
     }
 
-    // Fetch user from database
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, userId),
-    });
-
-    if (!user) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "NOT_FOUND",
-            message: `User with id ${userId} not found`,
-          },
-        },
-        { status: 404 },
-      );
-    }
-
-    // Validate required fields for verification
-    if (!user.businessName || !user.einTaxId) {
+    const parsed = requestSchema.safeParse(payload);
+    if (!parsed.success) {
       return NextResponse.json(
         {
           error: {
             code: "BAD_REQUEST",
-            message: "User missing required verification fields",
+            message: "A valid userId and submissionId are required",
           },
         },
         { status: 400 },
       );
     }
 
-    // Call AI verification service
-    const verificationResult = await verifyBusiness({
-      businessName: user.businessName,
-      einTaxId: user.einTaxId,
-      businessWebsite: user.businessWebsite,
-      businessLicenseUrl: user.verificationDocUrl,
-      role: user.role,
-      name: user.name,
-      email: user.email,
-      businessAddress: user.businessAddress,
-    });
-
-    // Prepare update data
-    const updateData: {
-      aiVerificationScore: number;
-      aiVerificationNotes: string;
-      verificationStatus: "verified" | "pending";
-      verified: boolean;
-    } = {
-      aiVerificationScore: verificationResult.score,
-      aiVerificationNotes: JSON.stringify(verificationResult),
-      verificationStatus: "pending",
-      verified: false,
-    };
-
-    // Auto-approve only when model marks approved
-    if (verificationResult.approved) {
-      updateData.verificationStatus = "verified";
-      updateData.verified = true;
+    const redis = getRedisClient();
+    const replayKey = verificationWebhookReplayKey(deliveryId.data);
+    let reserved: unknown;
+    try {
+      reserved = await redis.set(replayKey, "processing", {
+        nx: true,
+        ex: VERIFICATION_WEBHOOK_REPLAY_TTL_SECONDS,
+      });
+    } catch (error) {
+      console.error("Verification webhook replay store unavailable", {
+        error: error instanceof Error ? error.name : "UnknownError",
+      });
+      return NextResponse.json(
+        {
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Webhook verification is temporarily unavailable",
+          },
+        },
+        { status: 503 },
+      );
     }
 
-    // Update user record
-    await db.update(users).set(updateData).where(eq(users.id, userId));
+    if (!reserved) {
+      return NextResponse.json(
+        { success: true, replayed: true },
+        { status: 200 },
+      );
+    }
 
-    // Send notification if approved
-    if (verificationResult.approved) {
-      // Auto-promote draft listings to active
-      await db
-        .update(listings)
-        .set({ status: "active" })
-        .where(and(eq(listings.sellerId, userId), eq(listings.status, "draft")));
-
-      await db.insert(notifications).values({
-        userId,
-        type: "system",
-        title: "Business Verified",
-        message:
-          "Your business has been automatically verified. You now have full access to the marketplace.",
+    try {
+      const result = await processBusinessVerification(parsed.data);
+      await redis.set(replayKey, "completed", {
+        ex: VERIFICATION_WEBHOOK_REPLAY_TTL_SECONDS,
       });
-
-      // Send verification approved email (fire-and-forget)
-      sendVerificationApprovedEmail({
-        to: user.email,
-        name: user.name,
-        role: user.role as "buyer" | "seller",
-      }).catch((err) => {
-        console.error("Failed to send verification email:", err);
-      });
-    } else {
-      // Score < 90: notify admins that manual review is needed
-      const admins = await db.query.users.findMany({
-        where: eq(users.role, "admin"),
-      });
-
-      if (admins.length > 0) {
-        await db.insert(notifications).values(
-          admins.map((admin) => ({
-            userId: admin.id,
-            type: "system" as const,
-            title: "Verification Needs Review",
-            message: `${user.name} (${user.businessName}) scored ${verificationResult.score}/100 and needs manual review.`,
-            data: { userId, score: verificationResult.score },
-          })),
-        );
+      return NextResponse.json({ success: true, ...result }, { status: 200 });
+    } catch (error) {
+      // Processing did not complete, so release the reservation and allow the
+      // trusted caller to retry with a newly timestamped signature.
+      try {
+        await redis.del(replayKey);
+      } catch (cleanupError) {
+        console.error("Failed to release verification webhook replay key", {
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.name
+              : "UnknownError",
+        });
       }
+      throw error;
     }
-
-    return NextResponse.json(
-      {
-        success: true,
-        userId,
-        score: verificationResult.score,
-        approved: verificationResult.approved,
-        status: updateData.verificationStatus,
-      },
-      { status: 200 },
-    );
   } catch (error) {
-    console.error("Webhook error:", error);
-
+    console.error("Verification webhook error", {
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json(
       {
         error: {

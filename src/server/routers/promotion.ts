@@ -10,10 +10,35 @@ import {
   cancelPromotionSchema,
 } from "@/lib/validators/promotion";
 import { listings, listingPromotions, promotionCredits } from "../db/schema";
-import { eq, and, sql, desc, gt, inArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { stripe } from "@/lib/stripe";
+import {
+  publicListingColumns,
+  publicMediaColumns,
+  publicSellerColumns,
+  toPublicListing,
+} from "@/server/security/public-data";
+import { publicActiveListingWhere } from "@/server/security/listing-visibility";
+import {
+  prepareCancelledPromotionRefund,
+  prepareExpiredPromotionRefund,
+  PromotionNotActiveError,
+  reconcilePromotionRefundResult,
+} from "@/server/services/promotion-refund-reconciliation";
 
 // Pricing matrix: tier × duration → price in dollars
 const PRICING: Record<string, Record<number, number>> = {
@@ -75,7 +100,10 @@ export const promotionRouter = createTRPCRouter({
         });
       }
 
-      if (!ctx.user.verified) {
+      if (
+        ctx.user.role !== "admin" &&
+        ctx.user.verificationStatus !== "verified"
+      ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Only verified sellers can promote listings",
@@ -342,68 +370,44 @@ export const promotionRouter = createTRPCRouter({
   cancel: strictSellerProcedure
     .input(cancelPromotionSchema)
     .mutation(async ({ ctx, input }) => {
-      const promotion = await ctx.db.query.listingPromotions.findFirst({
-        where: and(
-          eq(listingPromotions.id, input.promotionId),
-          eq(listingPromotions.sellerId, ctx.user.id)
-        ),
-      });
-
-      if (!promotion) {
+      const now = new Date();
+      let preparation;
+      try {
+        preparation = await prepareCancelledPromotionRefund({
+          promotionId: input.promotionId,
+          cancelledAt: now,
+          expectedSellerId: ctx.user.id,
+          database: ctx.db,
+        });
+      } catch (error) {
+        if (error instanceof PromotionNotActiveError) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error.message,
+            cause: error,
+          });
+        }
+        throw error;
+      }
+      if (!preparation) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Promotion not found",
         });
       }
-
-      if (!promotion.isActive) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This promotion is not active",
-        });
-      }
-
-      // Calculate pro-rata refund
-      const now = new Date();
-      const totalMs =
-        new Date(promotion.expiresAt).getTime() -
-        new Date(promotion.startsAt).getTime();
-      const remainingMs =
-        new Date(promotion.expiresAt).getTime() - now.getTime();
-      const remainingRatio = Math.max(0, remainingMs / totalMs);
-      const refundAmount = Math.round(promotion.pricePaid * remainingRatio * 100);
-
-      // Issue Stripe refund
-      if (refundAmount > 0 && promotion.stripePaymentIntentId) {
-        await stripe.refunds.create({
-          payment_intent: promotion.stripePaymentIntentId,
-          amount: refundAmount,
-        });
-      }
-
-      // Deactivate promotion
-      await ctx.db
-        .update(listingPromotions)
-        .set({
-          isActive: false,
-          cancelledAt: now,
-          paymentStatus: refundAmount > 0 ? "refunded" : "succeeded",
-        })
-        .where(eq(listingPromotions.id, input.promotionId));
-
-      // Clear denormalized fields on listing
-      await ctx.db
-        .update(listings)
-        .set({
-          promotionTier: null,
-          promotionExpiresAt: null,
-          updatedAt: now,
-        })
-        .where(eq(listings.id, promotion.listingId));
+      const result = await reconcilePromotionRefundResult(
+        preparation,
+        now,
+        ctx.db,
+      );
 
       return {
-        refundAmountCents: refundAmount,
-        refundAmountDollars: refundAmount / 100,
+        refundAmountCents: result.refundAmountCents,
+        refundAmountDollars: result.refundAmountCents / 100,
+        refundStatus: result.refundStatus,
+        stripeRefundId: result.stripeRefundId ?? null,
+        requiresReconciliation:
+          result.refundStatus === "reconciliation_required",
       };
     }),
 
@@ -488,22 +492,19 @@ export const promotionRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const featuredListings = await ctx.db.query.listings.findMany({
         where: and(
-          eq(listings.status, "active"),
+          publicActiveListingWhere(new Date(), ctx.user),
           inArray(listings.promotionTier, ["featured", "premium"]),
           gt(listings.promotionExpiresAt, new Date())
         ),
+        columns: publicListingColumns,
         with: {
           media: {
+            columns: publicMediaColumns,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
             limit: 1,
           },
           seller: {
-            columns: {
-              id: true,
-              verified: true,
-              role: true,
-              businessState: true,
-            },
+            columns: publicSellerColumns,
           },
         },
         orderBy: [
@@ -515,121 +516,114 @@ export const promotionRouter = createTRPCRouter({
         limit: input.limit,
       });
 
-      return featuredListings;
+      return featuredListings.map(toPublicListing);
     }),
 
   // Get premium listings for hero rotation (public)
   getPremiumHero: publicProcedure.query(async ({ ctx }) => {
     const premiumListings = await ctx.db.query.listings.findMany({
       where: and(
-        eq(listings.status, "active"),
+        publicActiveListingWhere(new Date(), ctx.user),
         eq(listings.promotionTier, "premium"),
         gt(listings.promotionExpiresAt, new Date())
       ),
+      columns: publicListingColumns,
       with: {
         media: {
+          columns: publicMediaColumns,
           orderBy: (media, { asc }) => [asc(media.sortOrder)],
           limit: 3,
         },
         seller: {
-          columns: {
-            id: true,
-            verified: true,
-            role: true,
-            businessState: true,
-          },
+          columns: publicSellerColumns,
         },
       },
       orderBy: desc(listings.createdAt),
       limit: 5,
     });
 
-    return premiumListings;
+    return premiumListings.map(toPublicListing);
   }),
 
   // Expire stale promotions (admin or cron)
   expireStale: adminProcedure.mutation(async ({ ctx }) => {
     const now = new Date();
 
-    // Find expired but still marked active
-    const stalePromotions = await ctx.db.query.listingPromotions.findMany({
-      where: and(
-        eq(listingPromotions.isActive, true),
-        sql`${listingPromotions.expiresAt} < ${now}`
+    const candidates = await ctx.db.query.listingPromotions.findMany({
+      where: or(
+        and(
+          eq(listingPromotions.isActive, true),
+          lt(listingPromotions.expiresAt, now),
+        ),
+        and(
+          eq(listingPromotions.paymentStatus, "refund_pending"),
+          or(
+            isNull(listingPromotions.refundNextAttemptAt),
+            lte(listingPromotions.refundNextAttemptAt, now),
+          ),
+        ),
       ),
+      columns: { id: true },
+      orderBy: [asc(listingPromotions.createdAt)],
+      limit: 100,
     });
 
-    if (stalePromotions.length === 0) {
-      return { expired: 0, refunded: 0 };
+    if (candidates.length === 0) {
+      return {
+        processed: 0,
+        expired: 0,
+        refunded: 0,
+        refundPending: 0,
+        reconciliationRequired: 0,
+        failures: [],
+      };
     }
 
-    const staleIds = stalePromotions.map((p) => p.id);
-    const listingIds = stalePromotions.map((p) => p.listingId);
-
-    // Deactivate all stale promotions
-    await ctx.db
-      .update(listingPromotions)
-      .set({ isActive: false })
-      .where(inArray(listingPromotions.id, staleIds));
-
-    // Clear denormalized fields on affected listings
-    await ctx.db
-      .update(listings)
-      .set({
-        promotionTier: null,
-        promotionExpiresAt: null,
-        updatedAt: now,
-      })
-      .where(inArray(listings.id, listingIds));
-
-    // Check if any listings also expired (90-day window) and issue pro-rata refunds
+    let expiredCount = 0;
     let refundCount = 0;
-    for (const promotion of stalePromotions) {
-      const listing = await ctx.db.query.listings.findFirst({
-        where: eq(listings.id, promotion.listingId),
-        columns: { status: true, expiresAt: true },
-      });
-
-      if (
-        listing &&
-        (listing.status === "expired" || listing.status === "sold") &&
-        listing.expiresAt &&
-        new Date(listing.expiresAt) < new Date(promotion.expiresAt)
-      ) {
-        // Listing expired before promotion — calculate pro-rata refund
-        const totalMs =
-          new Date(promotion.expiresAt).getTime() -
-          new Date(promotion.startsAt).getTime();
-        const listingExpiredAt = new Date(listing.expiresAt).getTime();
-        const usedMs =
-          listingExpiredAt - new Date(promotion.startsAt).getTime();
-        const unusedRatio = Math.max(0, 1 - usedMs / totalMs);
-        const refundAmount = Math.round(
-          promotion.pricePaid * unusedRatio * 100
+    let refundPendingCount = 0;
+    let reconciliationRequiredCount = 0;
+    const failures: Array<{ promotionId: string; error: string }> = [];
+    for (const candidate of candidates) {
+      try {
+        const preparation = await prepareExpiredPromotionRefund(
+          candidate.id,
+          now,
+          ctx.db,
         );
-
-        if (refundAmount > 0 && promotion.stripePaymentIntentId) {
-          try {
-            await stripe.refunds.create({
-              payment_intent: promotion.stripePaymentIntentId,
-              amount: refundAmount,
-            });
-            await ctx.db
-              .update(listingPromotions)
-              .set({ paymentStatus: "refunded" })
-              .where(eq(listingPromotions.id, promotion.id));
-            refundCount++;
-          } catch (err) {
-            console.error(
-              `Failed to refund promotion ${promotion.id}:`,
-              err
-            );
-          }
+        if (!preparation) continue;
+        if (preparation.expired) expiredCount++;
+        const result = await reconcilePromotionRefundResult(
+          preparation,
+          now,
+          ctx.db,
+        );
+        if (result.refundStatus === "refunded") {
+          refundCount++;
+        } else if (result.refundStatus === "refund_pending") {
+          refundPendingCount++;
+        } else if (result.refundStatus === "reconciliation_required") {
+          reconciliationRequiredCount++;
         }
+      } catch (error) {
+        failures.push({
+          promotionId: candidate.id,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unknown promotion expiry error",
+        });
       }
     }
 
-    return { expired: stalePromotions.length, refunded: refundCount };
+    return {
+      processed: candidates.length,
+      expired: expiredCount,
+      refunded: refundCount,
+      refundPending: refundPendingCount,
+      reconciliationRequired: reconciliationRequiredCount,
+      failures,
+    };
   }),
 
   // Admin: Get all promotions with stats
@@ -721,74 +715,43 @@ export const promotionRouter = createTRPCRouter({
   adminCancel: adminProcedure
     .input(z.object({ promotionId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const promotion = await ctx.db.query.listingPromotions.findFirst({
-        where: eq(listingPromotions.id, input.promotionId),
-      });
-
-      if (!promotion) {
+      const now = new Date();
+      let preparation;
+      try {
+        preparation = await prepareCancelledPromotionRefund({
+          promotionId: input.promotionId,
+          cancelledAt: now,
+          database: ctx.db,
+        });
+      } catch (error) {
+        if (error instanceof PromotionNotActiveError) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error.message,
+            cause: error,
+          });
+        }
+        throw error;
+      }
+      if (!preparation) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Promotion not found",
         });
       }
-
-      if (!promotion.isActive) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This promotion is not active",
-        });
-      }
-
-      // Calculate pro-rata refund (reuse logic from seller cancel)
-      const now = new Date();
-      const totalMs =
-        new Date(promotion.expiresAt).getTime() -
-        new Date(promotion.startsAt).getTime();
-      const remainingMs =
-        new Date(promotion.expiresAt).getTime() - now.getTime();
-      const remainingRatio = Math.max(0, remainingMs / totalMs);
-      const refundAmount = Math.round(
-        promotion.pricePaid * remainingRatio * 100
+      const result = await reconcilePromotionRefundResult(
+        preparation,
+        now,
+        ctx.db,
       );
 
-      // Issue Stripe refund
-      if (refundAmount > 0 && promotion.stripePaymentIntentId) {
-        try {
-          await stripe.refunds.create({
-            payment_intent: promotion.stripePaymentIntentId,
-            amount: refundAmount,
-          });
-        } catch (err) {
-          console.error(
-            `Failed to refund promotion ${promotion.id}:`,
-            err
-          );
-        }
-      }
-
-      // Deactivate promotion
-      await ctx.db
-        .update(listingPromotions)
-        .set({
-          isActive: false,
-          cancelledAt: now,
-          paymentStatus: refundAmount > 0 ? "refunded" : "succeeded",
-        })
-        .where(eq(listingPromotions.id, input.promotionId));
-
-      // Clear denormalized fields on listing
-      await ctx.db
-        .update(listings)
-        .set({
-          promotionTier: null,
-          promotionExpiresAt: null,
-          updatedAt: now,
-        })
-        .where(eq(listings.id, promotion.listingId));
-
       return {
-        refundAmountCents: refundAmount,
-        refundAmountDollars: refundAmount / 100,
+        refundAmountCents: result.refundAmountCents,
+        refundAmountDollars: result.refundAmountCents / 100,
+        refundStatus: result.refundStatus,
+        stripeRefundId: result.stripeRefundId ?? null,
+        requiresReconciliation:
+          result.refundStatus === "reconciliation_required",
       };
     }),
 });

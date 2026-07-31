@@ -27,7 +27,7 @@ Secondary: **The Verified Network** -- PlankMarket is the only closeout flooring
 - Writing it off as a loss
 
 ## Paid Offer
-Free to sign up. Free to list. 2% seller fee only when inventory sells. Get paid in 3-5 days after pickup.
+Free to sign up. Free to list. 5% seller fee plus disclosed payment processing only when inventory sells. Seller transfer timing depends on the configured shipment milestone, Stripe, and bank availability.
 
 ## Bridge Logic
 Cold email -> Visit PlankMarket -> Create free seller account -> List first lot -> Sell to verified buyers
@@ -38,7 +38,7 @@ Cold email -> Visit PlankMarket -> Create free seller account -> List first lot 
 | 01 | Day 1 | The Depreciation Clock -- cost of inaction |
 | 02 | Day 3 | The Proof -- seller success story |
 | 03 | Day 7 | The Trust Angle -- verified buyers, brand protection |
-| 04 | Day 14 | The Math -- carrying costs vs. 2% fee |
+| 04 | Day 14 | The Math -- carrying costs vs. 5% fee |
 | 05 | Day 21 | The Breakup -- final touch, inventory still depreciating |
 
 ## Personalization Tokens

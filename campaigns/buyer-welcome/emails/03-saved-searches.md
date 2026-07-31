@@ -64,4 +64,4 @@ You can create multiple saved searches. One for oak hardwood in select grade. An
 
 ---
 
-**P.S.** No cost to set up saved searches. No cost to browse. You only pay the 3% buyer fee when you complete a purchase.
+**P.S.** No cost to set up saved searches. No cost to browse. You only pay the 5% buyer fee when you complete a purchase.

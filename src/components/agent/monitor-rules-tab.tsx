@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -24,13 +23,6 @@ interface MonitorRulesTabProps {
 
 export function MonitorRulesTab({ config }: MonitorRulesTabProps) {
   const [enabled, setEnabled] = useState(config?.monitorEnabled ?? false);
-  const [autoOffer, setAutoOffer] = useState(config?.monitorAutoOffer ?? false);
-  const [maxPrice, setMaxPrice] = useState(
-    config?.monitorMaxPrice?.toString() ?? ""
-  );
-  const [budgetMonthly, setBudgetMonthly] = useState(
-    config?.monitorBudgetMonthly?.toString() ?? ""
-  );
 
   const utils = trpc.useUtils();
   const mutation = trpc.agent.updateMonitorRules.useMutation({
@@ -46,9 +38,6 @@ export function MonitorRulesTab({ config }: MonitorRulesTabProps) {
   const handleSave = () => {
     mutation.mutate({
       monitorEnabled: enabled,
-      monitorAutoOffer: autoOffer,
-      monitorMaxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
-      monitorBudgetMonthly: budgetMonthly ? parseFloat(budgetMonthly) : undefined,
     });
   };
 
@@ -77,43 +66,10 @@ export function MonitorRulesTab({ config }: MonitorRulesTabProps) {
       </CardHeader>
       {enabled && (
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-3 rounded-md border p-3">
-            <Switch
-              id="auto-offer-toggle"
-              checked={autoOffer}
-              onCheckedChange={setAutoOffer}
-              aria-label="Automatically make offers on matches"
-            />
-            <Label htmlFor="auto-offer-toggle" className="text-sm cursor-pointer">
-              Automatically make offers on matches
-            </Label>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="max-price">Max price per sqft ($)</Label>
-              <Input
-                id="max-price"
-                type="number"
-                min={0}
-                step={0.01}
-                placeholder="3.50"
-                value={maxPrice}
-                onChange={(e) => setMaxPrice(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="budget-monthly">Monthly budget limit ($)</Label>
-              <Input
-                id="budget-monthly"
-                type="number"
-                min={0}
-                step={1}
-                placeholder="5000"
-                value={budgetMonthly}
-                onChange={(e) => setBudgetMonthly(e.target.value)}
-              />
-            </div>
+          <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+            Matching uses the filters and alert settings from your saved
+            searches. The monitor sends notifications only; it never places an
+            offer or spends money for you.
           </div>
 
           <Button onClick={handleSave} disabled={mutation.isPending}>

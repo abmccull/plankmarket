@@ -1,7 +1,14 @@
 # PlankMarket Pro Membership — Complete Design
 
 **Date:** March 9, 2026
-**Status:** Strategic Decision
+**Status:** Historical strategic design
+
+> Superseded July 30, 2026. Current implementation uses a 5% buyer marketplace
+> fee and a 5% seller marketplace fee, plus disclosed seller payment
+> processing. Seller transfer is initiated after the configured shipment event
+> and delay; Stripe and the seller's bank determine final availability. Do not
+> use the escrow, accelerated-payout, or 2% seller-fee examples below for
+> product or marketing decisions.
 
 ---
 
@@ -19,12 +26,12 @@ Here's what PlankMarket currently charges or controls:
 
 | Revenue Stream | Current | What We Can Adjust |
 |---|---|---|
-| Buyer fee | 3% of (subtotal + shipping) | Reduce for Pro |
-| Seller fee | 2% of subtotal | Reduce for Pro |
+| Buyer fee | 5% of inventory subtotal | Keep transparent and consistent |
+| Seller fee | 5% of inventory subtotal, plus disclosed processing | Keep transparent and consistent |
 | Shipping margin | 25% markup on carrier rates | Reduce for Pro |
 | Promotions | $29-599 per listing boost | Include credits for Pro |
 | Listings | Unlimited, free | Cap free tier |
-| Payouts | Escrow held until delivery | Accelerate for Pro |
+| Seller transfer | Initiated after the configured shipment event and delay | Do not promise acceleration |
 | Support | Standard | Priority for Pro |
 
 ---
@@ -40,8 +47,8 @@ Everything you need to buy and sell flooring. No tricks, no crippled experience.
 | Feature | Free Limit | Why This Limit |
 |---|---|---|
 | Active listings | **10 at a time** | Enough for a small batch of surplus. A seller with 10 items can fully use the platform. Once they have 15-20+ SKUs, they're running a real operation and Pro makes sense. |
-| Seller fee | **2%** (standard) | Current rate. Fair for low-volume sellers. |
-| Payout timing | **5 business days** after delivery confirmed | Standard escrow release. Protects buyers. |
+| Seller fee | **5%** plus disclosed payment processing | Current published baseline. |
+| Seller transfer timing | **No fixed bank-availability promise** | PlankMarket initiates the transfer after the configured shipment event and delay. |
 | Promotions | Full price ($29-599) | Available but expensive without credits. |
 | Analytics | **Basic** — views, offer count, watchlist adds per listing | Enough to see what's happening. |
 | AI listing creation | **Yes** — describe in plain English, fields auto-fill | This makes the platform better for everyone. Don't gate it. |
@@ -115,13 +122,13 @@ For a buyer making 2-3 purchases per month with shipping, this alone can save $2
 
 $25 covers a 7-day Spotlight boost ($29 value). Sellers who promote regularly save $300/year. More importantly, this gets sellers *trying* promotions who otherwise wouldn't. Promoted listings sell faster → more transactions → more fee revenue for PlankMarket.
 
-**4. Faster Payouts**
+**4. Seller Transfer Visibility**
 
 | | Free | Pro |
 |---|---|---|
-| Payout timing | 5 business days after delivery | **Next business day** after delivery |
+| Seller transfer timing | Configured shipment event and delay | **No accelerated-transfer promise** |
 
-This is massive for cash-flow-sensitive businesses. A seller shipping 5 orders/month at $3K each has $15K in escrow at any time. Getting that money 4 days sooner is worth real money (working capital cost). This benefit costs PlankMarket very little — Stripe transfers are near-instant — but the perceived value is enormous.
+Cash-flow visibility matters, but PlankMarket should show the recorded transfer milestone and Stripe status rather than promise faster bank availability. Accelerated transfers require a separately verified Stripe capability and risk policy.
 
 ---
 

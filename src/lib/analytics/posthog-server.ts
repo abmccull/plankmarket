@@ -2,14 +2,17 @@ import { PostHog } from "posthog-node";
 
 let posthogServerInstance: PostHog | null = null;
 
-export function getPostHogServer(): PostHog {
-  if (!posthogServerInstance) {
-    if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      throw new Error("NEXT_PUBLIC_POSTHOG_KEY is not set");
-    }
+export function getPostHogServer(): PostHog | null {
+  if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+    return null;
+  }
 
+  if (!posthogServerInstance) {
     posthogServerInstance = new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
       host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+      // Serverless functions may be frozen immediately after the response.
+      flushAt: 1,
+      flushInterval: 0,
     });
   }
 

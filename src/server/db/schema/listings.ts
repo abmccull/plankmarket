@@ -10,7 +10,10 @@ import {
   jsonb,
   index,
   pgEnum,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import type { ListingTaxCodeStatus } from "@/lib/tax-policy";
 import { money } from "../custom-types";
 import { users } from "./users";
 import { promotionTierEnum } from "./promotions";
@@ -73,6 +76,14 @@ export const conditionTypeEnum = pgEnum("condition_type", [
 ]);
 
 export const moqUnitEnum = pgEnum("moq_unit", ["pallets", "sqft"]);
+export const sellingTerritoryModeEnum = pgEnum("selling_territory_mode", [
+  "unrestricted",
+  "allowed_states",
+]);
+export const freightPaymentModeEnum = pgEnum("freight_payment_mode", [
+  "buyer_pays",
+  "seller_pays",
+]);
 
 export const reasonCodeEnum = pgEnum("reason_code", [
   "overproduction",
@@ -140,11 +151,61 @@ export const listings = pgTable(
     buyNowPrice: money("buy_now_price"),
     allowOffers: boolean("allow_offers").default(true).notNull(),
     floorPrice: money("floor_price"),
+    fullLotOnly: boolean("full_lot_only").default(false).notNull(),
+    partialQuantityMarkupPercent: real("partial_quantity_markup_percent"),
+    automaticMarkdownEnabled: boolean("automatic_markdown_enabled")
+      .default(false)
+      .notNull(),
+    automaticMarkdownFloorPercent: real("automatic_markdown_floor_percent"),
+    automaticMarkdownIntervalDays: integer("automatic_markdown_interval_days"),
+    automaticMarkdownStartedAt: timestamp("automatic_markdown_started_at", {
+      withTimezone: true,
+    }),
+    automaticMarkdownCurrentStep: integer("automatic_markdown_current_step")
+      .default(0)
+      .notNull(),
+    automaticMarkdownLastAppliedAt: timestamp(
+      "automatic_markdown_last_applied_at",
+      {
+        withTimezone: true,
+      },
+    ),
+    pricingRulesVersion: integer("pricing_rules_version").default(1).notNull(),
+    allowSampleRequests: boolean("allow_sample_requests")
+      .default(false)
+      .notNull(),
+    territoryMode: sellingTerritoryModeEnum("territory_mode")
+      .default("unrestricted")
+      .notNull(),
+    allowedDestinationStates: jsonb("allowed_destination_states")
+      .$type<string[]>()
+      .default([]),
+    freightPaymentMode: freightPaymentModeEnum("freight_payment_mode")
+      .default("buyer_pays")
+      .notNull(),
+    sellerFreightStates: jsonb("seller_freight_states")
+      .$type<string[]>()
+      .default([]),
+    freightDropCharge: money("freight_drop_charge"),
 
     // Condition & certifications
     condition: conditionTypeEnum("condition").notNull(),
     reasonCode: reasonCodeEnum("reason_code"),
     certifications: jsonb("certifications").$type<string[]>().default([]),
+    // Stripe Tax codes are deliberately nullable. A seller or migration must
+    // never guess a category; an admin explicitly verifies the selected code.
+    stripeTaxCode: varchar("stripe_tax_code", { length: 64 }),
+    taxCodeStatus: varchar("tax_code_status", { length: 32 })
+      .$type<ListingTaxCodeStatus>()
+      .default("unassigned")
+      .notNull(),
+    taxCodeVerifiedAt: timestamp("tax_code_verified_at", {
+      withTimezone: true,
+    }),
+    taxCodeVerifiedBy: uuid("tax_code_verified_by").references(
+      () => users.id,
+      { onDelete: "set null" },
+    ),
 
     // Engagement
     viewsCount: integer("views_count").default(0).notNull(),
@@ -160,6 +221,10 @@ export const listings = pgTable(
     // Quality & shipping
     qualityScore: integer("quality_score").default(0),
     shipReady: boolean("ship_ready").default(false),
+    lastConfirmedAt: timestamp("last_confirmed_at", { withTimezone: true }),
+    confirmationDueAt: timestamp("confirmation_due_at", {
+      withTimezone: true,
+    }),
 
     // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -180,8 +245,26 @@ export const listings = pgTable(
     index("listings_slug_idx").on(table.slug),
     index("listings_ask_price_idx").on(table.askPricePerSqFt),
     index("listings_created_at_idx").on(table.createdAt),
+    index("listings_confirmation_due_at_idx").on(table.confirmationDueAt),
     index("listings_total_sq_ft_idx").on(table.totalSqFt),
     index("listings_location_lat_lng_idx").on(table.locationLat, table.locationLng),
+    index("listings_tax_code_status_idx").on(table.taxCodeStatus),
+    check(
+      "listings_tax_code_status_check",
+      sql`${table.taxCodeStatus} IN ('unassigned', 'pending_review', 'verified')`,
+    ),
+    check(
+      "listings_stripe_tax_code_format_check",
+      sql`${table.stripeTaxCode} IS NULL OR ${table.stripeTaxCode} ~ '^txcd_[0-9]+$'`,
+    ),
+    check(
+      "listings_verified_tax_code_evidence_check",
+      sql`${table.taxCodeStatus} <> 'verified' OR (
+        ${table.stripeTaxCode} IS NOT NULL
+        AND ${table.taxCodeVerifiedAt} IS NOT NULL
+        AND ${table.taxCodeVerifiedBy} IS NOT NULL
+      )`,
+    ),
   ]
 );
 

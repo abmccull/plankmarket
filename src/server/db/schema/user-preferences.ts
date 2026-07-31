@@ -10,6 +10,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { money } from "../custom-types";
 import { users } from "./users";
 
 export const userPreferences = pgTable(
@@ -52,6 +53,30 @@ export const userPreferences = pgTable(
     pricingStyle: varchar("pricing_style", { length: 20 }), // fixed | negotiable | tiered
     palletizationCapable: boolean("palletization_capable").default(true),
     inventorySource: jsonb("inventory_source").$type<string[]>(),
+    partialQuantityMarkupPercent: real("partial_quantity_markup_percent"),
+    automaticMarkdownEnabled: boolean("automatic_markdown_enabled")
+      .default(false)
+      .notNull(),
+    automaticMarkdownFloorPercent: real("automatic_markdown_floor_percent"),
+    automaticMarkdownIntervalDays: integer("automatic_markdown_interval_days"),
+    defaultAllowOffers: boolean("default_allow_offers").default(true).notNull(),
+    allowSampleRequests: boolean("allow_sample_requests").default(false).notNull(),
+    sellingTerritoryMode: varchar("selling_territory_mode", { length: 20 })
+      .default("unrestricted")
+      .notNull(),
+    allowedDestinationStates: jsonb("allowed_destination_states")
+      .$type<string[]>()
+      .default([]),
+    freightPaymentMode: varchar("freight_payment_mode", { length: 20 })
+      .default("buyer_pays")
+      .notNull(),
+    sellerFreightStates: jsonb("seller_freight_states")
+      .$type<string[]>()
+      .default([]),
+    freightDropCharge: money("freight_drop_charge"),
+    taxRegisteredStates: jsonb("tax_registered_states")
+      .$type<string[]>()
+      .default([]),
 
     // === META ===
     profileComplete: boolean("profile_complete").default(false).notNull(),

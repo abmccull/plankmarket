@@ -6,14 +6,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import {
+  ListingEvidence,
+  type FreightEstimateStatus,
+} from "@/components/listings/listing-evidence";
+import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
+import {
   formatCurrency,
   formatSqFt,
   formatPricePerSqFt,
 } from "@/lib/utils";
+import { BUYER_MARKETPLACE_FEE_PERCENT } from "@/lib/fees";
+import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 import { cn } from "@/lib/utils";
-import { MapPin, Eye, Heart, Package } from "lucide-react";
+import { Eye, Heart, Package } from "lucide-react";
 import type { PromotionTier } from "@/types";
-import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
 
@@ -28,6 +34,11 @@ interface ListingCardProps {
     totalSqFt: number;
     askPricePerSqFt: number;
     buyNowPrice: number | null;
+    moq?: number | null;
+    moqUnit?: "pallets" | "sqft" | null;
+    freightEstimateStatus?: FreightEstimateStatus;
+    freshnessStatus?: ListingFreshnessStatus;
+    lastConfirmedAt?: Date | string | null;
     locationCity: string | null;
     locationState: string | null;
     viewsCount: number;
@@ -37,7 +48,7 @@ interface ListingCardProps {
     isPromoted?: boolean;
     media?: { url: string }[];
     seller?: {
-      name?: string | null;
+      displayName: string;
       verified: boolean;
       role: string;
       businessCity?: string | null;
@@ -71,7 +82,8 @@ const conditionLabels: Record<string, string> = {
 };
 
 export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusBadge }: ListingCardProps) {
-  const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
+  const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
+  const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
 
   const isPromoted = listing.isPromoted || !!listing.promotionTier;
   const tier = listing.promotionTier;
@@ -122,7 +134,7 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
           <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
             {listing.buyNowPrice && (
               <Badge className="text-xs bg-secondary text-secondary-foreground">
-                Buy Now {formatPricePerSqFt(listing.buyNowPrice)}
+                Buy now
               </Badge>
             )}
             {statusBadge && (
@@ -154,7 +166,7 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
 
           <div className="flex items-center justify-between mb-2">
             <span className="text-xl font-mono font-bold text-primary tabular-nums">
-              {formatCurrency(listing.askPricePerSqFt)}
+              {formatCurrency(directPurchaseUnitPrice)}
               <span className="text-sm font-normal text-muted-foreground">
                 /sq ft
               </span>
@@ -165,7 +177,17 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
           </div>
 
           <div className="text-sm text-muted-foreground mb-2 tabular-nums">
-            Lot value: {formatCurrency(lotValue)}
+            Direct purchase lot: {formatCurrency(lotValue)}
+            {listing.buyNowPrice != null &&
+              listing.buyNowPrice !== listing.askPricePerSqFt && (
+                <span className="block text-xs">
+                  Seller ask: {formatPricePerSqFt(listing.askPricePerSqFt)}
+                </span>
+              )}
+            <span className="block text-xs">
+              +{BUYER_MARKETPLACE_FEE_PERCENT}% buyer fee at checkout · Freight
+              quoted separately
+            </span>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap mb-3">
@@ -179,17 +201,27 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
             )}
           </div>
 
+          <ListingEvidence
+            variant="compact"
+            className="mb-3"
+            listing={{
+              totalSqFt: listing.totalSqFt,
+              moq: listing.moq ?? null,
+              moqUnit: listing.moqUnit ?? null,
+              condition: listing.condition,
+              locationCity: listing.locationCity,
+              locationState: listing.locationState,
+              freightEstimateStatus:
+                listing.freightEstimateStatus ?? "seller_setup_required",
+              freshnessStatus: listing.freshnessStatus,
+              lastConfirmedAt: listing.lastConfirmedAt,
+              media: listing.media,
+              seller: listing.seller,
+            }}
+          />
+
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <div className="flex items-center gap-3">
-              {listing.locationState && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {listing.locationCity
-                    ? `${listing.locationCity}, ${listing.locationState}`
-                    : listing.locationState}
-                </span>
-              )}
-            </div>
+            <div />
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
                 <Eye className="h-3 w-3" />
@@ -219,7 +251,7 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
 
           {listing.seller && (
             <div className="mt-2 pt-2 border-t flex items-center gap-1 text-sm text-muted-foreground">
-              <span>{getAnonymousDisplayName({ role: listing.seller.role, businessState: listing.seller.businessState, name: listing.seller.name, businessCity: listing.seller.businessCity })}</span>
+              <span>{listing.seller.displayName}</span>
               {listing.seller.verified && (
                 <svg
                   className="h-3 w-3 text-secondary"

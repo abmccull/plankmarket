@@ -119,8 +119,8 @@ export default function TermsOfServicePage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">PlankMarket charges the following fees:</p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 3% of the inventory subtotal only, added to the buyer&apos;s total at checkout</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Commission:</strong> 2% of the inventory subtotal, deducted from seller payout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 5% of the inventory subtotal only, added to the buyer&apos;s total at checkout</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Fee:</strong> 5% of the inventory subtotal, deducted from seller payout</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Processing Fee:</strong> 2.9% + $0.30 calculated on inventory subtotal only and deducted from seller payout</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Platform Processing Share:</strong> PlankMarket absorbs processing costs attributable to shipping and any remaining processor share not assigned to seller</li>
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping Charge:</strong> Shipping is quoted separately at checkout. The quoted amount may include carrier charges plus PlankMarket shipping margin and is charged to the buyer unless otherwise agreed</li>
@@ -138,10 +138,10 @@ export default function TermsOfServicePage() {
       content: (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            When a buyer completes a purchase, funds are held securely by our payment processor (Stripe). Funds are automatically released to the seller&apos;s connected Stripe account once the shipment is confirmed picked up by the carrier. Sellers typically receive funds in their bank account within 3-5 business days after release.
+            When a buyer completes a purchase, Stripe processes the payment. After carrier pickup is confirmed and the configured release delay passes, PlankMarket initiates a transfer to the seller&apos;s connected Stripe account. Sellers typically receive funds in their bank account within 3-5 business days after the transfer begins.
           </p>
           <p className="text-sm text-muted-foreground">
-            PlankMarket uses a secure hold-and-release payment model. This is not a regulated escrow service. By using the platform, you acknowledge that PlankMarket is not acting as an escrow agent, trustee, or fiduciary.
+            PlankMarket uses Stripe payment processing followed by a seller Connect transfer. By using the platform, you acknowledge that PlankMarket is not acting as a trustee, fiduciary, or regulated funds custodian.
           </p>
         </div>
       ),
@@ -177,7 +177,7 @@ export default function TermsOfServicePage() {
       content: (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            <strong>Shipping Responsibility:</strong> Unless otherwise agreed between buyer and seller, the buyer is responsible for carrier shipping charges. PlankMarket may facilitate shipping quotes and booking through integrated freight carriers. PlankMarket may absorb payment processor costs related to the shipping portion of the order.
+            <strong>Shipping Responsibility:</strong> Unless otherwise agreed between buyer and seller, the buyer is responsible for carrier shipping charges. PlankMarket may facilitate shipping quotes and booking through integrated freight carriers. The displayed shipping charge may include carrier charges plus PlankMarket shipping service margin.
           </p>
           <p className="text-sm text-muted-foreground">
             <strong>Packaging Requirements:</strong> Sellers must ensure all materials are properly palletized, banded, and stretch-wrapped for LTL freight shipment. Inadequate packaging that results in damage during transit is the seller&apos;s responsibility.
@@ -212,7 +212,10 @@ export default function TermsOfServicePage() {
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Description of the issue</li>
           </ul>
           <p className="text-sm text-muted-foreground">
-            If no dispute is reported within 5 business days of confirmed delivery, the transaction is considered complete and final.
+            Claims submitted after the 48-hour reporting window are accepted
+            only through an explicit administrative exception with a documented
+            reason. Seller-transfer timing is governed separately by the
+            confirmed pickup milestone and configured release delay.
           </p>
         </div>
       ),
@@ -256,7 +259,7 @@ export default function TermsOfServicePage() {
             <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Pursue recovery of funds if the chargeback is determined to be fraudulent</li>
           </ul>
           <p className="text-sm text-muted-foreground">
-            Sellers are protected from chargebacks on transactions where delivery is confirmed and no valid dispute was raised within the inspection period.
+            PlankMarket retains delivery confirmation and dispute records for chargeback review. Chargeback outcomes are determined by Stripe and the applicable payment networks and are not guaranteed.
           </p>
         </div>
       ),

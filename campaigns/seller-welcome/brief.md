@@ -19,7 +19,7 @@ Sellers: flooring manufacturers, distributors, and wholesalers sitting on surplu
 N/A -- this is a product onboarding sequence triggered by account creation, not a lead magnet opt-in.
 
 ## Paid Offer
-PlankMarket marketplace (2% seller fee on completed sales only). The "offer" is listing their inventory. No subscription. No listing fees.
+PlankMarket marketplace (5% seller fee plus disclosed payment processing on completed sales). The "offer" is listing their inventory. No subscription. No listing fees.
 
 ## Bridge Logic
 Signup -> complete business verification -> connect Stripe -> create first listing -> get first sale. Each email moves the seller one step closer. The depreciation clock creates urgency around inaction.

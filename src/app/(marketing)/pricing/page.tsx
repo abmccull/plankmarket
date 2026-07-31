@@ -23,11 +23,11 @@ import {
 export const metadata: Metadata = {
   title: "Pricing & Fees - Transparent B2B Marketplace Costs",
   description:
-    "PlankMarket charges a 3% buyer fee and 2% seller fee with transparent marketplace pricing, plus an optional Pro subscription for advanced tools.",
+    "PlankMarket shows a 5% buyer fee and 5% seller fee separately, plus seller processing on inventory only and an optional Pro subscription for advanced tools.",
   openGraph: {
     title: "PlankMarket Pricing & Fees",
     description:
-      "Simple marketplace pricing: 3% buyer fee, 2% seller fee, plus optional Pro for advanced tools.",
+      "Clear marketplace pricing: 5% buyer fee, 5% seller fee, seller processing on inventory only, plus optional Pro for advanced tools.",
   },
 };
 
@@ -44,13 +44,14 @@ export default function PricingPage() {
         <div className="container mx-auto px-4 relative z-10">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              No Hidden Fees
+              Clear Economics
             </Badge>
             <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
-              Simple, Transparent Pricing
+              Clear buyer totals. Clear seller transfer.
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Transparent pricing with no hidden charges. PlankMarket keeps fees simple so you can focus on buying and selling flooring materials.
+              Buyer and seller fees are shown separately. Seller processing is
+              disclosed on inventory only, and freight is quoted before payment.
             </p>
           </div>
         </div>
@@ -67,7 +68,7 @@ export default function PricingPage() {
                 <Badge variant="outline" className="w-fit mx-auto mb-2 border-secondary text-secondary">
                   For Buyers
                 </Badge>
-                <CardTitle className="font-display text-3xl">Pay Only When You Buy</CardTitle>
+                <CardTitle className="font-display text-3xl">Buyer total shown before payment</CardTitle>
                 <CardDescription>Free to browse and register</CardDescription>
               </CardHeader>
               <Separator />
@@ -75,8 +76,9 @@ export default function PricingPage() {
                 <ul className="space-y-3">
                   {[
                     "Free to browse and register",
-                    "3% buyer fee on inventory purchases",
-                    "Secure Stripe payment processing",
+                    "5% buyer fee on inventory purchases",
+                    "Selected freight quote shown before payment",
+                    "Displayed freight charge may include carrier charges plus PlankMarket shipping service margin",
                     "Up to 3 saved searches on Free",
                     "Optional Pro for unlimited saved searches and AI monitoring",
                     "Direct messaging with sellers",
@@ -105,23 +107,23 @@ export default function PricingPage() {
                 <Badge variant="outline" className="w-fit mx-auto mb-2 border-primary text-primary">
                   For Sellers
                 </Badge>
-                <CardTitle className="font-display text-3xl">Commission-Based</CardTitle>
-                <CardDescription>2% platform fee plus inventory-only Stripe processing on completed sales</CardDescription>
+                <CardTitle className="font-display text-3xl">Projected seller transfer</CardTitle>
+                <CardDescription>5% platform fee plus inventory-only Stripe processing on completed sales</CardDescription>
               </CardHeader>
               <Separator />
               <CardContent className="pt-6">
                 <ul className="space-y-3">
                   {[
                     "Free plan includes up to 10 active listings",
-                    "2% seller fee on inventory sold",
+                    "5% seller fee on inventory sold",
                     "2.9% + $0.30 Stripe fee on inventory subtotal only",
-                    "Secure payment via Stripe Connect",
+                    "Projected seller transfer shown before accepting the order",
                     "Built-in messaging and order management",
                     "Access to nationwide buyer network",
                     "Optional Pro for unlimited listings, bulk upload, CRM, and market intelligence",
                     "Customer support for you and buyers",
                     "Seller dashboard and analytics",
-                    "Payouts typically within 3-5 business days after shipment pickup",
+                    "Seller transfer begins after confirmed pickup and the configured delay",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm">
                       <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -177,9 +179,9 @@ export default function PricingPage() {
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="font-display text-3xl">Fee Breakdown</h2>
+            <h2 className="font-display text-3xl">Who pays what, and when</h2>
             <p className="mt-3 text-muted-foreground">
-              Understanding what you pay and when
+              Separate buyer charges, seller deductions, and freight disclosure
             </p>
           </div>
           <div className="max-w-3xl mx-auto">
@@ -191,9 +193,12 @@ export default function PricingPage() {
                       <CreditCard className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Platform Commission</h3>
+                      <h3 className="font-semibold mb-1">Buyer Charge</h3>
                       <p className="text-sm text-muted-foreground">
-                        PlankMarket charges a 2% seller commission and 3% buyer fee on each completed transaction, calculated on the inventory subtotal only. Shipping is quoted separately at checkout, and the freight quote already includes marketplace shipping margin. This covers listing hosting, buyer network access, payment protection, messaging tools, and platform support.
+                        Buyers pay a 5% marketplace fee on the inventory subtotal
+                        only. Freight is quoted separately before payment, and
+                        the displayed freight charge may include carrier charges
+                        plus PlankMarket shipping service margin.
                       </p>
                     </div>
                   </div>
@@ -203,9 +208,10 @@ export default function PricingPage() {
                       <Shield className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Payment Processing (Stripe)</h3>
+                      <h3 className="font-semibold mb-1">Seller Deductions</h3>
                       <p className="text-sm text-muted-foreground">
-                        Sellers are charged Stripe processing of approximately 2.9% + $0.30 on the inventory subtotal only. PlankMarket absorbs the processing cost tied to shipping and any remaining non-seller processor share.
+                        Sellers pay a 5% marketplace fee plus Stripe processing
+                        of 2.9% + $0.30 on the inventory subtotal only.
                       </p>
                     </div>
                   </div>
@@ -215,9 +221,12 @@ export default function PricingPage() {
                       <TrendingUp className="h-6 w-6 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-1">Payout Timeline</h3>
+                      <h3 className="font-semibold mb-1">Freight and Seller Transfer</h3>
                       <p className="text-sm text-muted-foreground">
-                        Seller payouts release when the carrier picks up the shipment. Funds are typically available in your bank within 3-5 business days. Buyers have a 48-hour post-delivery window to report damage or shortages with photo evidence. If no dispute is filed within 5 business days of delivery, the transaction closes automatically.
+                        After carrier pickup is confirmed, PlankMarket initiates
+                        the seller transfer through Stripe Connect after the
+                        configured delay. Funds are typically available in your
+                        bank within 3-5 business days after the transfer begins.
                       </p>
                     </div>
                   </div>
@@ -234,7 +243,7 @@ export default function PricingPage() {
           <div className="text-center mb-12">
             <h2 className="font-display text-3xl">Fee Example</h2>
             <p className="mt-3 text-muted-foreground">
-              See how fees work on a typical transaction
+              See how the buyer total and seller transfer are modeled on a typical transaction
             </p>
           </div>
           <div className="max-w-3xl mx-auto">
@@ -254,30 +263,30 @@ export default function PricingPage() {
                   </div>
                   <Separator />
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Buyer fee (3%)</span>
-                    <span className="text-sm">$300.00</span>
+                    <span className="text-sm">Buyer fee (5%)</span>
+                    <span className="text-sm">$500.00</span>
                   </div>
                   <div className="flex justify-between items-center py-2 bg-secondary/10 px-3 rounded-md">
                     <span className="text-sm font-semibold">Buyer total</span>
-                    <span className="text-sm font-semibold">$10,900.00</span>
+                    <span className="text-sm font-semibold">$11,100.00</span>
                   </div>
                   <Separator className="my-4" />
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Seller commission (2%)</span>
-                    <span className="text-sm">$200.00</span>
+                    <span className="text-sm">Seller fee (5%)</span>
+                    <span className="text-sm">$500.00</span>
                   </div>
                   <div className="flex justify-between items-center py-2">
                     <span className="text-sm">Seller Stripe fee (2.9% + $0.30)</span>
                     <span className="text-sm">$290.30</span>
                   </div>
                   <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
-                    <span className="text-sm font-semibold">Seller payout</span>
-                    <span className="text-sm font-semibold">$9,509.70</span>
+                    <span className="text-sm font-semibold">Projected seller transfer</span>
+                    <span className="text-sm font-semibold">$9,209.70</span>
                   </div>
                   <Separator className="my-4" />
                   <div className="flex justify-between items-start py-2">
-                    <span className="text-sm text-muted-foreground">Shipping-related processor share</span>
-                    <span className="text-sm text-muted-foreground text-right">Absorbed by PlankMarket</span>
+                    <span className="text-sm text-muted-foreground">Freight disclosure</span>
+                    <span className="text-sm text-muted-foreground text-right">Displayed freight charge may include carrier charges plus PlankMarket shipping service margin</span>
                   </div>
                 </div>
               </CardContent>
@@ -329,7 +338,7 @@ export default function PricingPage() {
                 </Badge>
                 <CardTitle className="font-display text-2xl">Volume Sellers</CardTitle>
                 <CardDescription>
-                  High-volume sellers with large inventories or frequent transactions may be eligible for reduced commission rates. Contact our partnerships team to discuss custom pricing.
+                  High-volume sellers with large inventories or frequent transactions may be eligible for reduced seller-fee rates. Contact our partnerships team to discuss custom pricing.
                 </CardDescription>
               </CardHeader>
               <CardContent className="text-center">
@@ -355,7 +364,7 @@ export default function PricingPage() {
               {
                 question: "What happens in case of a dispute or return?",
                 answer:
-                  "Our secure payment hold protects both parties. Seller payouts release when the carrier picks up the shipment. Buyers have a 48-hour window after delivery to report damage, shortages, or quality issues with photo evidence. Freight damage must be noted on the delivery receipt at time of delivery. If no dispute is filed within 5 business days of delivery, the transaction closes automatically. Disputes are mediated by our support team. Commission and processing fees are refunded on full refunds; partial refunds get proportional adjustments.",
+                  "Stripe processes the buyer payment, and PlankMarket initiates the seller transfer after carrier pickup and the configured delay. Buyers can report damage, shortages, or quality issues through the platform within 48 hours of delivery with photo evidence. Freight damage must be noted on the delivery receipt at time of delivery. Our support team reviews the order, provider records, and submitted evidence. Buyer and seller marketplace fees are refunded on full refunds; partial refunds receive proportional adjustments.",
               },
               {
                 question: "Are there plans for premium features?",

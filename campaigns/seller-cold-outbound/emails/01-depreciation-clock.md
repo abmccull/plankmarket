@@ -48,8 +48,8 @@ Every month it sits, you recover less.
 
 PlankMarket is a B2B marketplace built for this. List your surplus flooring -- hardwood, LVP, laminate, tile -- and put it in front of verified retailers across all 50 states.
 
-- 2% seller fee. No listing costs.
-- Payout in 3-5 days after pickup.
+- 5% seller fee plus disclosed payment processing. No listing costs.
+- Seller transfer is initiated after the configured shipment milestone and delay.
 - Every buyer is business-verified. No tire-kickers.
 
 One seller listed 18,000 sq ft of discontinued hickory on a Tuesday. Four offers by Friday.

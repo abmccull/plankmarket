@@ -16,18 +16,36 @@ jobs:
   deploy:
     name: Deploy Preview
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.0
           cache: npm
 
-      - name: Install Vercel CLI
-        run: npm install -g vercel
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Quality and security gate
+        env:
+          SKIP_ENV_VALIDATION: true
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run typecheck:tests
+          npm run test
+          npm run test:shipping
+          npm run audit:prod
+          npm run db:check
+          npm run build
+
+      - name: Install pinned Vercel CLI
+        run: npm install -g vercel@55.0.0
 
       - name: Link Vercel Project
         run: |
@@ -35,7 +53,20 @@ jobs:
           echo '{"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}"}' > .vercel/project.json
 
       - name: Pull Vercel Environment
-        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+        run: >-
+          vercel pull --yes --environment=preview
+          --git-branch="${{ github.head_ref }}"
+          --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Export Preview Environment for Preflight
+        run: >-
+          vercel env pull .vercel/.env.preview.local --yes
+          --environment=preview
+          --git-branch="${{ github.head_ref }}"
+          --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Validate Preview Environment
+        run: npm run env:check:preview -- --file .vercel/.env.preview.local
 
       - name: Build
         run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
@@ -46,12 +77,28 @@ jobs:
           url=$(vercel deploy --prebuilt --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
+      - name: Verify Preview
+        run: >-
+          vercel curl /api/health
+          --deployment "${{ steps.deploy.outputs.url }}"
+          --fail --retry 5 --retry-all-errors
+          --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run deployed public marketplace smoke
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.deploy.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: npm run test:e2e:public
+
       - name: Comment PR with Preview URL
         uses: actions/github-script@v7
         with:
           script: |
             const url = '${{ steps.deploy.outputs.url }}';
-            const body = `**Preview Deployment**\n\n🔗 ${url}\n\nBuilt from commit \`${context.sha.substring(0, 7)}\``;
+            const body = `**Preview Deployment**\n\nPreview: ${url}\n\nBuilt from commit \`${context.sha.substring(0, 7)}\``;
 
             // Find existing bot comment
             const { data: comments } = await github.rest.issues.listComments({

@@ -3,19 +3,19 @@ import { Suspense } from "react";
 import { createServerCaller } from "@/lib/trpc/server";
 import { ListingsBrowseClient } from "@/components/search/listings-browse-client";
 import { Loader2 } from "lucide-react";
-import type { SortOption, MaterialType, ConditionType } from "@/types";
+import {
+  parseListingSearchParams,
+  type ListingSearchParams,
+} from "@/lib/marketplace/listing-search-params";
 
 interface PageProps {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<ListingSearchParams>;
 }
 
 export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
-  const params = await searchParams;
-  const materialType =
-    typeof params.materialType === "string" ? params.materialType : undefined;
-  const page = typeof params.page === "string" ? parseInt(params.page) : 1;
+  const { materialType, page } = parseListingSearchParams(await searchParams);
 
   const materialLabels: Record<string, string> = {
     hardwood: "Hardwood",
@@ -46,80 +46,33 @@ export async function generateMetadata({
 async function ListingsContent({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: ListingSearchParams;
 }) {
-  const page =
-    typeof searchParams.page === "string" ? parseInt(searchParams.page) : 1;
-  const limit =
-    typeof searchParams.limit === "string"
-      ? parseInt(searchParams.limit)
-      : 24;
-  const sort =
-    typeof searchParams.sort === "string" ? searchParams.sort : "date_newest";
-  const query =
-    typeof searchParams.query === "string" ? searchParams.query : undefined;
-  const materialType =
-    typeof searchParams.materialType === "string"
-      ? [searchParams.materialType]
-      : undefined;
-  const condition =
-    typeof searchParams.condition === "string"
-      ? [searchParams.condition]
-      : undefined;
+  const parsed = parseListingSearchParams(searchParams);
+  const caller = await createServerCaller();
+  const [listData, sponsored] = await Promise.all([
+    caller.listing.list({
+      page: parsed.page,
+      limit: parsed.limit,
+      sort: parsed.sort,
+      query: parsed.query,
+      materialType: parsed.materialType ? [parsed.materialType] : undefined,
+      condition: parsed.condition ? [parsed.condition] : undefined,
+    }),
+    // Promotion inventory is an enhancement. A promotion lookup failure should
+    // not take down otherwise healthy organic marketplace results.
+    caller.promotion.getFeatured({ limit: 5 }).catch(() => [] as never[]),
+  ]);
 
-  const defaultData = {
-    items: [] as never[],
-    total: 0,
-    totalPages: 0,
-    page: 1,
-    limit: 24,
-    hasMore: false,
-  };
-
-  try {
-    const caller = await createServerCaller();
-    const [listData, sponsored] = await Promise.all([
-      caller.listing.list({
-        page,
-        limit,
-        sort: sort as SortOption,
-        query,
-        materialType: materialType as MaterialType[] | undefined,
-        condition: condition as ConditionType[] | undefined,
-      }),
-      caller.promotion.getFeatured({ limit: 5 }).catch(() => [] as never[]),
-    ]);
-
-    return (
-      <ListingsBrowseClient
-        initialData={listData}
-        sponsoredListings={sponsored}
-        initialParams={{
-          page,
-          limit,
-          sort,
-          query,
-          materialType: materialType?.[0],
-          condition: condition?.[0],
-        }}
-      />
-    );
-  } catch {
-    return (
-      <ListingsBrowseClient
-        initialData={defaultData}
-        sponsoredListings={[]}
-        initialParams={{
-          page,
-          limit,
-          sort,
-          query,
-          materialType: materialType?.[0],
-          condition: condition?.[0],
-        }}
-      />
-    );
-  }
+  return (
+    <ListingsBrowseClient
+      initialData={listData}
+      sponsoredListings={sponsored}
+      initialParams={{
+        ...parsed,
+      }}
+    />
+  );
 }
 
 export default async function ListingsPage({ searchParams }: PageProps) {

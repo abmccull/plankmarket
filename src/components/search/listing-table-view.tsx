@@ -12,6 +12,12 @@ import {
 } from "@/components/ui/table";
 import { formatCurrency, formatSqFt } from "@/lib/utils";
 import { Package } from "lucide-react";
+import {
+  ListingEvidence,
+  type FreightEstimateStatus,
+} from "@/components/listings/listing-evidence";
+import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
+import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 
 const materialLabels: Record<string, string> = {
   hardwood: "Hardwood",
@@ -42,9 +48,16 @@ interface ListingItem {
   condition: string;
   totalSqFt: number;
   askPricePerSqFt: number;
+  buyNowPrice?: number | null;
+  moq?: number | null;
+  moqUnit?: "pallets" | "sqft" | null;
   locationCity: string | null;
   locationState: string | null;
+  freightEstimateStatus?: FreightEstimateStatus;
+  freshnessStatus?: ListingFreshnessStatus;
+  lastConfirmedAt?: Date | string | null;
   media?: { url: string }[];
+  seller?: { verified: boolean } | null;
 }
 
 interface ListingTableViewProps {
@@ -63,12 +76,14 @@ export function ListingTableView({ items }: ListingTableViewProps) {
           <TableHead className="w-[90px] text-right">Sq Ft</TableHead>
           <TableHead className="w-[90px] text-right">$/sq ft</TableHead>
           <TableHead className="hidden lg:table-cell w-[100px] text-right">Lot Value</TableHead>
-          <TableHead className="hidden lg:table-cell w-[120px]">Location</TableHead>
+          <TableHead className="hidden xl:table-cell min-w-[260px]">Evidence</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {items.map((listing) => {
-          const lotValue = listing.askPricePerSqFt * listing.totalSqFt;
+          const directPurchaseUnitPrice =
+            getDirectPurchaseUnitPrice(listing);
+          const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
           const href = `/listings/${listing.slug || listing.id}`;
 
           return (
@@ -96,7 +111,7 @@ export function ListingTableView({ items }: ListingTableViewProps) {
                   {listing.title}
                 </Link>
               </TableCell>
-              <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+              <TableCell className="hidden xl:table-cell py-3">
                 {materialLabels[listing.materialType] || listing.materialType}
               </TableCell>
               <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
@@ -106,15 +121,29 @@ export function ListingTableView({ items }: ListingTableViewProps) {
                 {formatSqFt(listing.totalSqFt)}
               </TableCell>
               <TableCell className="text-right text-sm font-bold text-primary tabular-nums">
-                {formatCurrency(listing.askPricePerSqFt)}
+                {formatCurrency(directPurchaseUnitPrice)}
               </TableCell>
               <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground tabular-nums">
                 {formatCurrency(lotValue)}
               </TableCell>
               <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
-                {listing.locationCity && listing.locationState
-                  ? `${listing.locationCity}, ${listing.locationState}`
-                  : listing.locationState || "—"}
+                <ListingEvidence
+                  variant="compact"
+                  listing={{
+                    totalSqFt: listing.totalSqFt,
+                    moq: listing.moq ?? null,
+                    moqUnit: listing.moqUnit ?? null,
+                    condition: listing.condition,
+                    locationCity: listing.locationCity,
+                    locationState: listing.locationState,
+                    freightEstimateStatus:
+                      listing.freightEstimateStatus ?? "seller_setup_required",
+                    freshnessStatus: listing.freshnessStatus,
+                    lastConfirmedAt: listing.lastConfirmedAt,
+                    media: listing.media,
+                    seller: listing.seller,
+                  }}
+                />
               </TableCell>
             </TableRow>
           );

@@ -30,9 +30,22 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Loader2, ArrowLeft, ArrowRight, Check, AlertTriangle } from "lucide-react";
-import { cn } from "@/lib/utils";
+import {
+  Loader2,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  AlertTriangle,
+  Target,
+} from "lucide-react";
+import { cn, formatCurrency } from "@/lib/utils";
+import {
+  BUYER_MARKETPLACE_FEE_PERCENT,
+  SELLER_MARKETPLACE_FEE_PERCENT,
+  calculateOrderFees,
+} from "@/lib/fees";
 import { PhotoUpload } from "@/components/listings/photo-upload";
 import { WIDTH_OPTIONS, THICKNESS_OPTIONS, getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
 import { getFreightDefaults, FREIGHT_CLASS_OPTIONS } from "@/lib/constants/freight-defaults";
@@ -42,6 +55,19 @@ import { useAuthStore } from "@/lib/stores/auth-store";
 import { useProStatus } from "@/hooks/use-pro-status";
 import { FREE_LIMITS } from "@/lib/pro";
 import Link from "next/link";
+import {
+  parseSellerListingDemandContext,
+  type SellerListingDemandContext,
+} from "@/lib/marketplace/search-gap";
+import {
+  AutomaticMarkdownPreview,
+  ChoiceCard,
+  getCommercialReviewSummary,
+  getFreightUiMode,
+  SellerCommercialFulfillmentFields,
+  type UsStateCode,
+} from "@/components/marketplace/seller-commercial-fields";
+import { getSellerListingPreferenceDefaults } from "@/lib/selling-rules";
 
 const STEPS = [
   { id: 1, title: "Product Details", description: "Material and specs" },
@@ -126,7 +152,15 @@ const CERTIFICATIONS = [
 const STEP_FIELDS: Record<number, (keyof ListingFormInput)[]> = {
   1: ["title", "materialType"],
   2: ["totalSqFt", "totalPallets", "palletWeight", "palletLength", "palletWidth", "palletHeight", "locationZip", "moq", "moqUnit"],
-  3: ["askPricePerSqFt"],
+  3: [
+    "askPricePerSqFt",
+    "partialQuantityMarkupPercent",
+    "automaticMarkdownFloorPercent",
+    "automaticMarkdownIntervalDays",
+    "allowedDestinationStates",
+    "sellerFreightStates",
+    "freightDropCharge",
+  ],
   4: ["condition"],
   5: [],
   6: [],
@@ -138,8 +172,13 @@ export default function CreateListingPage() {
   const { currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
     useListingFormStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [demandContext, setDemandContext] =
+    useState<SellerListingDemandContext | null>(null);
+  const demandContextAppliedRef = useRef(false);
   const { isPro } = useProStatus();
   const { data: sellerStats } = trpc.listing.getSellerStats.useQuery();
+  const { data: sellerPreferences } = trpc.preferences.get.useQuery();
+  const sellerDefaultsAppliedRef = useRef(false);
 
   const activeListingCount = sellerStats
     ?.filter((s) => s.status === "active")
@@ -165,6 +204,207 @@ export default function CreateListingPage() {
   });
 
   const watchedValues = watch();
+  const rawListingSubtotal =
+    Number(watchedValues.askPricePerSqFt) *
+    Number(watchedValues.totalSqFt);
+  const listingSubtotal = Number.isFinite(rawListingSubtotal)
+    ? Math.max(0, rawListingSubtotal)
+    : 0;
+  const projectedFees = calculateOrderFees(listingSubtotal, 0);
+  const freightMode = getFreightUiMode({
+    freightPaymentMode: watchedValues.freightPaymentMode,
+    sellerFreightStates: watchedValues.sellerFreightStates,
+  });
+  const markdownFloorPercent = Number(
+    watchedValues.automaticMarkdownFloorPercent ?? 0,
+  );
+  const markdownIntervalDays = Number(
+    watchedValues.automaticMarkdownIntervalDays ?? 0,
+  );
+  const commercialReviewSummary = getCommercialReviewSummary({
+    fullLotOnly: watchedValues.fullLotOnly,
+    partialQuantityMarkupPercent: watchedValues.partialQuantityMarkupPercent,
+    automaticMarkdownEnabled: watchedValues.automaticMarkdownEnabled,
+    automaticMarkdownFloorPercent:
+      watchedValues.automaticMarkdownFloorPercent,
+    automaticMarkdownIntervalDays: watchedValues.automaticMarkdownIntervalDays,
+    allowOffers: watchedValues.allowOffers,
+    floorPrice: watchedValues.floorPrice,
+    allowSampleRequests: watchedValues.allowSampleRequests,
+    territoryMode: watchedValues.territoryMode,
+    allowedDestinationStates: watchedValues.allowedDestinationStates,
+    freightPaymentMode: watchedValues.freightPaymentMode,
+    sellerFreightStates:
+      (watchedValues.sellerFreightStates as UsStateCode[] | undefined) ??
+      undefined,
+    freightDropCharge: watchedValues.freightDropCharge,
+  });
+
+  useEffect(() => {
+    if (demandContextAppliedRef.current) return;
+    demandContextAppliedRef.current = true;
+
+    const context = parseSellerListingDemandContext(
+      new URLSearchParams(window.location.search),
+    );
+    if (context.source !== "zero_results") return;
+
+    setDemandContext(context);
+    const prefill: Partial<ListingFormInput> = {};
+    if (!formData.materialType && context.materialTypes[0]) {
+      prefill.materialType = context.materialTypes[0];
+    }
+    if (!formData.condition && context.conditions[0]) {
+      prefill.condition = context.conditions[0];
+    }
+    if (!formData.species && context.species[0]) {
+      prefill.species = context.species[0]
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+    if (!formData.finish && context.finishTypes[0]) {
+      prefill.finish = context.finishTypes[0];
+    }
+
+    for (const [field, value] of Object.entries(prefill)) {
+      setValue(field as keyof ListingFormInput, value, {
+        shouldDirty: false,
+      });
+    }
+    if (Object.keys(prefill).length > 0) updateFormData(prefill);
+  }, [formData, setValue, updateFormData]);
+
+  useEffect(() => {
+    if (sellerDefaultsAppliedRef.current || !sellerPreferences) return;
+    sellerDefaultsAppliedRef.current = true;
+
+    const sellerDefaults = getSellerListingPreferenceDefaults(sellerPreferences);
+    const nextDefaults: Partial<ListingFormInput> = {};
+
+    if (!formData.locationZip && sellerPreferences.originZip) {
+      nextDefaults.locationZip = sellerPreferences.originZip;
+      setValue("locationZip", sellerPreferences.originZip, {
+        shouldDirty: false,
+      });
+    }
+
+    if (formData.allowOffers == null && sellerPreferences.defaultAllowOffers != null) {
+      nextDefaults.allowOffers = sellerPreferences.defaultAllowOffers;
+      setValue("allowOffers", sellerPreferences.defaultAllowOffers, {
+        shouldDirty: false,
+      });
+    }
+
+    if (formData.fullLotOnly == null) {
+      nextDefaults.fullLotOnly = !sellerDefaults.canSplitLots;
+      setValue("fullLotOnly", !sellerDefaults.canSplitLots, {
+        shouldDirty: false,
+      });
+    }
+
+    if (formData.partialQuantityMarkupPercent == null) {
+      nextDefaults.partialQuantityMarkupPercent =
+        sellerDefaults.partialQuantityMarkupPercent ?? undefined;
+      setValue(
+        "partialQuantityMarkupPercent",
+        sellerDefaults.partialQuantityMarkupPercent ?? null,
+        {
+          shouldDirty: false,
+        },
+      );
+    }
+
+    if (formData.automaticMarkdownEnabled == null) {
+      nextDefaults.automaticMarkdownEnabled =
+        sellerDefaults.automaticMarkdownEnabled;
+      setValue(
+        "automaticMarkdownEnabled",
+        sellerDefaults.automaticMarkdownEnabled,
+        { shouldDirty: false },
+      );
+    }
+
+    if (formData.automaticMarkdownFloorPercent == null) {
+      nextDefaults.automaticMarkdownFloorPercent =
+        sellerDefaults.automaticMarkdownFloorPercent ?? undefined;
+      setValue(
+        "automaticMarkdownFloorPercent",
+        sellerDefaults.automaticMarkdownFloorPercent ?? null,
+        { shouldDirty: false },
+      );
+    }
+
+    if (formData.automaticMarkdownIntervalDays == null) {
+      nextDefaults.automaticMarkdownIntervalDays =
+        sellerDefaults.automaticMarkdownIntervalDays ?? undefined;
+      setValue(
+        "automaticMarkdownIntervalDays",
+        sellerDefaults.automaticMarkdownIntervalDays ?? null,
+        { shouldDirty: false },
+      );
+    }
+
+    if (formData.allowSampleRequests == null) {
+      nextDefaults.allowSampleRequests = sellerDefaults.allowSampleRequests;
+      setValue("allowSampleRequests", sellerDefaults.allowSampleRequests, {
+        shouldDirty: false,
+      });
+    }
+
+    if (formData.territoryMode == null) {
+      nextDefaults.territoryMode = sellerDefaults.sellingTerritoryMode;
+      setValue("territoryMode", sellerDefaults.sellingTerritoryMode, {
+        shouldDirty: false,
+      });
+    }
+
+    if (!formData.allowedDestinationStates?.length) {
+      nextDefaults.allowedDestinationStates =
+        sellerDefaults.allowedDestinationStates.length > 0
+          ? sellerDefaults.allowedDestinationStates
+          : undefined;
+      setValue(
+        "allowedDestinationStates",
+        sellerDefaults.allowedDestinationStates.length > 0
+          ? sellerDefaults.allowedDestinationStates
+          : [],
+        { shouldDirty: false },
+      );
+    }
+
+    if (formData.freightPaymentMode == null) {
+      nextDefaults.freightPaymentMode = sellerDefaults.freightPaymentMode;
+      setValue("freightPaymentMode", sellerDefaults.freightPaymentMode, {
+        shouldDirty: false,
+      });
+    }
+
+    if (!formData.sellerFreightStates?.length) {
+      nextDefaults.sellerFreightStates =
+        sellerDefaults.sellerFreightStates.length > 0
+          ? sellerDefaults.sellerFreightStates
+          : undefined;
+      setValue(
+        "sellerFreightStates",
+        sellerDefaults.sellerFreightStates.length > 0
+          ? sellerDefaults.sellerFreightStates
+          : [],
+        { shouldDirty: false },
+      );
+    }
+
+    if (formData.freightDropCharge == null) {
+      nextDefaults.freightDropCharge = sellerDefaults.freightDropCharge ?? undefined;
+      setValue("freightDropCharge", sellerDefaults.freightDropCharge ?? null, {
+        shouldDirty: false,
+      });
+    }
+
+    if (Object.keys(nextDefaults).length > 0) {
+      updateFormData(nextDefaults);
+    }
+  }, [formData, sellerPreferences, setValue, updateFormData]);
 
   // Auto-populate NMFC code and freight class when material type changes
   const prevMaterialTypeRef = useRef(watchedValues.materialType);
@@ -273,6 +513,58 @@ export default function CreateListingPage() {
           List your flooring inventory for buyers to discover
         </p>
       </div>
+
+      {demandContext && (
+        <Card className="border-primary/30 bg-primary/[0.03]">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Target className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold">Search context carried into this draft</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Product criteria from the marketplace search are available as a
+                  starting point. Review every listing value before publishing;
+                  this context is not a reservation or guaranteed order.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {demandContext.query && (
+                    <Badge variant="outline">Search: {demandContext.query}</Badge>
+                  )}
+                  {demandContext.materialTypes.map((material) => (
+                    <Badge key={material} variant="outline">
+                      {material.replaceAll("_", " ")}
+                    </Badge>
+                  ))}
+                  {demandContext.conditions.map((condition) => (
+                    <Badge key={condition} variant="outline">
+                      {condition.replaceAll("_", " ")}
+                    </Badge>
+                  ))}
+                  {(demandContext.priceMin || demandContext.priceMax) && (
+                    <Badge variant="outline">
+                      Target price: {demandContext.priceMin ? `$${demandContext.priceMin}` : "any"}
+                      {" – "}
+                      {demandContext.priceMax ? `$${demandContext.priceMax}` : "any"}/sq ft
+                    </Badge>
+                  )}
+                  {(demandContext.minLotSize || demandContext.maxLotSize) && (
+                    <Badge variant="outline">
+                      Lot: {demandContext.minLotSize || "any"}–{demandContext.maxLotSize || "any"} sq ft
+                    </Badge>
+                  )}
+                  {demandContext.states.length > 0 && (
+                    <Badge variant="outline">
+                      Origin: {demandContext.states.join(", ")}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Listing Limit Banner (free users only) */}
       {!isPro && (
@@ -829,7 +1121,7 @@ export default function CreateListingPage() {
                 Set your asking price and purchase options
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               {STEP_FIELDS[3]?.some(f => errors[f]) && (
                 <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 mb-4">
                   <p className="text-sm font-medium text-destructive">
@@ -837,6 +1129,13 @@ export default function CreateListingPage() {
                   </p>
                 </div>
               )}
+              <div className="rounded-2xl border bg-muted/30 p-4">
+                <p className="text-sm font-medium">Seller defaults are preloaded</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This listing starts from your account preferences, but every
+                  setting below can be overridden here before publish.
+                </p>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="askPricePerSqFt">
                   Ask Price per Sq Ft ($) *
@@ -866,64 +1165,338 @@ export default function CreateListingPage() {
                   )}
               </div>
 
-              <Separator className="my-4" />
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="buyNowPrice">
+                      Buy Now Price per Sq Ft ($, optional)
+                    </Label>
+                    <Input
+                      id="buyNowPrice"
+                      type="number"
+                      step="0.01"
+                      placeholder="4.25"
+                      {...register("buyNowPrice", { valueAsNumber: true })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave blank if this listing should only move through offers
+                      or negotiated checkout.
+                    </p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="buyNowPrice">
-                  Buy Now Price per Sq Ft ($, optional)
-                </Label>
-                <Input
-                  id="buyNowPrice"
-                  type="number"
-                  step="0.01"
-                  placeholder="4.25"
-                  {...register("buyNowPrice", { valueAsNumber: true })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Buy now price per square foot. Leave blank to disable instant purchase.
-                </p>
-              </div>
+                  <div className="rounded-2xl border bg-card p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="allow-offers" className="text-sm font-medium">
+                          Allow offers
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Buyers can submit an offer and each side can accept,
+                          decline, or counter when it is their turn.
+                        </p>
+                      </div>
+                      <Switch
+                        id="allow-offers"
+                        checked={!!watchedValues.allowOffers}
+                        onCheckedChange={(checked) =>
+                          setValue("allowOffers", checked, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      />
+                    </div>
 
-              <Separator className="my-4" />
+                    {watchedValues.allowOffers ? (
+                      <div className="mt-4 space-y-2">
+                        <Label htmlFor="floorPrice">
+                          Internal floor price per Sq Ft ($)
+                        </Label>
+                        <Input
+                          id="floorPrice"
+                          type="number"
+                          step="0.01"
+                          placeholder="2.00"
+                          {...register("floorPrice", { valueAsNumber: true })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This minimum is not visible to buyers.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
 
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="rounded border-gray-300"
-                    {...register("allowOffers")}
-                  />
-                  <span className="text-sm font-medium">Accept Offers</span>
-                </label>
-              </div>
+                  <div className="rounded-2xl border bg-card p-4">
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <div className="font-medium">How can buyers purchase this lot?</div>
+                        <p className="text-sm text-muted-foreground">
+                          Choose whether the listing is full-lot only or supports
+                          partial quantity pricing.
+                        </p>
+                      </div>
 
-              {watchedValues.allowOffers && (
-                <div className="space-y-2">
-                  <Label htmlFor="floorPrice">
-                    Floor Price per Sq Ft ($)
-                  </Label>
-                  <Input
-                    id="floorPrice"
-                    type="number"
-                    step="0.01"
-                    placeholder="2.00"
-                    {...register("floorPrice", { valueAsNumber: true })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Minimum price you will accept. Not visible to buyers.
-                  </p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <ChoiceCard
+                          title="Full lot only"
+                          description="Buyers must take the entire listing quantity."
+                          selected={!!watchedValues.fullLotOnly}
+                          onClick={() => {
+                            setValue("fullLotOnly", true, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                            setValue("partialQuantityMarkupPercent", null, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                          }}
+                        />
+                        <ChoiceCard
+                          title="Allow partial quantities"
+                          description="Let buyers purchase less than the full lot and add a partial-order markup."
+                          selected={!watchedValues.fullLotOnly}
+                          onClick={() =>
+                            setValue("fullLotOnly", false, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            })
+                          }
+                        />
+                      </div>
+
+                      {!watchedValues.fullLotOnly ? (
+                        <div className="space-y-2">
+                          <Label htmlFor="partialQuantityMarkupPercent">
+                            Partial-order markup (%)
+                          </Label>
+                          <Input
+                            id="partialQuantityMarkupPercent"
+                            type="number"
+                            min={0}
+                            max={500}
+                            step="1"
+                            {...register("partialQuantityMarkupPercent", {
+                              valueAsNumber: true,
+                            })}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            A 20% markup turns a {watchedValues.askPricePerSqFt?.toFixed?.(2) ?? "0.00"}/sq ft ask into{" "}
+                            {watchedValues.askPricePerSqFt
+                              ? (
+                                  watchedValues.askPricePerSqFt *
+                                  (1 +
+                                    Number(
+                                      watchedValues.partialQuantityMarkupPercent ?? 0,
+                                    ) /
+                                      100)
+                                ).toFixed(2)
+                              : "0.00"}
+                            /sq ft for smaller purchases.
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border bg-card p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="automatic-markdown"
+                          className="text-sm font-medium"
+                        >
+                          Automatic markdown
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Move the listing down in four equal steps until it
+                          reaches your floor.
+                        </p>
+                      </div>
+                      <Switch
+                        id="automatic-markdown"
+                        checked={!!watchedValues.automaticMarkdownEnabled}
+                        onCheckedChange={(checked) =>
+                          setValue("automaticMarkdownEnabled", checked, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      />
+                    </div>
+
+                    {watchedValues.automaticMarkdownEnabled ? (
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="automaticMarkdownFloorPercent">
+                              Lowest allowed percent of original ask
+                            </Label>
+                            <Input
+                              id="automaticMarkdownFloorPercent"
+                              type="number"
+                              min={1}
+                              max={100}
+                              step="1"
+                              {...register("automaticMarkdownFloorPercent", {
+                                valueAsNumber: true,
+                              })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="automaticMarkdownIntervalDays">
+                              Days between markdown steps
+                            </Label>
+                            <Input
+                              id="automaticMarkdownIntervalDays"
+                              type="number"
+                              min={1}
+                              max={365}
+                              step="1"
+                              {...register("automaticMarkdownIntervalDays", {
+                                valueAsNumber: true,
+                              })}
+                            />
+                          </div>
+                        </div>
+
+                        {watchedValues.askPricePerSqFt &&
+                        markdownFloorPercent > 0 &&
+                        markdownIntervalDays > 0 ? (
+                          <AutomaticMarkdownPreview
+                            baseUnitPrice={watchedValues.askPricePerSqFt}
+                            floorPercent={markdownFloorPercent}
+                            intervalDays={markdownIntervalDays}
+                            description="This preview uses your actual ask price. The schedule starts when the listing goes live or when you reset the rule."
+                          />
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Add a valid ask price, floor percent, and interval
+                            to preview the markdown schedule.
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
-              )}
 
-              <div className="rounded-lg bg-muted/50 p-4 mt-4">
-                <h4 className="text-sm font-medium mb-2">Fee Breakdown</h4>
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  <p>Seller fee: 2% of inventory subtotal</p>
-                  <p>Buyer fee: 3% of inventory subtotal (paid by buyer)</p>
-                  <p>Seller Stripe fee: 2.9% + $0.30 on inventory subtotal only</p>
-                  <p>Shipping is quoted separately and shipping-related processor cost is absorbed by PlankMarket</p>
+                <div className="space-y-4">
+                  <SellerCommercialFulfillmentFields
+                    sampleRequests={{
+                      id: "allow-samples",
+                      enabled: !!watchedValues.allowSampleRequests,
+                      onChange: (checked) =>
+                        setValue("allowSampleRequests", checked, {
+                          shouldDirty: true,
+                        }),
+                    }}
+                    territory={{
+                      mode:
+                        watchedValues.territoryMode === "allowed_states"
+                          ? "allowed_states"
+                          : "unrestricted",
+                      selectedStates:
+                        (watchedValues.allowedDestinationStates ??
+                          []) as UsStateCode[],
+                      onChange: ({ mode, selectedStates }) => {
+                        setValue("territoryMode", mode, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        setValue("allowedDestinationStates", selectedStates, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      },
+                      error: errors.allowedDestinationStates?.message,
+                    }}
+                    freight={{
+                      mode: freightMode,
+                      selectedStates:
+                        (watchedValues.sellerFreightStates ??
+                          []) as UsStateCode[],
+                      onChange: ({
+                        persistence,
+                        selectedStates,
+                        shouldClearDropCharge,
+                      }) => {
+                        setValue(
+                          "freightPaymentMode",
+                          persistence.freightPaymentMode,
+                          {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          },
+                        );
+                        setValue("sellerFreightStates", selectedStates, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        if (shouldClearDropCharge) {
+                          setValue("freightDropCharge", null, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                        }
+                      },
+                      dropChargeInputId: "freightDropCharge",
+                      dropChargeValue:
+                        watchedValues.freightDropCharge != null
+                          ? String(watchedValues.freightDropCharge)
+                          : "",
+                      onDropChargeChange: (value) =>
+                        setValue(
+                          "freightDropCharge",
+                          value.length > 0 ? Number(value) : null,
+                          {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          },
+                        ),
+                      statesError: errors.sellerFreightStates?.message,
+                      dropChargeError: errors.freightDropCharge?.message,
+                    }}
+                  />
+
+                  <div className="rounded-2xl border bg-muted/50 p-4">
+                    <h4 className="text-sm font-medium mb-2">Fee Breakdown</h4>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>
+                        Seller marketplace fee: {SELLER_MARKETPLACE_FEE_PERCENT}% of
+                        inventory subtotal
+                      </p>
+                      <p>
+                        Buyer marketplace fee: {BUYER_MARKETPLACE_FEE_PERCENT}% of
+                        inventory subtotal (paid by buyer)
+                      </p>
+                      <p>
+                        Seller Stripe fee: 2.9% + $0.30 on inventory subtotal
+                        only
+                      </p>
+                      <p>
+                        Freight is quoted separately. Any seller shipping
+                        contribution is deducted from the final net payout.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border bg-card p-4">
+                    <p className="text-sm font-medium">Sales tax</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Sales-tax registration states are managed in your seller
+                      preferences and are stored for operations only. Automatic
+                      tax calculation is not yet live in checkout.
+                    </p>
+                    <Link
+                      href="/preferences"
+                      className="mt-3 inline-flex text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Manage seller defaults
+                    </Link>
+                  </div>
                 </div>
               </div>
+
             </CardContent>
           </Card>
         )}
@@ -1131,42 +1704,71 @@ export default function CreateListingPage() {
                 )}
               </div>
 
+              <div className="rounded-lg border bg-card p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold">Commercial rules</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Final purchase settings buyers will encounter on this
+                      listing.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {commercialReviewSummary.map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-md border bg-muted/30 px-3 py-2"
+                    >
+                      <div className="mb-1 flex items-center gap-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {item.label}
+                        </p>
+                        {item.badge ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            {item.badge}
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-sm">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {watchedValues.askPricePerSqFt > 0 &&
                 watchedValues.totalSqFt > 0 && (
                   <div className="rounded-lg bg-primary/5 p-4">
-                    <h3 className="font-semibold mb-2">Listing Summary</h3>
+                    <h3 className="font-semibold mb-1">
+                      Projected payout before freight
+                    </h3>
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      Inventory-only estimate at the current asking price.
+                      {freightMode !== "buyer_pays"
+                        ? " Your final seller shipping contribution is calculated from the buyer's selected freight quote and deducted from net payout."
+                        : " The buyer pays the selected freight quote."}
+                    </p>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <span>Total lot value:</span>
+                      <span>Inventory subtotal:</span>
                       <span className="font-medium text-right">
-                        $
-                        {(
-                          watchedValues.askPricePerSqFt *
-                          watchedValues.totalSqFt
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        {formatCurrency(listingSubtotal)}
                       </span>
-                      <span>Seller fee (2%):</span>
+                      <span>
+                        Seller marketplace fee (
+                        {SELLER_MARKETPLACE_FEE_PERCENT}%):
+                      </span>
                       <span className="text-right">
-                        -$
-                        {(
-                          watchedValues.askPricePerSqFt *
-                          watchedValues.totalSqFt *
-                          0.02
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        -{formatCurrency(projectedFees.sellerFee)}
                       </span>
-                      <span className="font-medium">Your payout:</span>
+                      <span>Estimated payment processing:</span>
+                      <span className="text-right">
+                        -{formatCurrency(projectedFees.sellerStripeFee)}
+                      </span>
+                      <span className="font-medium">
+                        Payout before freight:
+                      </span>
                       <span className="font-medium text-right text-primary">
-                        $
-                        {(
-                          watchedValues.askPricePerSqFt *
-                          watchedValues.totalSqFt *
-                          0.98
-                        ).toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                        })}
+                        {formatCurrency(projectedFees.sellerPayout)}
                       </span>
                     </div>
                   </div>

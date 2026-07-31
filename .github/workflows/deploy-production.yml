@@ -13,18 +13,20 @@ env:
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  lint-and-typecheck:
-    name: Lint & Type Check
+  quality:
+    name: Quality & Security Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.0
           cache: npm
 
-      - run: npm install --frozen-lockfile || npm install
+      - name: Install locked dependencies
+        run: npm ci
 
       - name: Lint
         run: npm run lint
@@ -34,20 +36,45 @@ jobs:
           SKIP_ENV_VALIDATION: true
         run: npm run typecheck
 
+      - name: Test Type Check
+        run: npm run typecheck:tests
+
+      - name: Unit and component tests
+        run: npm run test
+
+      - name: Shipping workflow tests
+        run: npm run test:shipping
+
+      - name: Production dependency audit
+        run: npm run audit:prod
+
+      - name: Migration integrity
+        run: npm run db:check
+
+      - name: Production build
+        env:
+          SKIP_ENV_VALIDATION: true
+        run: npm run build
+
   deploy:
-    name: Deploy Production
-    needs: lint-and-typecheck
+    name: Stage, Verify & Promote
+    needs: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.22.0
           cache: npm
 
-      - name: Install Vercel CLI
-        run: npm install -g vercel
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install pinned Vercel CLI
+        run: npm install -g vercel@55.0.0
 
       - name: Link Vercel Project
         run: |
@@ -57,8 +84,57 @@ jobs:
       - name: Pull Vercel Environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
+      - name: Export Production Environment for Preflight
+        run: >-
+          vercel env pull .vercel/.env.production.local --yes
+          --environment=production
+          --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Validate Production Environment
+        run: npm run env:check:production -- --file .vercel/.env.production.local
+
+      # This is intentionally read-only. The historical baseline is unresolved,
+      # so forward migrations remain a reviewed manual operation documented in
+      # drizzle/BASELINE_STRATEGY.md.
+      - name: Verify target database schema before build
+        run: npm run db:check:target -- --file .vercel/.env.production.local
+
+      - name: Audit target marketplace data before build
+        run: npm run db:audit:marketplace -- --file .vercel/.env.production.local
+
       - name: Build
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
-      - name: Deploy Production
-        run: vercel deploy --prebuilt --prod --archive=tgz --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Create staged production deployment
+        id: stage
+        shell: bash
+        run: |
+          deployment_url=$(vercel deploy --prebuilt --prod --skip-domain --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify staged deployment
+        run: >-
+          vercel curl /api/health
+          --deployment "${{ steps.stage.outputs.url }}"
+          --fail --retry 5 --retry-all-errors
+          --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run staged public marketplace smoke
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ steps.stage.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: npm run test:e2e:public
+
+      - name: Promote verified deployment
+        run: >-
+          vercel promote "${{ steps.stage.outputs.url }}"
+          --yes --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Verify production
+        run: >-
+          vercel curl /api/health
+          --fail --retry 5 --retry-all-errors
+          --token=${{ secrets.VERCEL_TOKEN }}

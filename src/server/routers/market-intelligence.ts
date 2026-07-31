@@ -1,8 +1,15 @@
 import { createTRPCRouter, sellerProcedure } from "../trpc";
-import { listings, offers, savedSearches, buyerRequests } from "../db/schema";
+import {
+  buyerRequests,
+  listings,
+  offers,
+  savedSearches,
+  users,
+} from "../db/schema";
 import { eq, and, sql, gte, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { isPro } from "@/lib/pro";
+import { savedSearchMaterialOverlapWhere } from "@/server/market-intelligence/saved-search-demand";
 
 const PRO_GATE_MESSAGE =
   "Market Intelligence is a Pro feature. Upgrade to Pro for pricing benchmarks, demand signals, and trending categories.";
@@ -123,17 +130,44 @@ export const marketIntelligenceRouter = createTRPCRouter({
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // 1. Count saved searches with alerts by material type
-    // savedSearches.filters is jsonb with materialType field
-    // We need to check if the materialType array in the filters overlaps with our materialTypes
+    // 1. Count only saved searches that can match at least one material in the
+    // seller's current active inventory. A search without a material filter is
+    // intentionally broad and therefore overlaps every active category.
     const savedSearchCounts = await ctx.db
       .select({
         count: sql<number>`count(*)::int`,
       })
       .from(savedSearches)
-      .where(eq(savedSearches.alertEnabled, true));
+      .innerJoin(users, eq(savedSearches.userId, users.id))
+      .where(
+        and(
+          eq(savedSearches.alertEnabled, true),
+          eq(users.role, "buyer"),
+          savedSearchMaterialOverlapWhere(materialTypes),
+        ),
+      );
 
-    const totalAlertedSearches = savedSearchCounts[0]?.count ?? 0;
+    const matchingAlertedSearches = savedSearchCounts[0]?.count ?? 0;
+
+    const savedSearchCountsByType = await Promise.all(
+      materialTypes.map(async (materialType) => {
+        const [result] = await ctx.db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(savedSearches)
+          .innerJoin(users, eq(savedSearches.userId, users.id))
+          .where(
+            and(
+              eq(savedSearches.alertEnabled, true),
+              eq(users.role, "buyer"),
+              savedSearchMaterialOverlapWhere([materialType]),
+            ),
+          );
+        return {
+          materialType,
+          count: result?.count ?? 0,
+        };
+      }),
+    );
 
     // 2. Count active buyer requests per material type
     // buyerRequests.materialTypes is a jsonb array, so use jsonb containment
@@ -180,6 +214,12 @@ export const marketIntelligenceRouter = createTRPCRouter({
     const requestMap = new Map(
       requestCountsByType.map((r) => [r.materialType, r.requestCount])
     );
+    const savedSearchMap = new Map(
+      savedSearchCountsByType.map((result) => [
+        result.materialType,
+        result.count,
+      ]),
+    );
 
     const signals = materialTypes.map((mt) => {
       const offerData = offerMap.get(mt);
@@ -197,6 +237,7 @@ export const marketIntelligenceRouter = createTRPCRouter({
       return {
         materialType: mt,
         buyerRequests: requestCount,
+        matchingSavedSearches: savedSearchMap.get(mt) ?? 0,
         recentOffers: offerCount,
         avgOfferToAskPercent: avgOfferToAsk,
         demandLevel,
@@ -205,7 +246,7 @@ export const marketIntelligenceRouter = createTRPCRouter({
 
     return {
       signals,
-      totalAlertedSearches,
+      matchingAlertedSearches,
     };
   }),
 

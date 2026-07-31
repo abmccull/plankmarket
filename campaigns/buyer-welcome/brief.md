@@ -20,7 +20,7 @@ Buyers: flooring retailers, contractors, builders. Verified professionals who so
 None. This is a product welcome sequence triggered by buyer account registration, not a lead magnet download.
 
 ## Paid Offer
-PlankMarket marketplace itself. No subscription fee. 3% buyer fee on completed purchases. The "conversion" is their first purchase on the platform.
+PlankMarket marketplace itself. No subscription fee. 5% buyer fee on completed purchases. The "conversion" is their first purchase on the platform.
 
 ## Bridge Logic
 Signup means interest. The sequence bridges from "I signed up" to "I bought my first lot" by progressively reducing friction: complete profile (trust signal for sellers) -> browse inventory (see what is available) -> set saved searches (get notified on matches) -> make an offer or purchase (close the deal). Each email removes one barrier to the next action.

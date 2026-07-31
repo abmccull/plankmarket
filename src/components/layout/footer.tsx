@@ -18,7 +18,7 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-3 text-sm">For Buyers</h4>
+            <h2 className="font-semibold mb-3 text-sm">For Buyers</h2>
             <ul className="space-y-2">
               <li>
                 <Link
@@ -48,7 +48,7 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-3 text-sm">For Sellers</h4>
+            <h2 className="font-semibold mb-3 text-sm">For Sellers</h2>
             <ul className="space-y-2">
               <li>
                 <Link
@@ -86,7 +86,7 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-3 text-sm">Company</h4>
+            <h2 className="font-semibold mb-3 text-sm">Company</h2>
             <ul className="space-y-2">
               <li>
                 <Link

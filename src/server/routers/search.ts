@@ -10,6 +10,7 @@ import { z } from "zod";
 import { listingFilterSchema } from "@/lib/validators/listing";
 import type { SearchFilters } from "@/types";
 import { isPro, FREE_LIMITS } from "@/lib/pro";
+import { publicActiveListingWhere } from "@/server/security/listing-visibility";
 
 export const searchRouter = createTRPCRouter({
   // Save a search
@@ -122,6 +123,7 @@ export const searchRouter = createTRPCRouter({
   // Get search facet counts (for filter sidebar)
   getFacets: publicProcedure.query(async ({ ctx }) => {
     const { db } = ctx;
+    const visibleListings = publicActiveListingWhere(new Date(), ctx.user);
 
     const [materialCounts, conditionCounts, stateCounts] = await Promise.all([
       db
@@ -130,7 +132,7 @@ export const searchRouter = createTRPCRouter({
           count: sql<number>`count(*)::int`,
         })
         .from(listings)
-        .where(eq(listings.status, "active"))
+        .where(visibleListings)
         .groupBy(listings.materialType),
 
       db
@@ -139,7 +141,7 @@ export const searchRouter = createTRPCRouter({
           count: sql<number>`count(*)::int`,
         })
         .from(listings)
-        .where(eq(listings.status, "active"))
+        .where(visibleListings)
         .groupBy(listings.condition),
 
       db
@@ -148,7 +150,7 @@ export const searchRouter = createTRPCRouter({
           count: sql<number>`count(*)::int`,
         })
         .from(listings)
-        .where(eq(listings.status, "active"))
+        .where(visibleListings)
         .groupBy(listings.locationState),
     ]);
 

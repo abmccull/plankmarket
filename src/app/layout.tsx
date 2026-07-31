@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { DM_Serif_Display } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
@@ -69,11 +70,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} antialiased min-h-screen`}
-      >
-        <script
+      <head>
+        <Script
+          id="organization-json-ld"
           type="application/ld+json"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",
@@ -84,18 +85,19 @@ export default function RootLayout({
               description:
                 "B2B marketplace for surplus flooring materials connecting manufacturers, distributors, and retailers.",
               sameAs: [],
-            }),
+            }).replace(/</g, "\\u003c"),
           }}
         />
-        <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded focus:shadow-lg focus:outline-2 focus:outline-offset-2">
-          Skip to main content
-        </a>
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} ${dmSerif.variable} antialiased min-h-screen`}
+      >
         <Providers>
           <div className="flex min-h-screen flex-col">
             <Header />
-            <div id="main-content" className="flex flex-1 flex-col">
+            <main id="main-content" className="flex flex-1 flex-col">
               {children}
-            </div>
+            </main>
             <Footer />
           </div>
         </Providers>

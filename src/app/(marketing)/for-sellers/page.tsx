@@ -1,6 +1,18 @@
-import { Metadata } from "next";
-import Link from "next/link";
+import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Boxes,
+  Calculator,
+  CheckCircle2,
+  CircleDollarSign,
+  FileCheck2,
+  ShieldCheck,
+  Truck,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,863 +21,308 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import {
-  ArrowRight,
-  Shield,
-  CreditCard,
-  Zap,
-  Camera,
-  Users,
-  MessageSquare,
-  BarChart2,
-  CheckCircle2,
-  XCircle,
-  Warehouse,
-  PackageX,
-  TrendingDown,
-  UserX,
-  Globe,
-  Clock,
-  Database,
-  Percent,
-  Timer,
-  Calculator,
-} from "lucide-react";
 import { CarryingCostCalculator } from "@/components/marketing/carrying-cost-calculator";
 
 export const metadata: Metadata = {
-  title: "Sell Surplus Flooring B2B — Move Closeouts Before the Margin Disappears | PlankMarket",
+  title: "For Sellers - Sell Surplus Flooring",
   description:
-    "Your closeout flooring is losing value right now. PlankMarket connects manufacturers and distributors with verified retailers to liquidate surplus inventory fast. 2% seller fee. No listing costs.",
+    "List closeout and surplus flooring with no listing fee. Sell to verified businesses with integrated offers, freight milestones, and a clear 5% seller fee with projected seller transfer before acceptance.",
   openGraph: {
-    title: "Your Surplus Flooring Is Depreciating. Move It on PlankMarket.",
+    title: "Turn surplus flooring into working capital",
     description:
-      "The B2B marketplace built for flooring liquidation. Verified buyers nationwide. 2% commission only on completed sales. Fast payouts.",
-    type: "website",
+      "Publish detailed inventory, reach verified buyers, and keep the order and freight trail in one marketplace.",
+    url: "https://plankmarket.com/for-sellers",
   },
 };
 
 export const revalidate = 3600;
 
-const PAIN_POINTS = [
+const BENEFITS = [
   {
-    icon: Warehouse,
-    title: "Warehouse space has a price tag. Your surplus is running up the tab.",
+    icon: BadgeCheck,
+    title: "Transact with verified businesses",
     description:
-      "A 5,000 sq ft lot of discontinued engineered oak sitting on pallets for six months is not an asset. It is active overhead. Rack space, insurance, climate control, property tax allocation — those costs compound every week the inventory stays. You are paying to store product that is not generating revenue.",
+      "Buyers must complete business verification before checkout and other protected transaction actions.",
   },
   {
-    icon: PackageX,
-    title: "Your sales channels were built to sell active lines. Not liquidate closeouts.",
+    icon: Boxes,
+    title: "Give the lot enough evidence",
     description:
-      "Your wholesale accounts do not want last year's discontinued SKUs. Your reps are focused on current product lines and commission targets. Posting lots on general classifieds brings weeks of low-ball offers, no-shows, and tire-kickers. You need a channel purpose-built for surplus flooring — not a workaround.",
+      "Publish structured specifications, quantity, condition, pallet details, and photos so a buyer can qualify the opportunity.",
   },
   {
-    icon: TrendingDown,
-    title: "$200K in overstock looks like an asset on paper. It is not working for you.",
+    icon: Truck,
+    title: "Keep fulfillment connected",
     description:
-      "Capital locked in surplus inventory is capital you cannot deploy. No new product buys. No warehouse improvements. No growth spending. And every month that inventory does not move, depreciation and carrying costs shrink your recovery. The math gets worse, not better.",
-  },
-  {
-    icon: UserX,
-    title: "Unverified inquiries are the most expensive time sink in liquidation.",
-    description:
-      "You field the inquiry. Share detailed specs and photos. Answer follow-up questions. Schedule a call. Then the buyer disappears, counters at 30 cents on the dollar, or turns out to be a hobbyist who wanted five boxes, not five pallets. Hours gone. No sale. You need buyers who have been vetted before they reach you.",
-  },
-] as const;
-
-const VALUE_PROPS = [
-  {
-    number: "01",
-    title: "A verified buyer network that is actively sourcing surplus flooring.",
-    description:
-      "Every buyer who transacts on PlankMarket has completed business verification — EIN confirmation, document review, admin approval. These are flooring contractors, retail stores, builders, and purchasing managers who registered specifically to source closeout and overstock inventory. They are not browsing. They have projects to fill and budgets allocated.",
-    detail:
-      "Buyers set up saved search alerts for specific materials, species, grades, and conditions. When your lot matches, they are notified immediately. Your inventory reaches the right buyer the day it goes live — not after weeks of outreach.",
-  },
-  {
-    number: "02",
-    title: "List a lot in under five minutes. The AI handles the description.",
-    description:
-      "Enter your specs — material type, species, dimensions, grade, condition, lot size. Upload photos. Set your price. PlankMarket's AI drafts a complete listing description from your inputs. Review the draft, adjust if needed, and publish. That is it. No copywriting. No formatting. No admin bottleneck.",
-    detail:
-      "44 flooring-specific data fields. Up to 20 photos per listing. CSV bulk upload for high-volume sellers managing large inventories. Your team lists faster, which means your inventory hits the market faster, which means the depreciation clock stops sooner.",
-  },
-  {
-    number: "03",
-    title: "Funds in your bank typically 3-5 days after carrier pickup. No invoices to chase.",
-    description:
-      "Buyers pay through Stripe at checkout. Funds are held securely until the carrier picks up the shipment. Once pickup is confirmed, payment releases automatically to your Stripe Connect account. No net-30 terms. No collections calls. No accounts receivable friction.",
-    detail:
-      "Buyers have a 48-hour post-delivery window to report damage or shortages with photo evidence. If no dispute is filed, the transaction closes and funds are confirmed. Your seller dashboard shows real-time earnings, payout status, and full transaction history.",
+      "Offers, order state, freight booking evidence, pickup, and delivery milestones stay attached to the transaction.",
   },
 ] as const;
 
 const STEPS = [
   {
-    number: "1",
-    title: "Register and verify your business.",
+    title: "Create your account",
     description:
-      "Create a seller account with your business name, EIN, and company details. Our team reviews applications within 1-3 business days. Verified status displays on every listing you publish — it builds buyer confidence and moves deals faster.",
+      "Registration asks only for account and contact details. EIN and supporting documents are not collected during signup.",
   },
   {
-    number: "2",
-    title: "List your surplus inventory.",
+    title: "Save business verification",
     description:
-      "Enter material specs, upload up to 20 photos, set your asking price. Choose whether to accept offers, Buy Now only, or both. The AI drafts your listing description — you review and publish. Five minutes per lot, not thirty.",
+      "Complete business, evidence, and review steps at your pace. The draft is saved server-side so you can safely resume.",
   },
   {
-    number: "3",
-    title: "Negotiate and close on-platform.",
+    title: "Publish the inventory",
     description:
-      "Buyers purchase at your listed price or submit an offer. You accept, counter, or decline — all within PlankMarket. Once a deal is agreed, the buyer pays through Stripe and the order appears in your dashboard.",
+      "After approval, add the lot specifications and photos, then choose when the listing becomes active.",
   },
   {
-    number: "4",
-    title: "Ship it. Get paid.",
+    title: "Sell and prepare pickup",
     description:
-      "Coordinate freight through the platform. Once the carrier picks up the shipment, payment releases automatically. Funds typically arrive in your bank within 3-5 business days. The inventory is gone. The capital is back.",
-  },
-] as const;
-
-const FEATURES = [
-  {
-    icon: Zap,
-    title: "AI-Assisted Listing Creation",
-    description:
-      "Enter your specs. The AI drafts a complete, detailed listing description. What used to take 30 minutes per lot now takes under five. Your inventory gets to market the same day it gets cleared for liquidation.",
-  },
-  {
-    icon: Camera,
-    title: "Up to 20 Photos Per Listing",
-    description:
-      "Upload high-resolution photos showing material, finish, texture, packaging, and condition. Detailed visual documentation reduces buyer hesitation and drives higher offer rates. Fewer questions. Faster closes.",
-  },
-  {
-    icon: Users,
-    title: "Verified Buyer Network",
-    description:
-      "Every buyer has completed business verification — EIN, documentation, admin approval. You are dealing with flooring contractors, retailers, builders, and purchasing managers. Serious buyers with real budgets who close faster.",
-  },
-  {
-    icon: MessageSquare,
-    title: "On-Platform Messaging and Negotiation",
-    description:
-      "Buyers ask questions via direct messaging or submit offers through the built-in negotiation tool. Contact information stays masked until an order is placed. All communication in one place — no scattered email threads.",
-  },
-  {
-    icon: CreditCard,
-    title: "Stripe Payments with Secure Payment Hold",
-    description:
-      "Buyers pay via Stripe at checkout. Funds are held securely until carrier pickup is confirmed, then release automatically to your Stripe Connect account. No net terms. No wire transfer friction. No payment chasing.",
-  },
-  {
-    icon: BarChart2,
-    title: "Seller Dashboard and Analytics",
-    description:
-      "Track active listings, pending orders, completed sales, and total revenue in one view. Monitor offer activity, respond to inquiries, and manage your inventory portfolio from a single dashboard.",
-  },
-] as const;
-
-const SELLER_PERSONAS = [
-  {
-    icon: Warehouse,
-    title: "Manufacturers Clearing Overstock",
-    description:
-      "Discontinued SKUs and production overruns eating warehouse space. List them on PlankMarket and reach verified buyers who buy at volume — without disrupting your primary wholesale channels.",
-  },
-  {
-    icon: PackageX,
-    title: "Distributors Liquidating Discontinued Lines",
-    description:
-      "Last year's product lines are not generating revenue. Stop paying to store inventory that is not moving. PlankMarket connects you to buyers actively sourcing surplus flooring.",
-  },
-  {
-    icon: TrendingDown,
-    title: "Retailers Moving Surplus Inventory",
-    description:
-      "Showroom changes, cancelled orders, leftover project stock. Recover capital from inventory your local market cannot absorb. Sell to verified buyers nationwide.",
-  },
-  {
-    icon: Globe,
-    title: "Wholesalers Recovering Capital",
-    description:
-      "Capital locked in slow-moving inventory is capital you cannot deploy. List unlimited lots with no insertion fees and turn dead stock into working capital in days, not months.",
-  },
-] as const;
-
-const STATS = [
-  {
-    icon: Percent,
-    value: "2%",
-    label: "Seller fee",
-    detail: "Only on completed sales. Zero listing costs.",
-  },
-  {
-    icon: Clock,
-    value: "3-5 days",
-    label: "Payout timeline",
-    detail: "Funds in your bank after carrier pickup",
-  },
-  {
-    icon: Database,
-    value: "44",
-    label: "Flooring-specific data fields",
-    detail: "Buyers get the detail they need to commit",
-  },
-  {
-    icon: Globe,
-    value: "Nationwide",
-    label: "US coverage",
-    detail: "Verified buyers coast to coast",
-  },
-] as const;
-
-const NO_FEES = [
-  "No required subscription fee.",
-  "No listing or insertion fee.",
-  "No renewal fee on unsold inventory.",
-  "No payout or withdrawal fee.",
-  "No featured placement charges.",
-] as const;
-
-const ALTERNATIVES = [
-  {
-    label: "Traditional liquidators",
-    detail:
-      "Pay 30-50 cents on the dollar for your inventory. You are leaving recovery on the table to avoid the hassle of selling direct.",
-  },
-  {
-    label: "Freight brokers and middlemen",
-    detail:
-      "Add markup layers, provide no buyer network, and give you zero visibility into the end transaction.",
-  },
-  {
-    label: "Open classifieds or general marketplaces",
-    detail:
-      "No flooring-specific tooling, no verified buyers, no freight integration, no payment protection. You spend more time filtering than selling.",
+      "The buyer pays through Stripe. After confirmed carrier pickup and the configured delay, PlankMarket initiates the seller transfer through Stripe Connect.",
   },
 ] as const;
 
 const FAQS = [
   {
-    question: "What types of inventory can I list?",
+    question: "Does it cost anything to list?",
     answer:
-      "Any surplus, overstock, discontinued, or closeout flooring inventory across six material categories: hardwood, engineered wood, laminate, vinyl/LVP, bamboo, and tile. Supported conditions include new overstock, discontinued lines, closeouts, factory seconds, remnants, customer returns, and slightly damaged inventory — as long as condition is accurately described and documented with photos.",
+      "There is no listing or insertion fee and no required subscription. PlankMarket charges a 5% seller platform fee on completed inventory sales. The seller's Stripe processing fee also applies to the inventory subtotal.",
   },
   {
-    question: "How does business verification work?",
+    question: "What is required for business verification?",
     answer:
-      "When you register, you submit your business name, EIN, company details, and supporting documentation. Our team reviews your application — including AI-assisted document and website analysis — and typically completes verification within 1-3 business days. Verified status appears on your listings and increases buyer confidence.",
+      "The progressive verification flow asks for your business website and legal address, EIN, and an approved secure-upload link to a supporting business document. Each step can be saved and resumed before submission.",
   },
   {
-    question: "Can I set a minimum lot size or split lots?",
+    question: "When does the seller transfer begin?",
     answer:
-      "Yes. When creating a listing, you specify whether the lot must be sold as a whole or if you are willing to split. You can set a minimum order quantity. Buyers see these terms on the listing before making an offer.",
+      "Stripe processes the buyer's payment at checkout. PlankMarket initiates the separate Connect transfer after confirmed carrier pickup and the configured delay. Bank availability depends on the seller's Stripe payout schedule and financial institution.",
   },
   {
-    question: "When do I get paid?",
+    question: "What happens if the buyer reports a problem?",
     answer:
-      "Seller payouts release when the carrier picks up the shipment. Buyers have a 48-hour window after delivery to report damage, shortages, or quality issues with photo evidence. If no dispute is filed within 5 business days of delivery, the transaction closes automatically. Funds are typically available in your bank within 3-5 business days of pickup.",
-  },
-  {
-    question: "What if a buyer disputes the order?",
-    answer:
-      "Buyers have a 48-hour window after delivery to report damage, shortages, or quality issues with photo evidence. Freight damage must be noted on the Bill of Lading at time of delivery. Our support team mediates all disputes. If no dispute is filed within 5 business days of delivery, the transaction closes automatically and funds are confirmed.",
-  },
-  {
-    question: "Is there a limit to how many lots I can list?",
-    answer:
-      "No. Listings are unlimited. List one lot or a hundred — there are no per-listing fees and no inventory caps. For high-volume sellers managing large portfolios, contact our team about CSV bulk upload and enterprise account options.",
+      "The buyer can report damage or shortages through the order with supporting evidence. The platform retains the order, communication, payment, and freight history for support review.",
   },
 ] as const;
 
 export default function ForSellersPage() {
   return (
     <>
-      {/* ── Section 1: Hero — The Depreciation Clock ── */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20 md:py-32">
-        {/* Wood grain texture overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          aria-hidden="true"
-          style={{
-            backgroundImage: `
-              repeating-linear-gradient(
-                90deg,
-                transparent,
-                transparent 2px,
-                oklch(0.40 0.10 55) 2px,
-                oklch(0.40 0.10 55) 4px
-              ),
-              repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 1px,
-                oklch(0.42 0.09 155) 1px,
-                oklch(0.42 0.09 155) 2px
-              )
-            `,
-          }}
-        />
-
-        {/* Decorative blur circles */}
-        <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" aria-hidden="true" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" aria-hidden="true" />
-
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="mx-auto max-w-5xl">
-            {/* Two-column layout: photo left, copy right */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-              {/* Hero image */}
-              <div className="hidden lg:block relative h-[480px] rounded-2xl overflow-hidden shadow-elevation-lg order-last lg:order-first">
-                <Image
-                  src="https://images.unsplash.com/photo-1681752972950-6229ca099fbc?w=800&q=80&fit=crop"
-                  alt="Stacked wooden flooring planks in warehouse ready for liquidation"
-                  fill
-                  className="object-cover"
-                  priority
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent" aria-hidden="true" />
-              </div>
-
-              <div className="text-center lg:text-left">
-                <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-                  B2B Flooring Liquidation
-                </Badge>
-                <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
-                  Your Closeout Inventory Is{" "}
-                  <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                    Losing Value Right Now.
-                  </span>
-                </h1>
-                <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto lg:mx-0">
-                  Every week surplus flooring sits in a warehouse, carrying costs eat margin and the product moves closer to obsolete. PlankMarket is the fastest path from excess inventory to verified buyer — before the recovery window closes.
-                </p>
-                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+      <section className="relative overflow-hidden bg-gradient-to-b from-secondary/10 to-background py-12 md:py-20">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-[1.05fr_.95fr]">
+            <div className="text-center lg:text-left">
+              <Badge className="border-transparent bg-amber-100 text-amber-900">
+                Built for flooring inventory owners
+              </Badge>
+              <h1 className="mt-4 font-display text-4xl tracking-tight sm:text-5xl lg:text-6xl">
+                Put surplus inventory in front of qualified buyers.
+              </h1>
+              <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground lg:mx-0">
+                Publish a complete lot record, handle offers in one place, keep
+                payment and freight milestones connected through delivery, and
+                see the projected seller transfer before you accept.
+              </p>
+              <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+                <Button asChild size="xl" variant="gold">
                   <Link href="/register?role=seller">
-                    <Button
-                      size="xl"
-                      variant="gold"
-                    >
-                      List Your Surplus Inventory
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
+                    Create seller account <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
-                  <Link href="/how-it-works">
-                    <Button variant="outline" size="xl">
-                      See How It Works
-                    </Button>
-                  </Link>
-                </div>
-
-                {/* Trust signals */}
-                <div className="mt-10 flex flex-wrap items-center justify-center lg:justify-start gap-3 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                    <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Verified buyers only</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                    <CreditCard className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>Secure payment hold — funds held until pickup</span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-sm">
-                    <Zap className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                    <span>2% fee only on completed sales</span>
-                  </div>
-                </div>
+                </Button>
+                <Button asChild size="xl" variant="outline">
+                  <Link href="#seller-process">See the seller workflow</Link>
+                </Button>
               </div>
+              <p className="mt-4 text-sm text-muted-foreground">
+                Free to register and list. Approval is required before publishing.
+              </p>
+            </div>
+            <div className="relative hidden h-[390px] overflow-hidden rounded-2xl shadow-elevation-lg lg:block">
+              <Image
+                src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=1000&q=80&fit=crop"
+                alt="Palletized flooring inventory prepared in a warehouse"
+                fill
+                className="object-cover"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-primary/35 to-transparent" aria-hidden="true" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Carrying Cost Calculator — first thing after the hero ── */}
-      <section className="py-20 bg-gradient-to-br from-destructive/5 via-background to-primary/5 border-y border-border">
+      <section className="border-y border-border bg-gradient-to-br from-destructive/5 via-background to-primary/5 py-12 md:py-16">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="mx-auto mb-9 max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
-              <Calculator className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              Free Calculator
+              <Calculator className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              Free carrying-cost calculator
             </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl max-w-3xl mx-auto">
-              How much is holding{" "}
-              <span className="text-destructive">actually costing you?</span>
+            <h2 className="font-display text-3xl sm:text-4xl">
+              How much is holding surplus inventory actually costing you?
             </h2>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Plug in your numbers. See warehouse, insurance, depreciation, and
-              opportunity costs — then compare holding vs. selling today.
+            <p className="mt-4 text-lg text-muted-foreground">
+              Enter your numbers to compare warehouse, insurance, depreciation,
+              and opportunity costs with the projected value of selling today.
             </p>
           </div>
-          <div className="max-w-5xl mx-auto">
+          <div className="mx-auto max-w-5xl">
             <CarryingCostCalculator />
           </div>
         </div>
       </section>
 
-      {/* ── Section 2: Problem Agitation — The Cost of Inaction ── */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-4">
-            <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
-              <Timer className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              The Depreciation Clock
-            </Badge>
-          </div>
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl sm:text-4xl max-w-3xl mx-auto">
-              Every day that surplus sits in your warehouse,{" "}
-              <span className="text-primary">the recovery shrinks.</span>
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Carrying costs do not pause. Depreciation does not wait. The flooring market moves on. Here is what inaction actually costs.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto stagger-grid">
-            {PAIN_POINTS.map((point) => (
-              <Card key={point.title} className="card-hover-lift border-destructive/10 bg-card">
-                <CardHeader>
-                  <div className="w-12 h-12 rounded-lg bg-red-50 flex items-center justify-center mb-3">
-                    <point.icon className="h-6 w-6 text-red-500" aria-hidden="true" />
-                  </div>
-                  <CardTitle className="font-display text-lg leading-snug">{point.title}</CardTitle>
-                  <CardDescription className="text-base leading-relaxed">{point.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-
-          {/* Bridge to solution */}
-          <div className="max-w-2xl mx-auto mt-12 text-center">
-            <p className="text-muted-foreground text-lg leading-relaxed">
-              The longer surplus sits, the less you recover. The question is not <em>whether</em> to liquidate — it is <em>how fast</em> you can get it in front of the right buyers.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 3: Solution — PlankMarket as the Fastest Path ── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-16">
-            <Badge variant="outline" className="mb-4 border-secondary text-secondary">
-              The Fastest Path to Verified Buyer
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl">
-              PlankMarket was built to stop the depreciation clock.
-            </h2>
-            <p className="mt-4 text-xl text-muted-foreground leading-relaxed">
-              A dedicated liquidation channel that connects your surplus inventory to verified flooring buyers who are actively looking for it. No brokers. No middlemen. No wasted time.
-            </p>
-          </div>
-
-          {/* Warehouse/inventory photo */}
-          <div className="relative max-w-4xl mx-auto mb-16 h-56 rounded-2xl overflow-hidden shadow-elevation-md">
-            <Image
-              src="https://images.unsplash.com/photo-1422246654994-34520d5a0340?w=1200&q=80&fit=crop"
-              alt="Stacked wood planks in a warehouse representing surplus flooring inventory"
-              fill
-              className="object-cover"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-secondary/40 to-transparent" aria-hidden="true" />
-            <div className="absolute inset-0 flex items-center px-10 relative z-10">
-              <p className="text-white font-display text-2xl max-w-sm drop-shadow-lg">
-                Turn warehouse dead weight into working capital. In days, not months.
-              </p>
+      <section className="border-y bg-muted/20" aria-label="Seller marketplace terms">
+        <div className="container mx-auto grid gap-4 px-4 py-6 text-sm sm:grid-cols-3">
+          {[
+            "No listing or insertion fee",
+            "5% platform fee on completed inventory sales",
+            "Seller transfer initiated after confirmed pickup",
+          ].map((item) => (
+            <div key={item} className="flex items-center gap-2 sm:justify-center">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700" aria-hidden="true" />
+              <span>{item}</span>
             </div>
-          </div>
-
-          <div className="max-w-4xl mx-auto space-y-12">
-            {VALUE_PROPS.map((prop) => (
-              <div key={prop.number} className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-6 md:gap-10 items-start">
-                {/* Number badge */}
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
-                  <span className="font-display text-2xl text-primary" aria-hidden="true">
-                    {prop.number}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-display text-xl mb-3">{prop.title}</h3>
-                  <p className="text-muted-foreground mb-4 leading-relaxed">{prop.description}</p>
-                  <div className="flex items-start gap-2 bg-secondary/5 border border-secondary/20 rounded-lg p-4">
-                    <CheckCircle2 className="h-4 w-4 text-secondary shrink-0 mt-0.5" aria-hidden="true" />
-                    <p className="text-sm text-muted-foreground leading-relaxed">{prop.detail}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* ── Section 4: How It Works ── */}
-      <section className="py-20 bg-muted/30">
+      <section className="py-12 md:py-16">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              For Sellers
-            </Badge>
+          <div className="mx-auto max-w-3xl text-center">
             <h2 className="font-display text-3xl sm:text-4xl">
-              From surplus to sold in four steps.
+              Give buyers what they need to decide.
             </h2>
-            <p className="mt-4 text-muted-foreground text-lg max-w-xl mx-auto">
-              No onboarding calls. No account managers. Register, list, sell, get paid.
+            <p className="mt-3 text-muted-foreground">
+              A structured marketplace helps the buyer evaluate the lot while
+              giving the seller a durable record of what was offered and fulfilled.
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto stagger-grid">
-            {STEPS.map((step) => (
-              <Card key={step.number} className="card-hover-lift relative overflow-hidden">
-                {/* Accent bar */}
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-primary to-secondary" aria-hidden="true" />
+          <div className="mx-auto mt-9 grid max-w-5xl gap-5 md:grid-cols-3">
+            {BENEFITS.map(({ icon: Icon, title, description }) => (
+              <Card key={title}>
                 <CardHeader>
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary text-primary-foreground flex items-center justify-center mb-3 font-bold text-lg shrink-0">
-                    {step.number}
+                  <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-secondary/15">
+                    <Icon className="h-5 w-5 text-secondary" aria-hidden="true" />
                   </div>
-                  <CardTitle className="font-display text-base leading-snug">{step.title}</CardTitle>
-                  <CardDescription className="text-base leading-relaxed">{step.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-
-          <div className="text-center mt-10">
-            <Link href="/register?role=seller">
-              <Button size="xl" variant="gold">
-                Create Your Seller Account
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Free to register. No listing fees. No monthly costs.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 5: Features ── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <h2 className="font-display text-3xl sm:text-4xl max-w-2xl mx-auto">
-              Built for the way flooring professionals actually liquidate inventory.
-            </h2>
-            <p className="mt-4 text-muted-foreground text-lg max-w-xl mx-auto">
-              Not a generic marketplace with flooring bolted on. Every feature was designed around how this industry moves surplus.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto stagger-grid">
-            {FEATURES.map((feature) => (
-              <Card key={feature.title} className="card-hover-lift">
-                <CardHeader>
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-3">
-                    <feature.icon className="h-6 w-6 text-primary" aria-hidden="true" />
-                  </div>
-                  <CardTitle className="font-display text-base">{feature.title}</CardTitle>
-                  <CardDescription className="text-base leading-relaxed">{feature.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 6: Social Proof + Stats ── */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Who PlankMarket is built for.
-            </h2>
-            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
-              If you have surplus flooring that is not moving through your usual channels, PlankMarket was built for you.
-            </p>
-          </div>
-
-          {/* Seller Personas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto mb-16 stagger-grid">
-            {SELLER_PERSONAS.map((persona) => (
-              <Card key={persona.title} className="card-hover-lift">
-                <CardHeader>
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
-                    <persona.icon className="h-6 w-6 text-primary" aria-hidden="true" />
-                  </div>
-                  <CardTitle className="font-display text-base leading-snug">{persona.title}</CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">{persona.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-
-          {/* Stats bar */}
-          <div className="relative rounded-2xl bg-gradient-to-br from-primary to-secondary text-primary-foreground overflow-hidden">
-            {/* Subtle wood grain texture */}
-            <div
-              className="absolute inset-0 opacity-[0.02]"
-              aria-hidden="true"
-              style={{
-                backgroundImage: `
-                  repeating-linear-gradient(
-                    90deg,
-                    transparent,
-                    transparent 2px,
-                    white 2px,
-                    white 4px
-                  )
-                `,
-              }}
-            />
-            <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/10">
-              {STATS.map((stat) => (
-                <div key={stat.value} className="bg-primary/5 p-8 text-center">
-                  <div className="font-display text-4xl tabular-nums">{stat.value}</div>
-                  <div className="text-sm font-medium mt-2 opacity-90">{stat.label}</div>
-                  <div className="text-xs opacity-70 mt-1">{stat.detail}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 7: Pricing ── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              Transparent Pricing
-            </Badge>
-              <h2 className="font-display text-3xl sm:text-4xl">
-                2% platform fee on sold inventory. No listing fees.
-              </h2>
-              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                No listing fees. No required monthly subscription. No setup costs.
-                The Free plan gets you started, and Pro is optional for unlimited
-                listings and advanced tools. You pay 2% plus the inventory-only
-                Stripe fee when inventory sells.
-              </p>
-          </div>
-
-          <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Fee example card */}
-            <Card className="border-primary/30 relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-primary/50" aria-hidden="true" />
-              <CardHeader>
-                <Badge variant="outline" className="w-fit border-primary text-primary mb-1">
-                  Example Transaction
-                </Badge>
-                <CardTitle className="font-display text-xl">$12,000 lot of engineered hickory</CardTitle>
-                <CardDescription>
-                  The 2% seller fee covers access to the verified buyer network, buyer verification, dispute mediation, messaging tools, and platform support. You pay nothing to list. Nothing monthly. Nothing on inventory that does not sell.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm font-medium">Your listed price</span>
-                    <span className="text-sm font-semibold">$12,000</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">Seller fee (2%)</span>
-                    <span className="text-sm text-muted-foreground">-$240</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">Seller Stripe fee (2.9% + $0.30)</span>
-                    <span className="text-sm text-muted-foreground">-$348.30</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 px-3 bg-primary/5 border border-primary/20 rounded-lg">
-                    <span className="text-sm font-semibold">Your payout</span>
-                    <span className="text-sm font-bold text-primary">$11,411.70</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-muted-foreground">Buyer pays</span>
-                    <span className="text-sm text-muted-foreground">$12,360 + freight</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground pt-1">
-                    Buyer pays listed price plus the 3% buyer fee on inventory only. Your seller Stripe fee applies to inventory only. Freight is quoted separately with margin built in, and PlankMarket absorbs the shipping-related processor cost. Your payout transfers to your Stripe Connect account typically within 3-5 business days of carrier pickup.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Comparison + No hidden fees */}
-            <div className="space-y-6">
-              {/* Alternatives */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="font-display text-base">Compare that to the alternatives</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {ALTERNATIVES.map((alt) => (
-                    <div key={alt.label} className="flex items-start gap-3">
-                      <XCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" aria-hidden="true" />
-                      <div>
-                        <p className="text-sm font-medium">{alt.label}</p>
-                        <p className="text-xs text-muted-foreground leading-relaxed">{alt.detail}</p>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              {/* No hidden fees */}
-              <Card className="bg-secondary/5 border-secondary/20">
-                <CardHeader className="pb-3">
-                  <CardTitle className="font-display text-base text-secondary">No hidden fees. Period.</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {NO_FEES.map((fee) => (
-                      <li key={fee} className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 className="h-4 w-4 text-secondary shrink-0" aria-hidden="true" />
-                        <span>{fee}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          {/* Volume sellers note */}
-          <div className="max-w-4xl mx-auto mt-8">
-            <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100/30 relative overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-400 to-amber-500" aria-hidden="true" />
-              <CardHeader className="md:flex-row md:items-center md:gap-6">
-                <div className="shrink-0">
-                  <Badge className="border-transparent bg-amber-100 text-amber-800 mb-2 md:mb-0">
-                    Volume Sellers
-                  </Badge>
-                </div>
-                <div>
-                  <CardDescription className="text-foreground">
-                    Moving large inventories or liquidating on a recurring schedule? High-volume sellers may qualify for reduced commission rates. Contact our partnerships team at{" "}
-                    <a
-                      href="mailto:partnerships@plankmarket.com"
-                      className="text-primary underline-offset-2 hover:underline font-medium"
-                    >
-                      partnerships@plankmarket.com
-                    </a>{" "}
-                    to discuss custom pricing and CSV bulk upload access.
+                  <CardTitle className="font-display text-xl">{title}</CardTitle>
+                  <CardDescription className="text-base leading-relaxed">
+                    {description}
                   </CardDescription>
-                </div>
-              </CardHeader>
-            </Card>
+                </CardHeader>
+              </Card>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ── Section 8: FAQ ── */}
-      <section className="py-20 bg-muted/30">
+      <section id="seller-process" className="scroll-mt-20 bg-muted/30 py-12 md:py-16">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Frequently asked questions
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge variant="outline">Account-first onboarding</Badge>
+            <h2 className="mt-4 font-display text-3xl sm:text-4xl">
+              Register now. Verify when you are ready.
             </h2>
+            <p className="mt-3 text-muted-foreground">
+              Account creation is deliberately separate from verification, and
+              every verification step can be saved before submission.
+            </p>
           </div>
-          <div className="max-w-3xl mx-auto">
-            <dl className="space-y-3">
+          <ol className="mx-auto mt-9 grid max-w-5xl gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {STEPS.map((item, index) => (
+              <li key={item.title} className="rounded-xl border bg-background p-5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-bold text-secondary-foreground">
+                  {index + 1}
+                </span>
+                <h3 className="mt-4 font-display text-lg">{item.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {item.description}
+                </p>
+              </li>
+            ))}
+          </ol>
+          <div className="mx-auto mt-6 flex max-w-3xl items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>
+              After approval, changes to the verified business name or address
+              retrigger review. Protected marketplace actions stay locked until
+              the updated identity is approved.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-12 md:py-16">
+        <div className="container mx-auto grid max-w-5xl gap-8 px-4 lg:grid-cols-[.85fr_1.15fr]">
+          <Card className="h-fit border-secondary/30">
+            <CardHeader>
+              <Badge className="w-fit" variant="outline">Pay when it sells</Badge>
+              <CardTitle className="font-display text-3xl">Know what you keep before you accept</CardTitle>
+              <CardDescription className="text-base">
+                No listing fee. A 5% seller fee and inventory-only Stripe processing apply on completed sales.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <dl className="space-y-2 rounded-lg bg-muted/40 p-4 text-sm">
+                <div className="flex justify-between gap-4">
+                  <dt>Inventory sale</dt><dd>$10,000.00</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt>Platform fee (5%)</dt><dd>-$500.00</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt>Seller Stripe fee</dt><dd>-$290.30</dd>
+                </div>
+                <div className="flex justify-between gap-4 border-t pt-2 font-semibold">
+                  <dt>Projected seller transfer</dt><dd>$9,209.70</dd>
+                </div>
+              </dl>
+              <p className="text-sm text-muted-foreground">
+                Example uses the current 2.9% + $0.30 seller Stripe fee on the
+                inventory subtotal. Freight is shown separately to the buyer and
+                the displayed freight charge may include carrier charges plus
+                PlankMarket shipping service margin.
+              </p>
+              <Button asChild variant="outline" className="w-full">
+                <Link href="/pricing">Review all pricing</Link>
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div>
+            <div className="flex items-center gap-3">
+              <FileCheck2 className="h-7 w-7 text-secondary" aria-hidden="true" />
+              <h2 className="font-display text-3xl">Seller questions</h2>
+            </div>
+            <div className="mt-5 divide-y rounded-xl border">
               {FAQS.map((faq) => (
-                <details
-                  key={faq.question}
-                  className="group rounded-xl border border-border bg-card shadow-elevation-xs open:shadow-elevation-sm transition-shadow"
-                >
-                  <summary
-                    className="flex items-center justify-between gap-4 cursor-pointer list-none px-6 py-5 font-semibold text-sm select-none hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
-                  >
-                    <dt>{faq.question}</dt>
-                    {/* Chevron — rotates when open */}
-                    <span
-                      className="shrink-0 w-5 h-5 rounded-full border border-border flex items-center justify-center text-muted-foreground group-open:rotate-180 transition-transform duration-200"
-                      aria-hidden="true"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                        <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
+                <details key={faq.question} className="group p-5">
+                  <summary className="cursor-pointer list-none pr-6 font-semibold marker:content-none">
+                    {faq.question}
                   </summary>
-                  <dd className="px-6 pb-5 text-sm text-muted-foreground leading-relaxed">
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                     {faq.answer}
-                  </dd>
+                  </p>
                 </details>
               ))}
-            </dl>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Section 9: Final CTA — The Clock Is Running ── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 md:p-16 text-white relative overflow-hidden">
-            {/* Wood grain texture overlay */}
-            <div
-              className="absolute inset-0 opacity-[0.02]"
-              aria-hidden="true"
-              style={{
-                backgroundImage: `
-                  repeating-linear-gradient(
-                    90deg,
-                    transparent,
-                    transparent 2px,
-                    white 2px,
-                    white 4px
-                  ),
-                  repeating-linear-gradient(
-                    0deg,
-                    transparent,
-                    transparent 1px,
-                    white 1px,
-                    white 2px
-                  )
-                `,
-              }}
-            />
-
-            {/* Decorative blur circles */}
-            <div className="absolute top-0 right-0 w-80 h-80 bg-accent/20 rounded-full blur-3xl" aria-hidden="true" />
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent/10 rounded-full blur-3xl" aria-hidden="true" />
-
-            <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl sm:text-4xl md:text-5xl mb-6">
-                The margin on that surplus is shrinking.
-                <br />
-                <span className="text-white/90">Every day it sits, it shrinks more.</span>
-              </h2>
-              <p className="text-white/80 mb-4 max-w-2xl mx-auto text-lg leading-relaxed">
-                That discontinued engineered hardwood in bay 7. The LVP closeout on pallets in the back. The overstock oak that has been there since last quarter. It is all losing value while it waits.
-              </p>
-              <p className="text-white/80 mb-10 max-w-xl mx-auto text-lg leading-relaxed">
-                List it today. Get it in front of verified buyers nationwide. Stop the clock.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Link href="/register?role=seller">
-                  <Button
-                    size="xl"
-                    variant="gold"
-                  >
-                    Create Your Seller Account
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-              <p className="mt-6 text-white/60 text-sm">
-                No listing fees. No required monthly cost. Upgrade to Pro only if
-                you need unlimited listings or advanced seller tools.
-              </p>
-              <p className="mt-2 text-sm text-white/70">
-                Need bulk upload, CRM, or market intelligence?{" "}
-                <Link href="/pro" className="underline underline-offset-2 hover:text-white">
-                  Explore Pro
-                </Link>
-                .
-              </p>
-            </div>
-          </div>
+      <section className="bg-secondary py-12 text-secondary-foreground md:py-16">
+        <div className="container mx-auto px-4 text-center">
+          <CircleDollarSign className="mx-auto h-7 w-7" aria-hidden="true" />
+          <h2 className="mt-3 font-display text-3xl sm:text-4xl">
+            Prepare your next lot for the market.
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-secondary-foreground/80">
+            Create the account first, then save and resume verification when your documents are ready.
+          </p>
+          <Button asChild size="xl" variant="gold" className="mt-7">
+            <Link href="/register?role=seller">
+              Create seller account <ArrowRight className="ml-2 h-5 w-5" />
+            </Link>
+          </Button>
         </div>
       </section>
     </>

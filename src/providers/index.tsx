@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { trpc } from "@/lib/trpc/client";
 import superjson from "superjson";
-import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { PostHogAnalyticsProvider } from "@/lib/analytics/provider";
 import { AuthProvider } from "@/components/auth/auth-provider";
@@ -52,17 +51,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <PostHogAnalyticsProvider>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="light"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <AuthProvider>
-              {children}
-            </AuthProvider>
-            <Toaster position="top-center" richColors closeButton />
-          </ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+          <Toaster position="top-center" richColors closeButton />
         </QueryClientProvider>
       </trpc.Provider>
     </PostHogAnalyticsProvider>

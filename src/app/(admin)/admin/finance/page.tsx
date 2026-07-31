@@ -135,21 +135,25 @@ function OverviewTab() {
   return (
     <div className="space-y-6 mt-4">
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard title="Total GMV" value={formatCurrency(Number(summary.totalGmv))} icon={DollarSign} />
-        <KpiCard title="Platform Revenue" value={formatCurrency(Number(summary.platformRevenue))} icon={TrendingUp} />
+        <KpiCard title="Platform Gross Revenue" value={formatCurrency(Number(summary.platformRevenue))} icon={TrendingUp} />
         <KpiCard title="Avg Order Value" value={formatCurrency(Number(summary.avgOrderValue))} icon={ShoppingCart} />
         <KpiCard title="Buyer Fees" value={formatCurrency(Number(summary.totalBuyerFees))} icon={Receipt} />
         <KpiCard title="Seller Fees" value={formatCurrency(Number(summary.totalSellerFees))} icon={CreditCard} />
         <KpiCard title="Seller Stripe Fees" value={formatCurrency(Number(summary.totalSellerStripeFees))} icon={CreditCard} />
         <KpiCard title="Platform Stripe Fees" value={formatCurrency(Number(summary.totalPlatformStripeFees))} icon={Wallet} />
-        <KpiCard title="Total Payouts" value={formatCurrency(Number(summary.totalPayouts))} icon={Wallet} />
+        <KpiCard title="Full Freight Booked" value={formatCurrency(Number(summary.totalFreightBooked))} icon={ShoppingCart} />
+        <KpiCard title="Buyer Shipping" value={formatCurrency(Number(summary.totalBuyerFreightCharges))} icon={Receipt} />
+        <KpiCard title="Seller Shipping Contributions" value={formatCurrency(Number(summary.totalSellerFreightContributions))} icon={CreditCard} />
+        <KpiCard title="Shipping Margin" value={formatCurrency(Number(summary.totalShippingMargin))} icon={TrendingUp} />
+        <KpiCard title="Net Seller Payouts" value={formatCurrency(Number(summary.totalPayouts))} icon={Wallet} />
       </div>
 
-      {/* Revenue Over Time */}
+      {/* GMV and platform fees over time */}
       <Card>
         <CardHeader>
-          <CardTitle>Revenue Over Time</CardTitle>
+          <CardTitle>GMV and Platform Fees Over Time</CardTitle>
         </CardHeader>
         <CardContent>
           {chartData.length > 0 ? (
@@ -194,11 +198,11 @@ function OverviewTab() {
         </CardContent>
       </Card>
 
-      {/* Status & Escrow */}
+      {/* Order and payment-release status */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Revenue by Status</CardTitle>
+            <CardTitle>GMV by Order Status</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -218,7 +222,7 @@ function OverviewTab() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Escrow Overview</CardTitle>
+            <CardTitle>Payment Release Overview</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -372,7 +376,7 @@ function TransactionsTab() {
 
             <div className="w-[160px]">
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Escrow Status
+                Payment Release Status
               </label>
               <Select
                 value={escrowFilter}
@@ -385,7 +389,7 @@ function TransactionsTab() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Escrow</SelectItem>
+                  <SelectItem value="all">All Payment States</SelectItem>
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="held">Held</SelectItem>
                   <SelectItem value="released">Released</SelectItem>
@@ -427,10 +431,14 @@ function TransactionsTab() {
                   <TableHead className="text-right">Seller Fee</TableHead>
                   <TableHead className="text-right">Seller Stripe Fee</TableHead>
                   <TableHead className="text-right">Platform Stripe Fee</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Seller Payout</TableHead>
+                  <TableHead className="text-right">Full Freight</TableHead>
+                  <TableHead>Freight Funding</TableHead>
+                  <TableHead className="text-right">Buyer Shipping</TableHead>
+                  <TableHead className="text-right">Seller Shipping</TableHead>
+                  <TableHead className="text-right">Buyer Total</TableHead>
+                  <TableHead className="text-right">Net Payout</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Escrow</TableHead>
+                  <TableHead>Payment Release</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -471,6 +479,22 @@ function TransactionsTab() {
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
                       {formatCurrency(Number(tx.platformStripeFee))}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {formatCurrency(Number(tx.shippingPrice ?? 0))}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {tx.freightFundingMode === "buyer_pays"
+                        ? "Buyer"
+                        : tx.freightFundingMode === "seller_pays"
+                          ? "Seller nationwide"
+                          : "Seller selected state"}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {formatCurrency(Number(tx.buyerFreightCharge))}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {formatCurrency(Number(tx.sellerFreightContribution))}
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium tabular-nums">
                       {formatCurrency(Number(tx.totalPrice))}
@@ -577,7 +601,7 @@ function FailedTransfersTab() {
               <TableRow>
                 <TableHead>Order #</TableHead>
                 <TableHead>Seller</TableHead>
-                <TableHead className="text-right">Payout Amount</TableHead>
+                <TableHead className="text-right">Net Payout</TableHead>
                 <TableHead>Failed At</TableHead>
                 <TableHead>Error</TableHead>
                 <TableHead>Action</TableHead>

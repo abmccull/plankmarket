@@ -1,4 +1,7 @@
-import { savedSearchAlerts } from "./saved-search-alerts";
+import {
+  instantSavedSearchAlerts,
+  savedSearchAlerts,
+} from "./saved-search-alerts";
 import { listingExpiryWarning } from "./listing-expiry-warning";
 import { abandonedCheckout } from "./abandoned-checkout";
 import { escrowAutoRelease } from "./escrow-auto-release";
@@ -10,6 +13,7 @@ import { followupReminders } from "./followup-reminders";
 import { onboardingDrip } from "./onboarding-drip";
 import { firstListingCongrats, firstPurchaseCongrats } from "./milestone-emails";
 import { offerAccepted } from "./offer-accepted";
+import { offerResponseDeadline } from "./offer-response-deadline";
 import {
   proWelcome,
   proPaymentFailed,
@@ -18,8 +22,11 @@ import {
 import { agentOfferHandler } from "./agent-offer-handler";
 import { agentMonitor } from "./agent-monitor";
 import { agentRepricer } from "./agent-repricer";
+import { businessVerification } from "./business-verification";
+import { automaticListingMarkdown } from "./automatic-listing-markdown";
 
 export const functions = [
+  instantSavedSearchAlerts,
   savedSearchAlerts,
   listingExpiryWarning,
   abandonedCheckout,
@@ -33,10 +40,13 @@ export const functions = [
   firstListingCongrats,
   firstPurchaseCongrats,
   offerAccepted,
+  offerResponseDeadline,
   proWelcome,
   proPaymentFailed,
   proExpired,
   agentOfferHandler,
   agentMonitor,
   agentRepricer,
+  businessVerification,
+  automaticListingMarkdown,
 ];

@@ -326,7 +326,7 @@ export default function SellerGuidePage() {
                 step: "5",
                 title: "Get Paid",
                 description:
-                  "Payment is automatically released when the carrier picks up your shipment. Funds arrive in your bank within 3-5 business days.",
+                  "After pickup is confirmed and the configured release delay passes, PlankMarket rechecks the order and initiates the seller transfer through Stripe Connect.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -442,7 +442,7 @@ export default function SellerGuidePage() {
                     icon: Truck,
                     title: "Flexible Shipping",
                     description:
-                      "Offer multiple options — seller freight, buyer pickup, or carrier assistance — to attract more buyers.",
+                      "Provide accurate pallet details and pickup readiness so buyers receive dependable integrated carrier quotes.",
                   },
                   {
                     icon: TrendingUp,
@@ -485,9 +485,9 @@ export default function SellerGuidePage() {
                 <ul className="space-y-3">
                   {[
                     "Buyers pay upfront when placing an order",
-                    "Funds are held securely until the carrier picks up the shipment",
-                    "Once pickup is confirmed, payment is automatically released to your Stripe account",
-                    "Funds typically available in your bank within 3-5 business days",
+                    "Stripe processes payment; seller transfer starts only after confirmed pickup and the configured delay",
+                    "PlankMarket rechecks payment, shipment, and dispute state before initiating the transfer",
+                    "Bank availability depends on Stripe and your connected account payout schedule",
                     "View all transaction history and earnings in your seller dashboard",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">

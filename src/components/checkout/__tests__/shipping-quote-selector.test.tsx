@@ -19,11 +19,19 @@ vi.mock("@/lib/trpc/client", () => ({
 
 // Mock query return type to avoid using any
 interface MockQueryReturn {
-  data: typeof mockQuotes | undefined | [];
+  data: SelectedShippingQuote[] | undefined;
   isLoading: boolean;
   isError: boolean;
   error: { message: string } | null;
   refetch: ReturnType<typeof vi.fn>;
+}
+
+type QuotesQueryResult = ReturnType<
+  typeof trpc.shipping.getQuotes.useQuery
+>;
+
+function queryResult(value: MockQueryReturn): QuotesQueryResult {
+  return value as unknown as QuotesQueryResult;
 }
 
 const mockQuotes = [
@@ -32,7 +40,10 @@ const mockQuotes = [
     quoteToken: "token-1",
     carrierName: "FedEx Freight",
     carrierScac: "FXFE",
+    freightFundingMode: "buyer_pays" as const,
     shippingPrice: 250.0,
+    buyerFreightCharge: 250.0,
+    sellerFreightContribution: 0,
     transitDays: 3,
     estimatedDelivery: "2026-02-20T00:00:00.000Z",
     quoteExpiresAt: "2026-02-15T00:00:00.000Z",
@@ -42,7 +53,10 @@ const mockQuotes = [
     quoteToken: "token-2",
     carrierName: "Old Dominion",
     carrierScac: "ODFL",
+    freightFundingMode: "buyer_pays" as const,
     shippingPrice: 285.0,
+    buyerFreightCharge: 285.0,
+    sellerFreightContribution: 0,
     transitDays: 2,
     estimatedDelivery: "2026-02-19T00:00:00.000Z",
     quoteExpiresAt: "2026-02-15T00:00:00.000Z",
@@ -52,7 +66,10 @@ const mockQuotes = [
     quoteToken: "token-3",
     carrierName: "XPO Logistics",
     carrierScac: "XPOL",
+    freightFundingMode: "buyer_pays" as const,
     shippingPrice: 320.0,
+    buyerFreightCharge: 320.0,
+    sellerFreightContribution: 0,
     transitDays: 5,
     estimatedDelivery: "2026-02-22T00:00:00.000Z",
     quoteExpiresAt: "2026-02-15T00:00:00.000Z",
@@ -73,13 +90,13 @@ describe("ShippingQuoteSelector", () => {
   });
 
   it("renders nothing when destinationZip is less than 5 characters", () => {
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: undefined,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     const { container } = render(
       <ShippingQuoteSelector {...defaultProps} destinationZip="123" />
@@ -89,13 +106,13 @@ describe("ShippingQuoteSelector", () => {
   });
 
   it("shows loading spinner while fetching quotes", () => {
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: undefined,
       isLoading: true,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(<ShippingQuoteSelector {...defaultProps} />);
 
@@ -105,13 +122,13 @@ describe("ShippingQuoteSelector", () => {
 
   it("shows error message with retry button on error", async () => {
     const mockRefetch = vi.fn();
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: undefined,
       isLoading: false,
       isError: true,
       error: { message: "Network error" },
       refetch: mockRefetch,
-    } as MockQueryReturn);
+    }));
 
     const user = userEvent.setup();
     render(<ShippingQuoteSelector {...defaultProps} />);
@@ -125,13 +142,13 @@ describe("ShippingQuoteSelector", () => {
   });
 
   it("shows no quotes message when quotes array is empty", () => {
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: [],
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(<ShippingQuoteSelector {...defaultProps} />);
 
@@ -141,13 +158,13 @@ describe("ShippingQuoteSelector", () => {
   });
 
   it("renders list of shipping quotes with correct information", () => {
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: mockQuotes,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(<ShippingQuoteSelector {...defaultProps} />);
 
@@ -168,19 +185,19 @@ describe("ShippingQuoteSelector", () => {
 
     // Check info note
     expect(
-      screen.getByText(/prices include all freight charges/i)
+      screen.getByText(/full freight quote and exactly how much you pay/i),
     ).toBeInTheDocument();
   });
 
   it("calls onSelectQuote when a quote is clicked", async () => {
     const mockOnSelectQuote = vi.fn();
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: mockQuotes,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     const user = userEvent.setup();
     render(
@@ -191,7 +208,7 @@ describe("ShippingQuoteSelector", () => {
     );
 
     const firstQuote = screen.getByRole("radio", {
-      name: /fedex freight, 3 business days, \$250\.00/i,
+      name: /fedex freight, 3 business days, buyer shipping \$250\.00/i,
     });
 
     await user.click(firstQuote);
@@ -203,13 +220,13 @@ describe("ShippingQuoteSelector", () => {
   it("highlights the selected quote", () => {
     const selectedQuote: SelectedShippingQuote = mockQuotes[1];
 
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: mockQuotes,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(
       <ShippingQuoteSelector
@@ -219,7 +236,7 @@ describe("ShippingQuoteSelector", () => {
     );
 
     const selectedRadio = screen.getByRole("radio", {
-      name: /old dominion, 2 business days, \$285\.00/i,
+      name: /old dominion, 2 business days, buyer shipping \$285\.00/i,
     });
 
     expect(selectedRadio).toHaveAttribute("aria-checked", "true");
@@ -248,27 +265,52 @@ describe("ShippingQuoteSelector", () => {
       },
     ];
 
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: singleDayQuote,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(<ShippingQuoteSelector {...defaultProps} />);
 
     expect(screen.getByText("1 business day")).toBeInTheDocument();
   });
 
+  it("reconciles a seller shipping credit against full freight", () => {
+    const sponsoredQuote = [
+      {
+        ...mockQuotes[0],
+        freightFundingMode: "seller_pays" as const,
+        buyerFreightCharge: 50,
+        sellerFreightContribution: 200,
+      },
+    ];
+
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
+      data: sponsoredQuote,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }));
+
+    render(<ShippingQuoteSelector {...defaultProps} />);
+
+    expect(screen.getByText("$50.00")).toBeInTheDocument();
+    expect(screen.getByText("Full freight $250.00")).toBeInTheDocument();
+    expect(screen.getByText("Seller credit -$200.00")).toBeInTheDocument();
+  });
+
   it("formats estimated delivery dates correctly", () => {
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: mockQuotes,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(<ShippingQuoteSelector {...defaultProps} />);
 
@@ -282,13 +324,13 @@ describe("ShippingQuoteSelector", () => {
   });
 
   it("has proper accessibility attributes for radiogroup", () => {
-    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue({
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
       data: mockQuotes,
       isLoading: false,
       isError: false,
       error: null,
       refetch: vi.fn(),
-    } as MockQueryReturn);
+    }));
 
     render(<ShippingQuoteSelector {...defaultProps} />);
 

@@ -16,6 +16,8 @@ import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
 import { ReviewCard } from "@/components/shared/review-card";
 import type { OrderStatus } from "@/types";
+import { TransactionTimeline } from "@/components/marketplace/transaction-timeline";
+import { BuyerClaimCard } from "@/components/disputes/buyer-claim-card";
 
 export default function BuyerOrderDetailPage() {
   const params = useParams();
@@ -88,15 +90,52 @@ export default function BuyerOrderDetailPage() {
               <span>{formatCurrency(order.subtotal)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Buyer Fee (3%)</span>
+              <span className="text-muted-foreground">
+                Buyer marketplace fee
+              </span>
               <span>{formatCurrency(order.buyerFee)}</span>
             </div>
-            {order.shippingPrice && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Shipping</span>
-                <span>{formatCurrency(order.shippingPrice)}</span>
-              </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Sales tax</span>
+              <span>{formatCurrency(order.taxAmount)}</span>
+            </div>
+            {order.taxStatus === "committed" && (
+              <p className="text-xs text-muted-foreground">
+                Stripe Tax transaction recorded for this order.
+              </p>
             )}
+            {order.taxStatus === "reconciliation_required" && (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Tax reporting is under manual reconciliation. Your charged
+                total remains the persisted order total shown below.
+              </p>
+            )}
+            {order.shippingPrice &&
+              (order.sellerFreightContribution > 0 ? (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      Full freight charge
+                    </span>
+                    <span>{formatCurrency(order.shippingPrice)}</span>
+                  </div>
+                  <div className="flex justify-between text-green-700 dark:text-green-400">
+                    <span>Seller shipping credit</span>
+                    <span>
+                      -{formatCurrency(order.sellerFreightContribution)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>Buyer shipping</span>
+                    <span>{formatCurrency(order.buyerFreightCharge)}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Buyer shipping</span>
+                  <span>{formatCurrency(order.buyerFreightCharge)}</span>
+                </div>
+              ))}
             <Separator />
             <div className="flex justify-between font-semibold">
               <span>Total</span>
@@ -178,36 +217,8 @@ export default function BuyerOrderDetailPage() {
       {/* Shipment Tracking (Priority1 orders) */}
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
 
-      {/* Order Timeline */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Order Timeline</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <TimelineItem
-              label="Order Placed"
-              date={order.createdAt}
-              active
-            />
-            <TimelineItem
-              label="Order Confirmed"
-              date={order.confirmedAt}
-              active={!!order.confirmedAt}
-            />
-            <TimelineItem
-              label="Shipped"
-              date={order.shippedAt}
-              active={!!order.shippedAt}
-            />
-            <TimelineItem
-              label="Delivered"
-              date={order.deliveredAt}
-              active={!!order.deliveredAt}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <TransactionTimeline order={order} audience="buyer" />
+      <BuyerClaimCard orderId={orderId} />
       {/* Reviews Section */}
       {order.status === "delivered" && (
         <Card>
@@ -285,40 +296,6 @@ export default function BuyerOrderDetailPage() {
             )}
           </CardContent>
         </Card>
-      )}
-    </div>
-  );
-}
-
-function TimelineItem({
-  label,
-  date,
-  active,
-}: {
-  label: string;
-  date: Date | string | null;
-  active: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <div
-        className={`h-3 w-3 rounded-full ${
-          active ? "bg-primary" : "bg-muted"
-        }`}
-      />
-      <div className="flex-1">
-        <span
-          className={`text-sm ${
-            active ? "font-medium" : "text-muted-foreground"
-          }`}
-        >
-          {label}
-        </span>
-      </div>
-      {date && (
-        <span className="text-xs text-muted-foreground">
-          {formatDate(date)}
-        </span>
       )}
     </div>
   );

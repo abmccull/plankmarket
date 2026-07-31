@@ -47,7 +47,7 @@ Two weeks have passed since you signed up. Here is what is happening on PlankMar
 - Sellers are listing surplus hardwood, engineered, LVP, laminate, and tile
 - Buyers are setting saved search alerts for specific species, grades, and price ranges
 - Offers are being negotiated and completed through the messaging system
-- Payouts are landing in seller Stripe accounts within 3-5 business days
+- Seller transfers are initiated after the configured shipment milestone and delay, with final availability determined by Stripe and the seller's bank
 
 The marketplace is moving. The question is whether your surplus inventory is part of it.
 
@@ -57,7 +57,7 @@ If you have not listed yet, here is the honest assessment:
 
 Your surplus flooring is not going to appreciate. It is not going to become more desirable as newer products enter the market. The best recovery rate you will get on closeout inventory is today. Tomorrow it is worth slightly less. The day after that, slightly less again.
 
-PlankMarket removes the friction between your warehouse and a verified buyer. No listing fees. No subscription. 2% on completed sales. 3-5 day payouts.
+PlankMarket removes the friction between your warehouse and a verified buyer. No listing fees. No subscription. A 5% seller fee plus disclosed payment processing on completed sales.
 
 One lot. Five minutes. Start there.
 

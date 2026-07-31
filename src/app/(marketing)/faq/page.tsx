@@ -19,7 +19,7 @@ const BUYER_FAQS = [
   {
     question: "How are buyer fees calculated?",
     answer:
-      "Buyers pay a 3% platform fee on the inventory subtotal only. Shipping is quoted separately at checkout, and that freight quote already includes the marketplace shipping margin, so there is no additional buyer fee on shipping.",
+      "Buyers pay a 5% platform fee on the inventory subtotal only. Shipping is quoted separately at checkout, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin, so there is no additional buyer fee on shipping.",
   },
   {
     question: "How is shipping handled?",
@@ -39,7 +39,7 @@ const BUYER_FAQS = [
   {
     question: "What happens if my order arrives damaged or short?",
     answer:
-      "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team mediates the claim. If no dispute is filed within 5 business days of delivery, the transaction closes automatically.",
+      "Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team reviews the order, delivery record, and submitted evidence. Seller-transfer timing is separate and does not remove the buyer's documented claim process.",
   },
 ];
 
@@ -52,7 +52,7 @@ const SELLER_FAQS = [
   {
     question: "How are seller fees calculated?",
     answer:
-      "Sellers pay a 2% platform fee on inventory subtotal and a 2.9% + $0.30 Stripe processing fee on inventory subtotal only.",
+      "Sellers pay a 5% platform fee on inventory subtotal and a 2.9% + $0.30 Stripe processing fee on inventory subtotal only.",
   },
   {
     question: "Who covers shipping-related processing costs?",
@@ -62,7 +62,7 @@ const SELLER_FAQS = [
   {
     question: "When do payouts happen?",
     answer:
-      "Seller payouts release when the carrier picks up the shipment. Funds are typically available in your bank within 3-5 business days. Buyers have a 48-hour post-delivery window to report damage or shortages. Your seller dashboard shows real-time payout status and history.",
+      "After the carrier pickup is confirmed and the configured delay passes, PlankMarket initiates the seller transfer through Stripe Connect. Funds are typically available in your bank within 3-5 business days after the transfer begins. Buyers have a 48-hour post-delivery window to report damage or shortages. Your seller dashboard shows real-time payout status and history.",
   },
 ];
 

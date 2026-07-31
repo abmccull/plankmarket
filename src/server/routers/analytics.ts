@@ -1,7 +1,16 @@
 import { createTRPCRouter, sellerProcedure } from "../trpc";
 import { dateRangeInput, periodToDateRange } from "@/lib/validators/analytics";
 import { orders, listings, offers, reviews } from "../db/schema";
-import { eq, and, sql, gte, lt, desc } from "drizzle-orm";
+import {
+  eq,
+  and,
+  sql,
+  gte,
+  lt,
+  desc,
+  inArray,
+  isNotNull,
+} from "drizzle-orm";
 import { z } from "zod";
 
 // Safe to use sql.raw() here because trunc is always one of "day" | "week" | "month"
@@ -18,15 +27,36 @@ export const analyticsRouter = createTRPCRouter({
     const { start, prevStart, end, trunc } = periodToDateRange(input.period);
     const userId = ctx.user.id;
 
-    // Current period conditions
-    const currentPeriodCond = start
-      ? and(eq(orders.sellerId, userId), gte(orders.createdAt, start), lt(orders.createdAt, end))
-      : eq(orders.sellerId, userId);
+    const capturedPaymentCond = inArray(orders.paymentStatus, [
+      "succeeded",
+      "partially_refunded",
+    ]);
 
-    // Previous period conditions
+    // Paid-order cohorts use confirmation time, not reservation creation time.
+    const currentPeriodCond = start
+      ? and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+          gte(orders.confirmedAt, start),
+          lt(orders.confirmedAt, end),
+        )
+      : and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+        );
+
+    // Previous period uses the same captured-payment cohort.
     const prevPeriodCond =
       prevStart && start
-        ? and(eq(orders.sellerId, userId), gte(orders.createdAt, prevStart), lt(orders.createdAt, start))
+        ? and(
+            eq(orders.sellerId, userId),
+            capturedPaymentCond,
+            isNotNull(orders.confirmedAt),
+            gte(orders.confirmedAt, prevStart),
+            lt(orders.confirmedAt, start),
+          )
         : null;
 
     // Current period KPIs
@@ -51,24 +81,48 @@ export const analyticsRouter = createTRPCRouter({
       prevStats = prev;
     }
 
-    // Views (all time for the seller)
-    const [viewStats] = await ctx.db
-      .select({
-        totalViews: sql<number>`coalesce(sum(${listings.viewsCount}), 0)::int`,
-      })
-      .from(listings)
-      .where(eq(listings.sellerId, userId));
+    // Listing views are currently stored as cumulative counters. Keep both
+    // sides of this conversion metric all-time rather than dividing a
+    // period-order numerator by an all-time denominator.
+    const [[viewStats], [allTimePaidStats]] = await Promise.all([
+      ctx.db
+        .select({
+          totalViews: sql<number>`coalesce(sum(${listings.viewsCount}), 0)::int`,
+        })
+        .from(listings)
+        .where(eq(listings.sellerId, userId)),
+      ctx.db
+        .select({ orderCount: sql<number>`count(*)::int` })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.sellerId, userId),
+            capturedPaymentCond,
+            isNotNull(orders.confirmedAt),
+          ),
+        ),
+    ]);
 
-    // Conversion rate: orders / views
     const views = viewStats.totalViews || 0;
-    const conversionRate = views > 0 ? (currentStats.orderCount / views) * 100 : 0;
+    const conversionRate =
+      views > 0 ? (allTimePaidStats.orderCount / views) * 100 : 0;
 
-    // Revenue time series
+    // Captured net proceeds time series
     const timeSeriesCond = start
-      ? and(eq(orders.sellerId, userId), gte(orders.createdAt, start))
-      : eq(orders.sellerId, userId);
+      ? and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+          gte(orders.confirmedAt, start),
+          lt(orders.confirmedAt, end),
+        )
+      : and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+        );
 
-    const bucket = dateTrunc(trunc, sql`${orders.createdAt}`);
+    const bucket = dateTrunc(trunc, sql`${orders.confirmedAt}`);
 
     const timeSeries = await ctx.db
       .select({
@@ -98,6 +152,8 @@ export const analyticsRouter = createTRPCRouter({
         orders: currentStats.orderCount,
         prevOrders: prevStats.orderCount,
         views,
+        conversionOrders: allTimePaidStats.orderCount,
+        conversionWindow: "all_time" as const,
         conversionRate: Math.round(conversionRate * 100) / 100,
       },
       timeSeries,
@@ -112,20 +168,66 @@ export const analyticsRouter = createTRPCRouter({
     const { start, end, trunc } = periodToDateRange(input.period);
     const userId = ctx.user.id;
 
+    const capturedPaymentCond = inArray(orders.paymentStatus, [
+      "succeeded",
+      "partially_refunded",
+    ]);
     const periodCond = start
-      ? and(eq(orders.sellerId, userId), gte(orders.createdAt, start), lt(orders.createdAt, end))
-      : eq(orders.sellerId, userId);
+      ? and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+          gte(orders.confirmedAt, start),
+          lt(orders.confirmedAt, end),
+        )
+      : and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+        );
 
-    // Total revenue, avg order value, shipping margin
+    // Net seller payout, average inventory subtotal, and seller freight funding.
     const [totals] = await ctx.db
       .select({
         totalRevenue: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
         avgOrderValue: sql<number>`coalesce(avg(${orders.subtotal}), 0)::float`,
-        shippingRevenue: sql<number>`coalesce(sum(${orders.shippingMargin}), 0)::float`,
+        sellerFreightContribution:
+          sql<number>`coalesce(sum(${orders.sellerFreightContribution}), 0)::float`,
         orderCount: sql<number>`count(*)::int`,
       })
       .from(orders)
       .where(periodCond);
+
+    const [transferredTotals] = await ctx.db
+      .select({
+        transferredNetProceeds:
+          sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
+        transferredOrderCount: sql<number>`count(*)::int`,
+      })
+      .from(orders)
+      .where(
+        and(
+          periodCond,
+          isNotNull(orders.stripeTransferId),
+          eq(orders.escrowStatus, "released"),
+        ),
+      );
+
+    // Orders store a cumulative refunded amount, not an append-only refund
+    // ledger. Report that value all-time so multiple partial refunds cannot be
+    // misattributed to whichever period contains the latest refund.
+    const refundCohortCond = and(
+      eq(orders.sellerId, userId),
+      isNotNull(orders.refundedAt),
+    );
+    const [refundTotals] = await ctx.db
+      .select({
+        refundedBuyerCharges:
+          sql<number>`coalesce(sum(${orders.refundedAmount}), 0)::float`,
+        refundedOrderCount: sql<number>`count(*)::int`,
+      })
+      .from(orders)
+      .where(refundCohortCond);
 
     // Revenue by material type
     const byMaterialType = await ctx.db
@@ -154,10 +256,20 @@ export const analyticsRouter = createTRPCRouter({
 
     // Revenue time series
     const timeSeriesCond = start
-      ? and(eq(orders.sellerId, userId), gte(orders.createdAt, start))
-      : eq(orders.sellerId, userId);
+      ? and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+          gte(orders.confirmedAt, start),
+          lt(orders.confirmedAt, end),
+        )
+      : and(
+          eq(orders.sellerId, userId),
+          capturedPaymentCond,
+          isNotNull(orders.confirmedAt),
+        );
 
-    const bucket = dateTrunc(trunc, sql`${orders.createdAt}`);
+    const bucket = dateTrunc(trunc, sql`${orders.confirmedAt}`);
 
     const timeSeries = await ctx.db
       .select({
@@ -174,8 +286,13 @@ export const analyticsRouter = createTRPCRouter({
       kpis: {
         totalRevenue: totals.totalRevenue,
         avgOrderValue: Math.round(totals.avgOrderValue * 100) / 100,
-        shippingMargin: totals.shippingRevenue,
+        sellerFreightContribution: totals.sellerFreightContribution,
         orderCount: totals.orderCount,
+        transferredNetProceeds: transferredTotals.transferredNetProceeds,
+        transferredOrderCount: transferredTotals.transferredOrderCount,
+        refundedBuyerCharges: refundTotals.refundedBuyerCharges,
+        refundedOrderCount: refundTotals.refundedOrderCount,
+        refundWindow: "all_time" as const,
       },
       byMaterialType,
       byOrderStatus,

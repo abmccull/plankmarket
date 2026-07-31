@@ -63,7 +63,13 @@ export const createBuyerRequestSchema = z.object({
   urgency: z
     .enum(["asap", "2_weeks", "4_weeks", "flexible"])
     .default("flexible"),
-  mediaIds: z.array(z.string().uuid()).max(5).optional(),
+  mediaIds: z
+    .array(z.string().uuid())
+    .max(5)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "Duplicate media IDs are not allowed",
+    })
+    .optional(),
 });
 
 export const updateBuyerRequestSchema = z.object({
@@ -75,7 +81,7 @@ export const updateBuyerRequestSchema = z.object({
 
 export const createResponseSchema = z.object({
   requestId: z.string().uuid(),
-  listingId: z.string().uuid().optional(),
+  listingId: z.string().uuid("Select an active listing"),
   message: z.string().min(1).max(2000),
 });
 

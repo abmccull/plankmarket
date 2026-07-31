@@ -1,5 +1,5 @@
 ---
-title: Commercial Flooring Bulk Pricing: What to Expect in 2026
+title: 'Commercial Flooring Bulk Pricing: What to Expect in 2026'
 slug: commercial-flooring-bulk-pricing-what-to-expect-in-2026
 target_keyword: commercial flooring bulk pricing
 secondary_keywords: >-

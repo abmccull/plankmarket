@@ -21,6 +21,7 @@ import {
   CreditCard,
   Globe,
 } from "lucide-react";
+import { TransactionTimelineExplainer } from "@/components/marketplace/transaction-timeline";
 
 export const metadata: Metadata = {
   title: "How It Works - Buy & Sell Surplus Flooring",
@@ -84,14 +85,14 @@ export default function HowItWorksPage() {
                 step: "2",
                 title: "See Clear Pricing",
                 description:
-                  "Every listing displays transparent pricing with no hidden fees. View price per square foot, total lot size, and available quantity. All sellers are verified businesses.",
+                  "Review price per square foot, total lot size, minimum order, condition, origin region, seller verification status, photos, and freight-estimate readiness before checkout.",
               },
               {
                 icon: CreditCard,
                 step: "3",
-                title: "Purchase Securely",
+                title: "Pay Through Stripe",
                 description:
-                  "Complete your purchase securely through Stripe payment processing. Coordinate shipping details directly with the seller through our built-in messaging system.",
+                  "Complete your purchase through Stripe. After tracked carrier pickup and the configured delay, PlankMarket rechecks the transaction before initiating a separate seller transfer.",
               },
               {
                 icon: Truck,
@@ -153,14 +154,14 @@ export default function HowItWorksPage() {
                 step: "3",
                 title: "Receive Orders or Offers",
                 description:
-                  "Get notified immediately when a buyer places an order or submits an offer. Accept, counter, or decline — all on-platform. Buyers pay securely through Stripe.",
+                  "Get notified immediately when a buyer places an order or submits an offer. Accept, counter, or decline — all on-platform. Stripe processes buyer payments.",
               },
               {
                 icon: BarChart3,
                 step: "4",
                 title: "Ship & Get Paid",
                 description:
-                  "Coordinate freight pickup through PlankMarket. Mark orders as shipped with tracking info. Payment releases to your Stripe account when the carrier picks up the shipment, with funds typically in your bank within 3-5 business days.",
+                  "Coordinate freight pickup through PlankMarket and track it on the order. After confirmed pickup and the configured delay, PlankMarket rechecks the transaction before initiating a Stripe Connect transfer. Bank availability is determined by Stripe and the seller's bank.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift">
@@ -182,6 +183,27 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
+      <section className="border-y bg-background py-20">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto mb-10 max-w-3xl text-center">
+            <Badge variant="outline" className="mb-4">
+              Transaction record
+            </Badge>
+            <h2 className="font-display text-3xl">
+              What happens after checkout
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Payment, freight, carrier pickup, seller transfer, delivery, and
+              issue reporting are separate recorded milestones. Your order
+              dashboard shows the state PlankMarket has actually received.
+            </p>
+          </div>
+          <div className="mx-auto max-w-3xl">
+            <TransactionTimelineExplainer />
+          </div>
+        </div>
+      </section>
+
       {/* Benefits */}
       <section className="py-20">
         <div className="container mx-auto px-4">
@@ -197,25 +219,25 @@ export default function HowItWorksPage() {
                 icon: Shield,
                 title: "Verified Sellers",
                 description:
-                  "All sellers go through a verification process to ensure they are legitimate businesses. Review seller ratings and transaction history before purchasing.",
+                  "Seller verification status appears on marketplace listings. Review the status, listing photos, condition, and available reputation history before purchasing.",
               },
               {
                 icon: Eye,
                 title: "Transparent Pricing",
                 description:
-                  "No surprises. All prices are displayed clearly with price per square foot and total lot cost. Our fee structure is straightforward with no hidden charges.",
+                  "Buyer and seller fees are disclosed separately, and freight quotes are shown before payment.",
               },
               {
                 icon: CreditCard,
-                title: "Secure Payments via Stripe",
+                title: "Stripe-Processed Payments",
                 description:
-                  "All transactions are processed through Stripe, one of the most trusted payment platforms. Buyers are protected, and sellers receive secure payouts after shipment pickup.",
+                  "Stripe processes the buyer charge. PlankMarket initiates a separate seller transfer only after tracked pickup, the configured delay, and transaction-state checks.",
               },
               {
                 icon: Globe,
                 title: "Nationwide Shipping",
                 description:
-                  "Buy and sell flooring materials across the country. Our platform supports transactions nationwide, with sellers often assisting with freight for larger orders.",
+                  "Buy and sell flooring materials across the country. Buyers select an integrated carrier quote at checkout, and sellers prepare the order for scheduled pickup.",
               },
             ].map((item) => (
               <Card key={item.title} className="card-hover-lift">
@@ -246,17 +268,17 @@ export default function HowItWorksPage() {
               {
                 question: "Who arranges freight?",
                 answer:
-                  "PlankMarket provides integrated LTL freight quotes at checkout. Buyers enter their delivery address and select a carrier rate. The seller coordinates the pickup from their warehouse.",
+                  "PlankMarket provides an integrated displayed freight charge at checkout. Buyers enter their delivery address and select a carrier rate, and the seller coordinates pickup from their warehouse.",
               },
               {
                 question: "When is shipping quoted?",
                 answer:
-                  "Freight quotes are generated at checkout based on the buyer's delivery address, pallet weight, and dimensions. The shipping cost is shown before payment and added separately from the inventory subtotal.",
+                  "Freight quotes are generated at checkout based on the buyer's delivery address, pallet weight, and dimensions. The displayed shipping charge is shown before payment, added separately from the inventory subtotal, and may include carrier charges plus PlankMarket shipping service margin.",
               },
               {
                 question: "Can the seller arrange their own freight?",
                 answer:
-                  "In some cases, sellers and buyers may coordinate freight directly. Contact the seller via on-platform messaging to discuss logistics before placing your order.",
+                  "Checkout uses PlankMarket's integrated carrier quotes. After payment, the seller coordinates the scheduled warehouse pickup through the order workflow.",
               },
             ].map((item) => (
               <Card key={item.question} className="card-hover-lift">

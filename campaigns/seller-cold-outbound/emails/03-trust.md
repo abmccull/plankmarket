@@ -1,14 +1,14 @@
 ---
 email: 3
 sequence: seller-cold-outbound
-purpose: The trust angle -- verified buyers, brand protection, Stripe escrow
+purpose: The trust angle -- verified buyers, brand protection, recorded payment milestones
 send_day: 7
 send_time: "Tuesday at 9:30 AM ET"
 subject_line_a: "Every buyer on PlankMarket is verified"
 subject_line_b: "No flippers. No tire-kickers."
 subject_line_c: "{{first_name}}, who is buying your surplus?"
 recommended_subject: "b"
-preview_text: "Business verification, Stripe escrow, and zero channel conflict."
+preview_text: "Business verification, Stripe payment processing, and zero channel conflict."
 cta: "See how seller protection works"
 status: draft
 ---
@@ -30,7 +30,7 @@ Personal touch. A question that triggers a real concern -- most sellers have no 
 **Reason:** Tests whether blunt insider language or a thought-provoking question resonates more. Both target the trust pain point from different angles.
 
 ## Preview Text
-"Business verification, Stripe escrow, and zero channel conflict."
+"Business verification, Stripe payment processing, and zero channel conflict."
 
 ## Send Timing
 Day 7 -- Tuesday at 9:30 AM ET
@@ -49,7 +49,7 @@ Unverified buyers waste your team's time. Flippers undercut your active retail p
 PlankMarket handles this differently:
 
 - **Every buyer completes business verification** before they can transact. Real businesses. Real retail operations.
-- **Stripe escrow** holds payment until you confirm pickup. No chasing invoices.
+- **Stripe payment processing** records the charge on PlankMarket before the configured seller-transfer milestone.
 - **You control pricing and terms.** Accept offers, reject them, or set a firm price. Your inventory, your call.
 
 Your sales team should be focused on active product lines. Let PlankMarket move the closeouts to buyers you can trust.
@@ -58,4 +58,4 @@ Your sales team should be focused on active product lines. Let PlankMarket move 
 
 ---
 
-**P.S.** Zero listing fees. Zero monthly fees. The only cost is a 2% fee when a transaction completes. If nothing sells, you pay nothing.
+**P.S.** Zero listing fees. Zero monthly fees. A 5% seller fee plus disclosed payment processing applies when a transaction completes.

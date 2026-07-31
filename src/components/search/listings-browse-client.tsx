@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ListingCard } from "@/components/search/listing-card";
@@ -16,7 +16,19 @@ import { useProStatus } from "@/hooks/use-pro-status";
 import { trpc } from "@/lib/trpc/client";
 import { FREE_LIMITS } from "@/lib/pro";
 import { getFilterBadges, searchParamsToFilters } from "@/lib/utils/search-filters";
+import { useTrack } from "@/lib/analytics/use-track";
+import {
+  buildAuthPath,
+  buildBuyerRequestPrefillParams,
+  buildSearchGapAnalyticsContext,
+  buildShareableSearchParams,
+} from "@/lib/marketplace/search-gap";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -39,10 +51,15 @@ import {
   ChevronLeft,
   ChevronRight,
   BookmarkPlus,
+  BellRing,
+  ClipboardPlus,
+  PackagePlus,
+  Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SortOption, PromotionTier } from "@/types";
 import { toast } from "sonner";
+import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "date_newest", label: "Newest First" },
@@ -65,6 +82,8 @@ interface ListingItem {
   buyNowPrice: number | null;
   locationCity: string | null;
   locationState: string | null;
+  freshnessStatus?: ListingFreshnessStatus;
+  lastConfirmedAt?: Date | string | null;
   viewsCount: number;
   watchlistCount: number;
   createdAt: Date | string;
@@ -72,7 +91,7 @@ interface ListingItem {
   isPromoted?: boolean;
   media?: { url: string }[];
   seller?: {
-    name?: string | null;
+    displayName: string;
     verified: boolean;
     role: string;
     businessCity?: string | null;
@@ -119,24 +138,55 @@ export function ListingsBrowseClient({
 }: ListingsBrowseClientProps) {
   const router = useRouter();
   const rawSearchParams = useSearchParams();
-  const { isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuthStore();
   const { isPro } = useProStatus();
+  const track = useTrack();
   const [searchInput, setSearchInput] = useState(initialParams.query ?? "");
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const { data: savedSearches, refetch: refetchSavedSearches } =
+  const zeroResultImpressionRef = useRef<string | null>(null);
+  const saveIntentHandledRef = useRef(false);
+  const {
+    data: savedSearches,
+    isLoading: areSavedSearchesLoading,
+    refetch: refetchSavedSearches,
+  } =
     trpc.search.getMySavedSearches.useQuery(undefined, {
       enabled: isAuthenticated,
       retry: false,
       staleTime: 60 * 1000,
     });
-  const currentFilters = searchParamsToFilters(
-    new URLSearchParams(rawSearchParams.toString())
+  const searchParamsString = rawSearchParams.toString();
+  const currentSearchParams = useMemo(
+    () => new URLSearchParams(searchParamsString),
+    [searchParamsString],
   );
+  const currentFilters = useMemo(
+    () => searchParamsToFilters(currentSearchParams),
+    [currentSearchParams],
+  );
+  const searchGapContext = useMemo(
+    () => buildSearchGapAnalyticsContext(currentFilters),
+    [currentFilters],
+  );
+  const buyerRequestPath = useMemo(
+    () =>
+      `/buyer/requests/new?${buildBuyerRequestPrefillParams(currentFilters).toString()}`,
+    [currentFilters],
+  );
+  const shareableSearchParams = useMemo(
+    () => buildShareableSearchParams(currentFilters),
+    [currentFilters],
+  );
+  const sellerIntentPath = useMemo(() => {
+    const params = new URLSearchParams(shareableSearchParams);
+    params.set("source", "zero_results");
+    return `/seller/listings/new?${params.toString()}`;
+  }, [shareableSearchParams]);
   const defaultSavedSearchName = buildDefaultSavedSearchName(
-    new URLSearchParams(rawSearchParams.toString())
+    currentSearchParams,
   );
 
   const updateParams = useCallback(
@@ -199,16 +249,114 @@ export function ListingsBrowseClient({
   const savedSearchCount = savedSearches?.length ?? 0;
   const atSearchLimit =
     isAuthenticated && !isPro && savedSearchCount >= FREE_LIMITS.savedSearches;
-  const hasFilters = !!(
-    initialParams.materialType ||
-    initialParams.condition ||
-    initialParams.query
+  const hasSaveSearchIntent =
+    currentSearchParams.get("intent") === "save_search";
+  const shouldResumeSaveSearch =
+    hasSaveSearchIntent &&
+    !isAuthLoading &&
+    isAuthenticated &&
+    !areSavedSearchesLoading &&
+    !atSearchLimit;
+  const hasFilters = searchGapContext.active_filter_count > 0;
+  const isZeroResults = initialData.total === 0;
+  const zeroResultKey = JSON.stringify(searchGapContext);
+  const actorRole = user?.role ?? "anonymous";
+  const sharePath = `/listings${shareableSearchParams.size > 0 ? `?${shareableSearchParams.toString()}` : ""}`;
+  const appUrl = (
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://plankmarket.com"
+  ).replace(/\/$/, "");
+  const referralHref = `mailto:?subject=${encodeURIComponent(
+    "Flooring inventory opportunity on PlankMarket",
+  )}&body=${encodeURIComponent(
+    `Buyers are searching for inventory like yours. Review the current demand here: ${appUrl}${sharePath}`,
+  )}`;
+
+  useEffect(
+    () => () => {
+      clearTimeout(timeoutRef.current);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!isZeroResults || zeroResultImpressionRef.current === zeroResultKey) {
+      return;
+    }
+
+    zeroResultImpressionRef.current = zeroResultKey;
+    track("marketplace_zero_results_viewed", {
+      ...searchGapContext,
+      results_count: 0,
+    });
+  }, [isZeroResults, searchGapContext, track, zeroResultKey]);
+
+  useEffect(() => {
+    if (
+      !hasSaveSearchIntent ||
+      isAuthLoading ||
+      saveIntentHandledRef.current
+    ) {
+      return;
+    }
+
+    const currentPath = `/listings?${currentSearchParams.toString()}`;
+    if (!isAuthenticated) {
+      saveIntentHandledRef.current = true;
+      router.replace(buildAuthPath(currentPath, "buyer"));
+      return;
+    }
+
+    if (areSavedSearchesLoading) return;
+
+    if (atSearchLimit) {
+      saveIntentHandledRef.current = true;
+      toast.error(
+        `Free accounts are limited to ${FREE_LIMITS.savedSearches} saved searches. Upgrade to Pro for unlimited saved searches.`,
+      );
+      router.push("/pro");
+      return;
+    }
+
+  }, [
+    areSavedSearchesLoading,
+    atSearchLimit,
+    currentSearchParams,
+    hasSaveSearchIntent,
+    isAuthLoading,
+    isAuthenticated,
+    router,
+  ]);
+
+  const trackZeroResultAction = useCallback(
+    (
+      action:
+        | "create_buyer_request"
+        | "save_search_alert"
+        | "list_inventory"
+        | "refer_inventory",
+    ) => {
+      if (!isZeroResults) return;
+      track("marketplace_zero_results_action_clicked", {
+        ...searchGapContext,
+        action,
+        authenticated: isAuthenticated,
+        actor_role: actorRole,
+      });
+    },
+    [actorRole, isAuthenticated, isZeroResults, searchGapContext, track],
   );
 
   const handleSaveSearchClick = useCallback(() => {
+    trackZeroResultAction("save_search_alert");
+
     if (!isAuthenticated) {
       toast.info("Sign in to save searches and get alerts for matching listings.");
-      router.push("/login");
+      const params = new URLSearchParams(currentSearchParams);
+      params.set("intent", "save_search");
+      params.delete("page");
+      router.push(
+        buildAuthPath(`/listings?${params.toString()}`, "buyer"),
+      );
       return;
     }
 
@@ -221,10 +369,77 @@ export function ListingsBrowseClient({
     }
 
     setIsSaveDialogOpen(true);
-  }, [atSearchLimit, isAuthenticated, router]);
+  }, [
+    atSearchLimit,
+    currentSearchParams,
+    isAuthenticated,
+    router,
+    trackZeroResultAction,
+  ]);
+
+  const handleSaveDialogOpenChange = useCallback(
+    (open: boolean) => {
+      setIsSaveDialogOpen(open);
+      if (open || !hasSaveSearchIntent) return;
+
+      saveIntentHandledRef.current = true;
+      const cleanedParams = new URLSearchParams(currentSearchParams);
+      cleanedParams.delete("intent");
+      const cleanedPath = `/listings${
+        cleanedParams.size > 0 ? `?${cleanedParams.toString()}` : ""
+      }`;
+      router.replace(cleanedPath, { scroll: false });
+    },
+    [currentSearchParams, hasSaveSearchIntent, router],
+  );
+
+  const handleBuyerRequestClick = useCallback(() => {
+    trackZeroResultAction("create_buyer_request");
+    if (!isAuthenticated) {
+      router.push(buildAuthPath(buyerRequestPath, "buyer"));
+      return;
+    }
+
+    if (user?.role === "seller") {
+      toast.info("Buyer requests require a buyer account. Contact us if your business needs both roles.");
+      router.push("/contact?topic=buyer-account");
+      return;
+    }
+
+    router.push(buyerRequestPath);
+  }, [
+    buyerRequestPath,
+    isAuthenticated,
+    router,
+    trackZeroResultAction,
+    user?.role,
+  ]);
+
+  const handleSellerIntentClick = useCallback(() => {
+    trackZeroResultAction("list_inventory");
+    if (!isAuthenticated) {
+      router.push(buildAuthPath(sellerIntentPath, "seller", "register"));
+      return;
+    }
+
+    if (user?.role === "buyer") {
+      toast.info("Listings require a seller account. Contact us to add selling access.");
+      router.push("/contact?topic=seller-account");
+      return;
+    }
+
+    router.push(sellerIntentPath);
+  }, [
+    isAuthenticated,
+    router,
+    sellerIntentPath,
+    trackZeroResultAction,
+    user?.role,
+  ]);
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <h1 className="sr-only">Browse surplus flooring listings</h1>
       {/* Search Bar */}
       <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1">
@@ -277,7 +492,10 @@ export function ListingsBrowseClient({
             value={String(initialParams.limit)}
             onValueChange={(v) => updateParams({ limit: v })}
           >
-            <SelectTrigger className="w-full sm:w-[140px] h-8 text-xs">
+            <SelectTrigger
+              aria-label="Listings per page"
+              className="w-full sm:w-[140px] h-8 text-xs"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -300,7 +518,10 @@ export function ListingsBrowseClient({
             value={initialParams.sort}
             onValueChange={(v) => updateParams({ sort: v })}
           >
-            <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs">
+            <SelectTrigger
+              aria-label="Sort listings"
+              className="w-full sm:w-[200px] h-8 text-xs"
+            >
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
@@ -354,12 +575,17 @@ export function ListingsBrowseClient({
       </div>
 
       <SaveSearchDialog
-        open={isSaveDialogOpen}
-        onOpenChange={setIsSaveDialogOpen}
+        open={isSaveDialogOpen || shouldResumeSaveSearch}
+        onOpenChange={handleSaveDialogOpenChange}
         filters={currentFilters}
         defaultName={defaultSavedSearchName}
         onSaved={() => {
           refetchSavedSearches();
+          track("saved_search_alert_created", {
+            ...searchGapContext,
+            source: isZeroResults ? "zero_results" : "browse_toolbar",
+            alert_enabled: true,
+          });
         }}
       />
 
@@ -383,30 +609,133 @@ export function ListingsBrowseClient({
           )}
 
           {initialData.items.length === 0 ? (
-            <div className="text-center py-20">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50 mb-4">
-                <Search className="h-10 w-10 text-muted-foreground/30" />
+            <section
+              aria-labelledby="search-gap-title"
+              className="mx-auto max-w-5xl py-12 text-center sm:py-16"
+            >
+              <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50">
+                <Search
+                  className="h-10 w-10 text-muted-foreground/40"
+                  aria-hidden="true"
+                />
               </div>
-              <h3 className="text-lg font-display font-semibold">
+              <h2
+                id="search-gap-title"
+                className="font-display text-2xl font-semibold"
+              >
                 {hasFilters
                   ? "No listings match your filters"
                   : "No listings yet"}
-              </h3>
-              <p className="text-muted-foreground mt-1">
+              </h2>
+              <p className="mx-auto mt-2 max-w-2xl text-muted-foreground">
                 {hasFilters
-                  ? "Try adjusting your filters or search terms"
-                  : "Check back soon for new listings"}
+                  ? "Keep your criteria working. We can alert you, send your request to sellers, or help matching inventory get listed."
+                  : "Be first to know when inventory arrives, or tell verified sellers exactly what your business needs."}
               </p>
+
+              <div className="mt-8 grid gap-4 text-left md:grid-cols-3">
+                <Card className="flex h-full flex-col shadow-sm">
+                  <CardHeader className="pb-3">
+                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <BellRing className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <h3 className="font-semibold leading-none tracking-tight">
+                      Get a match alert
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col">
+                    <p className="flex-1 text-sm text-muted-foreground">
+                      Save these filters and get notified when a matching lot
+                      goes live.
+                    </p>
+                    <Button
+                      className="mt-5 w-full"
+                      variant="outline"
+                      onClick={handleSaveSearchClick}
+                    >
+                      <BookmarkPlus
+                        className="mr-2 h-4 w-4"
+                        aria-hidden="true"
+                      />
+                      Save search alert
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="flex h-full flex-col border-primary/30 bg-primary/[0.03] shadow-sm">
+                  <CardHeader className="pb-3">
+                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <ClipboardPlus className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <h3 className="font-semibold leading-none tracking-tight">
+                      Let sellers come to you
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col">
+                    <p className="flex-1 text-sm text-muted-foreground">
+                      Post a structured buyer request using the safe product and
+                      price filters from this search.
+                    </p>
+                    <Button
+                      className="mt-5 w-full"
+                      onClick={handleBuyerRequestClick}
+                    >
+                      Post a buyer request
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="flex h-full flex-col shadow-sm">
+                  <CardHeader className="pb-3">
+                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <PackagePlus className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <h3 className="font-semibold leading-none tracking-tight">
+                      Have matching inventory?
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col">
+                    <p className="flex-1 text-sm text-muted-foreground">
+                      List the lot for verified buyers, or share this demand with
+                      a flooring seller you know.
+                    </p>
+                    <div className="mt-5 grid gap-2">
+                      <Button
+                        className="w-full"
+                        variant="secondary"
+                        onClick={handleSellerIntentClick}
+                      >
+                        List matching inventory
+                      </Button>
+                      <Button asChild className="w-full" variant="ghost">
+                        <a
+                          href={referralHref}
+                          onClick={() =>
+                            trackZeroResultAction("refer_inventory")
+                          }
+                        >
+                          <Share2
+                            className="mr-2 h-4 w-4"
+                            aria-hidden="true"
+                          />
+                          Refer a seller
+                        </a>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
               {hasFilters && (
                 <Button
-                  className="mt-4"
-                  variant="secondary"
+                  className="mt-6"
+                  variant="ghost"
                   onClick={() => router.push("/listings")}
                 >
                   Clear all filters
                 </Button>
               )}
-            </div>
+            </section>
           ) : (
             <>
               {viewMode === "list" ? (

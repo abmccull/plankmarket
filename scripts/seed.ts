@@ -16,6 +16,8 @@ import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import zipcodes from "zipcodes";
+import { calculateOrderFees } from "@/lib/fees";
+import { captureCommercialPolicy } from "@/lib/commercial-policy";
 
 import {
   users,
@@ -893,6 +895,7 @@ async function seed() {
 
       await db.insert(media).values({
         listingId,
+        uploaderId: sellerId,
         url: getFlooringImage(l.materialType, 0),
         fileName: `${specLabel}-flooring-1.jpg`,
         mimeType: "image/jpeg",
@@ -904,6 +907,7 @@ async function seed() {
       if (l.daysOld % 3 !== 0) {
         await db.insert(media).values({
           listingId,
+          uploaderId: sellerId,
           url: getFlooringImage(l.materialType, 1),
           fileName: `${specLabel}-flooring-2.jpg`,
           mimeType: "image/jpeg",
@@ -924,17 +928,21 @@ async function seed() {
 
   // Helper to compute order financials
   function orderFinancials(qty: number, price: number) {
-    const subtotal = +(qty * price).toFixed(4);
-    const buyerFee = +(subtotal * 0.03).toFixed(4);
-    const sellerFee = +(subtotal * 0.02).toFixed(4);
+    const subtotal = +(qty * price).toFixed(2);
+    const fees = calculateOrderFees(subtotal, 0, 0);
     return {
       quantitySqFt: qty,
       pricePerSqFt: price,
       subtotal,
-      buyerFee,
-      sellerFee,
-      totalPrice: +(subtotal + buyerFee).toFixed(4),
-      sellerPayout: +(subtotal - sellerFee).toFixed(4),
+      buyerFee: fees.buyerFee,
+      sellerFee: fees.sellerFee,
+      stripeProcessingFee: fees.totalStripeFee,
+      sellerStripeFee: fees.sellerStripeFee,
+      platformStripeFee: fees.platformStripeFee,
+      totalPrice: fees.totalCharge,
+      originalSellerPayout: fees.sellerPayout,
+      sellerPayout: fees.sellerPayout,
+      commercialPolicySnapshot: captureCommercialPolicy(),
     };
   }
 
@@ -965,7 +973,7 @@ async function seed() {
       qty: 500,
       price: 4.50,
       status: "delivered" as const,
-      paymentStatus: "paid",
+      paymentStatus: "succeeded",
       escrowStatus: "released",
       shippingName: "Emily Davis",
       shippingAddress: "1200 Main St, Suite 400",
@@ -987,7 +995,7 @@ async function seed() {
       qty: 1000,
       price: 1.75,
       status: "delivered" as const,
-      paymentStatus: "paid",
+      paymentStatus: "succeeded",
       escrowStatus: "released",
       shippingName: "Michael Brown",
       shippingAddress: "5600 Legacy Dr",
@@ -1009,7 +1017,7 @@ async function seed() {
       qty: 2000,
       price: 3.25,
       status: "shipped" as const,
-      paymentStatus: "paid",
+      paymentStatus: "succeeded",
       escrowStatus: "held",
       shippingName: "Emily Davis",
       shippingAddress: "1200 Main St, Suite 400",
@@ -1031,7 +1039,7 @@ async function seed() {
       qty: 800,
       price: 2.50,
       status: "confirmed" as const,
-      paymentStatus: "paid",
+      paymentStatus: "succeeded",
       escrowStatus: "held",
       shippingName: "Lisa Wilson",
       shippingAddress: "9100 Warren Pkwy",

@@ -9,7 +9,6 @@ vi.mock("@/lib/content-filter/index", () => ({
   getBlockedContentMessage: () => "Blocked",
 }));
 
-import { listingFormSchema, listingFilterSchema } from "../listing";
 import {
   step1Schema,
   step2Schema,
@@ -17,6 +16,7 @@ import {
   step5Schema,
   validateStep,
 } from "../listing-steps";
+import { listingFilterSchema } from "../listing";
 
 // ---------------------------------------------------------------------------
 // step1Schema
@@ -125,6 +125,21 @@ describe("step3Schema", () => {
   it("rejects zero price", () => {
     const result = step3Schema.safeParse({ askPricePerSqFt: 0 });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("listingFilterSchema public bounds", () => {
+  it("trims and caps free-text search", () => {
+    expect(listingFilterSchema.parse({ query: "  oak  " }).query).toBe("oak");
+    expect(
+      listingFilterSchema.safeParse({ query: "x".repeat(201) }).success,
+    ).toBe(false);
+  });
+
+  it("caps page offsets while preserving the catalog page-size limit", () => {
+    expect(listingFilterSchema.safeParse({ page: 1_000 }).success).toBe(true);
+    expect(listingFilterSchema.safeParse({ page: 1_001 }).success).toBe(false);
+    expect(listingFilterSchema.safeParse({ limit: 250 }).success).toBe(true);
   });
 });
 

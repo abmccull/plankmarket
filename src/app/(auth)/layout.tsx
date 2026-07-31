@@ -35,9 +35,9 @@ export default function AuthLayout({
             <span className="text-white">Plank</span>
             <span className="text-green-300">Market</span>
           </span>
-          <h2 className="text-3xl font-display font-bold text-center mb-4">
+          <p className="text-3xl font-display font-bold text-center mb-4">
             B2B Flooring Liquidation
-          </h2>
+          </p>
           <p className="text-lg text-white/80 text-center max-w-md">
             Connect directly with verified flooring professionals.
             Trade overstock, discontinued, and closeout inventory.
@@ -50,9 +50,9 @@ export default function AuthLayout({
         <Link href="/" className="lg:hidden mb-8">
           <Logo variant="full" size="lg" />
         </Link>
-        <main className="w-full max-w-md">
+        <div className="w-full max-w-md">
           {children}
-        </main>
+        </div>
       </div>
     </div>
   );

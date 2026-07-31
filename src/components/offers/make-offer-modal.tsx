@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency, formatSqFt, calculateBuyerFee } from "@/lib/utils";
+import { BUYER_MARKETPLACE_FEE_PERCENT } from "@/lib/fees";
 
 const makeOfferFormSchema = z.object({
   offerPricePerSqFt: z
@@ -47,6 +48,7 @@ interface MakeOfferModalProps {
   askPricePerSqFt: number;
   totalSqFt: number;
   moq?: number | null;
+  fullLotOnly?: boolean;
 }
 
 export function MakeOfferModal({
@@ -57,6 +59,7 @@ export function MakeOfferModal({
   askPricePerSqFt,
   totalSqFt,
   moq,
+  fullLotOnly = false,
 }: MakeOfferModalProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -80,6 +83,12 @@ export function MakeOfferModal({
 
   const watchedPrice = watch("offerPricePerSqFt");
   const watchedQuantity = watch("quantitySqFt");
+  const isBelowMoq =
+    moq != null && Number(watchedQuantity) < Number(moq) - 0.01;
+  const belowMoqMessage =
+    moq != null
+      ? `Minimum order is ${formatSqFt(moq)}. Increase the quantity to submit this offer.`
+      : null;
 
   // Calculate totals
   const subtotal =
@@ -88,6 +97,13 @@ export function MakeOfferModal({
   const total = subtotal + buyerFee;
 
   const onSubmit = async (data: MakeOfferFormValues) => {
+    if (isBelowMoq) {
+      if (belowMoqMessage) {
+        toast.error(belowMoqMessage);
+      }
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const offer = await createOffer.mutateAsync({
@@ -125,8 +141,9 @@ export function MakeOfferModal({
         <DialogHeader>
           <DialogTitle>Make an Offer</DialogTitle>
           <DialogDescription>
-            Submit your offer for {listingTitle}. The seller will be notified and
-            can accept, counter, or decline.
+            Submit your offer for {listingTitle}. The seller has 48 hours to
+            accept, counter, or decline. Each counter starts a new 48-hour
+            response window.
           </DialogDescription>
         </DialogHeader>
 
@@ -188,9 +205,16 @@ export function MakeOfferModal({
               step="1"
               placeholder="0"
               disabled={isSubmitting}
+              readOnly={fullLotOnly}
               aria-invalid={!!errors.quantitySqFt}
               aria-describedby={
-                errors.quantitySqFt ? "quantitySqFt-error" : undefined
+                errors.quantitySqFt
+                  ? "quantitySqFt-error"
+                  : isBelowMoq
+                    ? "quantitySqFt-moq"
+                  : fullLotOnly
+                    ? "quantitySqFt-full-lot"
+                    : undefined
               }
               {...register("quantitySqFt", { valueAsNumber: true })}
             />
@@ -203,10 +227,22 @@ export function MakeOfferModal({
                 {errors.quantitySqFt.message}
               </p>
             )}
-            {moq && watchedQuantity < moq && (
-              <p className="text-sm text-amber-600" role="alert">
-                Note: This is below the seller&apos;s minimum order quantity of{" "}
-                {formatSqFt(moq)}
+            {isBelowMoq && belowMoqMessage && (
+              <p
+                id="quantitySqFt-moq"
+                className="text-sm text-destructive"
+                role="alert"
+              >
+                {belowMoqMessage}
+              </p>
+            )}
+            {fullLotOnly && (
+              <p
+                id="quantitySqFt-full-lot"
+                className="text-sm text-muted-foreground"
+              >
+                This seller is negotiating the inventory as one full lot, so
+                the offer quantity is fixed at {formatSqFt(totalSqFt)}.
               </p>
             )}
           </div>
@@ -243,7 +279,9 @@ export function MakeOfferModal({
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Buyer Fee (3%)</span>
+              <span className="text-muted-foreground">
+                Buyer Fee ({BUYER_MARKETPLACE_FEE_PERCENT}%)
+              </span>
               <span className="font-medium tabular-nums">
                 {formatCurrency(buyerFee)}
               </span>
@@ -270,7 +308,7 @@ export function MakeOfferModal({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isBelowMoq}
               className="w-full sm:w-auto"
             >
               {isSubmitting ? (

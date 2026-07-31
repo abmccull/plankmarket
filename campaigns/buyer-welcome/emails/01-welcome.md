@@ -64,4 +64,4 @@ Here is what is coming:
 
 ---
 
-**P.S.** 3% buyer fee. Only on completed purchases. No subscription. No listing fees.
+**P.S.** 5% buyer fee. Only on completed purchases. No subscription. No listing fees.

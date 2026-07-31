@@ -1,23 +1,23 @@
 import { z } from "zod";
+import type { FreightFundingMode } from "@/lib/freight-funding";
 
 export const getShippingQuotesSchema = z.object({
   listingId: z.string().uuid(),
-  destinationZip: z.string().min(5).max(10),
+  destinationZip: z
+    .string()
+    .regex(/^\d{5}(?:-\d{4})?$/, "Enter a valid US ZIP code"),
   quantitySqFt: z.number().positive(),
-  // Manual overrides when listing lacks freight data
-  overrideOriginZip: z.string().min(5).max(10).optional(),
-  overridePalletWeight: z.number().positive().optional(),
-  overridePalletLength: z.number().positive().optional(),
-  overridePalletWidth: z.number().positive().optional(),
-  overridePalletHeight: z.number().positive().optional(),
-});
+}).strict();
 
 export interface ShippingQuote {
   quoteId: number; // Priority1 rateQuote.id
   quoteToken: string; // opaque server-issued token bound to checkout context
   carrierName: string;
   carrierScac: string;
-  shippingPrice: number; // what buyer pays (carrier rate + margin)
+  shippingPrice: number; // full booked freight quote (carrier rate + margin)
+  buyerFreightCharge: number;
+  sellerFreightContribution: number;
+  freightFundingMode: FreightFundingMode;
   transitDays: number;
   estimatedDelivery: string; // ISO date string
   quoteExpiresAt: string; // ISO date string

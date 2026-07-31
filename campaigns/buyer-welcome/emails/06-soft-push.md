@@ -51,19 +51,19 @@ Step 2: Buy or make an offer.
 Two options on every listing. Buy Now at the listed price. Or Make an Offer if you want to negotiate. Sellers can accept, counter, or decline. The negotiation stays inside the platform -- no side emails, no phone tag.
 
 Step 3: Pay.
-Checkout through Stripe. Your payment goes into escrow. The seller does not receive funds until the carrier picks up the shipment.
+Checkout through Stripe. The order records payment and shipment milestones, and the seller transfer is initiated after the configured shipment event and delay.
 
 Step 4: Track.
 LTL freight is integrated. You get a tracking number and can follow the shipment from the seller's dock to yours. Real-time updates.
 
-Step 5: Inspect and confirm.
-After delivery, you have 48 hours to inspect the product. If everything matches the listing specs, the transaction completes and the seller gets paid. If something is off, file a dispute.
+Step 5: Inspect and report any issue.
+After delivery, you have 48 hours to inspect the product. If something does not match the listing or delivery record, file a dispute with the supporting evidence. Seller-transfer timing follows the separate pickup milestone and configured delay shown in the order.
 
 That is the full process. Five steps. No surprises.
 
 [Browse Listings]
 
-The 3% buyer fee is calculated and shown at checkout before you confirm payment. You always know the total cost -- product, fee, and freight -- before you commit.
+The 5% buyer fee is calculated and shown at checkout before you confirm payment. You see product, fee, and freight before you commit.
 
 ---
 

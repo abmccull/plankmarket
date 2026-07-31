@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc/client";
 import { ProGate } from "@/components/pro-gate";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { FileText, ShoppingCart, Flame } from "lucide-react";
+import { Bell, FileText, ShoppingCart, Flame } from "lucide-react";
 
 function formatMaterialType(mt: string) {
   return mt
@@ -143,10 +143,11 @@ function DemandSignals() {
   return (
     <section>
       <h2 className="text-xl font-semibold mb-4">Demand Signals</h2>
-      {(data.totalAlertedSearches ?? 0) > 0 && (
+      {(data.matchingAlertedSearches ?? 0) > 0 && (
         <p className="text-sm text-muted-foreground mb-4">
-          {formatNumber(data.totalAlertedSearches ?? 0)} buyers have active
-          search alerts across the platform
+          {formatNumber(data.matchingAlertedSearches ?? 0)} active saved{" "}
+          {data.matchingAlertedSearches === 1 ? "search matches" : "searches match"}{" "}
+          your current material categories
         </p>
       )}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -162,7 +163,16 @@ function DemandSignals() {
               <DemandBadge level={s.demandLevel} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Search Alerts</p>
+                  <p className="text-sm font-semibold">
+                    {s.matchingSavedSearches}
+                  </p>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
                 <div>

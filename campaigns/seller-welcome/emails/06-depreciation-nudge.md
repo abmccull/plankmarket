@@ -59,7 +59,7 @@ What you are not risking:
 - No listing fees (it costs nothing to list)
 - No subscription (cancel anytime -- there is nothing to cancel)
 - No exclusivity (sell the same inventory through your existing channels simultaneously)
-- 2% fee only when a sale completes
+- 5% seller fee plus disclosed payment processing only when a sale completes
 
 The only cost of listing is 5 minutes of your time. The cost of not listing is whatever your daily carrying cost is, multiplied by every day you wait.
 

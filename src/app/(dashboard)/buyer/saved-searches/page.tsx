@@ -28,7 +28,7 @@ import { useProStatus } from "@/hooks/use-pro-status";
 import { FREE_LIMITS } from "@/lib/pro";
 
 const FREQUENCY_LABELS: Record<string, string> = {
-  instant: "Instant",
+  instant: "As listings go live",
   daily: "Daily",
   weekly: "Weekly",
 };

@@ -52,11 +52,11 @@ The math:
 
 - Standard wholesale: 3,000 sq ft x $4.50 = $13,500
 - PlankMarket lot: 3,000 sq ft x $2.10 = $6,300
-- 3% buyer fee: $189
-- Your cost: $6,489
-- You keep: $7,011
+- 5% buyer fee: $315
+- Your cost: $6,615
+- You keep: $6,885
 
-That is $7,011 in margin on a single lot. Enough to cover freight, the buyer fee, and still come out significantly ahead.
+That is $6,885 in modeled gross margin on a single lot before freight and other costs.
 
 This is what "30-60% below wholesale" looks like in practice.
 

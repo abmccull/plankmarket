@@ -1,137 +1,362 @@
 import { inngest } from "../client";
 import { db } from "@/server/db";
-import { orders } from "@/server/db/schema/orders";
-import { eq } from "drizzle-orm";
-import { resend } from "@/lib/email/client";
-import Stripe from "stripe";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-01-28.clover" as Stripe.LatestApiVersion,
-});
+import {
+  disputes,
+  orders,
+  platformSettings,
+  shipments,
+  users,
+} from "@/server/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { sendEmailOrThrow } from "@/lib/email/delivery";
+import { buildEmailIdempotencyKey } from "@/lib/email/delivery-policy";
+import { env } from "@/env";
+import { stripe } from "@/lib/stripe";
+import { escapeHtml } from "@/lib/utils";
+import type Stripe from "stripe";
+import {
+  hasPersistedProviderPickupEvidence,
+  isProviderConfirmedPickup,
+  type ProviderConfirmedPickupEventData,
+} from "@/server/services/payout-eligibility";
+import { findStripeTransferForOrder } from "@/server/services/stripe-order-transfer";
+import {
+  openReconciliationCase,
+  resolveReconciliationCaseByKey,
+} from "@/server/services/reconciliation-cases";
 
 interface OrderPickedUpEvent {
-  data: {
-    orderId: string;
-    pickedUpAt: string;
-  };
+  data: ProviderConfirmedPickupEventData;
 }
 
-export const escrowAutoRelease = inngest.createFunction(
-  { id: "escrow-auto-release", name: "Release Escrow on Shipment Pickup" },
-  { event: "order/picked-up" },
-  async ({ event, step }) => {
-    const eventData = event.data as OrderPickedUpEvent["data"];
+interface PayoutReleaseResult {
+  released: boolean;
+  reason?: string;
+  orderId?: string;
+  orderNumber?: string;
+  payoutAmount?: number;
+  sellerEmail?: string;
+  sellerName?: string;
+}
 
-    const releaseResult = await step.run("check-and-release", async () => {
-      // Fetch order details with seller relation
-      const order = await db.query.orders.findFirst({
-        where: eq(orders.id, eventData.orderId),
-        with: {
-          seller: {
-            columns: {
-              id: true,
-              stripeAccountId: true,
-              email: true,
-              name: true,
-            },
-          },
-        },
-      });
+export function normalizePayoutDelayDays(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.min(30, Math.max(1, Math.trunc(parsed)));
+}
 
-      if (!order) {
-        return { released: false, reason: "Order not found" };
-      }
+async function getConfiguredPayoutDelayDays(): Promise<number> {
+  const setting = await db.query.platformSettings.findFirst({
+    where: eq(platformSettings.key, "escrowReleaseDays"),
+    columns: { value: true },
+  });
+  return normalizePayoutDelayDays(setting?.value);
+}
 
-      // Check if escrow is still held (no dispute opened)
+export async function releaseSellerPayout(
+  orderId: string,
+): Promise<PayoutReleaseResult> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [order] = await tx
+        .select({
+          id: orders.id,
+          orderNumber: orders.orderNumber,
+          createdAt: orders.createdAt,
+          sellerId: orders.sellerId,
+          totalPrice: orders.totalPrice,
+          sellerPayout: orders.sellerPayout,
+          status: orders.status,
+          paymentStatus: orders.paymentStatus,
+          escrowStatus: orders.escrowStatus,
+          stripePaymentIntentId: orders.stripePaymentIntentId,
+          stripeTransferId: orders.stripeTransferId,
+          selectedQuoteId: orders.selectedQuoteId,
+          shipmentQuoteId: shipments.quoteId,
+          priority1ShipmentId: shipments.priority1ShipmentId,
+          shipmentStatus: shipments.status,
+          shipmentIsDryRun: shipments.isDryRun,
+          shipmentTrackingEvents: shipments.trackingEvents,
+          sellerStripeAccountId: users.stripeAccountId,
+          sellerStripeOnboardingComplete: users.stripeOnboardingComplete,
+          sellerEmail: users.email,
+          sellerName: users.name,
+        })
+        .from(orders)
+        .innerJoin(users, eq(users.id, orders.sellerId))
+        .innerJoin(shipments, eq(shipments.orderId, orders.id))
+        .where(eq(orders.id, orderId))
+        .for("update");
+
+      if (!order) return { released: false, reason: "Order not found" };
       if (order.escrowStatus !== "held") {
         return {
           released: false,
-          reason: `Escrow status is ${order.escrowStatus}`,
+          reason: `Payment hold status is ${order.escrowStatus}`,
+        };
+      }
+      if (
+        order.paymentStatus !== "succeeded" ||
+        !["shipped", "delivered"].includes(order.status) ||
+        !order.stripePaymentIntentId
+      ) {
+        return {
+          released: false,
+          reason: "Order is not a paid, provider-shipped order",
+        };
+      }
+      if (!hasPersistedProviderPickupEvidence(order)) {
+        return {
+          released: false,
+          reason: "Shipment lacks live Priority1 pickup evidence",
         };
       }
 
-      // Transfer funds via Stripe before updating escrow status
-      if (!order.seller?.stripeAccountId) {
+      const [openDispute] = await tx
+        .select({ id: disputes.id })
+        .from(disputes)
+        .where(
+          and(
+            eq(disputes.orderId, order.id),
+            inArray(disputes.status, ["open", "under_review"]),
+          ),
+        )
+        .limit(1);
+      if (openDispute) {
+        return { released: false, reason: "Order has an open dispute" };
+      }
+
+      if (
+        !order.sellerStripeAccountId ||
+        !order.sellerStripeOnboardingComplete
+      ) {
+        throw new Error(`Seller ${order.sellerId} payout account is not ready`);
+      }
+      const sellerAccount = await stripe.accounts.retrieve(
+        order.sellerStripeAccountId,
+      );
+      if (
+        !sellerAccount.payouts_enabled ||
+        sellerAccount.capabilities?.transfers !== "active"
+      ) {
         throw new Error(
-          `Seller ${order.sellerId} has no Stripe account connected`
+          `Seller ${order.sellerId} Stripe account cannot receive transfers`,
         );
       }
 
-      let transfer: Stripe.Transfer;
-      try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        order.stripePaymentIntentId,
+        { expand: ["latest_charge"] },
+      );
+      const expectedChargeCents = Math.round(Number(order.totalPrice) * 100);
+      if (
+        paymentIntent.id !== order.stripePaymentIntentId ||
+        paymentIntent.metadata.orderId !== order.id ||
+        paymentIntent.status !== "succeeded" ||
+        paymentIntent.amount_received !== expectedChargeCents ||
+        paymentIntent.currency !== "usd"
+      ) {
+        throw new Error(`Stripe payment does not match order ${order.id}`);
+      }
+
+      const latestCharge = paymentIntent.latest_charge;
+      const charge =
+        typeof latestCharge === "string"
+          ? await stripe.charges.retrieve(latestCharge)
+          : latestCharge;
+      if (!charge || charge.status !== "succeeded") {
+        throw new Error(`Order ${order.id} has no successful source charge`);
+      }
+      if (charge.refunded || charge.amount_refunded > 0 || charge.disputed) {
+        return {
+          released: false,
+          reason: "Source charge is refunded or disputed",
+        };
+      }
+
+      const payoutCents = Math.round(Number(order.sellerPayout) * 100);
+      if (payoutCents <= 0) {
+        throw new Error(`Order ${order.id} has a non-positive seller payout`);
+      }
+
+      const transferGroup = `order_${order.id}`;
+      let transfer: Stripe.Transfer | undefined = order.stripeTransferId
+        ? await stripe.transfers.retrieve(order.stripeTransferId)
+        : undefined;
+      if (!transfer) {
+        transfer = await findStripeTransferForOrder({
+          stripe,
+          orderId: order.id,
+          orderCreatedAt: order.createdAt,
+          destination: order.sellerStripeAccountId,
+        });
+      }
+      if (!transfer) {
         transfer = await stripe.transfers.create(
           {
-            amount: Math.round(Number(order.sellerPayout) * 100), // cents
+            amount: payoutCents,
             currency: "usd",
-            destination: order.seller.stripeAccountId,
+            destination: order.sellerStripeAccountId,
+            source_transaction: charge.id,
+            transfer_group: transferGroup,
             metadata: {
               orderId: order.id,
               orderNumber: order.orderNumber,
             },
           },
           {
-            idempotencyKey: `escrow-release-${order.id}`,
-          }
+            idempotencyKey: `order-payout:${order.id}:${payoutCents}`,
+          },
         );
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : "Unknown error";
-
-        // Record the failure on the order for admin visibility
-        await db
-          .update(orders)
-          .set({
-            transferFailedAt: new Date(),
-            transferError: errorMessage,
-            updatedAt: new Date(),
-          })
-          .where(eq(orders.id, eventData.orderId));
-
-        // Re-throw to trigger Inngest retry
+      }
+      const transferSourceTransaction =
+        typeof transfer.source_transaction === "string"
+          ? transfer.source_transaction
+          : transfer.source_transaction?.id;
+      if (
+        transfer.amount !== payoutCents ||
+        transfer.currency.toLowerCase() !== "usd" ||
+        transfer.destination !== order.sellerStripeAccountId ||
+        transfer.transfer_group !== transferGroup ||
+        transferSourceTransaction !== charge.id ||
+        transfer.metadata.orderId !== order.id
+      ) {
+        throw new Error(`Existing transfer does not match order ${order.id}`);
+      }
+      if (transfer.amount_reversed > 0) {
         throw new Error(
-          `Failed to transfer funds for order ${order.id}: ${errorMessage}`
+          `Order ${order.id} has a previously reversed transfer and requires reconciliation`,
         );
       }
 
-      // Update escrow status only after successful transfer
-      await db
+      const [updated] = await tx
         .update(orders)
         .set({
           escrowStatus: "released",
           stripeTransferId: transfer.id,
+          transferFailedAt: null,
+          transferError: null,
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, eventData.orderId));
-
-      // Notify seller
-      if (order.seller) {
-        await resend.emails.send({
-          from: "PlankMarket <noreply@plankmarket.com>",
-          to: order.seller.email,
-          subject: `Funds released for order ${order.orderNumber}`,
-          html: `
-            <p>Hi ${order.seller.name},</p>
-            <p>Great news! Your shipment for order <strong>${order.orderNumber}</strong> has been picked up by the carrier, and funds have been released to your account.</p>
-            <p><strong>Payout Details:</strong></p>
-            <ul>
-              <li>Order Number: ${order.orderNumber}</li>
-              <li>Payout Amount: $${order.sellerPayout.toFixed(2)}</li>
-              <li>Released: ${new Date().toLocaleDateString()}</li>
-            </ul>
-            <p>The funds should appear in your connected bank account within 2-3 business days.</p>
-            <p><a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/seller/orders/${order.id}">View Order Details</a></p>
-          `,
-        });
+        .where(
+          and(
+            eq(orders.id, order.id),
+            eq(orders.escrowStatus, "held"),
+            eq(orders.paymentStatus, "succeeded"),
+            inArray(orders.status, ["shipped", "delivered"]),
+          ),
+        )
+        .returning({ id: orders.id });
+      if (!updated) {
+        throw new Error(`Order ${order.id} changed during payout release`);
       }
 
       return {
         released: true,
-        orderId: eventData.orderId,
+        orderId: order.id,
         orderNumber: order.orderNumber,
-        payoutAmount: order.sellerPayout,
+        payoutAmount: Number(order.sellerPayout),
+        sellerEmail: order.sellerEmail,
+        sellerName: order.sellerName,
       };
     });
-
-    return releaseResult;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown payout error";
+    await db
+      .update(orders)
+      .set({
+        transferFailedAt: new Date(),
+        transferError: errorMessage,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(orders.id, orderId), eq(orders.escrowStatus, "held")));
+    await openReconciliationCase(db, {
+      caseKey: `payout-failure:${orderId}`,
+      type: "payout_failure",
+      source: "stripe",
+      severity: "critical",
+      title: "Seller payout release failed",
+      summary: errorMessage,
+      orderId,
+      details: {
+        workflow: "escrow-auto-release",
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      },
+    });
+    throw error;
   }
+}
+
+export const escrowAutoRelease = inngest.createFunction(
+  { id: "escrow-auto-release", name: "Release Payment Hold after Pickup" },
+  { event: "order/picked-up" },
+  async ({ event, step }) => {
+    const eventData = event.data as Partial<OrderPickedUpEvent["data"]>;
+    if (!isProviderConfirmedPickup(eventData)) {
+      return { released: false, reason: "Pickup was not provider-confirmed" };
+    }
+
+    const delayDays = await step.run("load-payout-delay", () =>
+      getConfiguredPayoutDelayDays(),
+    );
+    const releaseAt = new Date(
+      new Date(eventData.pickedUpAt).getTime() +
+        delayDays * 24 * 60 * 60 * 1000,
+    );
+    await step.sleepUntil("wait-configured-payout-delay", releaseAt);
+
+    const result = await step.run("check-and-release", () =>
+      releaseSellerPayout(eventData.orderId),
+    );
+    if (result.released) {
+      await step.run("resolve-payout-reconciliation", () =>
+        resolveReconciliationCaseByKey(db, {
+          caseKey: `payout-failure:${eventData.orderId}`,
+          resolution:
+            "Stripe accepted and the database persisted the validated seller transfer.",
+          details: {
+            orderId: eventData.orderId,
+          },
+        }),
+      );
+    }
+    if (
+      result.released &&
+      result.sellerEmail &&
+      result.sellerName &&
+      result.orderNumber &&
+      result.orderId &&
+      result.payoutAmount !== undefined
+    ) {
+      await step.run("notify-seller", () =>
+        sendEmailOrThrow({
+          category: "seller_payout_released",
+          idempotencyKey: buildEmailIdempotencyKey(
+            "seller_payout_released",
+            result.orderId,
+            result.sellerEmail,
+          ),
+          message: {
+            from: env.EMAIL_FROM,
+            to: result.sellerEmail!,
+            subject: `Funds released for order ${result.orderNumber}`,
+            html: `
+            <p>Hi ${escapeHtml(result.sellerName!)},</p>
+            <p>Your carrier-confirmed shipment for order <strong>${escapeHtml(result.orderNumber!)}</strong> completed its payout hold, and funds have been released to your connected account.</p>
+            <p><strong>Payout amount:</strong> $${result.payoutAmount!.toFixed(2)}</p>
+            <p><a href="${env.NEXT_PUBLIC_APP_URL}/seller/orders/${result.orderId}">View order details</a></p>
+          `,
+          },
+        }),
+      );
+    }
+
+    return result;
+  },
 );

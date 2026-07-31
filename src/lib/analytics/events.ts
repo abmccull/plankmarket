@@ -4,6 +4,8 @@ import type {
   ConditionType,
   SortOption,
 } from "@/types";
+import { getPostHogServer } from "./posthog-server";
+import type { SearchGapAnalyticsContext } from "@/lib/marketplace/search-gap";
 
 // Event property interfaces
 export interface ListingViewedProperties {
@@ -114,6 +116,43 @@ export interface WatchlistRemovedProperties {
   listing_id: string;
 }
 
+export interface MarketplaceZeroResultsProperties
+  extends SearchGapAnalyticsContext {
+  results_count: 0;
+}
+
+export interface MarketplaceZeroResultsActionProperties
+  extends SearchGapAnalyticsContext {
+  action:
+    | "create_buyer_request"
+    | "save_search_alert"
+    | "list_inventory"
+    | "refer_inventory";
+  authenticated: boolean;
+  actor_role: "buyer" | "seller" | "admin" | "anonymous";
+}
+
+export interface SavedSearchAlertCreatedProperties
+  extends SearchGapAnalyticsContext {
+  source: "zero_results" | "browse_toolbar";
+  alert_enabled: true;
+}
+
+export interface BuyerRequestCreatedProperties {
+  request_id: string;
+  source: "zero_results" | "direct";
+  material_types: MaterialType[];
+  min_total_sqft: number;
+  max_total_sqft?: number;
+  price_min_per_sqft?: number;
+  price_max_per_sqft: number;
+  pickup_ok: boolean;
+  shipping_ok: boolean;
+  urgency: "asap" | "2_weeks" | "4_weeks" | "flexible";
+  has_notes: boolean;
+  reference_photo_count: number;
+}
+
 // Event catalog type
 export type PlankMarketEvent =
   | { event: "listing_viewed"; properties: ListingViewedProperties }
@@ -129,10 +168,24 @@ export type PlankMarketEvent =
   | { event: "offer_made"; properties: OfferMadeProperties }
   | { event: "offer_accepted"; properties: OfferAcceptedProperties }
   | { event: "watchlist_added"; properties: WatchlistAddedProperties }
-  | { event: "watchlist_removed"; properties: WatchlistRemovedProperties };
+  | { event: "watchlist_removed"; properties: WatchlistRemovedProperties }
+  | {
+      event: "marketplace_zero_results_viewed";
+      properties: MarketplaceZeroResultsProperties;
+    }
+  | {
+      event: "marketplace_zero_results_action_clicked";
+      properties: MarketplaceZeroResultsActionProperties;
+    }
+  | {
+      event: "saved_search_alert_created";
+      properties: SavedSearchAlertCreatedProperties;
+    }
+  | {
+      event: "buyer_request_created";
+      properties: BuyerRequestCreatedProperties;
+    };
 
-/* eslint-disable @typescript-eslint/no-unused-vars */
-// Placeholder for PostHog server client — params intentionally unused until integration
 export function track<T extends PlankMarketEvent>(
   distinctId: string,
   event: T["event"],
@@ -142,6 +195,12 @@ export function track<T extends PlankMarketEvent>(
     console.warn(
       "Server-side track function called on client. Use useTrack hook instead."
     );
+    return;
   }
+
+  getPostHogServer()?.capture({
+    distinctId,
+    event,
+    properties: properties as unknown as Record<string, unknown>,
+  });
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */

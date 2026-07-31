@@ -5,7 +5,10 @@ import CheckoutPage from "@/app/(marketplace)/listings/[id]/checkout/page";
 import { trpc } from "@/lib/trpc/client";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { calculateOrderFees } from "@/lib/fees";
+import {
+  BUYER_MARKETPLACE_FEE_PERCENT,
+  calculateOrderFees,
+} from "@/lib/fees";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -13,7 +16,10 @@ import { calculateOrderFees } from "@/lib/fees";
 
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
-    listing: { getById: { useQuery: vi.fn() } },
+    listing: {
+      getById: { useQuery: vi.fn() },
+      getPurchaseConfig: { useQuery: vi.fn() },
+    },
     offer: { getOfferById: { useQuery: vi.fn() } },
     shippingAddress: { list: { useQuery: vi.fn() } },
     order: {
@@ -51,7 +57,8 @@ vi.mock("@/components/checkout/shipping-quote-selector", () => ({
 
 vi.mock("next/image", () => ({
   __esModule: true,
-  default: (props: Record<string, unknown>) => <img {...props} />,
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) =>
+    React.createElement("img", { alt: props.alt ?? "", ...props }),
 }));
 
 vi.mock("@/lib/identity/display-name", () => ({
@@ -78,7 +85,7 @@ const mockListing = {
   media: [{ id: "m1", url: "https://example.com/img.jpg", altText: "Oak" }],
   seller: {
     id: "seller-456",
-    name: "Oak Co",
+    displayName: "Verified Seller",
     verified: true,
     stripeOnboardingComplete: true,
     createdAt: "2025-01-01",
@@ -102,6 +109,20 @@ const mockMutationReturn = {
   isPending: false,
 };
 
+const mockPurchaseConfig = {
+  canSplitLots: true,
+  fullLotOnly: false,
+  partialQuantityMarkupPercent: null,
+  defaultAllowOffers: true,
+  allowSampleRequests: false,
+  sellingTerritoryMode: "unrestricted",
+  allowedDestinationStates: [],
+  taxRegisteredStates: [],
+  freightPaymentMode: "buyer_pays",
+  sellerFreightStates: [],
+  freightDropCharge: null,
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -123,6 +144,11 @@ function setupDefaultMocks(overrides?: {
     data: overrides?.listing !== undefined ? overrides.listing : mockListing,
     isLoading: overrides?.isLoading ?? false,
   } as unknown as ReturnType<typeof trpc.listing.getById.useQuery>);
+
+  vi.mocked(trpc.listing.getPurchaseConfig.useQuery).mockReturnValue({
+    data: mockPurchaseConfig,
+    isLoading: false,
+  } as unknown as ReturnType<typeof trpc.listing.getPurchaseConfig.useQuery>);
 
   vi.mocked(trpc.offer.getOfferById.useQuery).mockReturnValue({
     data: undefined,
@@ -231,10 +257,15 @@ describe("CheckoutPage", () => {
 
     // Buyer fee label
     expect(
-      screen.getByText(/Buyer fee \(3% on inventory only\)/i),
+      screen.getByText(
+        new RegExp(
+          `Buyer fee \\(${BUYER_MARKETPLACE_FEE_PERCENT}% on inventory only\\)`,
+          "i",
+        ),
+      ),
     ).toBeInTheDocument();
 
-    // Buyer fee amount ($210.00)
+    // Buyer fee amount uses the canonical current policy.
     expect(screen.getByText(`$${fees.buyerFee.toFixed(2)}`)).toBeInTheDocument();
 
     // Total

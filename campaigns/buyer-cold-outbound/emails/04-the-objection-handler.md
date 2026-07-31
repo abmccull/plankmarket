@@ -58,4 +58,4 @@ You can browse every listing with full specs and photos before you create an acc
 
 ---
 
-**P.S.** 3% buyer fee only when you purchase. No monthly fees. No listing fees. No contracts.
+**P.S.** 5% buyer fee only when you purchase. No monthly fees. No listing fees. No contracts.

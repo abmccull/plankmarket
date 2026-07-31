@@ -14,7 +14,6 @@ import { ReviewCard } from "@/components/shared/review-card";
 import { CheckCircle2, MapPin, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProBadge } from "@/components/pro-badge";
-import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 import { formatDate } from "@/lib/utils";
 
 interface SellerProfilePageProps {
@@ -55,12 +54,7 @@ function SellerProfileContent({ sellerId }: { sellerId: string }) {
     return <SellerProfileSkeleton />;
   }
 
-  const displayName = getAnonymousDisplayName({
-    role: profile?.role ?? "seller",
-    businessState: profile?.businessState ?? null,
-    name: profile?.name ?? null,
-    businessCity: profile?.businessCity ?? null,
-  });
+  const displayName = profile?.displayName ?? "Marketplace Seller";
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
@@ -76,10 +70,12 @@ function SellerProfileContent({ sellerId }: { sellerId: string }) {
                   profile?.proStatus === "past_due") && (
                   <ProBadge />
                 )}
-                <Badge className="bg-green-50 text-green-700 border-green-200">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Verified
-                </Badge>
+                {profile?.verified && (
+                  <Badge className="bg-green-50 text-green-700 border-green-200">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Verified
+                  </Badge>
+                )}
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
                 {(profile?.businessCity || profile?.businessState) && (

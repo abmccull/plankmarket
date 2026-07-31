@@ -10,6 +10,7 @@ import {
 } from "@/server/db/schema";
 import { eq, and, gt, gte, lte } from "drizzle-orm";
 import { isPro } from "@/lib/pro";
+import { publicActiveListingWhere } from "@/server/security/listing-visibility";
 
 export const agentMonitor = inngest.createFunction(
   { id: "agent-monitor", name: "AI Agent: Monitor Listings" },
@@ -24,8 +25,7 @@ export const agentMonitor = inngest.createFunction(
         .innerJoin(users, eq(agentConfigs.userId, users.id));
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for (const { agent_configs: _config, users: user } of configs) {
+    for (const { users: user } of configs) {
       // Inngest serializes dates to strings; reconstruct for isPro check
       const proCheckable = {
         proStatus: user.proStatus ?? "free",
@@ -52,7 +52,7 @@ export const agentMonitor = inngest.createFunction(
 
           // Build filter conditions from saved search
           const conditions = [
-            eq(listings.status, "active"),
+            publicActiveListingWhere(new Date(), user),
             gt(listings.createdAt, since),
           ];
 
@@ -70,9 +70,6 @@ export const agentMonitor = inngest.createFunction(
           if (filters.maxPrice && typeof filters.maxPrice === "number") {
             conditions.push(lte(listings.askPricePerSqFt, filters.maxPrice));
           }
-
-          // TODO: When auto-offer functionality is added to the monitor,
-          // enforce monitorBudgetMonthly/monitorBudgetUsed limits here
 
           const newListings = await db.query.listings.findMany({
             where: and(...conditions),

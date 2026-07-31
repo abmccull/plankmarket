@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { US_STATE_CODES } from "@/lib/selling-territory";
 
 const materialTypes = [
   "hardwood",
@@ -64,17 +65,174 @@ export const sellerPreferencesSchema = z.object({
   pricingStyle: z.enum(["fixed", "negotiable", "tiered"]).optional(),
   palletizationCapable: z.boolean().optional(),
   inventorySource: z.array(z.enum(inventorySources)).optional(),
+  partialQuantityMarkupPercent: z
+    .number()
+    .min(0)
+    .max(500)
+    .nullable()
+    .optional(),
+  automaticMarkdownEnabled: z.boolean().optional(),
+  automaticMarkdownFloorPercent: z
+    .number()
+    .positive()
+    .max(100)
+    .nullable()
+    .optional(),
+  automaticMarkdownIntervalDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(365)
+    .nullable()
+    .optional(),
+  defaultAllowOffers: z.boolean().optional(),
+  allowSampleRequests: z.boolean().optional(),
+  sellingTerritoryMode: z
+    .enum(["unrestricted", "allowed_states"])
+    .optional(),
+  allowedDestinationStates: z.array(z.enum(US_STATE_CODES)).max(50).optional(),
+  freightPaymentMode: z.enum(["buyer_pays", "seller_pays"]).optional(),
+  sellerFreightStates: z.array(z.enum(US_STATE_CODES)).max(50).optional(),
+  freightDropCharge: z.number().min(0).max(100000).nullable().optional(),
+  taxRegisteredStates: z.array(z.enum(US_STATE_CODES)).max(50).optional(),
 });
 
-export const upsertPreferencesSchema = z.discriminatedUnion("role", [
-  z
-    .object({ role: z.literal("buyer") })
-    .merge(buyerPreferencesSchema),
-  z
-    .object({ role: z.literal("seller") })
-    .merge(sellerPreferencesSchema),
-]);
+/**
+ * The complete commercial subset used when a seller explicitly applies saved
+ * defaults to existing active listings. Unlike the broader preferences form,
+ * these fields are intentionally complete so a bulk operation can validate
+ * the full post-update listing rule bundle instead of merging partial input.
+ */
+export const sellerCommercialDefaultsSchema = z
+  .object({
+    canSplitLots: z.boolean(),
+    partialQuantityMarkupPercent: z.number().min(0).max(500).nullable(),
+    automaticMarkdownEnabled: z.boolean(),
+    automaticMarkdownFloorPercent: z
+      .number()
+      .positive()
+      .max(100)
+      .nullable(),
+    automaticMarkdownIntervalDays: z
+      .number()
+      .int()
+      .min(1)
+      .max(365)
+      .nullable(),
+    defaultAllowOffers: z.boolean(),
+    allowSampleRequests: z.boolean(),
+    sellingTerritoryMode: z.enum(["unrestricted", "allowed_states"]),
+    allowedDestinationStates: z.array(z.enum(US_STATE_CODES)).max(50),
+    freightPaymentMode: z.enum(["buyer_pays", "seller_pays"]),
+    sellerFreightStates: z.array(z.enum(US_STATE_CODES)).max(50),
+    freightDropCharge: z.number().min(0).max(100000).nullable(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.automaticMarkdownEnabled &&
+      data.automaticMarkdownFloorPercent == null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["automaticMarkdownFloorPercent"],
+        message: "Enter a lowest price before applying automatic markdown",
+      });
+    }
+
+    if (
+      data.automaticMarkdownEnabled &&
+      data.automaticMarkdownIntervalDays == null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["automaticMarkdownIntervalDays"],
+        message: "Enter a markdown interval before applying automatic markdown",
+      });
+    }
+
+    if (
+      data.sellingTerritoryMode === "allowed_states" &&
+      data.allowedDestinationStates.length === 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["allowedDestinationStates"],
+        message: "Select at least one state for a restricted selling territory",
+      });
+    }
+  })
+  .transform((data) => ({
+    ...data,
+    partialQuantityMarkupPercent: data.canSplitLots
+      ? data.partialQuantityMarkupPercent
+      : null,
+    automaticMarkdownFloorPercent: data.automaticMarkdownEnabled
+      ? data.automaticMarkdownFloorPercent
+      : null,
+    automaticMarkdownIntervalDays: data.automaticMarkdownEnabled
+      ? data.automaticMarkdownIntervalDays
+      : null,
+    allowedDestinationStates:
+      data.sellingTerritoryMode === "allowed_states"
+        ? data.allowedDestinationStates
+        : [],
+    sellerFreightStates:
+      data.freightPaymentMode === "seller_pays"
+        ? data.sellerFreightStates
+        : [],
+    freightDropCharge:
+      data.freightPaymentMode === "seller_pays"
+        ? data.freightDropCharge
+        : null,
+  }));
+
+export const upsertPreferencesSchema = z
+  .discriminatedUnion("role", [
+    z
+      .object({ role: z.literal("buyer") })
+      .merge(buyerPreferencesSchema),
+    z
+      .object({ role: z.literal("seller") })
+      .merge(sellerPreferencesSchema),
+  ])
+  .superRefine((data, ctx) => {
+    if (data.role !== "seller") return;
+
+    if (
+      data.automaticMarkdownEnabled &&
+      data.automaticMarkdownFloorPercent == null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["automaticMarkdownFloorPercent"],
+        message: "Enter a lowest price for automatic markdown",
+      });
+    }
+    if (
+      data.automaticMarkdownEnabled &&
+      data.automaticMarkdownIntervalDays == null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["automaticMarkdownIntervalDays"],
+        message: "Enter a markdown interval",
+      });
+    }
+    if (
+      data.sellingTerritoryMode === "allowed_states" &&
+      (data.allowedDestinationStates?.length ?? 0) === 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["allowedDestinationStates"],
+        message: "Select at least one allowed destination state",
+      });
+    }
+  });
 
 export type BuyerPreferences = z.infer<typeof buyerPreferencesSchema>;
 export type SellerPreferences = z.infer<typeof sellerPreferencesSchema>;
+export type SellerCommercialDefaults = z.infer<
+  typeof sellerCommercialDefaultsSchema
+>;
 export type UpsertPreferences = z.infer<typeof upsertPreferencesSchema>;

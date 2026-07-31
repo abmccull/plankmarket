@@ -39,8 +39,10 @@ PlankMarket connects flooring manufacturers, distributors, and wholesalers with 
 
 ### Transactions
 - **Stripe payments** — Secure card processing with PCI-compliant Stripe Elements
-- **Seller payouts** — Stripe Connect for direct-to-bank transfers (subtotal minus 2% fee)
-- **Escrow system** — Buyer funds held until carrier pickup confirmed, auto-released after 3 days
+- **Seller payouts** — Stripe Connect transfers after the configured shipment
+  event/delay (inventory subtotal minus the 5% seller marketplace fee and
+  inventory-only payment processing)
+- **Payment hold and release** — Stripe processes buyer payment; seller transfer occurs after carrier pickup. This is not a regulated escrow service.
 - **LTL freight shipping** — Priority1 API integration for commercial freight quotes, BOL generation, and real-time tracking
 
 ### Trust & Safety
@@ -92,7 +94,7 @@ PlankMarket connects flooring manufacturers, distributors, and wholesalers with 
 
 ### Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 22.22.0
 - **npm** (or pnpm/yarn)
 - A [Supabase](https://supabase.com) project (PostgreSQL + Auth)
 - A [Stripe](https://stripe.com) account (with Connect enabled)
@@ -127,6 +129,7 @@ PlankMarket connects flooring manufacturers, distributors, and wholesalers with 
 
    # Resend
    RESEND_API_KEY=re_...
+   RESEND_WEBHOOK_SECRET=whsec_...
    EMAIL_FROM=PlankMarket <noreply@yourdomain.com>
 
    # Upstash Redis
@@ -157,6 +160,11 @@ PlankMarket connects flooring manufacturers, distributors, and wholesalers with 
    ```
 
 ### Database Setup
+
+Fresh-database bootstrap is currently blocked pending the reviewed baseline
+procedure in `drizzle/BASELINE_STRATEGY.md`. Use the existing live database or a
+scratch database restored from the verified baseline workflow; do not treat
+`npm run db:migrate` as a clean-room bootstrap path yet.
 
 1. Generate the database schema:
    ```bash
@@ -281,7 +289,7 @@ The backend uses **tRPC** for end-to-end typesafe APIs. 17 routers are composed 
 
 - `users` — Accounts with role, verification status, Stripe Connect info
 - `listings` — 44-column flooring product listings with pallet/freight metadata
-- `orders` — Transactions with escrow status, shipping details, fee breakdown
+- `orders` — Transactions with payment hold/release status, shipping details, fee breakdown
 - `offers` — Turn-based negotiations with event audit trail
 - `conversations` / `messages` — Threaded messaging per listing
 - `shipments` — LTL freight tracking with JSONB event history
@@ -295,11 +303,12 @@ Supabase Auth handles user registration and session management. Next.js middlewa
 
 Stripe handles all payment processing:
 
-1. **Buyer pays** via Stripe Payment Intent (includes 3% buyer fee)
-2. **Funds held** in platform's Stripe account (escrow)
+1. **Buyer pays** via Stripe Payment Intent (includes the 5% buyer marketplace
+   fee on inventory)
+2. **Seller transfer pending** while the order is prepared for shipment
 3. **Seller ships** product via Priority1 freight
-4. **Carrier picks up** → Inngest schedules escrow release
-5. **3 days later** → Stripe Transfer sends payout to seller's Connect account (minus 2% seller fee)
+4. **Carrier picks up** → Inngest schedules the seller transfer
+5. **After the configured delay** → Stripe Transfer sends payout to the seller's Connect account (minus the applicable seller fee)
 
 ### Shipping
 
@@ -359,14 +368,30 @@ The application is designed for deployment on **Vercel**:
    ```
    https://your-domain.com/api/webhooks/stripe
    ```
-4. Configure Inngest to use your production URL
-5. Set up the Vercel cron job for `/api/cron/expire-promotions`
+4. Configure a signed Resend webhook for email lifecycle events at:
+   ```
+   https://your-domain.com/api/webhooks/resend
+   ```
+   Subscribe to `email.sent`, `email.scheduled`, `email.delivered`,
+   `email.delivery_delayed`, `email.bounced`, `email.complained`,
+   `email.failed`, and `email.suppressed`, then store the endpoint signing
+   secret as `RESEND_WEBHOOK_SECRET`.
+5. Configure Inngest to use your production URL
+6. Set up the Vercel cron job for `/api/cron/expire-promotions`
 
 The `next.config.ts` includes security headers (CSP, HSTS, X-Frame-Options) that are applied automatically on deployment.
+
+Release candidates should go through the checked-in CI gates in
+`.github/workflows/deploy-preview.yml` and
+`.github/workflows/deploy-production.yml`, which run lint, typecheck, tests,
+shipping dry-run validation, production dependency audit, migration integrity,
+build, and post-deploy `/api/health` verification.
 
 ---
 
 ## Documentation
+
+- **[Migration Baseline Strategy](./drizzle/BASELINE_STRATEGY.md)** — Current fresh-database baseline constraints and the reviewed forward-migration process
 
 - **[Project State](./docs/PROJECT_STATE.md)** — Detailed write-up of current features, architecture, database schema, API layer, integrations, and security model
 - **[.env.example](./.env.example)** — All required and optional environment variables

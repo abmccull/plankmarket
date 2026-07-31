@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { db } from "@/server/db";
-import { listings, listingPromotions } from "@/server/db/schema";
-import { eq, and, sql, inArray } from "drizzle-orm";
-import Stripe from "stripe";
+import { listingPromotions } from "@/server/db/schema";
+import { and, asc, eq, isNull, lt, lte, or } from "drizzle-orm";
 import { env } from "@/env";
-import { calculateProratedPromotionRefundCents } from "@/server/services/promotion-refunds";
-
-const stripe = new Stripe(env.STRIPE_SECRET_KEY, {
-  apiVersion: "2026-01-28.clover" as const,
-});
+import {
+  prepareExpiredPromotionRefund,
+  reconcilePromotionRefundResult,
+} from "@/server/services/promotion-refund-reconciliation";
 
 // Vercel Cron: runs every hour
 // Add to vercel.json: { "crons": [{ "path": "/api/cron/expire-promotions", "schedule": "0 * * * *" }] }
+const EXPIRY_BATCH_SIZE = 50;
 
 function safeCompareBearerToken(
   authHeader: string | null,
@@ -49,84 +48,102 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
 
-  // Find expired but still marked active
-  let stalePromotions;
+  // Include both newly expired promotions and durable refund obligations that
+  // are ready for another provider reconciliation attempt.
+  let candidates;
   try {
-    stalePromotions = await db.query.listingPromotions.findMany({
-      where: and(
-        eq(listingPromotions.isActive, true),
-        sql`${listingPromotions.expiresAt} < ${now}`
+    candidates = await db.query.listingPromotions.findMany({
+      where: or(
+        and(
+          eq(listingPromotions.isActive, true),
+          lt(listingPromotions.expiresAt, now),
+        ),
+        and(
+          eq(listingPromotions.paymentStatus, "refund_pending"),
+          or(
+            isNull(listingPromotions.refundNextAttemptAt),
+            lte(listingPromotions.refundNextAttemptAt, now),
+          ),
+        ),
       ),
+      columns: { id: true },
+      orderBy: [asc(listingPromotions.createdAt)],
+      limit: EXPIRY_BATCH_SIZE,
     });
   } catch (err) {
-    console.error("Failed to query stale promotions:", err);
+    console.error("Failed to query promotion expiry work:", err);
     return NextResponse.json(
-      { error: "Database query failed", details: String(err) },
-      { status: 500 }
+      { error: "Database query failed" },
+      { status: 500 },
     );
   }
 
-  if (stalePromotions.length === 0) {
-    return NextResponse.json({ expired: 0, refunded: 0 });
+  if (candidates.length === 0) {
+    return NextResponse.json({
+      processed: 0,
+      expired: 0,
+      refunded: 0,
+      refundPending: 0,
+      reconciliationRequired: 0,
+      failures: [],
+    });
   }
 
-  const staleIds = stalePromotions.map((p) => p.id);
-  const listingIds = stalePromotions.map((p) => p.listingId);
-
-  // Deactivate all stale promotions
-  await db
-    .update(listingPromotions)
-    .set({ isActive: false })
-    .where(inArray(listingPromotions.id, staleIds));
-
-  // Clear denormalized fields on affected listings
-  await db
-    .update(listings)
-    .set({
-      promotionTier: null,
-      promotionExpiresAt: null,
-      updatedAt: now,
-    })
-    .where(inArray(listings.id, listingIds));
-
-  // Check if any listings also expired and issue pro-rata refunds
+  let expiredCount = 0;
   let refundCount = 0;
-  for (const promotion of stalePromotions) {
-    const listing = await db.query.listings.findFirst({
-      where: eq(listings.id, promotion.listingId),
-      columns: { status: true, expiresAt: true, soldAt: true },
-    });
+  let refundPendingCount = 0;
+  let reconciliationRequiredCount = 0;
+  const failures: Array<{ promotionId: string; error: string }> = [];
 
-    if (listing) {
-      const refundAmount = calculateProratedPromotionRefundCents({
-        pricePaid: promotion.pricePaid,
-        startsAt: promotion.startsAt,
-        promotionExpiresAt: promotion.expiresAt,
-        listingStatus: listing.status,
-        listingExpiresAt: listing.expiresAt,
-        listingSoldAt: listing.soldAt,
-      });
+  for (const candidate of candidates) {
+    try {
+      const preparation = await prepareExpiredPromotionRefund(
+        candidate.id,
+        now,
+        db,
+      );
+      if (!preparation) continue;
+      if (preparation.expired) expiredCount++;
 
-      if (refundAmount > 0 && promotion.stripePaymentIntentId) {
-        try {
-          await stripe.refunds.create({
-            payment_intent: promotion.stripePaymentIntentId,
-            amount: refundAmount,
-          });
-          await db
-            .update(listingPromotions)
-            .set({ paymentStatus: "refunded" })
-            .where(eq(listingPromotions.id, promotion.id));
-          refundCount++;
-        } catch (err) {
-          console.error(`Failed to refund promotion ${promotion.id}:`, err);
-        }
+      const result = await reconcilePromotionRefundResult(
+        preparation,
+        now,
+        db,
+      );
+
+      if (result.refundStatus === "refunded") {
+        refundCount++;
+      } else if (result.refundStatus === "refund_pending") {
+        refundPendingCount++;
+      } else if (result.refundStatus === "reconciliation_required") {
+        reconciliationRequiredCount++;
+        console.error("Promotion refund requires reconciliation", {
+          promotionId: candidate.id,
+          error: result.error,
+        });
       }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unknown promotion expiry error";
+      failures.push({ promotionId: candidate.id, error: message });
+      console.error("Failed to process promotion expiry", {
+        promotionId: candidate.id,
+        error,
+      });
     }
   }
 
-  return NextResponse.json({
-    expired: stalePromotions.length,
-    refunded: refundCount,
-  });
+  return NextResponse.json(
+    {
+      processed: candidates.length,
+      expired: expiredCount,
+      refunded: refundCount,
+      refundPending: refundPendingCount,
+      reconciliationRequired: reconciliationRequiredCount,
+      failures,
+    },
+    { status: failures.length > 0 ? 500 : 200 },
+  );
 }

@@ -42,7 +42,7 @@ Two weeks after registration. Final email in the welcome sequence. They have the
 
 This is the last email in our welcome series.
 
-You signed up. You have access to surplus, closeout, and overstock flooring from verified sellers at 30-60% below wholesale. Detailed specs. Integrated freight. Payment protection.
+You signed up. You have access to surplus, closeout, and overstock flooring from verified sellers at 30-60% below wholesale. Detailed specs. Integrated freight. Tracked payment and shipment milestones.
 
 The one thing we have not talked about is this: closeout inventory is finite.
 
@@ -56,7 +56,7 @@ If you have been browsing and see something that fits a project or your showroom
 
 [Browse Current Listings]
 
-What you risk by waiting: the specific lot you are watching may sell. What you risk by buying: nothing beyond the purchase price -- your payment is escrowed until carrier pickup, and you have 48 hours to inspect after delivery.
+What you risk by waiting: the specific lot you are watching may sell. Before buying, review the listing, freight charge, transaction terms, and issue-reporting window so you understand the full order.
 
 From here, we will only email you when it is relevant. Saved search alerts. Order updates. The occasional note about new inventory categories or platform features.
 

@@ -34,10 +34,9 @@ import {
   Shield,
 } from "lucide-react";
 import { useProStatus } from "@/hooks/use-pro-status";
-import { ProBadge } from "@/components/pro-badge";
 import { Logo } from "@/components/brand/logo";
 import { createClient } from "@/lib/supabase/client";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { getDashboardPath } from "@/lib/auth/roles";
 import { formatRelativeTime, truncate } from "@/lib/utils";
 import { getNotificationHref } from "@/lib/utils/notification-href";
@@ -45,9 +44,12 @@ import { getNotificationHref } from "@/lib/utils/notification-href";
 export function Header() {
   const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
-  const pathname = usePathname();
-  const isLandingPage = pathname === "/";
   const { isPro } = useProStatus();
+  const sellHref =
+    isAuthenticated && (user?.role === "seller" || user?.role === "admin")
+      ? "/seller/listings/new"
+      : "/for-sellers";
+  const proHref = isPro ? "/settings/subscription" : "/pro";
   const canLoadNotifications = Boolean(isAuthenticated && user);
 
   // Notification data - only fetch when authenticated
@@ -104,6 +106,9 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background shadow-elevation-xs">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:text-black focus:rounded focus:shadow-lg focus:outline-2 focus:outline-offset-2">
+        Skip to main content
+      </a>
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         {/* Mobile Menu Button */}
         <Sheet>
@@ -124,17 +129,24 @@ export function Header() {
         </Sheet>
 
         {/* Logo */}
-        <Link href="/">
-          <Logo variant="full" size="md" />
+        <Link href="/" aria-label="PlankMarket home">
+          <Logo variant="full" size="sm" className="sm:hidden" />
+          <Logo variant="full" size="md" className="hidden sm:flex" />
         </Link>
 
         {/* Navigation */}
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="hidden items-center gap-6 lg:flex" aria-label="Primary navigation">
           <Link
             href="/listings"
             className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            Browse Listings
+            Browse
+          </Link>
+          <Link
+            href={sellHref}
+            className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Sell Inventory
           </Link>
           <Link
             href="/how-it-works"
@@ -154,83 +166,42 @@ export function Header() {
           >
             Blog
           </Link>
-          {isPro ? (
-            <Link
-              href="/settings/subscription"
-              className="link-animated flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ProBadge />
-            </Link>
-          ) : (
-            <Link
-              href="/pro"
-              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 px-3 py-1 text-xs font-semibold text-amber-950 shadow-sm hover:brightness-110 transition-all"
-            >
-              <Crown className="h-3 w-3" aria-hidden="true" />
-              Go Pro
-            </Link>
-          )}
-          {isLandingPage ? (
-            <>
-              <Link
-                href="/for-buyers"
-                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Buyers
-              </Link>
-              <Link
-                href="/for-sellers"
-                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Sellers
-              </Link>
-              <Link
-                href="/faq"
-                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                FAQ
-              </Link>
-            </>
-          ) : isAuthenticated && (user?.role === "seller" || user?.role === "admin") ? (
-            <>
-              <Link
-                href="/seller-guide"
-                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Seller Guide
-              </Link>
-              <Link
-                href="/seller/listings/new"
-                className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Create Listing
-              </Link>
-            </>
-          ) : !isAuthenticated ? (
-            <Link
-              href="/for-sellers"
-              className="link-animated text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              For Sellers
-            </Link>
-          ) : null}
+          <Link
+            href={proHref}
+            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-b from-amber-400 to-amber-500 px-3 py-1 text-xs font-semibold text-amber-950 shadow-sm transition-all hover:brightness-110"
+          >
+            <Crown className="h-3 w-3" aria-hidden="true" />
+            Pro
+          </Link>
         </nav>
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          <Link href="/listings">
-            <Button variant="ghost" size="icon" className="hidden md:flex text-muted-foreground hover:text-foreground" aria-label="Search listings">
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="hidden text-muted-foreground hover:text-foreground md:flex"
+          >
+            <Link href="/listings" aria-label="Search listings">
               <Search className="h-4 w-4" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
 
           {isAuthenticated && user ? (
             <>
-              <Link href="/buyer/watchlist">
-                <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground" aria-label="Wishlist">
-                  <Heart className="h-4 w-4" />
+              {user.role === "buyer" && (
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Link href="/buyer/watchlist" aria-label="Watchlist">
+                    <Heart className="h-4 w-4" />
+                  </Link>
                 </Button>
-              </Link>
+              )}
 
               {/* Notification Bell */}
               <DropdownMenu>
@@ -415,13 +386,13 @@ export function Header() {
             </>
           ) : (
             <div className="flex items-center gap-2">
-              <Link href="/login">
+              <Link href="/login" className="hidden sm:block">
                 <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                   Sign in
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm">Get Started</Button>
+                <Button size="sm">Create Account</Button>
               </Link>
             </div>
           )}

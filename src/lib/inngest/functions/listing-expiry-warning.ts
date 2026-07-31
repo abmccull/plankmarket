@@ -3,7 +3,9 @@ import { db } from "@/server/db";
 import { listings } from "@/server/db/schema/listings";
 import { users } from "@/server/db/schema/users";
 import { eq, and, lte, gte } from "drizzle-orm";
-import { resend } from "@/lib/email/client";
+import { sendEmailOrThrow } from "@/lib/email/delivery";
+import { buildEmailIdempotencyKey } from "@/lib/email/delivery-policy";
+import { env } from "@/env";
 import { escapeHtml } from "@/lib/utils";
 
 export const listingExpiryWarning = inngest.createFunction(
@@ -43,33 +45,51 @@ export const listingExpiryWarning = inngest.createFunction(
 
     const emailsSent = await step.run("send-warning-emails", async () => {
       let sentCount = 0;
+      const failures: unknown[] = [];
 
       for (const listing of results) {
         try {
-          await resend.emails.send({
-            from: "PlankMarket <noreply@plankmarket.com>",
-            to: listing.sellerEmail,
-            subject: `Your listing "${escapeHtml(listing.listingTitle)}" expires in 7 days`,
-            html: `
+          await sendEmailOrThrow({
+            category: "listing_expiry_warning",
+            idempotencyKey: buildEmailIdempotencyKey(
+              "listing_expiry_warning",
+              listing.listingId,
+              listing.expiresAt
+                ? new Date(listing.expiresAt).toISOString()
+                : null,
+            ),
+            message: {
+              from: env.EMAIL_FROM,
+              to: listing.sellerEmail,
+              subject: `Your listing "${escapeHtml(listing.listingTitle)}" expires in 7 days`,
+              html: `
               <p>Hi ${escapeHtml(listing.sellerName ?? "")},</p>
               <p>Your listing "<strong>${escapeHtml(listing.listingTitle)}</strong>" will expire in 7 days on ${listing.expiresAt ? new Date(listing.expiresAt).toLocaleDateString() : "soon"}.</p>
               <p>To keep your listing active:</p>
               <ul>
-                <li><a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/seller/listings/${listing.listingId}/edit">Edit and republish your listing</a></li>
-                <li>Or <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/seller/listings">manage your listings</a></li>
+                <li><a href="${env.NEXT_PUBLIC_APP_URL}/seller/listings/${listing.listingId}/edit">Edit and republish your listing</a></li>
+                <li>Or <a href="${env.NEXT_PUBLIC_APP_URL}/seller/listings">manage your listings</a></li>
               </ul>
               <p>If you've already sold this inventory, you can mark the listing as sold.</p>
             `,
+            },
           });
 
           sentCount++;
         } catch (error) {
-           
+          failures.push(error);
           console.error(
             `Failed to send expiry warning for listing ${listing.listingId}:`,
             error
           );
         }
+      }
+
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures,
+          "One or more listing expiry warnings could not be delivered",
+        );
       }
 
       return sentCount;

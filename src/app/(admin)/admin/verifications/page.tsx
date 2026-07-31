@@ -44,21 +44,20 @@ interface VerificationUser {
   einTaxId: string | null;
   verificationDocUrl: string | null;
   verificationRequestedAt: Date | string | null;
+  verificationSubmissionId: string | null;
   verificationStatus: string;
   aiVerificationScore: number | null;
   aiVerificationNotes: string | null;
 }
 
-interface AIVerificationCheck {
-  check: string;
-  passed: boolean;
-  notes: string;
-}
-
 interface AIVerificationData {
   score: number;
-  checks: AIVerificationCheck[];
-  recommendation: string;
+  approved: boolean;
+  reasoning: string;
+  checks: Record<
+    string,
+    { pass: boolean; note: string } | { found: boolean; note: string }
+  >;
 }
 
 export default function AdminVerificationsPage() {
@@ -68,16 +67,18 @@ export default function AdminVerificationsPage() {
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     userId: string | null;
+    submissionId: string | null;
     action: "approve" | "reject" | null;
-  }>({ open: false, userId: null, action: null });
+  }>({ open: false, userId: null, submissionId: null, action: null });
   const [rejectionNotes, setRejectionNotes] = useState("");
   const [expandedAI, setExpandedAI] = useState<Record<string, boolean>>({});
 
   const handleVerificationAction = async (
     userId: string,
+    submissionId: string | null,
     action: "approve" | "reject"
   ) => {
-    setConfirmDialog({ open: true, userId, action });
+    setConfirmDialog({ open: true, userId, submissionId, action });
     if (action === "approve") {
       setRejectionNotes(""); // Clear notes for approval
     }
@@ -94,6 +95,7 @@ export default function AdminVerificationsPage() {
     try {
       await updateVerification.mutateAsync({
         userId: confirmDialog.userId,
+        submissionId: confirmDialog.submissionId,
         status: confirmDialog.action === "approve" ? "verified" : "rejected",
         notes: confirmDialog.action === "reject" ? rejectionNotes : undefined,
       });
@@ -101,7 +103,7 @@ export default function AdminVerificationsPage() {
         `Verification ${confirmDialog.action === "approve" ? "approved" : "rejected"}`
       );
       refetch();
-      setConfirmDialog({ open: false, userId: null, action: null });
+      setConfirmDialog({ open: false, userId: null, submissionId: null, action: null });
       setRejectionNotes("");
     } catch (error: unknown) {
       const message =
@@ -282,27 +284,41 @@ export default function AdminVerificationsPage() {
                       {isAIExpanded && (
                         <div className="space-y-2 pl-6">
                           <p className="text-sm text-muted-foreground">
-                            <strong>Recommendation:</strong> {aiData.recommendation}
+                            <strong>Advisory recommendation:</strong>{" "}
+                            {aiData.approved
+                              ? "Consider approval after reviewing the evidence"
+                              : "Manual review required"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {aiData.reasoning}
                           </p>
                           <div className="space-y-2">
-                            {aiData.checks.map((check, idx) => (
+                            {Object.entries(aiData.checks).map(
+                              ([checkName, check]) => {
+                                const passed =
+                                  "pass" in check ? check.pass : !check.found;
+                                return (
                               <div
-                                key={idx}
+                                key={checkName}
                                 className="flex items-start gap-2 text-sm"
                               >
-                                {check.passed ? (
+                                {passed ? (
                                   <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                                 ) : (
                                   <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
                                 )}
                                 <div>
-                                  <span className="font-medium">{check.check}</span>
+                                  <span className="font-medium">
+                                    {checkName.replace(/([A-Z])/g, " $1")}
+                                  </span>
                                   <p className="text-muted-foreground">
-                                    {check.notes}
+                                    {check.note}
                                   </p>
                                 </div>
                               </div>
-                            ))}
+                                );
+                              },
+                            )}
                           </div>
                         </div>
                       )}
@@ -312,7 +328,13 @@ export default function AdminVerificationsPage() {
                   {/* Action Buttons */}
                   <div className="flex gap-2 pt-2">
                     <Button
-                      onClick={() => handleVerificationAction(user.id, "approve")}
+                      onClick={() =>
+                        handleVerificationAction(
+                          user.id,
+                          user.verificationSubmissionId,
+                          "approve",
+                        )
+                      }
                       className="flex-1 bg-green-600 hover:bg-green-700"
                     >
                       <CheckCircle className="mr-2 h-4 w-4" />
@@ -320,7 +342,13 @@ export default function AdminVerificationsPage() {
                     </Button>
                     <Button
                       variant="destructive"
-                      onClick={() => handleVerificationAction(user.id, "reject")}
+                      onClick={() =>
+                        handleVerificationAction(
+                          user.id,
+                          user.verificationSubmissionId,
+                          "reject",
+                        )
+                      }
                       className="flex-1"
                     >
                       <XCircle className="mr-2 h-4 w-4" />
@@ -348,7 +376,7 @@ export default function AdminVerificationsPage() {
         open={confirmDialog.open}
         onOpenChange={(open) => {
           if (!open) {
-            setConfirmDialog({ open: false, userId: null, action: null });
+            setConfirmDialog({ open: false, userId: null, submissionId: null, action: null });
             setRejectionNotes("");
           }
         }}
@@ -389,7 +417,7 @@ export default function AdminVerificationsPage() {
             <Button
               variant="outline"
               onClick={() => {
-                setConfirmDialog({ open: false, userId: null, action: null });
+                setConfirmDialog({ open: false, userId: null, submissionId: null, action: null });
                 setRejectionNotes("");
               }}
             >

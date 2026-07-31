@@ -1,13 +1,18 @@
 # PlankMarket Pro Membership — Final Design
 
 **Date:** March 9, 2026
-**Status:** Approved — Consolidation of all pricing, financial model, and AI agent strategy docs
+**Status:** Historical product design
+
+> Pricing note (July 30, 2026): the former 5% combined take-rate examples are
+> superseded. Current implementation uses 5% buyer / 5% seller marketplace
+> fees. Pro remains optional; use `src/lib/fees.ts` and the current public
+> pricing page for launch decisions.
 
 ---
 
 ## Executive Summary
 
-PlankMarket makes money when deals close. The 5% take rate (3% buyer + 2% seller) on transaction volume is the business. At $100M annual GMV, that's $5M/year in fee revenue. Everything else — subscriptions, promotions, shipping margin — is secondary.
+PlankMarket makes money when deals close. The 10% marketplace take rate (5% buyer + 5% seller) on inventory GMV is the core business. At $100M annual GMV, that is $10M/year in gross marketplace fee revenue before payment-processing and operating costs. Subscriptions, promotions, and shipping margin are secondary.
 
 Pro membership exists to **accelerate transactions**, not to replace fee revenue. Every Pro benefit should either (a) cost us nearly nothing to deliver, or (b) directly drive incremental transaction volume that generates fee revenue.
 
@@ -123,9 +128,9 @@ This intelligence is expensive to replicate and impossible to get elsewhere. It 
 
 ### No Fee Discounts
 
-The 5% take rate is sacred. It scales with GMV, which is the whole point.
+The published 5% buyer and 5% seller fees are the baseline. They scale with GMV, which is the whole point.
 
-At $100M GMV, a 0.5% fee discount costs **$425,000-$1,000,000/year** in lost revenue. The entire Pro subscription base generates ~$75K/year. You'd be trading $425K for $75K. Bad trade.
+At $100M GMV, a 0.5-point fee discount costs **$500,000/year** in gross fee revenue. The entire modeled Pro subscription base generates about $75K/year, so fee discounts should not be used as a default membership benefit.
 
 | Scenario | Annual Fee Revenue | Sub Revenue | Net vs Baseline |
 |---|---|---|---|
@@ -325,7 +330,7 @@ Both routes are powered by the same underlying MCP server exposing PlankMarket's
 
 1. **Two tiers only:** Free (AI-assisted) + Pro ($29/month, autonomous)
 2. **No action counting:** Feature gates, not usage gates
-3. **No fee discounts:** 5% take rate is sacred. Scales with GMV.
+3. **No fee discounts by default:** published 5% buyer and 5% seller fees scale with GMV.
 4. **No shipping discounts:** 25% margin is the #2 revenue line. Don't touch it.
 5. **No accelerated payouts:** Stripe Connect governs payout timing. Funds transfer on shipment pickup; Stripe controls bank payout (2-3 business days). We cannot promise faster.
 6. **$29/month:** Maximize adoption. Real money comes from transaction fees.

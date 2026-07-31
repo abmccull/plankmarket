@@ -7,6 +7,7 @@ export function initPostHog() {
       ui_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.posthog.com",
       capture_pageview: true,
       capture_pageleave: true,
+      capture_exceptions: true,
     });
   }
   return posthog;

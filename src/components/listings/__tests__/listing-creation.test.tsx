@@ -180,6 +180,9 @@ vi.mock("@/lib/trpc/client", () => ({
       create: { useMutation: vi.fn() },
       getSellerStats: { useQuery: vi.fn() },
     },
+    preferences: {
+      get: { useQuery: vi.fn() },
+    },
     useUtils: vi.fn(),
   },
 }));
@@ -245,6 +248,9 @@ function setupMocks(overrides: { currentStep?: number } = {}) {
       create: { useMutation: Mock };
       getSellerStats: { useQuery: Mock };
     };
+    preferences: {
+      get: { useQuery: Mock };
+    };
     useUtils: Mock;
   };
   trpcMock.listing.create.useMutation.mockReturnValue({
@@ -256,6 +262,7 @@ function setupMocks(overrides: { currentStep?: number } = {}) {
       { status: "draft", count: 0 },
     ],
   });
+  trpcMock.preferences.get.useQuery.mockReturnValue({ data: undefined });
   trpcMock.useUtils.mockReturnValue({});
 
   // Reset store state for each test

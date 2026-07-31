@@ -1,12 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Loader2, Truck, AlertCircle } from "lucide-react";
 
 export interface SelectedShippingQuote {
@@ -14,20 +11,17 @@ export interface SelectedShippingQuote {
   quoteToken: string;
   carrierName: string;
   carrierScac: string;
+  freightFundingMode:
+    | "buyer_pays"
+    | "seller_pays"
+    | "seller_pays_selected_states";
   shippingPrice: number;
+  buyerFreightCharge: number;
+  sellerFreightContribution: number;
   transitDays: number;
   estimatedDelivery: string;
   quoteExpiresAt: string;
 }
-
-interface ManualFreightData {
-  originZip: string;
-  palletWeight: number;
-  palletLength: number;
-  palletWidth: number;
-  palletHeight: number;
-}
-
 interface ShippingQuoteSelectorProps {
   listingId: string;
   destinationZip: string;
@@ -35,7 +29,6 @@ interface ShippingQuoteSelectorProps {
   selectedQuote: SelectedShippingQuote | null;
   onSelectQuote: (quote: SelectedShippingQuote) => void;
 }
-
 export default function ShippingQuoteSelector({
   listingId,
   destinationZip,
@@ -43,19 +36,10 @@ export default function ShippingQuoteSelector({
   selectedQuote,
   onSelectQuote,
 }: ShippingQuoteSelectorProps) {
-  const [manualData, setManualData] = useState<ManualFreightData | null>(null);
-
   const queryInput = {
     listingId,
     destinationZip,
     quantitySqFt,
-    ...(manualData && {
-      overrideOriginZip: manualData.originZip,
-      overridePalletWeight: manualData.palletWeight,
-      overridePalletLength: manualData.palletLength,
-      overridePalletWidth: manualData.palletWidth,
-      overridePalletHeight: manualData.palletHeight,
-    }),
   };
 
   const {
@@ -92,21 +76,6 @@ export default function ShippingQuoteSelector({
   }
 
   if (isError) {
-    const isPreconditionFailed =
-      error?.data?.code === "PRECONDITION_FAILED" ||
-      error?.message?.includes("freight information") ||
-      error?.message?.includes("shipping details");
-
-    if (isPreconditionFailed) {
-      return (
-        <ManualFreightForm
-          onSubmit={(data) => {
-            setManualData(data);
-          }}
-        />
-      );
-    }
-
     return (
       <Card>
         <CardHeader>
@@ -155,6 +124,14 @@ export default function ShippingQuoteSelector({
     );
   }
 
+  const quoteTimestampFormatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -163,8 +140,8 @@ export default function ShippingQuoteSelector({
           Shipping Options
         </CardTitle>
         <p className="text-sm text-muted-foreground mt-2">
-          Prices include all freight charges. LTL carrier pickup from seller&apos;s
-          warehouse.
+          Each option shows the full freight quote and exactly how much you pay
+          after any seller shipping credit.
         </p>
       </CardHeader>
       <CardContent>
@@ -172,6 +149,7 @@ export default function ShippingQuoteSelector({
           {quotes.map((quote) => {
             const isSelected = selectedQuote?.quoteId === quote.quoteId;
             const deliveryDate = formatDate(quote.estimatedDelivery);
+            const hasSellerCredit = quote.sellerFreightContribution > 0;
 
             return (
               <button
@@ -185,7 +163,7 @@ export default function ShippingQuoteSelector({
                 }`}
                 role="radio"
                 aria-checked={isSelected}
-                aria-label={`${quote.carrierName}, ${quote.transitDays} business days, ${formatCurrency(quote.shippingPrice)}`}
+                aria-label={`${quote.carrierName}, ${quote.transitDays} business days, buyer shipping ${formatCurrency(quote.buyerFreightCharge)}`}
               >
                 <div className="flex items-start gap-3">
                   <div className="mt-1 flex-shrink-0">
@@ -214,11 +192,31 @@ export default function ShippingQuoteSelector({
                         <p className="text-sm text-muted-foreground">
                           Estimated delivery: {deliveryDate}
                         </p>
+                        <p className="text-sm text-muted-foreground">
+                          Quote expires:{" "}
+                          {quoteTimestampFormatter.format(
+                            new Date(quote.quoteExpiresAt),
+                          )}
+                        </p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="text-2xl font-bold">
-                          {formatCurrency(quote.shippingPrice)}
+                        <p className="text-xs text-muted-foreground">
+                          Buyer shipping
                         </p>
+                        <p className="text-2xl font-bold">
+                          {formatCurrency(quote.buyerFreightCharge)}
+                        </p>
+                        {hasSellerCredit ? (
+                          <div className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                            <p>
+                              Full freight {formatCurrency(quote.shippingPrice)}
+                            </p>
+                            <p className="text-green-700 dark:text-green-400">
+                              Seller credit -
+                              {formatCurrency(quote.sellerFreightContribution)}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -227,128 +225,6 @@ export default function ShippingQuoteSelector({
             );
           })}
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Manual freight entry form shown when listing lacks shipping data */
-function ManualFreightForm({
-  onSubmit,
-}: {
-  onSubmit: (data: ManualFreightData) => void;
-}) {
-  const [originZip, setOriginZip] = useState("");
-  const [palletWeight, setPalletWeight] = useState("1500");
-  const [palletLength, setPalletLength] = useState("48");
-  const [palletWidth, setPalletWidth] = useState("40");
-  const [palletHeight, setPalletHeight] = useState("48");
-  const [validationError, setValidationError] = useState<string | null>(null);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationError(null);
-
-    if (!originZip || originZip.length < 5) {
-      setValidationError("Origin ZIP is required");
-      return;
-    }
-
-    const weight = parseFloat(palletWeight);
-    const length = parseFloat(palletLength);
-    const width = parseFloat(palletWidth);
-    const height = parseFloat(palletHeight);
-
-    if (!weight || !length || !width || !height) {
-      setValidationError("All pallet dimensions are required");
-      return;
-    }
-
-    onSubmit({
-      originZip,
-      palletWeight: weight,
-      palletLength: length,
-      palletWidth: width,
-      palletHeight: height,
-    });
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Truck className="h-5 w-5" />
-          Shipping Details Required
-        </CardTitle>
-        <p className="text-sm text-muted-foreground mt-1">
-          This listing is missing freight information. Enter the shipping details
-          below to get carrier quotes. Contact the seller if you&apos;re unsure.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="originZip">Origin ZIP (seller&apos;s location)</Label>
-            <Input
-              id="originZip"
-              placeholder="90210"
-              value={originZip}
-              onChange={(e) => setOriginZip(e.target.value)}
-              maxLength={10}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="palletWeight">Pallet Weight (lbs)</Label>
-              <Input
-                id="palletWeight"
-                type="number"
-                value={palletWeight}
-                onChange={(e) => setPalletWeight(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="palletLength">Length (in)</Label>
-              <Input
-                id="palletLength"
-                type="number"
-                value={palletLength}
-                onChange={(e) => setPalletLength(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="palletWidth">Width (in)</Label>
-              <Input
-                id="palletWidth"
-                type="number"
-                value={palletWidth}
-                onChange={(e) => setPalletWidth(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="palletHeight">Height (in)</Label>
-              <Input
-                id="palletHeight"
-                type="number"
-                value={palletHeight}
-                onChange={(e) => setPalletHeight(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            Standard pallet: 48&quot; x 40&quot; x 48&quot;, ~1,500 lbs. Adjust based on this order.
-          </p>
-
-          {validationError && (
-            <p className="text-sm text-destructive">{validationError}</p>
-          )}
-
-          <Button type="submit" className="w-full">
-            Get Shipping Quotes
-          </Button>
-        </form>
       </CardContent>
     </Card>
   );

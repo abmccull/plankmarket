@@ -1,10 +1,207 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next";
+import { UploadThingError } from "uploadthing/server";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/server/db";
-import { users } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { listings, media, orders, users } from "@/server/db/schema";
+import { and, eq, sql } from "drizzle-orm";
+import { isTrustedUploadThingFileUrl } from "@/server/security/uploadthing";
+import { z } from "zod";
 
 const f = createUploadthing();
+
+async function requireUploadAccount(
+  allowedRole: "buyer" | "seller",
+): Promise<{ userId: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+
+  if (!authUser) {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: "You must be logged in to upload images",
+    });
+  }
+
+  const dbUser = await db.query.users.findFirst({
+    where: eq(users.authId, authUser.id),
+    columns: {
+      id: true,
+      role: true,
+      active: true,
+      verificationStatus: true,
+    },
+  });
+
+  if (!dbUser || !dbUser.active) {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: "This account cannot upload images",
+    });
+  }
+
+  if (dbUser.role !== allowedRole && dbUser.role !== "admin") {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: `Only ${allowedRole} accounts can use this uploader`,
+    });
+  }
+
+  if (
+    dbUser.role !== "admin" &&
+    dbUser.verificationStatus !== "verified"
+  ) {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: "Business verification is required before uploading images",
+    });
+  }
+
+  return { userId: dbUser.id };
+}
+
+async function requireOrderParticipantUploadAccount(): Promise<{
+  userId: string;
+  role: "buyer" | "seller" | "admin";
+}> {
+  const supabase = await createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+  if (!authUser) {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: "You must be logged in to upload claim evidence",
+    });
+  }
+
+  const dbUser = await db.query.users.findFirst({
+    where: eq(users.authId, authUser.id),
+    columns: {
+      id: true,
+      role: true,
+      active: true,
+      verificationStatus: true,
+    },
+  });
+  if (
+    !dbUser ||
+    !dbUser.active ||
+    (dbUser.role !== "admin" && dbUser.verificationStatus !== "verified")
+  ) {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: "This account cannot upload claim evidence",
+    });
+  }
+  return { userId: dbUser.id, role: dbUser.role };
+}
+
+async function persistTrustedUpload(params: {
+  userId: string;
+  file: {
+    url: string;
+    key: string;
+    name: string;
+    size: number;
+    type: string;
+  };
+  listingId?: string;
+}) {
+  const { userId, file, listingId } = params;
+  if (!isTrustedUploadThingFileUrl(file.url, file.key)) {
+    throw new UploadThingError({
+      code: "UPLOAD_FAILED",
+      message: "Upload callback returned an invalid file location",
+    });
+  }
+
+  // Callback retries are expected. Reuse an existing trusted record, but never
+  // transfer it between accounts.
+  const existing = await db.query.media.findFirst({
+    where: eq(media.key, file.key),
+  });
+  if (existing) {
+    if (existing.uploaderId !== userId) {
+      throw new UploadThingError({
+        code: "FORBIDDEN",
+        message: "Upload ownership mismatch",
+      });
+    }
+    if (listingId && existing.listingId && existing.listingId !== listingId) {
+      throw new UploadThingError({
+        code: "FORBIDDEN",
+        message: "Upload is already attached to another listing",
+      });
+    }
+    if (listingId && !existing.listingId) {
+      const [attached] = await db
+        .update(media)
+        .set({ listingId })
+        .where(and(eq(media.id, existing.id), eq(media.uploaderId, userId)))
+        .returning();
+      return attached ?? existing;
+    }
+    return existing;
+  }
+
+  const [record] = await db
+    .insert(media)
+    .values({
+      uploaderId: userId,
+      listingId: listingId ?? null,
+      url: file.url,
+      key: file.key,
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      sortOrder: 0,
+    })
+    .onConflictDoNothing({
+      target: media.key,
+      where: sql`${media.key} is not null`,
+    })
+    .returning();
+
+  if (!record) {
+    const concurrentRecord = await db.query.media.findFirst({
+      where: eq(media.key, file.key),
+    });
+    if (!concurrentRecord || concurrentRecord.uploaderId !== userId) {
+      throw new UploadThingError({
+        code: "FORBIDDEN",
+        message: "Upload ownership mismatch",
+      });
+    }
+    if (
+      listingId &&
+      concurrentRecord.listingId &&
+      concurrentRecord.listingId !== listingId
+    ) {
+      throw new UploadThingError({
+        code: "FORBIDDEN",
+        message: "Upload is already attached to another listing",
+      });
+    }
+    if (listingId && !concurrentRecord.listingId) {
+      const [attached] = await db
+        .update(media)
+        .set({ listingId })
+        .where(
+          and(
+            eq(media.id, concurrentRecord.id),
+            eq(media.uploaderId, userId),
+          ),
+        )
+        .returning();
+      return attached ?? concurrentRecord;
+    }
+    return concurrentRecord;
+  }
+
+  return record;
+}
 
 /**
  * UploadThing file router for PlankMarket
@@ -17,48 +214,37 @@ export const ourFileRouter = {
       maxFileCount: 20,
     },
   })
-    .middleware(async () => {
-      // Auth check: verify user is authenticated and is a seller
-      const supabase = await createClient();
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
-      if (!authUser) {
-        throw new Error("Unauthorized - You must be logged in to upload images");
+    .input(z.object({ listingId: z.string().uuid().optional() }))
+    .middleware(async ({ input }) => {
+      const account = await requireUploadAccount("seller");
+      if (input.listingId) {
+        const listing = await db.query.listings.findFirst({
+          where: and(
+            eq(listings.id, input.listingId),
+            eq(listings.sellerId, account.userId),
+          ),
+          columns: { id: true },
+        });
+        if (!listing) {
+          throw new UploadThingError({
+            code: "FORBIDDEN",
+            message: "You can only upload to your own listing",
+          });
+        }
       }
-
-      // Get the user from our database
-      const dbUser = await db.query.users.findFirst({
-        where: eq(users.authId, authUser.id),
-      });
-
-      if (!dbUser) {
-        throw new Error("User not found in database");
-      }
-
-      // Verify user is a seller or admin
-      if (dbUser.role !== "seller" && dbUser.role !== "admin") {
-        throw new Error("Forbidden - Only sellers can upload listing images");
-      }
-
-      // Return userId to be available in onUploadComplete
-      return { userId: dbUser.id };
+      return { ...account, listingId: input.listingId };
     })
     .onUploadComplete(async ({ metadata, file }) => {
-      // This runs after upload completes on the server
-      // We return the file info so the client can save it to the database
-      if (process.env.NODE_ENV === "development") {
-        console.log("Upload complete for userId:", metadata.userId);
-        console.log("File URL:", file.url);
-      }
-
-      // Return data to be available in client-side onClientUploadComplete
+      const record = await persistTrustedUpload({
+        userId: metadata.userId,
+        file,
+        listingId: metadata.listingId,
+      });
       return {
-        url: file.url,
-        key: file.key,
-        name: file.name,
-        size: file.size,
+        id: record.id,
+        url: record.url,
+        fileName: record.fileName,
+        sortOrder: record.sortOrder,
       };
     }),
   buyerRequestImageUploader: f({
@@ -68,38 +254,62 @@ export const ourFileRouter = {
     },
   })
     .middleware(async () => {
-      const supabase = await createClient();
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-
-      if (!authUser) {
-        throw new Error("Unauthorized - You must be logged in to upload images");
-      }
-
-      const dbUser = await db.query.users.findFirst({
-        where: eq(users.authId, authUser.id),
-      });
-
-      if (!dbUser) {
-        throw new Error("User not found in database");
-      }
-
-      if (dbUser.role !== "buyer" && dbUser.role !== "admin") {
-        throw new Error("Forbidden - Only buyers can upload request reference images");
-      }
-
-      return { userId: dbUser.id };
+      return requireUploadAccount("buyer");
     })
     .onUploadComplete(async ({ metadata, file }) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("Buyer request upload complete for userId:", metadata.userId);
-      }
+      const record = await persistTrustedUpload({
+        userId: metadata.userId,
+        file,
+      });
       return {
-        url: file.url,
-        key: file.key,
-        name: file.name,
-        size: file.size,
+        id: record.id,
+        url: record.url,
+        fileName: record.fileName,
+        sortOrder: record.sortOrder,
+      };
+    }),
+  disputeEvidenceUploader: f({
+    image: {
+      maxFileSize: "8MB",
+      maxFileCount: 10,
+    },
+    pdf: {
+      maxFileSize: "8MB",
+      maxFileCount: 5,
+    },
+  })
+    .input(z.object({ orderId: z.string().uuid() }))
+    .middleware(async ({ input }) => {
+      const account = await requireOrderParticipantUploadAccount();
+      const order = await db.query.orders.findFirst({
+        where: and(
+          eq(orders.id, input.orderId),
+          account.role === "admin"
+            ? undefined
+            : account.role === "buyer"
+              ? eq(orders.buyerId, account.userId)
+              : eq(orders.sellerId, account.userId),
+        ),
+        columns: { id: true },
+      });
+      if (!order) {
+        throw new UploadThingError({
+          code: "FORBIDDEN",
+          message: "You can only upload evidence for your own order",
+        });
+      }
+      return { ...account, orderId: order.id };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      const record = await persistTrustedUpload({
+        userId: metadata.userId,
+        file,
+      });
+      return {
+        id: record.id,
+        url: record.url,
+        fileName: record.fileName,
+        mimeType: record.mimeType,
       };
     }),
 } satisfies FileRouter;

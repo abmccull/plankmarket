@@ -10,6 +10,7 @@
 //  4. Buyer is the only party who can withdraw
 //  5. Total price = Math.round(pricePerSqFt * quantitySqFt * 100) / 100
 //  6. Counter increments currentRound
+//  7. Every initial/counter response turn gets a fresh 48-hour deadline
 
 import { describe, it, expect } from "vitest";
 
@@ -23,6 +24,8 @@ type OfferStatus =
   | "rejected"
   | "withdrawn"
   | "expired";
+
+const OFFER_RESPONSE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 interface OfferForValidation {
   id: string;
@@ -101,13 +104,21 @@ function computeOfferTotalPrice(pricePerSqFt: number, quantitySqFt: number): num
 function applyCounter(
   offer: Pick<OfferForValidation, "currentRound" | "quantitySqFt">,
   newPricePerSqFt: number,
-  actorId: string
-): { status: OfferStatus; currentRound: number; counterPricePerSqFt: number; lastActorId: string } {
+  actorId: string,
+  now = new Date(),
+): {
+  status: OfferStatus;
+  currentRound: number;
+  counterPricePerSqFt: number;
+  lastActorId: string;
+  expiresAt: Date;
+} {
   return {
     status: "countered",
     currentRound: offer.currentRound + 1,
     counterPricePerSqFt: newPricePerSqFt,
     lastActorId: actorId,
+    expiresAt: new Date(now.getTime() + OFFER_RESPONSE_WINDOW_MS),
   };
 }
 
@@ -125,7 +136,7 @@ function makePendingOffer(overrides: Partial<OfferForValidation> = {}): OfferFor
     sellerId: SELLER_ID,
     lastActorId: BUYER_ID, // buyer made the initial offer
     status: "pending",
-    expiresAt: null, // offers don't expire by default
+    expiresAt: new Date(Date.now() + OFFER_RESPONSE_WINDOW_MS),
     offerPricePerSqFt: 2.5,
     counterPricePerSqFt: null,
     quantitySqFt: 100,
@@ -351,6 +362,30 @@ describe("applyCounter (counter-offer state transition)", () => {
     const round3 = applyCounter(offerAfterR2, 2.25, BUYER_ID);
     expect(round3.currentRound).toBe(3);
     expect(round3.lastActorId).toBe(BUYER_ID);
+  });
+
+  it("resets the 48-hour response deadline on every counter round", () => {
+    const round2At = new Date("2026-07-30T12:00:00.000Z");
+    const round2 = applyCounter(
+      makePendingOffer({ currentRound: 1 }),
+      2,
+      SELLER_ID,
+      round2At,
+    );
+    expect(round2.expiresAt).toEqual(
+      new Date(round2At.getTime() + OFFER_RESPONSE_WINDOW_MS),
+    );
+
+    const round3At = new Date("2026-07-31T09:30:00.000Z");
+    const round3 = applyCounter(
+      makePendingOffer({ currentRound: round2.currentRound }),
+      2.25,
+      BUYER_ID,
+      round3At,
+    );
+    expect(round3.expiresAt).toEqual(
+      new Date(round3At.getTime() + OFFER_RESPONSE_WINDOW_MS),
+    );
   });
 });
 

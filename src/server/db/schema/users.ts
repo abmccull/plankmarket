@@ -8,7 +8,10 @@ import {
   real,
   pgEnum,
   index,
+  uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const userRoleEnum = pgEnum("user_role", ["buyer", "seller", "admin"]);
 
@@ -40,6 +43,7 @@ export const users = pgTable("users", {
   verificationRequestedAt: timestamp("verification_requested_at", {
     withTimezone: true,
   }),
+  verificationSubmissionId: uuid("verification_submission_id"),
   verificationNotes: text("verification_notes"),
 
   // Business verification fields
@@ -59,6 +63,10 @@ export const users = pgTable("users", {
     .notNull(), // "free" | "active" | "past_due" | "cancelled" | "trialing"
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+  stripeSubscriptionEventCreatedAt: timestamp(
+    "stripe_subscription_event_created_at",
+    { withTimezone: true },
+  ),
   proStartedAt: timestamp("pro_started_at", { withTimezone: true }),
   proExpiresAt: timestamp("pro_expires_at", { withTimezone: true }),
 
@@ -70,6 +78,20 @@ export const users = pgTable("users", {
     .notNull(),
 }, (table) => [
   index("users_stripe_customer_id_idx").on(table.stripeCustomerId),
+  uniqueIndex("users_stripe_account_id_unique_idx")
+    .on(table.stripeAccountId)
+    .where(sql`${table.stripeAccountId} is not null`),
+  index("users_verification_submission_id_idx").on(
+    table.verificationSubmissionId,
+  ),
+  check(
+    "users_verification_status_check",
+    sql`${table.verificationStatus} in ('unverified', 'pending', 'verified', 'rejected')`,
+  ),
+  check(
+    "users_verification_state_consistent_check",
+    sql`${table.verified} = (${table.verificationStatus} = 'verified')`,
+  ),
 ]);
 
 export type User = typeof users.$inferSelect;

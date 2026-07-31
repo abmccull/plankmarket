@@ -14,6 +14,8 @@ import {
   Settings,
   Megaphone,
   Scale,
+  Wrench,
+  Database,
 } from "lucide-react";
 import { FEATURES } from "@/lib/feature-flags";
 
@@ -28,8 +30,10 @@ const adminItems: SidebarItem[] = [
   { title: "Finance", href: "/admin/finance", icon: TrendingUp },
   { title: "Users", href: "/admin/users", icon: Users },
   { title: "Listings", href: "/admin/listings", icon: List },
+  { title: "Inventory", href: "/admin/inventory", icon: Database },
   { title: "Orders", href: "/admin/orders", icon: Package },
   { title: "Disputes", href: "/admin/disputes", icon: Scale },
+  { title: "Reconciliation", href: "/admin/reconciliation", icon: Wrench },
   { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
   ...(FEATURES.PROMOTIONS_ENABLED
     ? [{ title: "Promotions", href: "/admin/promotions", icon: Megaphone }]

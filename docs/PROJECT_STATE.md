@@ -1,7 +1,9 @@
 # PlankMarket: Current Project State
 
 > B2B Wholesale Flooring Liquidation Marketplace
-> Last updated: February 2026
+> Last reviewed for fee policy: July 30, 2026. Current code, schema, migrations,
+> tests, and provider configuration remain authoritative over this historical
+> architecture document.
 
 ---
 
@@ -9,9 +11,15 @@
 
 PlankMarket is a full-stack B2B marketplace that connects flooring manufacturers, distributors, and wholesalers (sellers) with contractors, builders, retailers, and flooring installers (buyers). The platform specializes in liquidation, overstock, discontinued, and closeout flooring inventory sold at wholesale prices.
 
-The platform handles the complete transaction lifecycle: listing creation, product discovery, price negotiation, payment processing, LTL freight shipping, escrow management, and post-purchase reviews. It enforces business verification, identity masking, and content moderation to protect marketplace integrity and prevent off-platform circumvention.
+The platform handles the complete transaction lifecycle: listing creation,
+product discovery, price negotiation, payment processing, LTL freight shipping,
+payment-hold and seller-transfer milestones, and post-purchase reviews. It
+enforces business verification, identity masking, and content moderation to
+protect marketplace integrity and prevent off-platform circumvention.
 
-**Revenue model:** 3% buyer fee + 2% seller fee on each transaction, plus optional paid promotion tiers for enhanced listing visibility.
+**Revenue model:** 5% buyer marketplace fee + 5% seller marketplace fee on
+inventory, seller payment processing, freight contribution, and optional paid
+promotion tiers for enhanced listing visibility.
 
 ---
 
@@ -120,9 +128,9 @@ Buyer selects listing → Checkout page
   → Stripe PaymentIntent created (buyer fee included)
   → Buyer completes Stripe payment form
   → Stripe webhook confirms payment
-  → Order created with escrow status = "held"
+  → Order created with legacy `escrow_status` field = "held" (payment hold)
   → Seller ships → carrier picks up
-  → Inngest schedules escrow release (3 days post-pickup)
+  → Inngest schedules seller-transfer eligibility after the configured post-pickup delay
   → Stripe Transfer to seller's Connect account (minus seller fee)
 ```
 
@@ -135,7 +143,7 @@ Buyer requests quotes → shipping.getShippingQuotes
   → Buyer selects quote at checkout → server verifies from Redis cache
   → Order placed → Inngest dispatches shipment via Priority1
   → Inngest polls tracking hourly → updates shipment status
-  → Delivery confirmed → escrow release triggered
+  → Configured shipment milestone → seller-transfer eligibility evaluated
 ```
 
 ---
@@ -173,7 +181,7 @@ platform_settings (admin key-value config)
 | `users` | Buyer/seller/admin accounts with verification status | Root entity |
 | `listings` | Flooring inventory (44 columns of product detail) | belongs to seller |
 | `media` | Listing images with sort order | belongs to listing |
-| `orders` | Purchase transactions with escrow tracking | buyer + seller + listing |
+| `orders` | Purchase transactions with payment-hold and seller-transfer tracking | buyer + seller + listing |
 | `offers` | Turn-based price negotiations with expiry | buyer + seller + listing |
 | `offer_events` | Audit trail for offer negotiations | belongs to offer |
 | `conversations` | 1:1 messaging threads (unique per listing+buyer) | buyer + seller + listing |
@@ -341,7 +349,9 @@ src/components/
 - **Payment Intents:** Server-created with buyer fee baked in
 - **Stripe Connect:** Seller onboarding for direct payouts
 - **Webhooks:** `payment_intent.succeeded`, `payment_intent.payment_failed`
-- **Transfers:** Automated seller payout (subtotal - 2% seller fee) to Connect account
+- **Transfers:** Automated seller payout (inventory subtotal minus the 5%
+  seller marketplace fee and inventory-only payment processing) to the
+  seller's Connect account
 - **Promotion payments:** Separate payment flow for listing promotions
 
 ### 7.3 Priority1 LTL Freight
@@ -367,7 +377,7 @@ src/components/
 | `saved-search-alerts` | `listing/created` event | Email users when new listings match saved searches |
 | `listing-expiry-warning` | Daily cron | Warn sellers before listing expires, deactivate expired |
 | `abandoned-checkout` | `order/created` event | Remind buyers of incomplete orders after 1 hour |
-| `escrow-auto-release` | `order/picked-up` event | Release escrowed funds 3 days after carrier pickup |
+| `escrow-auto-release` | `order/picked-up` event | Legacy-named job that evaluates seller-transfer eligibility after the configured delay |
 | `shipment-dispatch` | `order/paid` event | Auto-create Priority1 shipment from selected quote |
 | `shipment-tracking` | Hourly cron | Poll Priority1 API for tracking updates |
 
@@ -469,7 +479,7 @@ A two-part system prevents users from sharing contact information to take transa
 - Shipping quotes cached server-side in Redis; client cannot manipulate prices
 - Server-side fee calculations (never trust client values)
 - Stripe webhook signature verification
-- Escrow system holds buyer funds until carrier pickup confirmed
+- Stripe processes buyer payment on the platform; seller transfer is evaluated after the configured shipment milestone
 - Row-level locking on listings during purchase to prevent double-selling
 
 ### 8.5 HTTP Security Headers
@@ -531,7 +541,8 @@ Three-step checkout:
 2. **Review:** Verify order details, see fee breakdown
 3. **Payment:** Stripe Elements form (card input)
 
-Order summary displays: subtotal, 3% buyer fee, shipping cost, total. Server-side fee calculation prevents tampering.
+Order summary displays: inventory subtotal, 5% buyer marketplace fee, freight,
+and total. Server-side fee calculation prevents tampering.
 
 ### 9.5 Order Lifecycle
 
@@ -543,7 +554,7 @@ cancelled  cancelled    cancelled
 delivered → refunded (via dispute)
 ```
 
-Each transition is validated against a state machine. Timestamps recorded at each stage. Escrow status tracks fund flow: `held` → `released` (to seller) or `refunded` (to buyer on cancellation).
+Each transition is validated against a state machine and timestamps are recorded at each stage. The legacy `escrow_status` column tracks payment-hold state: `held` -> `released` (seller transfer initiated) or `refunded` (buyer refund initiated).
 
 ### 9.6 Shipping & Tracking
 
@@ -551,7 +562,7 @@ Each transition is validated against a state machine. Timestamps recorded at eac
 - Auto-dispatch via Inngest after payment confirmation
 - Real-time tracking with location updates stored as JSONB events
 - BOL and shipping label document URLs
-- Delivery confirmation triggers escrow release countdown
+- The configured shipment milestone triggers the seller-transfer eligibility countdown
 
 ### 9.7 Reviews & Disputes
 

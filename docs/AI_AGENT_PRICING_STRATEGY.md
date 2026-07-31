@@ -1,7 +1,11 @@
 # PlankMarket AI Agent — Pricing Strategy (Revised)
 
 **Date:** March 9, 2026
-**Status:** Strategic Decision
+**Status:** Historical strategy
+
+> Pricing note (July 30, 2026): transaction-fee examples in this document use
+> the former 3% buyer / 2% seller structure. Current implementation is 5%
+> buyer / 5% seller; use `src/lib/fees.ts` as the source of truth.
 
 ---
 
@@ -14,8 +18,8 @@ This isn't Amazon. Transactions are infrequent, high-value, and relationship-dri
 **A typical PlankMarket transaction:**
 - Average order: $1,500-5,000 (500-2,000 sqft at $3-5/sqft)
 - Large orders: $10,000-50,000+
-- PlankMarket take rate: 5% (3% buyer + 2% seller)
-- Revenue per avg transaction: $75-250
+- PlankMarket marketplace take rate: 10% (5% buyer + 5% seller)
+- Marketplace fee revenue per average transaction: $150-500, before processing costs
 
 **How often do people transact?**
 - A buyer might purchase 1-3 times per month
@@ -184,7 +188,7 @@ At $29, the question isn't "is it worth $29?" — it's "is it worth having someo
 
 ```
 Revenue from AI agents = (Pro users × $29/month)
-                        + (incremental transactions × 5% take rate)
+                        + (incremental transactions × 10% marketplace take rate)
                         + (retained users who would have churned × LTV)
 
 Revenue is dominated by the second and third terms.

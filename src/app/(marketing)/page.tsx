@@ -322,11 +322,12 @@ export default function HomePage() {
                 Transparent Fees
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed">
-                3% buyer fee on inventory. 2% seller fee on inventory. No
-                listing fees, no required subscriptions, no hidden charges.
-                Freight is quoted separately with shipping margin built in.
-                Seller payouts typically arrive within 3-5 business days after
-                carrier pickup.
+                5% buyer fee on inventory. 5% seller fee on inventory. Seller
+                processing applies to inventory only. No listing fees, no
+                required subscriptions, no hidden charges. Freight is quoted
+                separately before payment and the displayed freight charge may
+                include carrier charges plus PlankMarket shipping service
+                margin.
               </p>
             </div>
           </div>
@@ -358,7 +359,7 @@ export default function HomePage() {
               { step: "1", title: "List", description: "Seller uploads specs, photos, and sets a price." },
               { step: "2", title: "Offer or Buy", description: "Buyer purchases at listed price or negotiates an offer." },
               { step: "3", title: "Ship", description: "Seller coordinates freight pickup through the platform." },
-              { step: "4", title: "Get Paid", description: "Payment releases to seller after carrier pickup." },
+              { step: "4", title: "Get Paid", description: "Seller transfer starts after carrier pickup." },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center mx-auto mb-3 font-bold text-lg">
@@ -501,8 +502,8 @@ export default function HomePage() {
               <div className="text-sm opacity-80">US Coverage</div>
             </div>
             <div>
-              <div className="font-display text-2xl">3% + 2%</div>
-              <div className="text-sm opacity-80">Transparent Fees</div>
+              <div className="font-display text-2xl">Clear Fees</div>
+              <div className="text-sm opacity-80">Shown separately by role</div>
             </div>
             <div>
               <div className="font-display text-2xl">3-5 Days</div>
@@ -543,8 +544,8 @@ export default function HomePage() {
               <p className="text-muted-foreground text-base leading-relaxed mb-4">
                 Source surplus hardwood, engineered, LVP, laminate, bamboo,
                 and tile at closeout pricing from verified sellers.
-                Full specs and photos on every lot. Integrated freight
-                quotes at checkout.
+                Full specs and photos on every lot. Buyer fees and freight are
+                shown before payment.
               </p>
               <span className="inline-flex items-center text-sm font-semibold text-primary group-hover:gap-2 transition-all">
                 See buyer benefits
@@ -569,8 +570,9 @@ export default function HomePage() {
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed mb-4">
                 Liquidate overstock and closeout inventory to verified
-                buyers nationwide. 2% commission only when you
-                sell. No listing fees. Payouts typically in 3-5 business days.
+                buyers nationwide. 5% seller fee plus inventory-only
+                processing on completed sales. Projected seller transfer shown
+                before you accept.
               </p>
               <span className="inline-flex items-center text-sm font-semibold text-secondary group-hover:gap-2 transition-all">
                 See seller benefits

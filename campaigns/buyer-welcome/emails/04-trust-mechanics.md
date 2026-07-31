@@ -1,14 +1,14 @@
 ---
 email: 4
 sequence: buyer-welcome
-purpose: Address trust concerns -- seller verification, payment protection, dispute process
+purpose: Address trust concerns -- seller verification, tracked payment milestones, dispute process
 send_day: 5
 send_time: "Tuesday at 9:00 AM ET"
 subject_line_a: "How PlankMarket protects your purchase"
-subject_line_b: "Verified sellers, escrowed payments"
+subject_line_b: "Verified sellers, recorded payment milestones"
 subject_line_c: "What happens if something goes wrong"
 recommended_subject: "a"
-preview_text: "Every seller is verified. Payments are held in escrow until carrier pickup. 48-hour dispute window after delivery."
+preview_text: "Every seller is verified. Payment and shipping milestones are recorded in the order."
 cta: "Browse verified sellers"
 status: draft
 ---
@@ -20,7 +20,7 @@ status: draft
 ### A: "How PlankMarket protects your purchase" -- recommended
 Safe bet. Directly addresses the #1 buyer objection: can I trust this? "Protects your purchase" is specific and benefit-oriented without being vague.
 
-### B: "Verified sellers, escrowed payments"
+### B: "Verified sellers, recorded payment milestones"
 Bold play. Leads with the two strongest trust mechanisms in a compressed, factual format. No fluff -- just the proof points. Aligns with the "lead with numbers" voice principle.
 
 ### C: "What happens if something goes wrong"
@@ -30,7 +30,7 @@ Personal touch. Addresses the fear directly. Pattern interrupt -- most marketing
 **Reason:** Tests positive framing ("how we protect") against negative framing ("if something goes wrong"). Both build trust, but through opposite emotional paths. Result reveals whether this audience prefers reassurance or transparency.
 
 ## Preview Text
-"Every seller is verified. Payments are held in escrow until carrier pickup. 48-hour dispute window after delivery."
+"Every seller is verified. Payment and shipping milestones are recorded in the order."
 
 ## Send Timing
 Day 5 -- Tuesday at 9:00 AM ET
@@ -47,8 +47,8 @@ Here is how PlankMarket handles the trust problem.
 Seller verification:
 Every seller goes through a verification process before they can list. Business registration, EIN documentation, admin review. No anonymous sellers. No unverified accounts.
 
-Payment protection:
-When you purchase, your payment goes into escrow via Stripe. The seller does not receive funds until the carrier picks up the shipment. Your money is protected until the product is on its way to you.
+Tracked payment milestones:
+Stripe processes your payment on PlankMarket. The seller transfer is initiated only after the configured shipment milestone and delay, subject to transaction review and Stripe availability.
 
 Integrated freight:
 Real-time LTL freight quotes at checkout. Carrier tracking built in. You know what freight costs before you commit, and you can track the shipment from pickup to delivery.
@@ -57,7 +57,7 @@ Dispute window:
 You have 48 hours after delivery to inspect the product and file a dispute if something does not match the listing. Dimensions, grade, species, condition -- if the product is not what was described, you are covered.
 
 Transparent fees:
-3% buyer fee on completed purchases. That is it. No subscription. No membership. No hidden costs. The fee is visible before you pay.
+5% buyer fee on completed purchases. No subscription or membership is required. The fee and freight charge are visible before you pay.
 
 [Browse Listings]
 

@@ -204,7 +204,7 @@ export default function AdminOrdersPage() {
             <AlertDialogTitle>Force Cancel Order</AlertDialogTitle>
             <AlertDialogDescription>
               This will cancel order {selectedOrder?.orderNumber} and notify both
-              the buyer and seller. If escrow funds are held, they will be
+              the buyer and seller. If payment funds are still held, they will be
               refunded. Please provide a reason.
             </AlertDialogDescription>
           </AlertDialogHeader>

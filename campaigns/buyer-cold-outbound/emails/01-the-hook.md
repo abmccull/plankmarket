@@ -48,7 +48,7 @@ Most of it sells through phone calls and broker networks before retailers like y
 
 PlankMarket changes that. We are a B2B marketplace built for the flooring trade. Verified sellers list surplus inventory with 44 data fields per lot -- species, grade, finish, condition, square footage, location, photos. You see everything before you commit.
 
-Free to join. Free to browse. You only pay a 3% fee when you buy.
+Free to join. Free to browse. You only pay a 5% fee when you buy.
 
 [Browse Current Inventory on PlankMarket]
 

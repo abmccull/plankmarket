@@ -127,12 +127,34 @@ export default function CheckoutSuccessPage() {
                   <span className="text-muted-foreground">Buyer Fee</span>
                   <span>{formatCurrency(order.buyerFee)}</span>
                 </div>
-                {order.shippingPrice && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Shipping</span>
-                    <span>{formatCurrency(order.shippingPrice)}</span>
-                  </div>
-                )}
+                {order.shippingPrice &&
+                  (order.sellerFreightContribution > 0 ? (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          Full freight charge
+                        </span>
+                        <span>{formatCurrency(order.shippingPrice)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-green-700 dark:text-green-400">
+                        <span>Seller shipping credit</span>
+                        <span>
+                          -{formatCurrency(order.sellerFreightContribution)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm font-medium">
+                        <span>Buyer shipping</span>
+                        <span>{formatCurrency(order.buyerFreightCharge)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        Buyer shipping
+                      </span>
+                      <span>{formatCurrency(order.buyerFreightCharge)}</span>
+                    </div>
+                  ))}
                 <Separator />
                 <div className="flex justify-between font-semibold">
                   <span>Total Paid</span>

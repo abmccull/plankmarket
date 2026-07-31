@@ -3,23 +3,200 @@ import Stripe from "stripe";
 import { db } from "@/server/db";
 import {
   orders,
+  shipments,
   users,
   listings,
   listingPromotions,
   disputes,
   notifications,
+  reconciliationCases,
   stripeWebhookEvents,
   promotionCredits,
   agentConfigs,
 } from "@/server/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, or, lt, lte, isNull } from "drizzle-orm";
 import { env } from "@/env";
 import { inngest } from "@/lib/inngest/client";
+import {
+  buildOrderConfirmedEvent,
+  buildOrderPaidEvent,
+} from "@/lib/inngest/events";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 import { stripe } from "@/lib/stripe";
 import { PRO_MONTHLY_CREDIT } from "@/lib/pro";
+import {
+  reconcileOrderRefundFromStripe,
+  reverseOrderTransferForDispute,
+} from "@/server/services/refund";
+import {
+  canApplyPaymentIntentCanceled,
+  canApplyPaymentIntentFailed,
+  canApplyPaymentIntentProcessing,
+  canApplyPaymentIntentSucceeded,
+} from "@/server/services/order-transitions";
+import {
+  ShippingBookingReviewError,
+  SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
+  requireShippingBookingSnapshotForOrder,
+} from "@/server/services/shipping-workflow";
+import {
+  mapStripeSubscriptionStatus,
+  STRIPE_WEBHOOK_PROCESSING_LEASE_MS,
+} from "@/server/services/stripe-webhook-policy";
+import {
+  openReconciliationCase,
+  resolveReconciliationCaseByKey,
+} from "@/server/services/reconciliation-cases";
+import { isStripeConnectAccountReady } from "@/server/services/stripe-connect-policy";
+import {
+  findCommittedTaxTransaction,
+  TaxReadinessError,
+} from "@/server/services/stripe-tax";
+
+function getStripeCustomerId(
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer,
+): string {
+  return typeof customer === "string" ? customer : customer.id;
+}
+
+function subscriptionEventIsCurrent(eventCreatedAt: Date) {
+  return or(
+    isNull(users.stripeSubscriptionEventCreatedAt),
+    lte(users.stripeSubscriptionEventCreatedAt, eventCreatedAt),
+  );
+}
 
 const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+
+async function notifyAdmins(params: {
+  title: string;
+  message: string;
+  orderId: string;
+}): Promise<void> {
+  const adminUsers = await db.query.users.findMany({
+    where: eq(users.role, "admin"),
+    columns: { id: true },
+  });
+  if (adminUsers.length === 0) return;
+
+  await db.insert(notifications).values(
+    adminUsers.map((admin) => ({
+      userId: admin.id,
+      type: "system" as const,
+      title: params.title,
+      message: params.message,
+      data: { orderId: params.orderId },
+      read: false,
+    })),
+  );
+}
+
+type WebhookClaim =
+  | { state: "claimed"; startedAt: Date }
+  | { state: "completed" }
+  | { state: "busy" };
+
+async function claimWebhookEvent(event: Stripe.Event): Promise<WebhookClaim> {
+  const startedAt = new Date();
+  const inserted = await db
+    .insert(stripeWebhookEvents)
+    .values({
+      id: event.id,
+      eventType: event.type,
+      status: "processing",
+      attemptCount: 1,
+      processingStartedAt: startedAt,
+    })
+    .onConflictDoNothing()
+    .returning({ id: stripeWebhookEvents.id });
+
+  if (inserted.length > 0) return { state: "claimed", startedAt };
+
+  const staleBefore = new Date(
+    startedAt.getTime() - STRIPE_WEBHOOK_PROCESSING_LEASE_MS,
+  );
+  const reclaimed = await db
+    .update(stripeWebhookEvents)
+    .set({
+      eventType: event.type,
+      status: "processing",
+      attemptCount: sql`${stripeWebhookEvents.attemptCount} + 1`,
+      processingStartedAt: startedAt,
+      completedAt: null,
+      lastError: null,
+    })
+    .where(
+      and(
+        eq(stripeWebhookEvents.id, event.id),
+        or(
+          eq(stripeWebhookEvents.status, "failed"),
+          and(
+            eq(stripeWebhookEvents.status, "processing"),
+            or(
+              isNull(stripeWebhookEvents.processingStartedAt),
+              lt(stripeWebhookEvents.processingStartedAt, staleBefore),
+            ),
+          ),
+        ),
+      ),
+    )
+    .returning({ id: stripeWebhookEvents.id });
+
+  if (reclaimed.length > 0) return { state: "claimed", startedAt };
+
+  const existing = await db.query.stripeWebhookEvents.findFirst({
+    where: eq(stripeWebhookEvents.id, event.id),
+    columns: { status: true },
+  });
+  return existing?.status === "completed"
+    ? { state: "completed" }
+    : { state: "busy" };
+}
+
+async function completeWebhookEvent(eventId: string, startedAt: Date) {
+  const completed = await db
+    .update(stripeWebhookEvents)
+    .set({
+      status: "completed",
+      completedAt: new Date(),
+      processingStartedAt: null,
+      lastError: null,
+    })
+    .where(
+      and(
+        eq(stripeWebhookEvents.id, eventId),
+        eq(stripeWebhookEvents.status, "processing"),
+        eq(stripeWebhookEvents.processingStartedAt, startedAt),
+      ),
+    )
+    .returning({ id: stripeWebhookEvents.id });
+
+  if (completed.length === 0) {
+    throw new Error("Stripe webhook processing lease was lost");
+  }
+}
+
+async function failWebhookEvent(
+  eventId: string,
+  startedAt: Date,
+  error: unknown,
+) {
+  await db
+    .update(stripeWebhookEvents)
+    .set({
+      status: "failed",
+      processingStartedAt: null,
+      completedAt: null,
+      lastError: error instanceof Error ? error.name : "UnknownError",
+    })
+    .where(
+      and(
+        eq(stripeWebhookEvents.id, eventId),
+        eq(stripeWebhookEvents.status, "processing"),
+        eq(stripeWebhookEvents.processingStartedAt, startedAt),
+      ),
+    );
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -36,8 +213,8 @@ export async function POST(req: NextRequest) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err) {
-    console.error("Webhook signature verification failed:", err);
+  } catch {
+    console.error("Webhook signature verification failed");
     return NextResponse.json(
       { error: "Invalid signature" },
       { status: 400 }
@@ -45,18 +222,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const insertedEvents = await db
-      .insert(stripeWebhookEvents)
-      .values({
-        id: event.id,
-        eventType: event.type,
-      })
-      .onConflictDoNothing()
-      .returning({ id: stripeWebhookEvents.id });
-
-    if (insertedEvents.length === 0) {
+    const claim = await claimWebhookEvent(event);
+    if (claim.state === "completed") {
       return NextResponse.json({ received: true, duplicate: true });
     }
+    if (claim.state === "busy") {
+      return NextResponse.json(
+        { error: "Webhook event is already processing" },
+        { status: 503, headers: { "Retry-After": "5" } },
+      );
+    }
+    const claimStartedAt = claim.startedAt;
 
     try {
     switch (event.type) {
@@ -101,33 +277,394 @@ export async function POST(req: NextRequest) {
               .where(eq(listings.id, listingId));
           }
         } else {
-          // Order payment succeeded
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            const [updatedOrder] = await db
-              .update(orders)
-              .set({
-                paymentStatus: "succeeded",
-                status: "confirmed",
-                confirmedAt: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(orders.id, orderId),
-                  sql`${orders.paymentStatus} <> 'succeeded'`,
-                ),
-              )
-              .returning({ id: orders.id });
+            const order = await db.query.orders.findFirst({
+              where: eq(orders.id, orderId),
+              columns: {
+                id: true,
+                orderNumber: true,
+                buyerId: true,
+                listingId: true,
+                quantitySqFt: true,
+                status: true,
+                paymentStatus: true,
+                escrowStatus: true,
+                totalPrice: true,
+                stripePaymentIntentId: true,
+                inventoryReleasedAt: true,
+                selectedQuoteId: true,
+                selectedCarrier: true,
+                carrierRate: true,
+                shippingPrice: true,
+                shippingZip: true,
+                quoteExpiresAt: true,
+                shippingBookingSnapshot: true,
+                taxLiability: true,
+                taxStatus: true,
+                taxAmount: true,
+                stripeTaxCalculationId: true,
+                stripeTaxTransactionId: true,
+              },
+            });
 
-            if (updatedOrder) {
-              // Fire order/paid event once for shipment auto-dispatch
-              inngest.send({
-                name: "order/paid",
-                data: { orderId },
-              }).catch((err) => {
-                console.error("Failed to send order/paid event:", err);
+            if (!order || order.stripePaymentIntentId !== paymentIntent.id) {
+              console.warn("Ignoring unmatched order payment success", {
+                orderId,
+                paymentIntentId: paymentIntent.id,
               });
+              await openReconciliationCase(db, {
+                caseKey: `payment-unmatched:${paymentIntent.id}`,
+                type: "payment_mismatch",
+                source: "stripe",
+                severity: "critical",
+                title: "Captured payment is not bound to its claimed order",
+                summary: `Stripe reported a succeeded PaymentIntent that could not be matched to the order in its metadata.`,
+                orderId: order?.id ?? null,
+                externalReference: paymentIntent.id,
+                amountCents: paymentIntent.amount_received,
+                currency: paymentIntent.currency,
+                details: {
+                  metadataOrderId: orderId,
+                  storedPaymentIntentId:
+                    order?.stripePaymentIntentId ?? null,
+                },
+              });
+              break;
+            }
+
+            const expectedAmountCents = Math.round(
+              Number(order.totalPrice) * 100,
+            );
+            if (
+              paymentIntent.amount_received !== expectedAmountCents ||
+              paymentIntent.currency.toLowerCase() !== "usd"
+            ) {
+              const mismatchMessage = `PaymentIntent ${paymentIntent.id} captured ${paymentIntent.amount_received} ${paymentIntent.currency}, expected ${expectedAmountCents} usd. Shipment dispatch is blocked pending reconciliation.`;
+              const [markedForReconciliation] = await db
+                .update(orders)
+                .set({
+                  paymentStatus: "reconciliation_required",
+                  escrowStatus: "disputed",
+                  transferFailedAt: new Date(),
+                  transferError: mismatchMessage,
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(orders.id, orderId),
+                    eq(orders.stripePaymentIntentId, paymentIntent.id),
+                    sql`${orders.paymentStatus} NOT IN ('refunded', 'partially_refunded')`,
+                  ),
+                )
+                .returning({ id: orders.id });
+              if (markedForReconciliation) {
+                await openReconciliationCase(db, {
+                  caseKey: `payment-mismatch:${order.id}`,
+                  type: "payment_mismatch",
+                  source: "stripe",
+                  severity: "critical",
+                  title: "Captured payment does not match order",
+                  summary: mismatchMessage,
+                  orderId: order.id,
+                  externalReference: paymentIntent.id,
+                  amountCents: paymentIntent.amount_received,
+                  currency: paymentIntent.currency,
+                  details: {
+                    expectedAmountCents,
+                    actualAmountCents: paymentIntent.amount_received,
+                    expectedCurrency: "usd",
+                    actualCurrency: paymentIntent.currency,
+                  },
+                });
+                await notifyAdmins({
+                  title: "Payment Reconciliation Required",
+                  message: mismatchMessage,
+                  orderId,
+                });
+              }
+              break;
+            }
+
+            if (
+              order.taxStatus !== "disabled" &&
+              order.taxLiability !== "platform"
+            ) {
+              throw new TaxReadinessError(
+                "TAX_ASSOCIATION_INCOMPLETE",
+                `Order ${order.id} has a tax liability context that is not supported by this platform PaymentIntent.`,
+              );
+            }
+
+            if (order.taxLiability === "platform") {
+              const calculationId = order.stripeTaxCalculationId;
+              if (
+                !calculationId ||
+                paymentIntent.hooks?.inputs?.tax?.calculation !== calculationId
+              ) {
+                throw new TaxReadinessError(
+                  "TAX_ASSOCIATION_INCOMPLETE",
+                  `PaymentIntent ${paymentIntent.id} is not bound to the order's authoritative tax calculation.`,
+                );
+              }
+
+              if (
+                order.taxStatus !== "committed" ||
+                !order.stripeTaxTransactionId
+              ) {
+                try {
+                  const committedTax = await findCommittedTaxTransaction({
+                    paymentIntentId: paymentIntent.id,
+                    expectedCalculationId: calculationId,
+                  });
+                  await db
+                    .update(orders)
+                    .set({
+                      taxStatus: "committed",
+                      stripeTaxTransactionId:
+                        committedTax.transactionId,
+                      taxCommittedAt: new Date(),
+                      updatedAt: new Date(),
+                    })
+                    .where(
+                      and(
+                        eq(orders.id, order.id),
+                        eq(
+                          orders.stripeTaxCalculationId,
+                          calculationId,
+                        ),
+                        sql`${orders.taxStatus} IN ('calculated', 'reconciliation_required')`,
+                      ),
+                    );
+                  await resolveReconciliationCaseByKey(db, {
+                    caseKey: `tax-commit:${order.id}`,
+                    resolution: `Stripe Tax transaction ${committedTax.transactionId} was verified for PaymentIntent ${paymentIntent.id}.`,
+                  });
+                } catch (error) {
+                  const message =
+                    error instanceof Error
+                      ? error.message
+                      : "Stripe Tax transaction commitment could not be verified.";
+                  await db
+                    .update(orders)
+                    .set({
+                      taxStatus: "reconciliation_required",
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(orders.id, order.id));
+                  await openReconciliationCase(db, {
+                    caseKey: `tax-commit:${order.id}`,
+                    type: "payment_mismatch",
+                    source: "stripe",
+                    severity: "critical",
+                    title: `Tax transaction reconciliation: ${order.orderNumber}`,
+                    summary:
+                      "Payment succeeded, but the authoritative Stripe Tax transaction has not been verified. Shipment dispatch and seller transfer remain blocked until webhook retry or operator reconciliation succeeds.",
+                    orderId: order.id,
+                    externalReference: paymentIntent.id,
+                    amountCents: Math.round(
+                      Number(order.taxAmount) * 100,
+                    ),
+                    details: {
+                      calculationId,
+                      reason: message,
+                    },
+                  });
+                  throw error;
+                }
+              }
+            } else if (
+              Number(order.taxAmount) !== 0 ||
+              order.stripeTaxCalculationId
+            ) {
+              throw new TaxReadinessError(
+                "TAX_ASSOCIATION_INCOMPLETE",
+                `Disabled-tax order ${order.id} contains contradictory calculation evidence.`,
+              );
+            }
+
+            const providerShipment = await db.query.shipments.findFirst({
+              where: eq(shipments.orderId, orderId),
+              columns: {
+                priority1ShipmentId: true,
+                status: true,
+                isDryRun: true,
+              },
+            });
+            const providerAlreadyBooked = Boolean(
+              providerShipment?.priority1ShipmentId &&
+                !providerShipment.isDryRun &&
+                providerShipment.status !== "pending" &&
+                providerShipment.status !== "cancelled",
+            );
+            let bookingFailureMessage: string | null = null;
+            if (!providerAlreadyBooked) {
+              try {
+                requireShippingBookingSnapshotForOrder({
+                  snapshot: order.shippingBookingSnapshot,
+                  order: {
+                    selectedQuoteId: order.selectedQuoteId,
+                    listingId: order.listingId,
+                    buyerId: order.buyerId,
+                    quantitySqFt: order.quantitySqFt,
+                    shippingZip: order.shippingZip,
+                    carrierRate: order.carrierRate,
+                    shippingPrice: order.shippingPrice,
+                    selectedCarrier: order.selectedCarrier,
+                    quoteExpiresAt: order.quoteExpiresAt,
+                  },
+                  now: new Date(
+                    Date.now() + SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
+                  ),
+                });
+              } catch (error) {
+                if (!(error instanceof ShippingBookingReviewError)) throw error;
+                bookingFailureMessage =
+                  "The captured payment could not be dispatched because its shipping quote was expired or no longer matched the durable booking details.";
+              }
+            }
+
+            const outcome = await db.transaction(async (tx) => {
+              const [lockedOrder] = await tx
+                .select({
+                  status: orders.status,
+                  paymentStatus: orders.paymentStatus,
+                  escrowStatus: orders.escrowStatus,
+                  stripePaymentIntentId: orders.stripePaymentIntentId,
+                  inventoryReleasedAt: orders.inventoryReleasedAt,
+                })
+                .from(orders)
+                .where(eq(orders.id, orderId))
+                .for("update");
+
+              if (
+                !lockedOrder ||
+                lockedOrder.stripePaymentIntentId !== paymentIntent.id
+              ) {
+                return "ignored" as const;
+              }
+
+              const alreadyDispatchable =
+                !bookingFailureMessage &&
+                lockedOrder.paymentStatus === "succeeded" &&
+                lockedOrder.escrowStatus === "held" &&
+                !lockedOrder.inventoryReleasedAt &&
+                ["confirmed", "processing", "shipped", "delivered"].includes(
+                  lockedOrder.status,
+                );
+              if (alreadyDispatchable) return "dispatch" as const;
+
+              if (
+                !bookingFailureMessage &&
+                lockedOrder.escrowStatus === "held" &&
+                canApplyPaymentIntentSucceeded({
+                  orderStatus: lockedOrder.status,
+                  paymentStatus: lockedOrder.paymentStatus,
+                  storedPaymentIntentId: lockedOrder.stripePaymentIntentId,
+                  eventPaymentIntentId: paymentIntent.id,
+                  inventoryReleasedAt: lockedOrder.inventoryReleasedAt,
+                })
+              ) {
+                await tx
+                  .update(orders)
+                  .set({
+                    paymentStatus: "succeeded",
+                    status: "confirmed",
+                    confirmedAt: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(orders.id, orderId));
+                return "dispatch" as const;
+              }
+
+              if (
+                lockedOrder.paymentStatus === "refunded" ||
+                lockedOrder.paymentStatus === "partially_refunded"
+              ) {
+                return "ignored" as const;
+              }
+              if (
+                lockedOrder.paymentStatus === "succeeded" &&
+                lockedOrder.escrowStatus === "released"
+              ) {
+                // A replay after seller payout is terminal success. Refunding
+                // here would refund the buyer without reversing the already
+                // released seller transfer.
+                return "ignored" as const;
+              }
+              if (lockedOrder.escrowStatus === "disputed") {
+                if (lockedOrder.paymentStatus !== "succeeded") {
+                  await tx
+                    .update(orders)
+                    .set({
+                      paymentStatus: "succeeded",
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(orders.id, orderId));
+                }
+                return "ignored" as const;
+              }
+
+              await tx
+                .update(orders)
+                .set({
+                  paymentStatus: "refund_pending",
+                  escrowStatus: "refunded",
+                  updatedAt: new Date(),
+                })
+                .where(eq(orders.id, orderId));
+              return "refund" as const;
+            });
+
+            if (outcome === "refund") {
+              // A late success after local cancellation must be refunded, not
+              // allowed to resurrect the order or consume released inventory.
+              const refund = await stripe.refunds.create(
+                {
+                  payment_intent: paymentIntent.id,
+                  amount: paymentIntent.amount_received || paymentIntent.amount,
+                  metadata: {
+                    orderId,
+                    reason: bookingFailureMessage
+                      ? "shipping_quote_unbookable_after_capture"
+                      : "late_payment_after_order_closed",
+                  },
+                },
+                {
+                  idempotencyKey: `late-order-payment-refund:${paymentIntent.id}`,
+                },
+              );
+
+              const reconciliation = await reconcileOrderRefundFromStripe({
+                db,
+                orderId,
+                refundedAmountCents: paymentIntent.amount_received,
+                stripeRefundId: refund.id,
+                reason: bookingFailureMessage
+                  ? "The selected freight quote could no longer be safely booked; place a new order with a fresh quote."
+                  : "Payment completed after the order was closed and was refunded automatically.",
+              });
+
+              if (reconciliation.updated && bookingFailureMessage) {
+                await notifyAdmins({
+                  title: "Captured Payment Auto-Refunded",
+                  message: `${bookingFailureMessage} Order ${order.orderNumber}; PaymentIntent ${paymentIntent.id}.`,
+                  orderId,
+                });
+              }
+            }
+
+            if (outcome === "dispatch") {
+              // Awaiting this critical event lets Stripe retry if dispatch
+              // enqueueing fails after the local payment transition commits.
+              await inngest.send([
+                buildOrderPaidEvent(orderId, paymentIntent.id),
+                buildOrderConfirmedEvent({
+                  orderId,
+                  buyerId: order.buyerId,
+                  paymentIntentId: paymentIntent.id,
+                }),
+              ]);
             }
           }
         }
@@ -149,24 +686,81 @@ export async function POST(req: NextRequest) {
               )
             );
         } else {
-          // Order payment failed
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            const [failedOrder] = await db
-              .update(orders)
-              .set({
-                paymentStatus: "failed",
-                updatedAt: new Date(),
+            const order = await db.query.orders.findFirst({
+              where: eq(orders.id, orderId),
+              columns: {
+                status: true,
+                paymentStatus: true,
+                stripePaymentIntentId: true,
+                inventoryReleasedAt: true,
+              },
+            });
+            if (
+              order &&
+              canApplyPaymentIntentFailed({
+                orderStatus: order.status,
+                paymentStatus: order.paymentStatus,
+                storedPaymentIntentId: order.stripePaymentIntentId,
+                eventPaymentIntentId: paymentIntent.id,
+                inventoryReleasedAt: order.inventoryReleasedAt,
               })
-              .where(eq(orders.id, orderId))
-              .returning({ id: orders.id });
+            ) {
+              await db
+                .update(orders)
+                .set({ paymentStatus: "failed", updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(orders.id, orderId),
+                    eq(orders.stripePaymentIntentId, paymentIntent.id),
+                    eq(orders.status, "pending"),
+                    sql`${orders.inventoryReleasedAt} IS NULL`,
+                    sql`${orders.paymentStatus} IN ('pending', 'failed', 'processing')`,
+                  ),
+                );
+            }
+          }
+        }
+        break;
+      }
 
-            if (failedOrder) {
-              await releaseReservedInventory({
-                db,
-                orderId,
-                reason: "payment_intent.payment_failed",
-              });
+      case "payment_intent.processing": {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        if (paymentIntent.metadata.type !== "promotion") {
+          const orderId = paymentIntent.metadata.orderId;
+          if (orderId) {
+            const order = await db.query.orders.findFirst({
+              where: eq(orders.id, orderId),
+              columns: {
+                status: true,
+                paymentStatus: true,
+                stripePaymentIntentId: true,
+                inventoryReleasedAt: true,
+              },
+            });
+            if (
+              order &&
+              canApplyPaymentIntentProcessing({
+                orderStatus: order.status,
+                paymentStatus: order.paymentStatus,
+                storedPaymentIntentId: order.stripePaymentIntentId,
+                eventPaymentIntentId: paymentIntent.id,
+                inventoryReleasedAt: order.inventoryReleasedAt,
+              })
+            ) {
+              await db
+                .update(orders)
+                .set({ paymentStatus: "processing", updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(orders.id, orderId),
+                    eq(orders.stripePaymentIntentId, paymentIntent.id),
+                    eq(orders.status, "pending"),
+                    sql`${orders.inventoryReleasedAt} IS NULL`,
+                    sql`${orders.paymentStatus} IN ('pending', 'failed')`,
+                  ),
+                );
             }
           }
         }
@@ -175,17 +769,26 @@ export async function POST(req: NextRequest) {
 
       case "account.updated": {
         const account = event.data.object as Stripe.Account;
-        const isComplete =
-          account.charges_enabled && account.payouts_enabled;
+        const isComplete = isStripeConnectAccountReady(account);
 
-        if (account.metadata?.userId) {
+        const seller = await db.query.users.findFirst({
+          where: eq(users.stripeAccountId, account.id),
+          columns: { id: true },
+        });
+
+        if (seller) {
           await db
             .update(users)
             .set({
               stripeOnboardingComplete: isComplete,
               updatedAt: new Date(),
             })
-            .where(eq(users.id, account.metadata.userId));
+            .where(
+              and(
+                eq(users.id, seller.id),
+                eq(users.stripeAccountId, account.id),
+              ),
+            );
 
           // Notify seller if account has past_due requirements and charges are disabled
           const hasPastDue =
@@ -193,7 +796,7 @@ export async function POST(req: NextRequest) {
             account.requirements.past_due.length > 0;
           if (hasPastDue && !account.charges_enabled) {
             await db.insert(notifications).values({
-              userId: account.metadata.userId,
+              userId: seller.id,
               type: "system" as const,
               title: "Stripe Account Requires Action",
               message:
@@ -209,30 +812,130 @@ export async function POST(req: NextRequest) {
         const charge = event.data.object as Stripe.Charge;
         const paymentIntentId = charge.payment_intent as string | null;
 
-        if (paymentIntentId) {
+        if (paymentIntentId && charge.amount_refunded > 0) {
           const order = await db.query.orders.findFirst({
             where: eq(orders.stripePaymentIntentId, paymentIntentId),
+            columns: {
+              id: true,
+              orderNumber: true,
+              taxLiability: true,
+              taxStatus: true,
+              taxAmount: true,
+              stripeTaxCalculationId: true,
+              stripeTaxTransactionId: true,
+            },
           });
 
           if (order) {
-            const isFullRefund = charge.amount_refunded >= charge.amount;
-            await db
-              .update(orders)
-              .set({
-                paymentStatus: isFullRefund ? "refunded" : "partially_refunded",
-                updatedAt: new Date(),
-              })
-              .where(eq(orders.id, order.id));
-
-            // Notify buyer
-            await db.insert(notifications).values({
-              userId: order.buyerId,
-              type: "system" as const,
-              title: "Refund Received",
-              message: `A ${isFullRefund ? "full" : "partial"} refund of $${(charge.amount_refunded / 100).toFixed(2)} has been processed for order ${order.orderNumber}.`,
-              data: { orderId: order.id },
-              read: false,
+            const refundData = charge.refunds?.data ?? [];
+            // Embedded Stripe lists are not a safe chronological contract for
+            // financial attribution. Select the newest successful refund by
+            // its provider timestamp so partial-refund tax reversals bind to
+            // the payment effect that actually triggered this charge update.
+            const latestRefund = refundData
+              .filter((refund) => refund.status === "succeeded")
+              .reduce<Stripe.Refund | undefined>(
+                (latest, refund) =>
+                  !latest || refund.created > latest.created
+                    ? refund
+                    : latest,
+                undefined,
+              );
+            await reconcileOrderRefundFromStripe({
+              db,
+              orderId: order.id,
+              refundedAmountCents: charge.amount_refunded,
+              stripeRefundId: latestRefund?.id,
+              reason: "Stripe refund webhook reconciliation",
             });
+
+            if (order.taxLiability === "platform") {
+              if (
+                !order.stripeTaxCalculationId ||
+                !order.stripeTaxTransactionId ||
+                !latestRefund?.id
+              ) {
+                throw new TaxReadinessError(
+                  "TAX_ASSOCIATION_INCOMPLETE",
+                  `Order ${order.id} refund is missing authoritative tax transaction evidence.`,
+                );
+              }
+              try {
+                const reversal = await findCommittedTaxTransaction({
+                  paymentIntentId,
+                  expectedCalculationId:
+                    order.stripeTaxCalculationId,
+                  expectedSourceId: latestRefund.id,
+                });
+                const reversalStatus = charge.refunded
+                  ? "reversed"
+                  : "partially_reversed";
+                const recordedAt = new Date().toISOString();
+                await db
+                  .update(orders)
+                  .set({
+                    taxReversalStatus: reversalStatus,
+                    stripeTaxReversalTransactionIds:
+                      sql`CASE
+                        WHEN ${orders.stripeTaxReversalTransactionIds} @> jsonb_build_array(${reversal.transactionId}::text)
+                          THEN ${orders.stripeTaxReversalTransactionIds}
+                        ELSE ${orders.stripeTaxReversalTransactionIds} || jsonb_build_array(${reversal.transactionId}::text)
+                      END`,
+                    taxReversalEvidence:
+                      sql`CASE
+                        WHEN ${orders.taxReversalEvidence} @> jsonb_build_array(jsonb_build_object('refundId', ${latestRefund.id}::text))
+                          THEN ${orders.taxReversalEvidence}
+                        ELSE ${orders.taxReversalEvidence} || jsonb_build_array(jsonb_build_object(
+                          'refundId', ${latestRefund.id}::text,
+                          'transactionId', ${reversal.transactionId}::text,
+                          'cumulativeRefundedAmountCents', ${charge.amount_refunded}::int,
+                          'recordedAt', ${recordedAt}::text
+                        ))
+                      END`,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(orders.id, order.id));
+                await resolveReconciliationCaseByKey(db, {
+                  caseKey: `tax-reversal:${latestRefund.id}`,
+                  resolution: `Stripe Tax reversal ${reversal.transactionId} was verified for refund ${latestRefund.id}.`,
+                });
+              } catch (error) {
+                await db
+                  .update(orders)
+                  .set({
+                    taxReversalStatus: "reconciliation_required",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(orders.id, order.id));
+                await openReconciliationCase(db, {
+                  caseKey: `tax-reversal:${latestRefund.id}`,
+                  type: "payment_mismatch",
+                  source: "stripe",
+                  severity: "critical",
+                  title: `Tax refund reconciliation: ${order.orderNumber}`,
+                  summary:
+                    "The buyer refund was recorded, but the Stripe Tax reversal has not been verified. This webhook remains retryable and the order requires operator review.",
+                  orderId: order.id,
+                  externalReference: latestRefund.id,
+                  amountCents: charge.amount_refunded,
+                  details: {
+                    calculationId: order.stripeTaxCalculationId,
+                    originalTaxTransactionId:
+                      order.stripeTaxTransactionId,
+                    reason:
+                      error instanceof Error
+                        ? error.message
+                        : "Unknown Stripe Tax reversal error",
+                  },
+                });
+                throw error;
+              }
+            } else if (order.taxStatus !== "disabled") {
+              throw new TaxReadinessError(
+                "TAX_ASSOCIATION_INCOMPLETE",
+                `Refunded order ${order.id} has an unsupported tax liability state.`,
+              );
+            }
           }
         }
         break;
@@ -248,20 +951,90 @@ export async function POST(req: NextRequest) {
           });
 
           if (order) {
-            // Auto-create dispute record if none exists
-            const existingDispute = await db.query.disputes.findFirst({
-              where: eq(disputes.orderId, order.id),
+            // Serialize opening the dispute with the order-row lock used by
+            // live freight dispatch. If dispatch already won, the reversal
+            // service cancels that booking before completing this event.
+            const localDispute = await db.transaction(async (tx) => {
+              await tx
+                .select({ id: orders.id })
+                .from(orders)
+                .where(eq(orders.id, order.id))
+                .for("update");
+              const [existingDispute] = await tx
+                .select({ id: disputes.id })
+                .from(disputes)
+                .where(eq(disputes.orderId, order.id))
+                .limit(1);
+
+              if (!existingDispute) {
+                const [created] = await tx
+                  .insert(disputes)
+                  .values({
+                    orderId: order.id,
+                    initiatorId: order.buyerId,
+                    reason: `Stripe chargeback: ${dispute.reason}`,
+                    reasonCode: "other",
+                    source: "stripe",
+                    description: `Automatic dispute created from Stripe chargeback. Dispute ID: ${dispute.id}. Reason: ${dispute.reason}.`,
+                    status: "under_review",
+                  })
+                  .returning({ id: disputes.id });
+                return created;
+              } else {
+                // The schema intentionally keeps one dispute record per order.
+                // A later Stripe chargeback must reopen that record instead of
+                // leaving a resolved dispute invisible to dispatch and payout.
+                const [reopened] = await tx
+                  .update(disputes)
+                  .set({
+                    reason: `Stripe chargeback: ${dispute.reason}`,
+                    reasonCode: "other",
+                    source: "stripe",
+                    description: `Automatic dispute created from Stripe chargeback. Dispute ID: ${dispute.id}. Reason: ${dispute.reason}.`,
+                    status: "under_review",
+                    resolution: null,
+                    resolvedBy: null,
+                    resolvedAt: null,
+                    resolvedRefundAmountCents: null,
+                    payoutRequeuedAt: null,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(disputes.id, existingDispute.id))
+                  .returning({ id: disputes.id });
+                return reopened ?? existingDispute;
+              }
             });
 
-            if (!existingDispute) {
-              await db.insert(disputes).values({
-                orderId: order.id,
-                initiatorId: order.buyerId,
-                reason: `Stripe chargeback: ${dispute.reason}`,
-                description: `Automatic dispute created from Stripe chargeback. Dispute ID: ${dispute.id}. Reason: ${dispute.reason}.`,
-                status: "under_review",
-              });
+            if (!localDispute) {
+              throw new Error(
+                `Unable to persist Stripe dispute ${dispute.id} for order ${order.id}`,
+              );
             }
+            await openReconciliationCase(db, {
+              caseKey: `stripe-chargeback:${dispute.id}`,
+              type: "dispute_resolution",
+              source: "stripe",
+              severity: "critical",
+              title: `Stripe chargeback: ${order.orderNumber}`,
+              summary:
+                "Stripe opened a chargeback. Seller payout and shipment automation require operator review until Stripe closes it.",
+              orderId: order.id,
+              disputeId: localDispute.id,
+              externalReference: dispute.id,
+              amountCents: dispute.amount,
+              details: {
+                stripeStatus: dispute.status,
+                stripeReason: dispute.reason,
+                paymentIntentId,
+              },
+            });
+
+            await reverseOrderTransferForDispute({
+              db,
+              orderId: order.id,
+              stripeDisputeId: dispute.id,
+              disputedAmountCents: dispute.amount,
+            });
 
             // Notify admins by finding admin users
             const adminUsers = await db.query.users.findMany({
@@ -291,58 +1064,167 @@ export async function POST(req: NextRequest) {
         const paymentIntentId = dispute.payment_intent as string | null;
 
         if (paymentIntentId) {
-          const order = await db.query.orders.findFirst({
-            where: eq(orders.stripePaymentIntentId, paymentIntentId),
+          const closedState = await db.transaction(async (tx) => {
+            const [order] = await tx
+              .select({
+                id: orders.id,
+                orderNumber: orders.orderNumber,
+                stripeTransferId: orders.stripeTransferId,
+                transferReversedAmount: orders.transferReversedAmount,
+                transferFailedAt: orders.transferFailedAt,
+                transferError: orders.transferError,
+              })
+              .from(orders)
+              .where(eq(orders.stripePaymentIntentId, paymentIntentId))
+              .for("update");
+            if (!order) return null;
+
+            const chargebackCaseKey = `stripe-chargeback:${dispute.id}`;
+            const [mappedCase] = await tx
+              .select({ disputeId: reconciliationCases.disputeId })
+              .from(reconciliationCases)
+              .where(eq(reconciliationCases.caseKey, chargebackCaseKey))
+              .limit(1);
+            if (!mappedCase?.disputeId) {
+              return { kind: "unmatched" as const, order };
+            }
+
+            const [existingDispute] = await tx
+              .select({ id: disputes.id })
+              .from(disputes)
+              .where(
+                and(
+                  eq(disputes.id, mappedCase.disputeId),
+                  eq(disputes.orderId, order.id),
+                  eq(disputes.source, "stripe"),
+                ),
+              )
+              .for("update");
+            if (!existingDispute) {
+              return { kind: "unmatched" as const, order };
+            }
+
+            const outcomeStatus =
+              dispute.status === "won"
+                ? "resolved_seller"
+                : dispute.status === "lost"
+                  ? "resolved_buyer"
+                  : "closed";
+            const now = new Date();
+            await tx
+              .update(disputes)
+              .set({
+                status: outcomeStatus,
+                resolution: `Stripe chargeback ${dispute.status}: ${dispute.reason}`,
+                resolvedAt: now,
+                resolvedBy: null,
+                updatedAt: now,
+              })
+              .where(eq(disputes.id, existingDispute.id));
+
+            const requiresTransferReconciliation =
+              dispute.status === "won" &&
+              (!order.stripeTransferId ||
+                Number(order.transferReversedAmount) > 0);
+            const reconciliationMessage = requiresTransferReconciliation
+              ? `Stripe dispute ${dispute.id} was won, but the seller transfer is absent or was reversed. A make-up transfer requires manual financial reconciliation.`
+              : null;
+            const restoredEscrowStatus =
+              dispute.status === "won"
+                ? requiresTransferReconciliation
+                  ? "disputed"
+                  : "released"
+                : dispute.status === "lost"
+                  ? "refunded"
+                  : "disputed";
+            await tx
+              .update(orders)
+              .set({
+                escrowStatus: restoredEscrowStatus,
+                transferFailedAt: requiresTransferReconciliation
+                  ? now
+                  : order.transferFailedAt,
+                transferError:
+                  reconciliationMessage ?? order.transferError,
+                updatedAt: now,
+              })
+              .where(eq(orders.id, order.id));
+
+            return {
+              kind: "closed" as const,
+              order,
+              disputeId: existingDispute.id,
+              chargebackCaseKey,
+              requiresTransferReconciliation,
+              reconciliationMessage,
+            };
           });
 
-          if (order) {
-            const existingDispute = await db.query.disputes.findFirst({
-              where: eq(disputes.orderId, order.id),
+          if (!closedState || closedState.kind === "unmatched") {
+            await openReconciliationCase(db, {
+              caseKey: `stripe-chargeback-close-unmatched:${dispute.id}`,
+              type: "data_integrity",
+              source: "stripe",
+              severity: "critical",
+              title: "Unmatched Stripe chargeback closure",
+              summary:
+                "Stripe closed a chargeback without a verified local chargeback mapping. No local claim or money state was changed.",
+              orderId: closedState?.order.id ?? null,
+              externalReference: dispute.id,
+              amountCents: dispute.amount,
+              details: {
+                paymentIntentId,
+                stripeStatus: dispute.status,
+                stripeReason: dispute.reason,
+              },
             });
+            break;
+          }
 
-            if (existingDispute) {
-              // Map Stripe dispute status to our status
-              const outcomeStatus =
-                dispute.status === "won"
-                  ? "resolved_seller"
-                  : dispute.status === "lost"
-                    ? "resolved_buyer"
-                    : "closed";
+          await resolveReconciliationCaseByKey(db, {
+            caseKey: closedState.chargebackCaseKey,
+            resolution: `Stripe closed the chargeback with status ${dispute.status}.`,
+          });
 
-              await db
-                .update(disputes)
-                .set({
-                  status: outcomeStatus as "resolved_buyer" | "resolved_seller" | "closed",
-                  resolution: `Stripe chargeback ${dispute.status}: ${dispute.reason}`,
-                  resolvedAt: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(eq(disputes.id, existingDispute.id));
-            }
+          if (closedState.requiresTransferReconciliation) {
+            await openReconciliationCase(db, {
+              caseKey: `stripe-chargeback-transfer:${dispute.id}`,
+              type: "payout_failure",
+              source: "stripe",
+              severity: "critical",
+              title: `Make-up seller transfer required: ${closedState.order.orderNumber}`,
+              summary: closedState.reconciliationMessage!,
+              orderId: closedState.order.id,
+              disputeId: closedState.disputeId,
+              externalReference: dispute.id,
+              amountCents: dispute.amount,
+              details: {
+                stripeStatus: dispute.status,
+                transferId: closedState.order.stripeTransferId,
+                transferReversedAmount: Number(
+                  closedState.order.transferReversedAmount,
+                ),
+              },
+            });
+          }
+
+          if (closedState.reconciliationMessage) {
+            await notifyAdmins({
+              title: "Seller Transfer Reconciliation Required",
+              message: closedState.reconciliationMessage,
+              orderId: closedState.order.id,
+            });
           }
         }
         break;
       }
 
       case "transfer.created": {
-        const transfer = event.data.object as Stripe.Transfer;
-        const orderId = transfer.metadata?.orderId;
-
-        if (orderId) {
-          // Belt-and-suspenders: persist stripeTransferId on the order
-          await db
-            .update(orders)
-            .set({
-              stripeTransferId: transfer.id,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(orders.id, orderId),
-                sql`${orders.stripeTransferId} IS NULL`
-              )
-            );
-        }
+        // Payout release validates amount, currency, destination, source
+        // charge, transfer group, and metadata before persisting a transfer.
+        // Trusting orderId metadata here would let an unrelated transfer poison
+        // refund reconciliation. Orphan transfers are recovered safely by the
+        // validated payout/refund paths using transfer_group.
         break;
       }
 
@@ -439,28 +1321,52 @@ export async function POST(req: NextRequest) {
         } else {
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            const [cancelledOrder] = await db
-              .update(orders)
-              .set({
-                paymentStatus: "failed",
-                status: "cancelled",
-                updatedAt: new Date(),
+            const order = await db.query.orders.findFirst({
+              where: eq(orders.id, orderId),
+              columns: {
+                status: true,
+                paymentStatus: true,
+                stripePaymentIntentId: true,
+                inventoryReleasedAt: true,
+              },
+            });
+            if (
+              order &&
+              canApplyPaymentIntentCanceled({
+                orderStatus: order.status,
+                paymentStatus: order.paymentStatus,
+                storedPaymentIntentId: order.stripePaymentIntentId,
+                eventPaymentIntentId: paymentIntent.id,
+                inventoryReleasedAt: order.inventoryReleasedAt,
               })
-              .where(
-                and(
-                  eq(orders.id, orderId),
-                  sql`${orders.paymentStatus} NOT IN ('succeeded', 'refunded', 'partially_refunded')`,
-                  sql`${orders.status} IN ('pending', 'confirmed')`,
+            ) {
+              const [cancelledOrder] = await db
+                .update(orders)
+                .set({
+                  paymentStatus: "failed",
+                  status: "cancelled",
+                  escrowStatus: "refunded",
+                  cancelledAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(orders.id, orderId),
+                    eq(orders.stripePaymentIntentId, paymentIntent.id),
+                    eq(orders.status, "pending"),
+                    sql`${orders.inventoryReleasedAt} IS NULL`,
+                    sql`${orders.paymentStatus} IN ('pending', 'failed', 'processing')`,
+                  ),
                 )
-              )
-              .returning({ id: orders.id });
+                .returning({ id: orders.id });
 
-            if (cancelledOrder) {
-              await releaseReservedInventory({
-                db,
-                orderId,
-                reason: "payment_intent.canceled",
-              });
+              if (cancelledOrder) {
+                await releaseReservedInventory({
+                  db,
+                  orderId,
+                  reason: "payment_intent.canceled",
+                });
+              }
             }
           }
         }
@@ -477,13 +1383,12 @@ export async function POST(req: NextRequest) {
           });
 
           if (order) {
-            await db
-              .update(orders)
-              .set({
-                escrowStatus: "disputed",
-                updatedAt: new Date(),
-              })
-              .where(eq(orders.id, order.id));
+            await reverseOrderTransferForDispute({
+              db,
+              orderId: order.id,
+              stripeDisputeId: dispute.id,
+              disputedAmountCents: dispute.amount,
+            });
           }
         }
         break;
@@ -493,21 +1398,10 @@ export async function POST(req: NextRequest) {
         const dispute = event.data.object as Stripe.Dispute;
         const paymentIntentId = dispute.payment_intent as string | null;
 
-        if (paymentIntentId) {
-          const order = await db.query.orders.findFirst({
-            where: eq(orders.stripePaymentIntentId, paymentIntentId),
-          });
-
-          if (order) {
-            await db
-              .update(orders)
-              .set({
-                escrowStatus: "held",
-                updatedAt: new Date(),
-              })
-              .where(eq(orders.id, order.id));
-          }
-        }
+        // Do not reopen payout eligibility while the local dispute remains
+        // open. charge.dispute.closed resolves the dispute and restores the
+        // appropriate held/released/refunded escrow state.
+        void paymentIntentId;
         break;
       }
 
@@ -517,31 +1411,42 @@ export async function POST(req: NextRequest) {
         const userId = subscription.metadata.userId;
 
         if (userId) {
-          await db
+          const eventCreatedAt = new Date(event.created * 1000);
+          const proStatus = mapStripeSubscriptionStatus(subscription.status);
+          const [updated] = await db
             .update(users)
             .set({
-              proStatus: "active",
+              proStatus,
               stripeSubscriptionId: subscription.id,
-              stripeCustomerId: subscription.customer as string,
-              proStartedAt: new Date(),
+              stripeCustomerId: getStripeCustomerId(subscription.customer),
+              proStartedAt:
+                proStatus === "active" || proStatus === "trialing"
+                  ? new Date()
+                  : null,
+              stripeSubscriptionEventCreatedAt: eventCreatedAt,
               updatedAt: new Date(),
             })
-            .where(eq(users.id, userId));
+            .where(
+              and(
+                eq(users.id, userId),
+                subscriptionEventIsCurrent(eventCreatedAt),
+              ),
+            )
+            .returning({ id: users.id });
 
           // Credit grant removed — invoice.payment_succeeded is the single source
           // for promotion credits (fires for both initial and renewal invoices)
 
-          inngest
-            .send({
+          if (
+            updated &&
+            (proStatus === "active" || proStatus === "trialing")
+          ) {
+            await inngest.send({
+              id: `subscription-activated:${event.id}`,
               name: "subscription/activated",
               data: { userId },
-            })
-            .catch((err) => {
-              console.error(
-                "Failed to send subscription/activated event:",
-                err
-              );
             });
+          }
         }
         break;
       }
@@ -552,25 +1457,15 @@ export async function POST(req: NextRequest) {
         const userId = subscription.metadata.userId;
 
         if (userId) {
-          // Map Stripe status to our proStatus
-          const statusMap: Record<string, string> = {
-            active: "active",
-            past_due: "past_due",
-            canceled: "cancelled",
-            trialing: "trialing",
-            incomplete: "active", // 3D Secure in progress, keep current access
-            unpaid: "past_due",
-          };
-          const proStatus = statusMap[subscription.status];
-          if (!proStatus) {
-            console.warn(
-              `Unknown Stripe subscription status: ${subscription.status}`
-            );
-            break; // Don't update — skip unknown statuses entirely
-          }
+          const proStatus = mapStripeSubscriptionStatus(subscription.status);
+          const eventCreatedAt = new Date(event.created * 1000);
 
           const updateFields: Record<string, unknown> = {
             proStatus,
+            stripeSubscriptionId: subscription.id,
+            stripeCustomerId: getStripeCustomerId(subscription.customer),
+            stripeSubscriptionEventCreatedAt: eventCreatedAt,
+            proExpiresAt: null,
             updatedAt: new Date(),
           };
 
@@ -588,23 +1483,23 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          await db
+          const [updated] = await db
             .update(users)
             .set(updateFields)
-            .where(eq(users.id, userId));
+            .where(
+              and(
+                eq(users.id, userId),
+                subscriptionEventIsCurrent(eventCreatedAt),
+              ),
+            )
+            .returning({ id: users.id });
 
           // Notify on payment issues
-          if (subscription.status === "past_due") {
-            inngest
-              .send({
+          if (updated && subscription.status === "past_due") {
+            await inngest.send({
+                id: `subscription-payment-failed:${event.id}`,
                 name: "subscription/payment-failed",
                 data: { userId },
-              })
-              .catch((err) => {
-                console.error(
-                  "Failed to send subscription/payment-failed event:",
-                  err
-                );
               });
           }
         }
@@ -617,28 +1512,32 @@ export async function POST(req: NextRequest) {
         const userId = subscription.metadata.userId;
 
         if (userId) {
-          await db
+          const eventCreatedAt = new Date(event.created * 1000);
+          const [updated] = await db
             .update(users)
             .set({
               proStatus: "free",
               stripeSubscriptionId: null,
               proExpiresAt: null,
               proStartedAt: null,
+              stripeSubscriptionEventCreatedAt: eventCreatedAt,
               updatedAt: new Date(),
             })
-            .where(eq(users.id, userId));
+            .where(
+              and(
+                eq(users.id, userId),
+                subscriptionEventIsCurrent(eventCreatedAt),
+              ),
+            )
+            .returning({ id: users.id });
 
-          inngest
-            .send({
+          if (updated) {
+            await inngest.send({
+              id: `subscription-expired:${event.id}`,
               name: "subscription/expired",
               data: { userId },
-            })
-            .catch((err) => {
-              console.error(
-                "Failed to send subscription/expired event:",
-                err
-              );
             });
+          }
         }
         break;
       }
@@ -664,27 +1563,39 @@ export async function POST(req: NextRequest) {
             });
 
             if (user) {
-              // Grant promotion credit for the renewal period
+              // Grant and budget reset are one effect, keyed by the Stripe
+              // invoice rather than the webhook event (Stripe can redeliver
+              // equivalent invoice events with different event IDs).
               const periodEnd =
                 invoice.lines?.data?.[0]?.period?.end;
               if (periodEnd) {
-                await db.insert(promotionCredits).values({
-                  userId: user.id,
-                  amount: PRO_MONTHLY_CREDIT,
-                  usedAmount: 0,
-                  source: "subscription",
-                  expiresAt: new Date(periodEnd * 1000),
+                await db.transaction(async (tx) => {
+                  const [credit] = await tx
+                    .insert(promotionCredits)
+                    .values({
+                      userId: user.id,
+                      amount: PRO_MONTHLY_CREDIT,
+                      usedAmount: 0,
+                      source: "subscription",
+                      stripeInvoiceId: invoice.id,
+                      expiresAt: new Date(periodEnd * 1000),
+                    })
+                    .onConflictDoNothing({
+                      target: promotionCredits.stripeInvoiceId,
+                    })
+                    .returning({ id: promotionCredits.id });
+
+                  if (!credit) return;
+
+                  await tx
+                    .update(agentConfigs)
+                    .set({
+                      monitorBudgetUsed: 0,
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(agentConfigs.userId, user.id));
                 });
               }
-
-              // Reset agent monitoring budget for the new period
-              await db
-                .update(agentConfigs)
-                .set({
-                  monitorBudgetUsed: 0,
-                  updatedAt: new Date(),
-                })
-                .where(eq(agentConfigs.userId, user.id));
             }
           }
         }
@@ -712,25 +1623,29 @@ export async function POST(req: NextRequest) {
           });
 
           if (user) {
-            await db
+            const eventCreatedAt = new Date(event.created * 1000);
+            const [updated] = await db
               .update(users)
               .set({
                 proStatus: "past_due",
+                stripeSubscriptionEventCreatedAt: eventCreatedAt,
                 updatedAt: new Date(),
               })
-              .where(eq(users.id, user.id));
+              .where(
+                and(
+                  eq(users.id, user.id),
+                  subscriptionEventIsCurrent(eventCreatedAt),
+                ),
+              )
+              .returning({ id: users.id });
 
-            inngest
-              .send({
+            if (updated) {
+              await inngest.send({
+                id: `invoice-payment-failed:${event.id}`,
                 name: "subscription/payment-failed",
                 data: { userId: user.id },
-              })
-              .catch((err) => {
-                console.error(
-                  "Failed to send subscription/payment-failed event:",
-                  err
-                );
               });
+            }
           }
         }
         break;
@@ -741,21 +1656,31 @@ export async function POST(req: NextRequest) {
         break;
     }
     } catch (processingError) {
-      // Remove idempotency record so Stripe retry can reprocess this event
-      await db
-        .delete(stripeWebhookEvents)
-        .where(eq(stripeWebhookEvents.id, event.id))
-        .catch(() => {});
-      console.error("Webhook processing error:", processingError);
+      await failWebhookEvent(event.id, claimStartedAt, processingError).catch(
+        () => {},
+      );
+      console.error("Webhook processing error", {
+        eventId: event.id,
+        eventType: event.type,
+        error:
+          processingError instanceof Error
+            ? processingError.name
+            : "UnknownError",
+      });
       return NextResponse.json(
         { error: "Webhook handler failed" },
         { status: 500 }
       );
     }
 
+    await completeWebhookEvent(event.id, claimStartedAt);
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("Webhook handler error:", error);
+    console.error("Webhook handler error", {
+      eventId: event.id,
+      eventType: event.type,
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }

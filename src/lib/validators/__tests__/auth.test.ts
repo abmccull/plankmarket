@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   registerSchema,
   loginSchema,
+  saveVerificationDraftSchema,
   submitVerificationSchema,
   updateProfileSchema,
 } from "@/lib/validators/auth";
@@ -26,8 +27,7 @@ describe("registerSchema", () => {
   });
 
   it("rejects missing email", () => {
-    const { email: _, ...input } = validInput;
-    const result = registerSchema.safeParse(input);
+    const result = registerSchema.safeParse({ ...validInput, email: undefined });
     expect(result.success).toBe(false);
   });
 
@@ -158,6 +158,28 @@ describe("submitVerificationSchema", () => {
       einTaxId: "AB-CDEFGHI",
     });
     expect(letters.success).toBe(false);
+  });
+});
+
+describe("saveVerificationDraftSchema", () => {
+  it("accepts an incomplete step so users can resume later", () => {
+    const result = saveVerificationDraftSchema.safeParse({
+      currentStep: 2,
+      einTaxId: "12-",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid steps and oversized sensitive input", () => {
+    expect(
+      saveVerificationDraftSchema.safeParse({ currentStep: 4 }).success,
+    ).toBe(false);
+    expect(
+      saveVerificationDraftSchema.safeParse({
+        currentStep: 2,
+        einTaxId: "1".repeat(12),
+      }).success,
+    ).toBe(false);
   });
 });
 

@@ -33,7 +33,13 @@ export const onboardingDrip = inngest.createFunction(
 
     if (day1Needed) {
       await step.run("send-day1", async () => {
-        await sendOnboardingNudgeEmail({ to: email, name, role, step: "day1" });
+        await sendOnboardingNudgeEmail({
+          to: email,
+          name,
+          role,
+          step: "day1",
+          idempotencyKey: `onboarding-day1-${userId}`,
+        });
       });
     }
 
@@ -68,7 +74,13 @@ export const onboardingDrip = inngest.createFunction(
 
     if (day3Needed) {
       await step.run("send-day3", async () => {
-        await sendOnboardingNudgeEmail({ to: email, name, role, step: "day3" });
+        await sendOnboardingNudgeEmail({
+          to: email,
+          name,
+          role,
+          step: "day3",
+          idempotencyKey: `onboarding-day3-${userId}`,
+        });
       });
     }
 
@@ -105,7 +117,13 @@ export const onboardingDrip = inngest.createFunction(
 
     if (day7Needed) {
       await step.run("send-day7", async () => {
-        await sendOnboardingNudgeEmail({ to: email, name, role, step: "day7" });
+        await sendOnboardingNudgeEmail({
+          to: email,
+          name,
+          role,
+          step: "day7",
+          idempotencyKey: `onboarding-day7-${userId}`,
+        });
       });
     }
 

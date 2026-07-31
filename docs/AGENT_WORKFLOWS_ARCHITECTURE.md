@@ -4,6 +4,10 @@
 **Status:** Proposed
 **Author:** Architect Agent
 
+> Pricing note (July 30, 2026): any 3% buyer / 2% seller examples below are
+> historical. Current implementation uses 5% buyer / 5% seller marketplace
+> fees from `src/lib/fees.ts`.
+
 ---
 
 ## Table of Contents
@@ -1812,5 +1816,5 @@ The following assumptions were made during this design. If any are incorrect, th
 6. The existing row-level locking on listings prevents double-selling even when agents are involved.
 7. One agent configuration per user is sufficient for v1.
 8. The 48-hour offer expiry and turn-based negotiation system remain unchanged.
-9. PlankMarket's 3% buyer fee and 2% seller fee apply to agent-initiated transactions identically.
+9. PlankMarket's 5% buyer fee and 5% seller fee apply to agent-initiated transactions identically.
 10. Budget amounts are in USD and match the currency of `askPricePerSqFt` (already USD).

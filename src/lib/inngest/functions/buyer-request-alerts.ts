@@ -1,11 +1,28 @@
 import { inngest } from "../client";
 import { db } from "@/server/db";
-import { buyerRequests } from "@/server/db/schema/buyer-requests";
-import { userPreferences } from "@/server/db/schema/user-preferences";
-import { users } from "@/server/db/schema/users";
-import { eq, and, gte, sql } from "drizzle-orm";
-import { resend } from "@/lib/email/client";
+import {
+  buyerRequests,
+  listings,
+  materialTypeEnum,
+  users,
+} from "@/server/db/schema";
+import {
+  and,
+  eq,
+  gte,
+  gt,
+  inArray,
+  isNotNull,
+  ne,
+} from "drizzle-orm";
+import { sendEmailOrThrow } from "@/lib/email/delivery";
+import { buildEmailIdempotencyKey } from "@/lib/email/delivery-policy";
+import { env } from "@/env";
 import { escapeHtml } from "@/lib/utils";
+import { selectBuyerRequestAlertTargets } from "@/server/services/buyer-request-listing-match";
+
+type ListingMaterialType = (typeof materialTypeEnum.enumValues)[number];
+const listingMaterialTypes = new Set<string>(materialTypeEnum.enumValues);
 
 export const buyerRequestAlerts = inngest.createFunction(
   { id: "buyer-request-alerts", name: "Send Buyer Request Alerts to Sellers" },
@@ -17,6 +34,7 @@ export const buyerRequestAlerts = inngest.createFunction(
       const requests = await db
         .select({
           id: buyerRequests.id,
+          buyerId: buyerRequests.buyerId,
           title: buyerRequests.title,
           materialTypes: buyerRequests.materialTypes,
           minTotalSqFt: buyerRequests.minTotalSqFt,
@@ -41,35 +59,48 @@ export const buyerRequestAlerts = inngest.createFunction(
 
     const alertsSent = await step.run("match-and-alert-sellers", async () => {
       let sentCount = 0;
+      const failures: unknown[] = [];
 
       for (const request of recentRequests) {
         try {
-          const requestMaterialTypes = request.materialTypes as string[];
+          const requestMaterialTypes = request.materialTypes.filter(
+            (materialType): materialType is ListingMaterialType =>
+              listingMaterialTypes.has(materialType),
+          );
+          if (requestMaterialTypes.length === 0) {
+            continue;
+          }
 
-          // Find sellers whose typicalMaterialTypes overlap with the request's materialTypes
-          const matchingSellers = await db
+          const matchingListingCandidates = await db
             .select({
-              sellerId: userPreferences.userId,
-              typicalMaterialTypes: userPreferences.typicalMaterialTypes,
+              listingId: listings.id,
+              sellerId: listings.sellerId,
               sellerEmail: users.email,
               sellerName: users.name,
+              territoryMode: listings.territoryMode,
+              allowedDestinationStates: listings.allowedDestinationStates,
             })
-            .from(userPreferences)
-            .innerJoin(users, eq(userPreferences.userId, users.id))
+            .from(listings)
+            .innerJoin(users, eq(listings.sellerId, users.id))
             .where(
               and(
-                eq(userPreferences.role, "seller"),
-                // Filter sellers whose typicalMaterialTypes array intersects with request materialTypes
-                sql`${userPreferences.typicalMaterialTypes} ?| array[${sql.join(
-                  requestMaterialTypes.map((m) => sql`${m}`), sql`, `
-                )}]::text[]`
-              )
+                eq(listings.status, "active"),
+                inArray(listings.materialType, requestMaterialTypes),
+                isNotNull(listings.lastConfirmedAt),
+                isNotNull(listings.confirmationDueAt),
+                gte(listings.confirmationDueAt, new Date()),
+                gt(listings.totalSqFt, 0),
+                ne(listings.sellerId, request.buyerId),
+              ),
             );
+          const matchingSellers = selectBuyerRequestAlertTargets({
+            destinationZip: request.destinationZip,
+            candidates: matchingListingCandidates,
+          });
 
           for (const seller of matchingSellers) {
             try {
-              const appUrl =
-                process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+              const appUrl = env.NEXT_PUBLIC_APP_URL;
               const urgencyLabel: Record<string, string> = {
                 asap: "ASAP",
                 "2_weeks": "Within 2 weeks",
@@ -77,13 +108,20 @@ export const buyerRequestAlerts = inngest.createFunction(
                 flexible: "Flexible",
               };
 
-              await resend.emails.send({
-                from: "PlankMarket <noreply@plankmarket.com>",
-                to: seller.sellerEmail,
-                subject: `New buyer request matching your inventory: ${request.title}`,
-                html: `
+              await sendEmailOrThrow({
+                category: "buyer_request_alert",
+                idempotencyKey: buildEmailIdempotencyKey(
+                  "buyer_request_alert",
+                  request.id,
+                  seller.sellerId,
+                ),
+                message: {
+                  from: env.EMAIL_FROM,
+                  to: seller.sellerEmail,
+                  subject: `New buyer request matching your active inventory: ${request.title}`,
+                  html: `
                   <p>Hi ${escapeHtml(seller.sellerName ?? "")},</p>
-                  <p>A buyer just posted a new request that matches your inventory on PlankMarket.</p>
+                  <p>A buyer just posted a request matching ${seller.matchingListingIds.length === 1 ? "an active listing" : `${seller.matchingListingIds.length} active listings`} in your inventory on PlankMarket.</p>
                   <table style="border-collapse:collapse;width:100%;max-width:480px;">
                     <tr>
                       <td style="padding:8px 0;font-weight:bold;color:#555;">Request</td>
@@ -122,21 +160,23 @@ export const buyerRequestAlerts = inngest.createFunction(
                   </table>
                   <br/>
                   <a
-                    href="${appUrl}/buyer-requests/${request.id}"
+                    href="${appUrl}/seller/request-board"
                     style="background:#1a1a1a;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;"
                   >
                     View Request &amp; Respond
                   </a>
                   <br/><br/>
                   <p style="color:#888;font-size:12px;">
-                    You're receiving this because your seller preferences on PlankMarket match this buyer's material types.
-                    <a href="${appUrl}/seller/preferences">Manage your preferences</a>.
+                    You&apos;re receiving this because you have active inventory
+                    whose material and selling territory match this request.
                   </p>
                 `,
+                },
               });
 
               sentCount++;
             } catch (emailError) {
+              failures.push(emailError);
               console.error(
                 `Failed to send buyer request alert to seller ${seller.sellerId} for request ${request.id}:`,
                 emailError
@@ -144,11 +184,19 @@ export const buyerRequestAlerts = inngest.createFunction(
             }
           }
         } catch (error) {
+          failures.push(error);
           console.error(
             `Failed to process buyer request ${request.id}:`,
             error
           );
         }
+      }
+
+      if (failures.length > 0) {
+        throw new AggregateError(
+          failures,
+          "One or more buyer request alerts could not be delivered",
+        );
       }
 
       return sentCount;

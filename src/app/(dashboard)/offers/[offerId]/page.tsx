@@ -24,7 +24,6 @@ import { OfferStatusBadge } from "@/components/offers/offer-status-badge";
 import { OfferTimeline } from "@/components/offers/offer-timeline";
 import { CounterOfferForm } from "@/components/offers/counter-offer-form";
 import { formatCurrency, formatSqFt, getErrorMessage } from "@/lib/utils";
-import { getAnonymousDisplayName } from "@/lib/identity/display-name";
 import {
   ArrowLeft,
   ExternalLink,
@@ -313,7 +312,7 @@ export default function OfferDetailPage() {
                       Buyer {isBuyer && "(You)"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {getAnonymousDisplayName(offer.buyer)}
+                      {offer.buyer.displayName}
                     </p>
                     <ReputationBadge reputation={buyerReputation} />
                   </div>
@@ -327,7 +326,7 @@ export default function OfferDetailPage() {
                       Seller {isSeller && "(You)"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {getAnonymousDisplayName(offer.seller)}
+                      {offer.seller.displayName}
                     </p>
                     <ReputationBadge reputation={sellerReputation} />
                   </div>

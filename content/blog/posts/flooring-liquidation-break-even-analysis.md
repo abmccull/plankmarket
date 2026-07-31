@@ -1,5 +1,5 @@
 ---
-title: Break-Even Analysis: When to Liquidate Flooring Inventory
+title: 'Break-Even Analysis: When to Liquidate Flooring Inventory'
 slug: flooring-liquidation-break-even-analysis
 target_keyword: when to liquidate flooring inventory
 secondary_keywords: 'flooring liquidation break-even, surplus flooring sell decision, flooring inventory decision'

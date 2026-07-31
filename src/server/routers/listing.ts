@@ -3,8 +3,20 @@ import {
   publicProcedure,
   sellerProcedure,
 } from "../trpc";
-import { listingFormSchema, listingFilterSchema, csvListingRowSchema } from "@/lib/validators/listing";
-import { listings, media, notifications } from "../db/schema";
+import {
+  listingFormSchema,
+  listingFormUpdateSchema,
+  listingFilterSchema,
+  csvListingRowSchema,
+  listingSellingRulesSchema,
+} from "@/lib/validators/listing";
+import {
+  listings,
+  media,
+  notifications,
+  orders,
+  userPreferences,
+} from "../db/schema";
 import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -14,6 +26,104 @@ import { redis } from "@/lib/redis/client";
 import { slugify } from "@/lib/utils";
 import { getFreightDefaults } from "@/lib/constants/freight-defaults";
 import { isPro, FREE_LIMITS } from "@/lib/pro";
+import { deriveListingTrustFields } from "@/lib/listing-trust";
+import {
+  applyUserPreferenceDefaultsToListing,
+  getSellerListingPreferenceDefaults,
+  PRICING_RULES_VERSION,
+  resolveAutomaticMarkdownPersistence,
+} from "@/lib/selling-rules";
+import { toSellerPurchaseConfig } from "@/lib/seller-purchase-config";
+import {
+  publicListingColumns,
+  publicMediaColumns,
+  publicSellerColumns,
+  toPublicListing,
+} from "@/server/security/public-data";
+import {
+  assertListingVisibleToViewer,
+  publicActiveListingWhere,
+} from "@/server/security/listing-visibility";
+import { inngest } from "@/lib/inngest/client";
+import { buildListingCreatedEvent } from "@/lib/inngest/events";
+import {
+  getDirectPurchaseLotValueSql,
+  getDirectPurchaseUnitPriceSql,
+} from "@/server/db/expressions/listing-pricing";
+import { appendAuditEvent } from "@/server/services/audit-ledger";
+
+const LISTING_SELLING_RULE_FIELD_KEYS = [
+  "fullLotOnly",
+  "partialQuantityMarkupPercent",
+  "automaticMarkdownEnabled",
+  "automaticMarkdownFloorPercent",
+  "automaticMarkdownIntervalDays",
+  "allowSampleRequests",
+  "territoryMode",
+  "allowedDestinationStates",
+  "freightPaymentMode",
+  "sellerFreightStates",
+  "freightDropCharge",
+] as const;
+
+const UNRELEASED_INVENTORY_ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "processing",
+  "shipped",
+  "cancelled",
+] as const;
+
+function hasOwnKey<T extends object>(
+  value: T,
+  key: PropertyKey,
+): key is keyof T {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+async function getSellerListingDefaultsForUser(
+  ctx: { db: typeof import("../db").db },
+  userId: string,
+) {
+  const existing = await ctx.db.query.userPreferences.findFirst({
+    where: eq(userPreferences.userId, userId),
+  });
+
+  return getSellerListingPreferenceDefaults(existing);
+}
+
+function formatSellingRuleValidationMessage(
+  issues: { path: PropertyKey[]; message: string }[],
+) {
+  return issues
+    .map((issue) => {
+      const field = issue.path[0];
+      return typeof field === "string"
+        ? `${field}: ${issue.message}`
+        : issue.message;
+    })
+    .join("; ");
+}
+
+function resolveValidatedSellingRuleFields(
+  input: Parameters<typeof applyUserPreferenceDefaultsToListing>[0],
+  sellerDefaults: Awaited<ReturnType<typeof getSellerListingDefaultsForUser>>,
+) {
+  const merged = applyUserPreferenceDefaultsToListing(input, sellerDefaults);
+  const parsed = listingSellingRulesSchema.safeParse(merged);
+
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Saved seller commercial defaults conflict with this listing. ${formatSellingRuleValidationMessage(
+        parsed.error.issues,
+      )}`,
+      cause: parsed.error,
+    });
+  }
+
+  return parsed.data;
+}
 
 export const listingRouter = createTRPCRouter({
   // Create a new listing
@@ -37,7 +147,40 @@ export const listingRouter = createTRPCRouter({
         }
       }
 
-      const { mediaIds, ...listingData } = input;
+      const {
+        mediaIds,
+        automaticMarkdownStartedAt,
+        automaticMarkdownCurrentStep,
+        automaticMarkdownLastAppliedAt,
+        pricingRulesVersion,
+        ...listingData
+      } = input;
+      void automaticMarkdownStartedAt;
+      void automaticMarkdownCurrentStep;
+      void automaticMarkdownLastAppliedAt;
+      void pricingRulesVersion;
+      const sellerDefaults = await getSellerListingDefaultsForUser(
+        ctx,
+        ctx.user.id,
+      );
+      const sellingRuleFields = resolveValidatedSellingRuleFields(
+        {
+          fullLotOnly: listingData.fullLotOnly,
+          partialQuantityMarkupPercent: listingData.partialQuantityMarkupPercent,
+          automaticMarkdownEnabled: listingData.automaticMarkdownEnabled,
+          automaticMarkdownFloorPercent:
+            listingData.automaticMarkdownFloorPercent,
+          automaticMarkdownIntervalDays:
+            listingData.automaticMarkdownIntervalDays,
+          allowSampleRequests: listingData.allowSampleRequests,
+          territoryMode: listingData.territoryMode,
+          allowedDestinationStates: listingData.allowedDestinationStates,
+          freightPaymentMode: listingData.freightPaymentMode,
+          sellerFreightStates: listingData.sellerFreightStates,
+          freightDropCharge: listingData.freightDropCharge,
+        },
+        sellerDefaults,
+      );
 
       // Geo-lookup from ZIP code + auto-derive city/state
       let locationLat: number | undefined;
@@ -51,18 +194,32 @@ export const listingRouter = createTRPCRouter({
           if (!listingData.locationState) listingData.locationState = zipInfo.state;
         }
       }
-
+      const now = new Date();
+      const markdownFields = resolveAutomaticMarkdownPersistence({
+        next: {
+          askPricePerSqFt: listingData.askPricePerSqFt,
+          automaticMarkdownEnabled: sellingRuleFields.automaticMarkdownEnabled,
+          automaticMarkdownFloorPercent:
+            sellingRuleFields.automaticMarkdownFloorPercent,
+          automaticMarkdownIntervalDays:
+            sellingRuleFields.automaticMarkdownIntervalDays,
+        },
+        now,
+      });
       const [listing] = await ctx.db
         .insert(listings)
         .values({
           ...listingData,
+          ...sellingRuleFields,
+          ...markdownFields,
           sellerId: ctx.user.id,
           status: "active",
           originalTotalSqFt: listingData.totalSqFt,
           originalAskPricePerSqFt: listingData.askPricePerSqFt,
+          pricingRulesVersion: PRICING_RULES_VERSION,
           locationLat,
           locationLng,
-          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+          expiresAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000), // 90 days
         })
         .returning();
 
@@ -82,9 +239,31 @@ export const listingRouter = createTRPCRouter({
             and(
               inArray(media.id, mediaIds),
               isNull(media.listingId),
+              isNull(media.buyerRequestId),
+              eq(media.uploaderId, ctx.user.id),
             )
           );
       }
+
+      const [photoCountResult] = await ctx.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(media)
+        .where(eq(media.listingId, listing.id));
+      const photoCount = photoCountResult?.count ?? 0;
+
+      const [trustedListing] = await ctx.db
+        .update(listings)
+        .set(
+          deriveListingTrustFields(
+            {
+              ...listing,
+              photoCount,
+            },
+            now,
+          ),
+        )
+        .where(eq(listings.id, listing.id))
+        .returning();
 
       // Only call Priority1 for freight class if seller didn't provide one
       if (!listingData.freightClass && listingData.palletWeight && listingData.palletLength && listingData.palletWidth && listingData.palletHeight) {
@@ -104,7 +283,21 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
-      return listing;
+      try {
+        await inngest.send(
+          buildListingCreatedEvent({
+            listingId: listing.id,
+            sellerId: ctx.user.id,
+          }),
+        );
+      } catch {
+        console.error("Failed to enqueue listing/created event", {
+          listingId: listing.id,
+          sellerId: ctx.user.id,
+        });
+      }
+
+      return trustedListing ?? listing;
     }),
 
   // Bulk create listings from CSV data
@@ -120,9 +313,14 @@ export const listingRouter = createTRPCRouter({
       }
 
       const batchId = crypto.randomUUID();
+      const sellerDefaults = await getSellerListingDefaultsForUser(
+        ctx,
+        ctx.user.id,
+      );
 
       const createdListings = await ctx.db.transaction(async (tx) => {
         const results = [];
+        const confirmedAt = new Date();
 
         for (const row of input.rows) {
           let locationLat: number | undefined;
@@ -141,13 +339,44 @@ export const listingRouter = createTRPCRouter({
           const freightDefaults = getFreightDefaults(row.materialType);
           const nmfcCode = row.nmfcCode ?? freightDefaults?.nmfcCode;
           const freightClass = row.freightClass ?? freightDefaults?.freightClass;
-
-          const [listing] = await tx
-            .insert(listings)
-            .values({
+          const sellingRuleFields = resolveValidatedSellingRuleFields(
+            {
+              fullLotOnly: row.fullLotOnly,
+              partialQuantityMarkupPercent:
+                row.partialQuantityMarkupPercent,
+              automaticMarkdownEnabled: row.automaticMarkdownEnabled,
+              automaticMarkdownFloorPercent:
+                row.automaticMarkdownFloorPercent,
+              automaticMarkdownIntervalDays:
+                row.automaticMarkdownIntervalDays,
+              allowSampleRequests: row.allowSampleRequests,
+              territoryMode: row.territoryMode,
+              allowedDestinationStates: row.allowedDestinationStates,
+              freightPaymentMode: row.freightPaymentMode,
+              sellerFreightStates: row.sellerFreightStates,
+              freightDropCharge: row.freightDropCharge,
+            },
+            sellerDefaults,
+          );
+          const markdownFields = resolveAutomaticMarkdownPersistence({
+            next: {
+              askPricePerSqFt: row.askPricePerSqFt,
+              automaticMarkdownEnabled:
+                sellingRuleFields.automaticMarkdownEnabled,
+              automaticMarkdownFloorPercent:
+                sellingRuleFields.automaticMarkdownFloorPercent,
+              automaticMarkdownIntervalDays:
+                sellingRuleFields.automaticMarkdownIntervalDays,
+            },
+            now: confirmedAt,
+          });
+          const trustFields = deriveListingTrustFields(
+            {
               ...row,
               nmfcCode,
               freightClass,
+              ...sellingRuleFields,
+              ...markdownFields,
               sellerId: ctx.user.id,
               status: "draft",
               originalTotalSqFt: row.totalSqFt,
@@ -155,6 +384,29 @@ export const listingRouter = createTRPCRouter({
               locationLng,
               allowOffers: true,
               certifications: [],
+              photoCount: 0,
+            },
+            confirmedAt,
+          );
+
+          const [listing] = await tx
+            .insert(listings)
+            .values({
+              ...row,
+              nmfcCode,
+              freightClass,
+              ...sellingRuleFields,
+              ...markdownFields,
+              sellerId: ctx.user.id,
+              status: "draft",
+              originalTotalSqFt: row.totalSqFt,
+              originalAskPricePerSqFt: row.askPricePerSqFt,
+              locationLat,
+              locationLng,
+              allowOffers: true,
+              pricingRulesVersion: PRICING_RULES_VERSION,
+              certifications: [],
+              ...trustFields,
               expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
             })
             .returning();
@@ -227,7 +479,7 @@ export const listingRouter = createTRPCRouter({
           eq(listings.status, "draft")
         ),
         with: {
-          media: { columns: { id: true }, limit: 1 },
+          media: { columns: { id: true } },
         },
       });
 
@@ -261,10 +513,42 @@ export const listingRouter = createTRPCRouter({
       }
 
       const publishedIds = publishable.map((l) => l.id);
-      await ctx.db
-        .update(listings)
-        .set({ status: "active", updatedAt: new Date() })
-        .where(inArray(listings.id, publishedIds));
+      const confirmedAt = new Date();
+      await ctx.db.transaction(async (tx) => {
+        for (const listing of publishable) {
+          await tx
+            .update(listings)
+            .set({
+              status: "active",
+              updatedAt: confirmedAt,
+              ...deriveListingTrustFields(
+                {
+                  ...listing,
+                  status: "active",
+                  photoCount: listing.media.length,
+                },
+                confirmedAt,
+              ),
+            })
+            .where(eq(listings.id, listing.id));
+        }
+      });
+
+      try {
+        await inngest.send(
+          publishedIds.map((listingId) =>
+            buildListingCreatedEvent({
+              listingId,
+              sellerId: ctx.user.id,
+            }),
+          ),
+        );
+      } catch {
+        console.error("Failed to enqueue bulk listing/created events", {
+          sellerId: ctx.user.id,
+          listingCount: publishedIds.length,
+        });
+      }
 
       return {
         publishedCount: publishable.length,
@@ -278,34 +562,196 @@ export const listingRouter = createTRPCRouter({
     .input(
       z.object({
         id: z.string().uuid(),
-        data: listingFormSchema.partial(),
+        data: listingFormUpdateSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Verify ownership
-      const existing = await ctx.db.query.listings.findFirst({
-        where: and(
-          eq(listings.id, input.id),
-          eq(listings.sellerId, ctx.user.id)
-        ),
+      const {
+        mediaIds,
+        automaticMarkdownStartedAt,
+        automaticMarkdownCurrentStep,
+        automaticMarkdownLastAppliedAt,
+        pricingRulesVersion,
+        ...updateData
+      } = input.data;
+      void automaticMarkdownStartedAt;
+      void automaticMarkdownCurrentStep;
+      void automaticMarkdownLastAppliedAt;
+      void pricingRulesVersion;
+      const now = new Date();
+      const { existing, updated } = await ctx.db.transaction(async (tx) => {
+        // Listing checkout locks this same row before reserving inventory. Keeping
+        // the quantity guard and update under the lock prevents a seller edit
+        // from racing an in-flight reservation.
+        const [lockedListing] = await tx
+          .select()
+          .from(listings)
+          .where(
+            and(
+              eq(listings.id, input.id),
+              eq(listings.sellerId, ctx.user.id),
+            ),
+          )
+          .for("update");
+
+        if (!lockedListing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Listing not found or you do not have permission to edit it",
+          });
+        }
+
+        const quantityChanged =
+          hasOwnKey(updateData, "totalSqFt") &&
+          updateData.totalSqFt !== undefined &&
+          Math.abs(updateData.totalSqFt - lockedListing.totalSqFt) > 0.0001;
+
+        if (quantityChanged) {
+          const [activeReservation] = await tx
+            .select({ id: orders.id })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.listingId, input.id),
+                isNull(orders.inventoryReleasedAt),
+                inArray(orders.status, [
+                  ...UNRELEASED_INVENTORY_ORDER_STATUSES,
+                ]),
+              ),
+            )
+            .limit(1);
+
+          if (activeReservation) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "Inventory quantity cannot be changed while an order is reserving this listing. Cancel or complete the order first.",
+            });
+          }
+        }
+
+        const sellingRuleUpdateTouched =
+          hasOwnKey(updateData, "askPricePerSqFt") ||
+          LISTING_SELLING_RULE_FIELD_KEYS.some((key) =>
+            hasOwnKey(updateData, key),
+          );
+        const taxClassificationChanged =
+          hasOwnKey(updateData, "materialType") &&
+          updateData.materialType !== undefined &&
+          updateData.materialType !== lockedListing.materialType;
+        const invalidateVerifiedTaxCode =
+          taxClassificationChanged &&
+          lockedListing.taxCodeStatus === "verified";
+        const markdownFields = sellingRuleUpdateTouched
+          ? resolveAutomaticMarkdownPersistence({
+              existing: lockedListing,
+              next: {
+                askPricePerSqFt:
+                  updateData.askPricePerSqFt ?? lockedListing.askPricePerSqFt,
+                automaticMarkdownEnabled:
+                  updateData.automaticMarkdownEnabled ??
+                  lockedListing.automaticMarkdownEnabled ??
+                  false,
+                automaticMarkdownFloorPercent:
+                  updateData.automaticMarkdownFloorPercent ??
+                  lockedListing.automaticMarkdownFloorPercent ??
+                  null,
+                automaticMarkdownIntervalDays:
+                  updateData.automaticMarkdownIntervalDays ??
+                  lockedListing.automaticMarkdownIntervalDays ??
+                  null,
+              },
+              now,
+            })
+          : {};
+
+        const [nextListing] = await tx
+          .update(listings)
+          .set({
+            ...updateData,
+            ...markdownFields,
+            ...(sellingRuleUpdateTouched
+              ? { pricingRulesVersion: PRICING_RULES_VERSION }
+              : {}),
+            ...(invalidateVerifiedTaxCode
+              ? {
+                  taxCodeStatus: "pending_review" as const,
+                  taxCodeVerifiedAt: null,
+                  taxCodeVerifiedBy: null,
+                }
+              : {}),
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(listings.id, input.id),
+              eq(listings.sellerId, ctx.user.id),
+            ),
+          )
+          .returning();
+
+        if (!nextListing) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Listing changed while it was being updated. Please retry.",
+          });
+        }
+
+        if (invalidateVerifiedTaxCode) {
+          await appendAuditEvent(tx, {
+            actorType: "user",
+            actorId: ctx.user.id,
+            action: "listing.tax_code_review_required",
+            entityType: "listing",
+            entityId: lockedListing.id,
+            summary:
+              "A seller changed the listing material type; the prior tax-code approval now requires administrative review.",
+            metadata: {
+              previousMaterialType: lockedListing.materialType,
+              nextMaterialType: nextListing.materialType,
+              retainedTaxCode: lockedListing.stripeTaxCode,
+              previousStatus: lockedListing.taxCodeStatus,
+              nextStatus: nextListing.taxCodeStatus,
+            },
+          });
+        }
+
+        return { existing: lockedListing, updated: nextListing };
       });
 
-      if (!existing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Listing not found or you do not have permission to edit it",
-        });
+      // Only claim unassigned uploads created by UploadThing's trusted callback
+      // for this same account. Client-provided media UUIDs are not ownership.
+      if (mediaIds && mediaIds.length > 0) {
+        await ctx.db
+          .update(media)
+          .set({ listingId: input.id })
+          .where(
+            and(
+              inArray(media.id, mediaIds),
+              eq(media.uploaderId, ctx.user.id),
+              isNull(media.listingId),
+              isNull(media.buyerRequestId),
+            ),
+          );
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { mediaIds, ...updateData } = input.data;
+      const [photoCountResult] = await ctx.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(media)
+        .where(eq(media.listingId, input.id));
+      const photoCount = photoCountResult?.count ?? 0;
 
-      const [updated] = await ctx.db
+      const [trustedListing] = await ctx.db
         .update(listings)
-        .set({
-          ...updateData,
-          updatedAt: new Date(),
-        })
+        .set(
+          deriveListingTrustFields(
+            {
+              ...updated,
+              photoCount,
+            },
+            now,
+          ),
+        )
         .where(eq(listings.id, input.id))
         .returning();
 
@@ -338,6 +784,55 @@ export const listingRouter = createTRPCRouter({
         }
       }
 
+      return trustedListing;
+    }),
+
+  reconfirm: sellerProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await ctx.db.query.listings.findFirst({
+        where: and(
+          eq(listings.id, input.id),
+          eq(listings.sellerId, ctx.user.id),
+        ),
+      });
+
+      if (!existing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found or you do not have permission to edit it",
+        });
+      }
+
+      if (existing.status !== "active") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Only active listings can be reconfirmed",
+        });
+      }
+
+      const [photoCountResult] = await ctx.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(media)
+        .where(eq(media.listingId, input.id));
+      const photoCount = photoCountResult?.count ?? 0;
+      const confirmedAt = new Date();
+
+      const [updated] = await ctx.db
+        .update(listings)
+        .set({
+          updatedAt: confirmedAt,
+          ...deriveListingTrustFields(
+            {
+              ...existing,
+              photoCount,
+            },
+            confirmedAt,
+          ),
+        })
+        .where(eq(listings.id, input.id))
+        .returning();
+
       return updated;
     }),
 
@@ -345,48 +840,74 @@ export const listingRouter = createTRPCRouter({
   delete: sellerProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      const existing = await ctx.db.query.listings.findFirst({
-        where: and(
-          eq(listings.id, input.id),
-          eq(listings.sellerId, ctx.user.id)
-        ),
+      return ctx.db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select({ id: listings.id })
+          .from(listings)
+          .where(
+            and(
+              eq(listings.id, input.id),
+              eq(listings.sellerId, ctx.user.id),
+            ),
+          )
+          .for("update");
+
+        if (!existing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Listing not found",
+          });
+        }
+
+        const [activeReservation] = await tx
+          .select({ id: orders.id })
+          .from(orders)
+          .where(
+            and(
+              eq(orders.listingId, input.id),
+              isNull(orders.inventoryReleasedAt),
+              inArray(orders.status, [
+                ...UNRELEASED_INVENTORY_ORDER_STATUSES,
+              ]),
+            ),
+          )
+          .limit(1);
+
+        if (activeReservation) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "A listing cannot be archived while an order is reserving its inventory.",
+          });
+        }
+
+        const [archived] = await tx
+          .update(listings)
+          .set({ status: "archived", updatedAt: new Date() })
+          .where(
+            and(
+              eq(listings.id, input.id),
+              eq(listings.sellerId, ctx.user.id),
+            ),
+          )
+          .returning();
+
+        return archived;
       });
-
-      if (!existing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Listing not found",
-        });
-      }
-
-      const [archived] = await ctx.db
-        .update(listings)
-        .set({ status: "archived", updatedAt: new Date() })
-        .where(eq(listings.id, input.id))
-        .returning();
-
-      return archived;
     }),
 
-  // Get a single listing by ID (public)
-  getById: publicProcedure
+  // Full listing data is only available to its owner (or an admin).
+  getForEdit: sellerProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const listing = await ctx.db.query.listings.findFirst({
-        where: eq(listings.id, input.id),
+        where: and(
+          eq(listings.id, input.id),
+          ctx.user.role === "admin"
+            ? undefined
+            : eq(listings.sellerId, ctx.user.id),
+        ),
         with: {
-          seller: {
-            columns: {
-              id: true,
-              name: true,
-              verified: true,
-              createdAt: true,
-              stripeOnboardingComplete: true,
-              businessCity: true,
-              businessState: true,
-              role: true,
-            },
-          },
           media: {
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
           },
@@ -400,15 +921,35 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
-      const canViewNonActiveListing =
-        !!ctx.user &&
-        (ctx.user.role === "admin" || ctx.user.id === listing.sellerId);
-      if (listing.status !== "active" && !canViewNonActiveListing) {
+      return listing;
+    }),
+
+  // Get a single listing by ID (public)
+  getById: publicProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.id, input.id),
+        columns: publicListingColumns,
+        with: {
+          seller: {
+            columns: publicSellerColumns,
+          },
+          media: {
+            columns: publicMediaColumns,
+            orderBy: (media, { asc }) => [asc(media.sortOrder)],
+          },
+        },
+      });
+
+      if (!listing) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Listing not found",
         });
       }
+
+      assertListingVisibleToViewer(listing, ctx.user);
 
       // Increment view count with Redis deduplication (fire-and-forget, non-fatal)
       (async () => {
@@ -436,7 +977,7 @@ export const listingRouter = createTRPCRouter({
         }
       })();
 
-      return listing;
+      return toPublicListing(listing);
     }),
 
   // Get a single listing by slug (public)
@@ -445,20 +986,13 @@ export const listingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const listing = await ctx.db.query.listings.findFirst({
         where: eq(listings.slug, input.slug),
+        columns: publicListingColumns,
         with: {
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              verified: true,
-              createdAt: true,
-              stripeOnboardingComplete: true,
-              businessCity: true,
-              businessState: true,
-              role: true,
-            },
+            columns: publicSellerColumns,
           },
           media: {
+            columns: publicMediaColumns,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
           },
         },
@@ -471,15 +1005,7 @@ export const listingRouter = createTRPCRouter({
         });
       }
 
-      const canViewNonActiveListing =
-        !!ctx.user &&
-        (ctx.user.role === "admin" || ctx.user.id === listing.sellerId);
-      if (listing.status !== "active" && !canViewNonActiveListing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Listing not found",
-        });
-      }
+      assertListingVisibleToViewer(listing, ctx.user);
 
       // Increment view count with Redis deduplication (fire-and-forget, non-fatal)
       (async () => {
@@ -507,14 +1033,54 @@ export const listingRouter = createTRPCRouter({
         }
       })();
 
-      return listing;
+      return toPublicListing(listing);
+    }),
+
+  getPurchaseConfig: publicProcedure
+    .input(z.object({ listingId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.id, input.listingId),
+        columns: {
+          id: true,
+          sellerId: true,
+          status: true,
+          confirmationDueAt: true,
+          lastConfirmedAt: true,
+          fullLotOnly: true,
+          partialQuantityMarkupPercent: true,
+          allowSampleRequests: true,
+          territoryMode: true,
+          allowedDestinationStates: true,
+        },
+      });
+
+      if (!listing) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      }
+
+      assertListingVisibleToViewer(listing, ctx.user);
+
+      return toSellerPurchaseConfig({
+        canSplitLots: !listing.fullLotOnly,
+        partialQuantityMarkupPercent: listing.partialQuantityMarkupPercent,
+        allowSampleRequests: listing.allowSampleRequests,
+        sellingTerritoryMode: listing.territoryMode,
+        allowedDestinationStates: listing.allowedDestinationStates,
+      });
     }),
 
   // Search and filter listings (public)
   list: publicProcedure
     .input(listingFilterSchema)
     .query(async ({ ctx, input }) => {
-      const conditions = [eq(listings.status, "active")];
+      const publicNow = new Date();
+      const conditions = [publicActiveListingWhere(publicNow, ctx.user)];
+      const directPurchaseUnitPrice = getDirectPurchaseUnitPriceSql();
+      const directPurchaseLotValue = getDirectPurchaseLotValueSql();
 
       // Text search (escape LIKE special characters to prevent wildcard injection)
       if (input.query) {
@@ -578,15 +1144,22 @@ export const listingRouter = createTRPCRouter({
 
       // Price range
       if (input.priceMin !== undefined) {
-        conditions.push(gte(listings.askPricePerSqFt, input.priceMin));
+        conditions.push(gte(directPurchaseUnitPrice, input.priceMin));
       }
       if (input.priceMax !== undefined) {
-        conditions.push(lte(listings.askPricePerSqFt, input.priceMax));
+        conditions.push(lte(directPurchaseUnitPrice, input.priceMax));
       }
 
       // Condition filter
       if (input.condition && input.condition.length > 0) {
         conditions.push(inArray(listings.condition, input.condition));
+      }
+
+      // Certification multi-select (match any selected certification)
+      if (input.certifications && input.certifications.length > 0) {
+        conditions.push(
+          sql`coalesce(${listings.certifications}, '[]'::jsonb) ?| ${input.certifications}`,
+        );
       }
 
       // State filter
@@ -639,23 +1212,19 @@ export const listingRouter = createTRPCRouter({
       let userSort;
       switch (input.sort) {
         case "price_asc":
-          userSort = asc(listings.askPricePerSqFt);
+          userSort = asc(directPurchaseUnitPrice);
           break;
         case "price_desc":
-          userSort = desc(listings.askPricePerSqFt);
+          userSort = desc(directPurchaseUnitPrice);
           break;
         case "date_oldest":
           userSort = asc(listings.createdAt);
           break;
         case "lot_value_desc":
-          userSort = desc(
-            sql`${listings.askPricePerSqFt} * ${listings.totalSqFt}`
-          );
+          userSort = desc(directPurchaseLotValue);
           break;
         case "lot_value_asc":
-          userSort = asc(
-            sql`${listings.askPricePerSqFt} * ${listings.totalSqFt}`
-          );
+          userSort = asc(directPurchaseLotValue);
           break;
         case "popularity":
           userSort = desc(listings.viewsCount);
@@ -688,22 +1257,17 @@ export const listingRouter = createTRPCRouter({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           orderBy: (media: any, { asc }: any) => [asc(media.sortOrder)],
           limit: 1,
+          columns: publicMediaColumns,
         },
         seller: {
-          columns: {
-            id: true as const,
-            name: true as const,
-            verified: true as const,
-            businessCity: true as const,
-            businessState: true as const,
-            role: true as const,
-          },
+          columns: publicSellerColumns,
         },
       };
 
       const [items, countResult] = await Promise.all([
         ctx.db.query.listings.findMany({
           where,
+          columns: publicListingColumns,
           with: withClause,
           orderBy: orderByClause,
           limit: input.limit,
@@ -715,13 +1279,13 @@ export const listingRouter = createTRPCRouter({
           .where(where),
       ]);
 
-      const now = new Date();
+      const promotionNow = new Date();
       const interleaved = items.map((item) => ({
-        ...item,
+        ...toPublicListing(item),
         isPromoted:
           item.promotionTier != null &&
           item.promotionExpiresAt != null &&
-          item.promotionExpiresAt > now,
+          item.promotionExpiresAt > promotionNow,
       }));
 
       const total = countResult[0]?.count ?? 0;
@@ -810,26 +1374,21 @@ export const listingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? 6;
       const items = await ctx.db.query.listings.findMany({
-        where: eq(listings.status, "active"),
+        where: publicActiveListingWhere(new Date(), ctx.user),
+        columns: publicListingColumns,
         with: {
           media: {
+            columns: publicMediaColumns,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
             limit: 1,
           },
           seller: {
-            columns: {
-              id: true,
-              name: true,
-              verified: true,
-              businessCity: true,
-              businessState: true,
-              role: true,
-            },
+            columns: publicSellerColumns,
           },
         },
         orderBy: desc(listings.viewsCount),
         limit,
       });
-      return items;
+      return items.map(toPublicListing);
     }),
 });

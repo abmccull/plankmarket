@@ -46,7 +46,9 @@ describe("MakeOfferModal", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useRouter).mockReturnValue(mockRouter as ReturnType<typeof useRouter>);
+    vi.mocked(useRouter).mockReturnValue(
+      mockRouter as unknown as ReturnType<typeof useRouter>,
+    );
     vi.mocked(trpc.offer.createOffer.useMutation).mockReturnValue({
       mutateAsync: mockMutateAsync,
     } as unknown as ReturnType<typeof trpc.offer.createOffer.useMutation>);
@@ -89,6 +91,17 @@ describe("MakeOfferModal", () => {
     expect(quantityInput).toHaveValue(1000);
   });
 
+  it("locks the offer quantity when the seller requires the full lot", () => {
+    render(<MakeOfferModal {...defaultProps} fullLotOnly />);
+
+    const quantityInput = screen.getByLabelText(/Quantity \(sq ft\)/i);
+    expect(quantityInput).toHaveValue(1000);
+    expect(quantityInput).toHaveAttribute("readonly");
+    expect(
+      screen.getByText(/offer quantity is fixed at 1,000 sq ft/i),
+    ).toBeInTheDocument();
+  });
+
   it("calculates subtotal, buyer fee, and total correctly", async () => {
     const user = userEvent.setup();
     render(<MakeOfferModal {...defaultProps} />);
@@ -107,18 +120,19 @@ describe("MakeOfferModal", () => {
     await waitFor(() => {
       // Subtotal: $3,200
       expect(screen.getByText("$3,200.00")).toBeInTheDocument();
-      // Buyer fee (3%): $96
-      expect(screen.getByText("$96.00")).toBeInTheDocument();
-      // Total: $3,296
-      expect(screen.getByText("$3,296.00")).toBeInTheDocument();
+      // Buyer fee (5%): $160
+      expect(screen.getByText("$160.00")).toBeInTheDocument();
+      // Total: $3,360
+      expect(screen.getByText("$3,360.00")).toBeInTheDocument();
     });
   });
 
-  it("shows warning when quantity is below MOQ", async () => {
+  it("blocks submission when quantity is below MOQ", async () => {
     const user = userEvent.setup();
     render(<MakeOfferModal {...defaultProps} />);
 
     const quantityInput = screen.getByLabelText(/Quantity \(sq ft\)/i);
+    const submitButton = screen.getByRole("button", { name: /Submit Offer/i });
 
     await user.clear(quantityInput);
     await user.type(quantityInput, "400");
@@ -126,10 +140,15 @@ describe("MakeOfferModal", () => {
     await waitFor(() => {
       expect(
         screen.getByText(
-          /Note: This is below the seller's minimum order quantity of 500 sq ft/i
+          /Minimum order is 500 sq ft\. Increase the quantity to submit this offer\./i
         )
       ).toBeInTheDocument();
     });
+
+    expect(submitButton).toBeDisabled();
+
+    await user.click(submitButton);
+    expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
   it("validates required fields", async () => {
@@ -186,7 +205,7 @@ describe("MakeOfferModal", () => {
 
   it("validates quantity constraints", async () => {
     const user = userEvent.setup();
-    render(<MakeOfferModal {...defaultProps} />);
+    render(<MakeOfferModal {...defaultProps} moq={null} />);
 
     const quantityInput = screen.getByLabelText(/Quantity \(sq ft\)/i);
     const submitButton = screen.getByRole("button", { name: /Submit Offer/i });

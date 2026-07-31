@@ -42,6 +42,21 @@ export const submitVerificationSchema = z.object({
   businessZip: z.string().min(5, "ZIP code is required").max(10),
 });
 
+/**
+ * Drafts deliberately accept incomplete values so a user can stop mid-step.
+ * The strict submitVerificationSchema remains the final submission gate.
+ */
+export const saveVerificationDraftSchema = z.object({
+  currentStep: z.number().int().min(1).max(3),
+  businessWebsite: z.string().max(2048).optional(),
+  einTaxId: z.string().max(11).optional(),
+  verificationDocUrl: z.string().max(2048).optional(),
+  businessAddress: z.string().max(500).optional(),
+  businessCity: z.string().max(100).optional(),
+  businessState: z.string().max(2).optional(),
+  businessZip: z.string().max(10).optional(),
+});
+
 export const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(1, "Password is required"),
@@ -66,5 +81,8 @@ export const updateProfileSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type SubmitVerificationInput = z.infer<typeof submitVerificationSchema>;
+export type SaveVerificationDraftInput = z.infer<
+  typeof saveVerificationDraftSchema
+>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

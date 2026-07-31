@@ -115,9 +115,6 @@ export const agentRouter = createTRPCRouter({
     .input(
       z.object({
         monitorEnabled: z.boolean(),
-        monitorAutoOffer: z.boolean().default(false),
-        monitorMaxPrice: z.number().positive().optional(),
-        monitorBudgetMonthly: z.number().positive().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -133,17 +130,17 @@ export const agentRouter = createTRPCRouter({
         .values({
           userId: ctx.user.id,
           monitorEnabled: input.monitorEnabled,
-          monitorAutoOffer: input.monitorAutoOffer ?? false,
-          monitorMaxPrice: input.monitorMaxPrice ?? null,
-          monitorBudgetMonthly: input.monitorBudgetMonthly ?? null,
+          monitorAutoOffer: false,
+          monitorMaxPrice: null,
+          monitorBudgetMonthly: null,
         })
         .onConflictDoUpdate({
           target: agentConfigs.userId,
           set: {
             monitorEnabled: input.monitorEnabled,
-            monitorAutoOffer: input.monitorAutoOffer ?? false,
-            monitorMaxPrice: input.monitorMaxPrice ?? null,
-            monitorBudgetMonthly: input.monitorBudgetMonthly ?? null,
+            monitorAutoOffer: false,
+            monitorMaxPrice: null,
+            monitorBudgetMonthly: null,
             updatedAt: new Date(),
           },
         })

@@ -5,11 +5,16 @@ import {
   followups,
 } from "../db/schema/crm";
 import { conversations } from "../db/schema/conversations";
-import { users } from "../db/schema/users";
-import { and, eq, sql, desc, asc, lte } from "drizzle-orm";
+import { orders } from "../db/schema/orders";
+import { and, eq, sql, desc, asc, inArray, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isPro } from "@/lib/pro";
+import {
+  assertSellerBuyerRelationship,
+  requireSellerConversation,
+} from "@/server/security/crm-relationship";
+import { maskUserForOrder } from "@/lib/contact-masking";
 
 const PRO_GATE_MESSAGE = "Buyer CRM tools are a Pro feature. Upgrade to Pro to tag, annotate, and track your buyer relationships.";
 
@@ -43,18 +48,11 @@ export const crmRouter = createTRPCRouter({
         throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
       }
 
-      // Verify buyer exists
-      const buyer = await ctx.db.query.users.findFirst({
-        where: eq(users.id, input.buyerId),
-        columns: { id: true, role: true },
-      });
-
-      if (!buyer || (buyer.role !== "buyer" && buyer.role !== "admin")) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Buyer not found",
-        });
-      }
+      await assertSellerBuyerRelationship(
+        ctx.db,
+        ctx.user.id,
+        input.buyerId,
+      );
 
       // Enforce max tags per pair
       const [{ count }] = await ctx.db
@@ -116,6 +114,12 @@ export const crmRouter = createTRPCRouter({
   getTagsForBuyer: sellerProcedure
     .input(z.object({ buyerId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      await assertSellerBuyerRelationship(
+        ctx.db,
+        ctx.user.id,
+        input.buyerId,
+      );
+
       const tags = await ctx.db.query.sellerBuyerTags.findMany({
         where: and(
           eq(sellerBuyerTags.sellerId, ctx.user.id),
@@ -159,18 +163,11 @@ export const crmRouter = createTRPCRouter({
         throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
       }
 
-      // Verify buyer exists
-      const buyer = await ctx.db.query.users.findFirst({
-        where: eq(users.id, input.buyerId),
-        columns: { id: true },
-      });
-
-      if (!buyer) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Buyer not found",
-        });
-      }
+      await assertSellerBuyerRelationship(
+        ctx.db,
+        ctx.user.id,
+        input.buyerId,
+      );
 
       const [note] = await ctx.db
         .insert(sellerBuyerNotes)
@@ -257,6 +254,12 @@ export const crmRouter = createTRPCRouter({
   getNotesForBuyer: sellerProcedure
     .input(z.object({ buyerId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      await assertSellerBuyerRelationship(
+        ctx.db,
+        ctx.user.id,
+        input.buyerId,
+      );
+
       const notes = await ctx.db.query.sellerBuyerNotes.findMany({
         where: and(
           eq(sellerBuyerNotes.sellerId, ctx.user.id),
@@ -289,13 +292,31 @@ export const crmRouter = createTRPCRouter({
         throw new TRPCError({ code: "FORBIDDEN", message: PRO_GATE_MESSAGE });
       }
 
+      let buyerId = input.buyerId;
+      if (input.conversationId) {
+        const conversation = await requireSellerConversation(
+          ctx.db,
+          ctx.user.id,
+          input.conversationId,
+        );
+        if (buyerId && buyerId !== conversation.buyerId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Buyer does not match the selected conversation",
+          });
+        }
+        buyerId = conversation.buyerId;
+      } else if (buyerId) {
+        await assertSellerBuyerRelationship(ctx.db, ctx.user.id, buyerId);
+      }
+
       const [followup] = await ctx.db
         .insert(followups)
         .values({
           sellerId: ctx.user.id,
           title: input.title,
           dueAt: input.dueAt,
-          buyerId: input.buyerId,
+          buyerId,
           conversationId: input.conversationId,
           status: "pending",
         })
@@ -482,6 +503,9 @@ export const crmRouter = createTRPCRouter({
             id: true,
             name: true,
             businessName: true,
+            role: true,
+            businessCity: true,
+            businessState: true,
           },
         },
       },
@@ -498,6 +522,9 @@ export const crmRouter = createTRPCRouter({
         id: string;
         name: string;
         businessName: string | null;
+        role: string;
+        businessCity: string | null;
+        businessState: string | null;
         conversationCount: number;
         lastInteraction: Date;
       }
@@ -515,6 +542,9 @@ export const crmRouter = createTRPCRouter({
           id: conv.buyerId,
           name: conv.buyer.name,
           businessName: conv.buyer.businessName,
+          role: conv.buyer.role,
+          businessCity: conv.buyer.businessCity,
+          businessState: conv.buyer.businessState,
           conversationCount: 1,
           lastInteraction: conv.lastMessageAt,
         });
@@ -524,7 +554,7 @@ export const crmRouter = createTRPCRouter({
     const buyerIds = Array.from(buyerMap.keys());
 
     // Fetch tags and notes for all buyers in batch
-    const [allTags, allNotes] = await Promise.all([
+    const [allTags, allNotes, deliveredRelationships] = await Promise.all([
       ctx.db.query.sellerBuyerTags.findMany({
         where: and(
           eq(sellerBuyerTags.sellerId, ctx.user.id),
@@ -551,6 +581,16 @@ export const crmRouter = createTRPCRouter({
           )
         )
         .groupBy(sellerBuyerNotes.buyerId),
+      ctx.db
+        .select({ buyerId: orders.buyerId })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.sellerId, ctx.user.id),
+            eq(orders.status, "delivered"),
+            inArray(orders.buyerId, buyerIds),
+          ),
+        ),
     ]);
 
     // Build lookup maps for tags and note counts
@@ -565,6 +605,9 @@ export const crmRouter = createTRPCRouter({
     for (const n of allNotes) {
       noteCountByBuyer.set(n.buyerId, n.count);
     }
+    const deliveredBuyerIds = new Set(
+      deliveredRelationships.map((relationship) => relationship.buyerId),
+    );
 
     // Build CSV rows
     const escapeCsv = (val: string) =>
@@ -576,10 +619,14 @@ export const crmRouter = createTRPCRouter({
     const rows = Array.from(buyerMap.values()).map((buyer) => {
       const tags = (tagsByBuyer.get(buyer.id) ?? []).join("; ");
       const noteCount = noteCountByBuyer.get(buyer.id) ?? 0;
+      const visibleBuyer = maskUserForOrder(
+        buyer,
+        deliveredBuyerIds.has(buyer.id) ? "delivered" : "pending",
+      );
 
       return [
-        escapeCsv(buyer.name),
-        escapeCsv(buyer.businessName ?? ""),
+        escapeCsv(visibleBuyer.name),
+        escapeCsv(visibleBuyer.businessName ?? ""),
         escapeCsv(tags),
         noteCount.toString(),
         buyer.conversationCount.toString(),

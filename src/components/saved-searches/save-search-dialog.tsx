@@ -66,7 +66,8 @@ export function SaveSearchDialog({
         <DialogHeader>
           <DialogTitle>Save Search</DialogTitle>
           <DialogDescription>
-            Save your current filters and get alerts when matching listings go live.
+            Save your current filters and get an immediate alert as matching
+            listings go live.
           </DialogDescription>
         </DialogHeader>
 

@@ -23,10 +23,28 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Loader2, Save } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Save,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
 import { OnboardingTip } from "@/components/ui/onboarding-tip";
+import { US_STATE_CODES } from "@/lib/selling-territory";
+import { Switch } from "@/components/ui/switch";
+import {
+  AutomaticMarkdownPreview,
+  ChoiceCard,
+  getFreightPersistenceValues,
+  getFreightUiMode,
+  SellerCommercialFulfillmentFields,
+  StateBadgeSelector,
+  type FreightUiMode,
+} from "@/components/marketplace/seller-commercial-fields";
 
 // ─── Constants (aligned to validator schema) ──────────────────────────────────
 
@@ -526,6 +544,35 @@ type SellerPrefs = {
   inventorySource: InventorySource[];
   pricingStyle: "fixed" | "negotiable" | "tiered";
   preferredBuyerRadiusMiles: number;
+  partialQuantityMarkupPercent: string;
+  automaticMarkdownEnabled: boolean;
+  automaticMarkdownFloorPercent: string;
+  automaticMarkdownIntervalDays: string;
+  defaultAllowOffers: boolean;
+  allowSampleRequests: boolean;
+  sellingTerritoryMode: "unrestricted" | "allowed_states";
+  allowedDestinationStates: (typeof US_STATE_CODES)[number][];
+  freightMode: FreightUiMode;
+  sellerFreightStates: (typeof US_STATE_CODES)[number][];
+  freightDropCharge: string;
+  taxRegisteredStates: (typeof US_STATE_CODES)[number][];
+};
+
+type ActiveListingApplySummary = {
+  activeListingCount: number;
+  eligibleListingCount: number;
+  changedListingCount: number;
+  unchangedListingCount: number;
+  skippedAcceptedOfferListingCount: number;
+  skippedAcceptedOfferCount: number;
+  warnings: {
+    pendingOrCounteredOfferCount: number;
+    listingsWithPendingOrCounteredOffers: number;
+    activeOrderCount: number;
+    listingsWithActiveOrders: number;
+    openSampleRequestCount: number;
+    listingsWithOpenSampleRequests: number;
+  };
 };
 
 const defaultSellerPrefs: SellerPrefs = {
@@ -540,7 +587,57 @@ const defaultSellerPrefs: SellerPrefs = {
   inventorySource: [],
   pricingStyle: "fixed",
   preferredBuyerRadiusMiles: 250,
+  partialQuantityMarkupPercent: "",
+  automaticMarkdownEnabled: false,
+  automaticMarkdownFloorPercent: "",
+  automaticMarkdownIntervalDays: "",
+  defaultAllowOffers: true,
+  allowSampleRequests: false,
+  sellingTerritoryMode: "unrestricted",
+  allowedDestinationStates: [],
+  freightMode: "buyer_pays",
+  sellerFreightStates: [],
+  freightDropCharge: "",
+  taxRegisteredStates: [],
 };
+
+function numberOrNull(value: string): number | null {
+  return value.trim().length > 0 ? Number(value) : null;
+}
+
+function getSellerCommercialDefaultsInput(prefs: SellerPrefs) {
+  const freightDefaults = getFreightPersistenceValues(
+    prefs.freightMode,
+    prefs.sellerFreightStates,
+  );
+
+  return {
+    canSplitLots: prefs.canSplitLots,
+    partialQuantityMarkupPercent: prefs.canSplitLots
+      ? numberOrNull(prefs.partialQuantityMarkupPercent)
+      : null,
+    automaticMarkdownEnabled: prefs.automaticMarkdownEnabled,
+    automaticMarkdownFloorPercent: prefs.automaticMarkdownEnabled
+      ? numberOrNull(prefs.automaticMarkdownFloorPercent)
+      : null,
+    automaticMarkdownIntervalDays: prefs.automaticMarkdownEnabled
+      ? numberOrNull(prefs.automaticMarkdownIntervalDays)
+      : null,
+    defaultAllowOffers: prefs.defaultAllowOffers,
+    allowSampleRequests: prefs.allowSampleRequests,
+    sellingTerritoryMode: prefs.sellingTerritoryMode,
+    allowedDestinationStates:
+      prefs.sellingTerritoryMode === "allowed_states"
+        ? prefs.allowedDestinationStates
+        : [],
+    freightPaymentMode: freightDefaults.freightPaymentMode,
+    sellerFreightStates: freightDefaults.sellerFreightStates,
+    freightDropCharge:
+      prefs.freightMode !== "buyer_pays"
+        ? numberOrNull(prefs.freightDropCharge)
+        : null,
+  };
+}
 
 function SellerStep1({
   prefs,
@@ -700,15 +797,26 @@ function SellerStep3({
   prefs: SellerPrefs;
   setPrefs: React.Dispatch<React.SetStateAction<SellerPrefs>>;
 }) {
+  const sampleListPrice = 1.99;
+  const partialMarkupPercent = Number(prefs.partialQuantityMarkupPercent || 0);
+  const partialPreviewPrice =
+    Math.round(sampleListPrice * (1 + partialMarkupPercent / 100) * 100) / 100;
+  const markdownFloorPercent = Number(
+    prefs.automaticMarkdownFloorPercent || 0,
+  );
+  const markdownIntervalDays = Number(
+    prefs.automaticMarkdownIntervalDays || 0,
+  );
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pricing</CardTitle>
+        <CardTitle>Pricing &amp; Negotiation</CardTitle>
         <CardDescription>
-          How do you prefer to price your inventory?
+          Set the default pricing behavior new listings should inherit.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         <FormField id="seller-pricing" label="Pricing Style">
           <Select
             value={prefs.pricingStyle}
@@ -752,12 +860,510 @@ function SellerStep3({
             aria-label={`Preferred buyer radius: ${prefs.preferredBuyerRadiusMiles} miles`}
           />
         </FormField>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4">
+            <div className="space-y-1">
+              <Label htmlFor="seller-default-offers" className="text-sm font-medium">
+                Allow offers by default
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Buyers can submit an offer and each side can accept, decline, or
+                counter when it is their turn.
+              </p>
+            </div>
+            <Switch
+              id="seller-default-offers"
+              checked={prefs.defaultAllowOffers}
+              onCheckedChange={(checked) =>
+                setPrefs((p) => ({
+                  ...p,
+                  defaultAllowOffers: checked,
+                }))
+              }
+            />
+          </div>
+
+          <div className="rounded-2xl border bg-card p-4">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="font-medium">Default lot strategy</div>
+                <p className="text-sm text-muted-foreground">
+                  Choose whether new listings are full-lot only or support
+                  partial purchases with a higher per-foot price.
+                </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <ChoiceCard
+                  title="Full lot only"
+                  description="Buyers must purchase the entire listing quantity."
+                  selected={!prefs.canSplitLots}
+                  onClick={() =>
+                    setPrefs((p) => ({
+                      ...p,
+                      canSplitLots: false,
+                      partialQuantityMarkupPercent: "",
+                    }))
+                  }
+                />
+                <ChoiceCard
+                  title="Allow partial quantities"
+                  description="Let buyers take less than the full lot and add a markup for those smaller orders."
+                  selected={prefs.canSplitLots}
+                  onClick={() =>
+                    setPrefs((p) => ({
+                      ...p,
+                      canSplitLots: true,
+                    }))
+                  }
+                />
+              </div>
+
+              {prefs.canSplitLots ? (
+                <div className="space-y-2">
+                  <Label htmlFor="seller-partial-markup">
+                    Partial-order markup (%)
+                  </Label>
+                  <Input
+                    id="seller-partial-markup"
+                    type="number"
+                    min={0}
+                    max={500}
+                    step={1}
+                    value={prefs.partialQuantityMarkupPercent}
+                    onChange={(e) =>
+                      setPrefs((p) => ({
+                        ...p,
+                        partialQuantityMarkupPercent: e.target.value,
+                      }))
+                    }
+                    placeholder="e.g. 20"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    At ${sampleListPrice.toFixed(2)}/sq ft, a{" "}
+                    {partialMarkupPercent || 0}% markup prices partial orders at{" "}
+                    ${partialPreviewPrice.toFixed(2)}/sq ft.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  New listings will require the full lot unless you override the
+                  setting on that listing.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <Label
+                  htmlFor="seller-automatic-markdown"
+                  className="text-sm font-medium"
+                >
+                  Automatic markdown
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Step inventory down in four equal intervals until it reaches
+                  your floor.
+                </p>
+              </div>
+              <Switch
+                id="seller-automatic-markdown"
+                checked={prefs.automaticMarkdownEnabled}
+                onCheckedChange={(checked) =>
+                  setPrefs((p) => ({
+                    ...p,
+                    automaticMarkdownEnabled: checked,
+                  }))
+                }
+              />
+            </div>
+
+            {prefs.automaticMarkdownEnabled ? (
+              <div className="mt-4 space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    id="seller-markdown-floor"
+                    label="Lowest allowed percent of original ask"
+                  >
+                    <Input
+                      id="seller-markdown-floor"
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={prefs.automaticMarkdownFloorPercent}
+                      onChange={(e) =>
+                        setPrefs((p) => ({
+                          ...p,
+                          automaticMarkdownFloorPercent: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. 60"
+                    />
+                  </FormField>
+                  <FormField
+                    id="seller-markdown-interval"
+                    label="Days between markdown steps"
+                  >
+                    <Input
+                      id="seller-markdown-interval"
+                      type="number"
+                      min={1}
+                      max={365}
+                      step={1}
+                      value={prefs.automaticMarkdownIntervalDays}
+                      onChange={(e) =>
+                        setPrefs((p) => ({
+                          ...p,
+                          automaticMarkdownIntervalDays: e.target.value,
+                        }))
+                      }
+                      placeholder="e.g. 21"
+                    />
+                  </FormField>
+                </div>
+
+                {markdownFloorPercent > 0 && markdownIntervalDays > 0 ? (
+                  <AutomaticMarkdownPreview
+                    baseUnitPrice={sampleListPrice}
+                    floorPercent={markdownFloorPercent}
+                    intervalDays={markdownIntervalDays}
+                    description="Preview shown from a $1.99 ask. Each listing uses its own price and starts the schedule when it goes live."
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Add both values to preview the full markdown ladder.
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SellerStep4({
+  prefs,
+  setPrefs,
+}: {
+  prefs: SellerPrefs;
+  setPrefs: React.Dispatch<React.SetStateAction<SellerPrefs>>;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Freight, Territory &amp; Compliance</CardTitle>
+        <CardDescription>
+          Set the operating defaults for freight coverage, territory
+          restrictions, and account-level tax records.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <SellerCommercialFulfillmentFields
+          territoryChoiceGridClassName="md:grid-cols-2"
+          freightChoiceGridClassName="md:grid-cols-3"
+          copy={{
+            sampleLabel: "Allow sample requests by default",
+            sampleDescription:
+              "This only enables the request workflow. It does not promise free samples or platform-managed relay shipping.",
+            territoryDescription:
+              "Restricted listings are discoverable only to buyers whose verified business state is allowed.",
+            territoryNationwideDescription:
+              "Allow any eligible buyer to engage the listing.",
+            territoryRestrictedDescription:
+              "Limit visibility and purchasing to your approved territory.",
+            freightHeading: "Freight coverage default",
+            freightDescription:
+              "Choose who funds freight on new listings. A seller contribution is deducted from the order's net payout, and an optional buyer drop charge lets the buyer cover part of the quote.",
+            freightBuyerPaysDescription:
+              "Default to buyer-funded shipping quotes.",
+            freightStateHelperText:
+              "Outside these states, new listings fall back to buyer-paid freight.",
+            freightDropChargeLabel:
+              "Default buyer drop charge (optional)",
+            freightDropChargeDescription:
+              "The buyer pays this amount toward freight. The remaining freight quote becomes the seller shipping contribution.",
+          }}
+          sampleRequests={{
+            id: "seller-samples",
+            enabled: prefs.allowSampleRequests,
+            onChange: (checked) =>
+              setPrefs((p) => ({
+                ...p,
+                allowSampleRequests: checked,
+              })),
+          }}
+          territory={{
+            mode: prefs.sellingTerritoryMode,
+            selectedStates: prefs.allowedDestinationStates,
+            onChange: ({ mode, selectedStates }) =>
+              setPrefs((p) => ({
+                ...p,
+                sellingTerritoryMode: mode,
+                allowedDestinationStates: selectedStates,
+              })),
+          }}
+          freight={{
+            mode: prefs.freightMode,
+            selectedStates: prefs.sellerFreightStates,
+            onChange: ({ mode, selectedStates, shouldClearDropCharge }) =>
+              setPrefs((p) => ({
+                ...p,
+                freightMode: mode,
+                sellerFreightStates: selectedStates,
+                freightDropCharge: shouldClearDropCharge
+                  ? ""
+                  : p.freightDropCharge,
+              })),
+            dropChargeInputId: "seller-freight-drop-charge",
+            dropChargeValue: prefs.freightDropCharge,
+            onDropChargeChange: (value) =>
+              setPrefs((p) => ({
+                ...p,
+                freightDropCharge: value,
+              })),
+          }}
+        />
+
+        <div className="rounded-2xl border bg-card p-4">
+          <StateBadgeSelector
+            label="Registered sales-tax states"
+            selected={prefs.taxRegisteredStates}
+            onChange={(states) =>
+              setPrefs((p) => ({
+                ...p,
+                taxRegisteredStates: states,
+              }))
+            }
+            helperText="Stored for seller operations. Automatic tax calculation and remittance are not yet live in checkout."
+          />
+        </div>
       </CardContent>
     </Card>
   );
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
+
+function ActiveListingApplyPanel({
+  enabled,
+  onEnabledChange,
+  confirmed,
+  onConfirmedChange,
+  preview,
+  isPreviewLoading,
+  previewError,
+}: {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  confirmed: boolean;
+  onConfirmedChange: (confirmed: boolean) => void;
+  preview: ActiveListingApplySummary | undefined;
+  isPreviewLoading: boolean;
+  previewError: string | null;
+}) {
+  const warningCount = preview
+    ? preview.warnings.pendingOrCounteredOfferCount +
+      preview.warnings.activeOrderCount +
+      preview.warnings.openSampleRequestCount
+    : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Apply these defaults</CardTitle>
+        <CardDescription>
+          Saving normally changes defaults for future listings only.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label
+          htmlFor="apply-defaults-to-active-listings"
+          className="flex cursor-pointer items-start gap-3 rounded-2xl border p-4"
+        >
+          <input
+            id="apply-defaults-to-active-listings"
+            type="checkbox"
+            checked={enabled}
+            onChange={(event) => onEnabledChange(event.target.checked)}
+            className="mt-1 h-4 w-4 accent-primary"
+          />
+          <span className="space-y-1">
+            <span className="block font-medium">
+              Also apply to my active listings
+            </span>
+            <span className="block text-sm text-muted-foreground">
+              Off by default. Prices, quantities, listing status, and existing
+              order terms will not be changed.
+            </span>
+          </span>
+        </label>
+
+        {enabled ? (
+          <div
+            className="space-y-4 rounded-2xl border bg-muted/30 p-4"
+            aria-live="polite"
+          >
+            {isPreviewLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2
+                  className="h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
+                Checking active listings and open activity…
+              </div>
+            ) : previewError ? (
+              <div
+                className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {previewError}
+              </div>
+            ) : preview ? (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border bg-background p-3">
+                    <div className="text-2xl font-semibold">
+                      {preview.changedListingCount}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      active listing
+                      {preview.changedListingCount === 1 ? "" : "s"} will
+                      update
+                    </div>
+                  </div>
+                  <div className="rounded-xl border bg-background p-3">
+                    <div className="text-2xl font-semibold">
+                      {preview.unchangedListingCount}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      already match these defaults
+                    </div>
+                  </div>
+                </div>
+
+                {preview.skippedAcceptedOfferListingCount > 0 ? (
+                  <div className="flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+                      aria-hidden="true"
+                    />
+                    <p>
+                      {preview.skippedAcceptedOfferListingCount} listing
+                      {preview.skippedAcceptedOfferListingCount === 1
+                        ? " is"
+                        : "s are"}{" "}
+                      protected because an accepted offer is awaiting checkout.
+                      Those listings will be skipped.
+                    </p>
+                  </div>
+                ) : null}
+
+                {warningCount > 0 ? (
+                  <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                    <div className="flex items-center gap-2 font-medium">
+                      <AlertTriangle
+                        className="h-4 w-4 text-amber-700"
+                        aria-hidden="true"
+                      />
+                      Review open activity
+                    </div>
+                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                      {preview.warnings.pendingOrCounteredOfferCount > 0 ? (
+                        <li>
+                          {preview.warnings.pendingOrCounteredOfferCount} pending
+                          or countered offer
+                          {preview.warnings.pendingOrCounteredOfferCount === 1
+                            ? ""
+                            : "s"}{" "}
+                          across{" "}
+                          {
+                            preview.warnings
+                              .listingsWithPendingOrCounteredOffers
+                          }{" "}
+                          listing
+                          {preview.warnings
+                            .listingsWithPendingOrCounteredOffers === 1
+                            ? ""
+                            : "s"}
+                        </li>
+                      ) : null}
+                      {preview.warnings.activeOrderCount > 0 ? (
+                        <li>
+                          {preview.warnings.activeOrderCount} active order
+                          {preview.warnings.activeOrderCount === 1 ? "" : "s"}{" "}
+                          across {preview.warnings.listingsWithActiveOrders}{" "}
+                          listing
+                          {preview.warnings.listingsWithActiveOrders === 1
+                            ? ""
+                            : "s"}
+                        </li>
+                      ) : null}
+                      {preview.warnings.openSampleRequestCount > 0 ? (
+                        <li>
+                          {preview.warnings.openSampleRequestCount} open sample
+                          request
+                          {preview.warnings.openSampleRequestCount === 1
+                            ? ""
+                            : "s"}{" "}
+                          across{" "}
+                          {preview.warnings.listingsWithOpenSampleRequests}{" "}
+                          listing
+                          {preview.warnings.listingsWithOpenSampleRequests === 1
+                            ? ""
+                            : "s"}
+                        </li>
+                      ) : null}
+                    </ul>
+                    <p className="text-xs text-muted-foreground">
+                      These are warnings, not blockers. Existing offer and order
+                      snapshots remain unchanged.
+                    </p>
+                  </div>
+                ) : null}
+
+                {preview.changedListingCount > 0 ? (
+                  <label
+                    htmlFor="confirm-active-listing-defaults"
+                    className="flex cursor-pointer items-start gap-3 rounded-xl border bg-background p-3"
+                  >
+                    <input
+                      id="confirm-active-listing-defaults"
+                      type="checkbox"
+                      checked={confirmed}
+                      onChange={(event) =>
+                        onConfirmedChange(event.target.checked)
+                      }
+                      className="mt-1 h-4 w-4 accent-primary"
+                    />
+                    <span className="text-sm">
+                      I reviewed this preview and want to replace the pricing
+                      and selling rules on {preview.changedListingCount} active
+                      listing
+                      {preview.changedListingCount === 1 ? "" : "s"}.
+                    </span>
+                  </label>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No eligible active listing rules need to change. Your saved
+                    defaults will still apply to future listings.
+                  </p>
+                )}
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function PreferencesPage() {
   const { user } = useAuthStore();
@@ -769,6 +1375,11 @@ export default function PreferencesPage() {
   const [sellerPrefs, setSellerPrefs] =
     useState<SellerPrefs>(defaultSellerPrefs);
   const [isSaving, setIsSaving] = useState(false);
+  const [applyToActiveListings, setApplyToActiveListings] = useState(false);
+  const [applyToActiveListingsConfirmed, setApplyToActiveListingsConfirmed] =
+    useState(false);
+  const [lastApplySummary, setLastApplySummary] =
+    useState<ActiveListingApplySummary | null>(null);
 
   // Load existing prefs and hydrate form state
   const { data: existingPrefs, isLoading } = trpc.preferences.get.useQuery();
@@ -826,24 +1437,114 @@ export default function PreferencesPage() {
           "fixed",
         preferredBuyerRadiusMiles:
           existingPrefs.preferredBuyerRadiusMiles ?? 250,
+        partialQuantityMarkupPercent:
+          existingPrefs.partialQuantityMarkupPercent?.toString() ?? "",
+        automaticMarkdownEnabled:
+          existingPrefs.automaticMarkdownEnabled ?? false,
+        automaticMarkdownFloorPercent:
+          existingPrefs.automaticMarkdownFloorPercent?.toString() ?? "",
+        automaticMarkdownIntervalDays:
+          existingPrefs.automaticMarkdownIntervalDays?.toString() ?? "",
+        defaultAllowOffers: existingPrefs.defaultAllowOffers ?? true,
+        allowSampleRequests: existingPrefs.allowSampleRequests ?? false,
+        sellingTerritoryMode:
+          (existingPrefs.sellingTerritoryMode as
+            SellerPrefs["sellingTerritoryMode"]) ?? "unrestricted",
+        allowedDestinationStates:
+          (existingPrefs.allowedDestinationStates as SellerPrefs["allowedDestinationStates"]) ??
+          [],
+        freightMode: getFreightUiMode({
+          freightPaymentMode:
+            (existingPrefs.freightPaymentMode as "buyer_pays" | "seller_pays" | null) ??
+            null,
+          sellerFreightStates:
+            (existingPrefs.sellerFreightStates as SellerPrefs["sellerFreightStates"]) ??
+            [],
+        }),
+        sellerFreightStates:
+          (existingPrefs.sellerFreightStates as SellerPrefs["sellerFreightStates"]) ??
+          [],
+        freightDropCharge: existingPrefs.freightDropCharge?.toString() ?? "",
+        taxRegisteredStates:
+          (existingPrefs.taxRegisteredStates as SellerPrefs["taxRegisteredStates"]) ??
+          [],
       }));
     }
   }, [existingPrefs, role]);
 
   const utils = trpc.useUtils();
   const upsertMutation = trpc.preferences.upsert.useMutation();
+  const sellerCommercialDefaults =
+    getSellerCommercialDefaultsInput(sellerPrefs);
+  const sellerCommercialDefaultsKey = JSON.stringify(
+    sellerCommercialDefaults,
+  );
+  const activeListingPreview =
+    trpc.preferences.previewActiveListingDefaultsApply.useQuery(
+      sellerCommercialDefaults,
+      {
+        enabled:
+          role === "seller" &&
+          mode === "dashboard" &&
+          applyToActiveListings,
+        retry: false,
+      },
+    );
+  const applyActiveListingDefaultsMutation =
+    trpc.preferences.applySellerDefaultsToActiveListings.useMutation();
+
+  useEffect(() => {
+    setApplyToActiveListingsConfirmed(false);
+    setLastApplySummary(null);
+  }, [sellerCommercialDefaultsKey]);
 
   const buyerStepLabels = [
     "Location & Shipping",
     "Materials & Specs",
     "Budget & Urgency",
   ];
-  const sellerStepLabels = ["Location & Shipping", "Inventory", "Pricing"];
+  const sellerStepLabels = [
+    "Location & Shipping",
+    "Inventory",
+    "Pricing & Negotiation",
+    "Territory, Samples & Tax",
+  ];
   const stepLabels = role === "buyer" ? buyerStepLabels : sellerStepLabels;
   const totalSteps = stepLabels.length;
 
   const handleSave = async () => {
+    const shouldApplyToActiveListings =
+      role === "seller" &&
+      mode === "dashboard" &&
+      applyToActiveListings;
+    if (shouldApplyToActiveListings) {
+      if (
+        activeListingPreview.isLoading ||
+        activeListingPreview.isFetching
+      ) {
+        toast.error("Wait for the active-listing preview to finish.");
+        return;
+      }
+      if (!activeListingPreview.data || activeListingPreview.error) {
+        toast.error(
+          activeListingPreview.error?.message ??
+            "Review the active-listing preview before saving.",
+        );
+        return;
+      }
+      if (
+        activeListingPreview.data.changedListingCount > 0 &&
+        !applyToActiveListingsConfirmed
+      ) {
+        toast.error(
+          "Confirm the active-listing changes shown in the preview.",
+        );
+        return;
+      }
+    }
+
     setIsSaving(true);
+    let preferencesSaved = false;
     try {
       if (role === "buyer") {
         await upsertMutation.mutateAsync({
@@ -889,40 +1590,94 @@ export default function PreferencesPage() {
           urgency: buyerPrefs.urgency,
         });
       } else {
+        const freightDefaults = getFreightPersistenceValues(
+          sellerPrefs.freightMode,
+          sellerPrefs.sellerFreightStates,
+        );
         await upsertMutation.mutateAsync({
           role: "seller",
           originZip: sellerPrefs.originZip || undefined,
-          shipCapable: sellerPrefs.shipCapable || undefined,
+          shipCapable: sellerPrefs.shipCapable,
           leadTimeDaysMin: sellerPrefs.leadTimeDaysMin
             ? Number(sellerPrefs.leadTimeDaysMin)
             : undefined,
           leadTimeDaysMax: sellerPrefs.leadTimeDaysMax
             ? Number(sellerPrefs.leadTimeDaysMax)
             : undefined,
-          palletizationCapable:
-            sellerPrefs.palletizationCapable || undefined,
+          palletizationCapable: sellerPrefs.palletizationCapable,
           typicalMaterialTypes: sellerPrefs.typicalMaterialTypes.length
             ? sellerPrefs.typicalMaterialTypes
             : undefined,
           avgLotSqFt: sellerPrefs.avgLotSqFt
             ? Number(sellerPrefs.avgLotSqFt)
             : undefined,
-          canSplitLots: sellerPrefs.canSplitLots || undefined,
+          canSplitLots: sellerPrefs.canSplitLots,
           inventorySource: sellerPrefs.inventorySource.length
             ? sellerPrefs.inventorySource
             : undefined,
           pricingStyle: sellerPrefs.pricingStyle,
-          preferredBuyerRadiusMiles:
-            sellerPrefs.preferredBuyerRadiusMiles,
+          preferredBuyerRadiusMiles: sellerPrefs.preferredBuyerRadiusMiles,
+          partialQuantityMarkupPercent:
+            sellerCommercialDefaults.partialQuantityMarkupPercent,
+          automaticMarkdownEnabled: sellerPrefs.automaticMarkdownEnabled,
+          automaticMarkdownFloorPercent:
+            sellerCommercialDefaults.automaticMarkdownFloorPercent,
+          automaticMarkdownIntervalDays:
+            sellerCommercialDefaults.automaticMarkdownIntervalDays,
+          defaultAllowOffers: sellerPrefs.defaultAllowOffers,
+          allowSampleRequests: sellerPrefs.allowSampleRequests,
+          sellingTerritoryMode: sellerPrefs.sellingTerritoryMode,
+          allowedDestinationStates:
+            sellerPrefs.allowedDestinationStates.length > 0
+              ? sellerPrefs.allowedDestinationStates
+              : [],
+          freightPaymentMode: freightDefaults.freightPaymentMode,
+          sellerFreightStates: freightDefaults.sellerFreightStates,
+          freightDropCharge: sellerCommercialDefaults.freightDropCharge,
+          taxRegisteredStates:
+            sellerPrefs.taxRegisteredStates.length > 0
+              ? sellerPrefs.taxRegisteredStates
+              : [],
         });
       }
+      preferencesSaved = true;
+
+      let applySummary: ActiveListingApplySummary | null = null;
+      if (shouldApplyToActiveListings) {
+        applySummary =
+          await applyActiveListingDefaultsMutation.mutateAsync({
+            defaults: sellerCommercialDefaults,
+            confirmed: true,
+          });
+        setLastApplySummary(applySummary);
+        setApplyToActiveListings(false);
+        setApplyToActiveListingsConfirmed(false);
+        await utils.listing.invalidate();
+      }
+
       // Invalidate so the query refetches on next visit
-      utils.preferences.get.invalidate();
-      utils.auth.getOnboardingProgress.invalidate();
+      await Promise.all([
+        utils.preferences.get.invalidate(),
+        utils.auth.getOnboardingProgress.invalidate(),
+      ]);
 
       if (mode === "wizard") {
         celebrateMilestone("Preferences Saved!", "You'll now see personalized recommendations based on your preferences.");
         setMode("dashboard");
+      } else if (applySummary) {
+        toast.success(
+          `Defaults saved. ${applySummary.changedListingCount} active listing${
+            applySummary.changedListingCount === 1 ? "" : "s"
+          } updated${
+            applySummary.skippedAcceptedOfferListingCount > 0
+              ? `; ${applySummary.skippedAcceptedOfferListingCount} protected listing${
+                  applySummary.skippedAcceptedOfferListingCount === 1
+                    ? ""
+                    : "s"
+                } skipped`
+              : ""
+          }.`,
+        );
       } else {
         toast.success("Preferences saved");
       }
@@ -931,7 +1686,11 @@ export default function PreferencesPage() {
         err instanceof Error
           ? err.message
           : "Failed to save preferences. Please try again.";
-      toast.error(msg);
+      toast.error(
+        preferencesSaved && shouldApplyToActiveListings
+          ? `Defaults were saved for future listings, but active listings were not changed. ${msg}`
+          : msg,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -950,7 +1709,9 @@ export default function PreferencesPage() {
       return <SellerStep1 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
     if (step === 2)
       return <SellerStep2 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
-    return <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
+    if (step === 3)
+      return <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
+    return <SellerStep4 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
   };
 
   if (isLoading) {
@@ -980,6 +1741,15 @@ export default function PreferencesPage() {
   // ─── Dashboard mode: all cards stacked, single save ──────────────────────────
   if (mode === "dashboard") {
     const updatedAt = (existingPrefs as Record<string, unknown>)?.updatedAt as string | undefined;
+    const activeApplyBlocked =
+      role === "seller" &&
+      applyToActiveListings &&
+      (activeListingPreview.isLoading ||
+        activeListingPreview.isFetching ||
+        !activeListingPreview.data ||
+        Boolean(activeListingPreview.error) ||
+        (activeListingPreview.data.changedListingCount > 0 &&
+          !applyToActiveListingsConfirmed));
 
     return (
       <div className="max-w-2xl mx-auto space-y-6">
@@ -989,7 +1759,7 @@ export default function PreferencesPage() {
             {updatedAt ? (
               <>Last updated {new Date(updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</>
             ) : (
-              <>Edit your {role === "buyer" ? "listing" : "buyer request"} preferences below.</>
+              <>Edit your {role === "buyer" ? "buyer request" : "listing"} preferences below.</>
             )}
           </p>
         </div>
@@ -1005,11 +1775,51 @@ export default function PreferencesPage() {
             <SellerStep1 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
             <SellerStep2 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
             <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+            <SellerStep4 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+            <ActiveListingApplyPanel
+              enabled={applyToActiveListings}
+              onEnabledChange={(enabled) => {
+                setApplyToActiveListings(enabled);
+                setApplyToActiveListingsConfirmed(false);
+                setLastApplySummary(null);
+              }}
+              confirmed={applyToActiveListingsConfirmed}
+              onConfirmedChange={setApplyToActiveListingsConfirmed}
+              preview={activeListingPreview.data}
+              isPreviewLoading={
+                activeListingPreview.isLoading ||
+                activeListingPreview.isFetching
+              }
+              previewError={activeListingPreview.error?.message ?? null}
+            />
+            {lastApplySummary ? (
+              <div
+                className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm"
+                role="status"
+              >
+                <div className="font-medium">Active listings updated</div>
+                <p className="mt-1 text-muted-foreground">
+                  {lastApplySummary.changedListingCount} listing
+                  {lastApplySummary.changedListingCount === 1 ? "" : "s"}{" "}
+                  updated, {lastApplySummary.unchangedListingCount} already
+                  matched, and{" "}
+                  {lastApplySummary.skippedAcceptedOfferListingCount} protected
+                  listing
+                  {lastApplySummary.skippedAcceptedOfferListingCount === 1
+                    ? ""
+                    : "s"}{" "}
+                  skipped.
+                </p>
+              </div>
+            ) : null}
           </div>
         )}
 
         <div className="flex justify-end pt-2">
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving || activeApplyBlocked}
+          >
             {isSaving ? (
               <Loader2
                 className="mr-2 h-4 w-4 animate-spin"
@@ -1018,7 +1828,9 @@ export default function PreferencesPage() {
             ) : (
               <Save className="mr-2 h-4 w-4" aria-hidden="true" />
             )}
-            Save Changes
+            {applyToActiveListings
+              ? "Save & Apply Confirmed Changes"
+              : "Save Changes"}
           </Button>
         </div>
       </div>
