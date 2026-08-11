@@ -18,6 +18,7 @@
     "test:e2e:public": "playwright test e2e/public-marketplace.spec.ts",
     "test:watch": "vitest",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "blog:check": "node scripts/validate-blog-frontmatter.mjs",
     "db:check": "drizzle-kit check && node scripts/check-migrations.mjs",
     "db:check:target": "tsx scripts/check-target-schema.ts",
     "db:audit:marketplace": "tsx scripts/audit-marketplace-data.mjs",

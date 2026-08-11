@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import matter from "gray-matter";
+import { parse as parseYaml } from "yaml";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
@@ -12,6 +12,29 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 const CONTENT_DIR = path.join(process.cwd(), "content/blog");
 const POSTS_DIR = path.join(CONTENT_DIR, "posts");
 const PILLARS_DIR = path.join(CONTENT_DIR, "pillars");
+
+function splitFrontmatter(source: string): {
+  data: Record<string, unknown>;
+  content: string;
+} {
+  const normalized = source.replace(/^\uFEFF/, "");
+  const match =
+    /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(normalized);
+
+  if (!match) {
+    throw new Error("Missing or unterminated YAML frontmatter");
+  }
+
+  const parsed = parseYaml(match[1]);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Blog frontmatter must be a YAML object");
+  }
+
+  return {
+    data: parsed as Record<string, unknown>,
+    content: normalized.slice(match[0].length),
+  };
+}
 
 export type BlogPost = {
   slug: string;
@@ -33,7 +56,7 @@ export type BlogPostMeta = Omit<BlogPost, "content">;
 
 function parseFrontmatter(filePath: string): BlogPost | null {
   const raw = fs.readFileSync(filePath, "utf-8");
-  const { data, content } = matter(raw);
+  const { data, content } = splitFrontmatter(raw);
 
   if (data.status === "draft" && process.env.NODE_ENV === "production") {
     return null;
@@ -42,17 +65,20 @@ function parseFrontmatter(filePath: string): BlogPost | null {
   const wordCount = content.split(/\s+/).filter(Boolean).length;
 
   return {
-    slug: data.slug,
-    title: data.title,
-    description: data.description || "",
-    type: data.type || "post",
-    audience: data.audience || "Both",
-    publishDate: data.publish_date || "",
-    status: data.status || "draft",
-    targetKeyword: data.target_keyword || "",
-    secondaryKeywords: data.secondary_keywords || "",
-    searchIntent: data.search_intent || "",
-    cluster: data.cluster || "uncategorized",
+    slug: String(data.slug ?? ""),
+    title: String(data.title ?? ""),
+    description: String(data.description ?? ""),
+    type: data.type === "pillar" ? "pillar" : "post",
+    audience:
+      data.audience === "Sellers" || data.audience === "Buyers"
+        ? data.audience
+        : "Both",
+    publishDate: String(data.publish_date ?? ""),
+    status: String(data.status ?? "draft"),
+    targetKeyword: String(data.target_keyword ?? ""),
+    secondaryKeywords: String(data.secondary_keywords ?? ""),
+    searchIntent: String(data.search_intent ?? ""),
+    cluster: String(data.cluster ?? "uncategorized"),
     readingTime: Math.ceil(wordCount / 200),
     content,
   };
