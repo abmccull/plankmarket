@@ -27,7 +27,7 @@ const badgeVariants = cva(
         hardwood:
           "border-transparent bg-amber-800/10 text-amber-800 dark:bg-amber-400/10 dark:text-amber-400",
         engineered:
-          "border-transparent bg-orange-700/10 text-orange-700 dark:bg-orange-400/10 dark:text-orange-400",
+          "border-transparent bg-orange-100 text-orange-800 dark:bg-orange-400/10 dark:text-orange-400",
         laminate:
           "border-transparent bg-slate-600/10 text-slate-600 dark:bg-slate-400/10 dark:text-slate-400",
         vinyl:

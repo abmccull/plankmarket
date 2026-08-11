@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
 import { getDashboardPath } from "@/lib/auth/roles";
+import { isHighAssuranceRoute } from "@/lib/auth/auth-assurance";
 import { sanitizeRedirectPath } from "@/lib/auth/safe-redirect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +64,15 @@ function LoginForm() {
       if (session.isAuthenticated && session.user) {
         useAuthStore.getState().setUser(session.user);
         toast.success("Signed in successfully");
-        router.push(redirect ?? getDashboardPath(session.user.role));
+        const destination = redirect ?? getDashboardPath(session.user.role);
+        if (
+          isHighAssuranceRoute(destination) &&
+          session.user.assurance?.currentLevel !== "aal2"
+        ) {
+          router.push(`/mfa?next=${encodeURIComponent(destination)}`);
+        } else {
+          router.push(destination);
+        }
         router.refresh();
       } else {
         toast.error("Account not found. Please register first.");

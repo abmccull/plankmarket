@@ -1,6 +1,7 @@
 import {
   createTRPCRouter,
   publicProcedure,
+  publicReadProcedure,
   sellerProcedure,
   adminProcedure,
   strictSellerProcedure,
@@ -27,10 +28,10 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { stripe } from "@/lib/stripe";
 import {
-  publicListingColumns,
+  publicListingCardColumns,
   publicMediaColumns,
   publicSellerColumns,
-  toPublicListing,
+  toPublicListingCard,
 } from "@/server/security/public-data";
 import { publicActiveListingWhere } from "@/server/security/listing-visibility";
 import {
@@ -39,6 +40,17 @@ import {
   PromotionNotActiveError,
   reconcilePromotionRefundResult,
 } from "@/server/services/promotion-refund-reconciliation";
+import {
+  buildPublicReadCacheKey,
+  readPublicReadCache,
+  writePublicReadCache,
+} from "@/server/services/public-read-cache";
+
+type PublicListingDto = ReturnType<typeof toPublicListingCard>;
+type PublicPromotionSummary = Pick<
+  typeof listingPromotions.$inferSelect,
+  "id" | "tier" | "startsAt" | "expiresAt"
+>;
 
 // Pricing matrix: tier × duration → price in dollars
 const PRICING: Record<string, Record<number, number>> = {
@@ -466,9 +478,17 @@ export const promotionRouter = createTRPCRouter({
     }),
 
   // Get the active promotion for a specific listing (public)
-  getActiveForListing: publicProcedure
+  getActiveForListing: publicReadProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      const anonymousCacheKey = ctx.user
+        ? null
+        : buildPublicReadCacheKey("promotion-active", input);
+      const cached = await readPublicReadCache<PublicPromotionSummary>(
+        anonymousCacheKey,
+      );
+      if (cached) return cached;
+
       const promotion = await ctx.db.query.listingPromotions.findFirst({
         where: and(
           eq(listingPromotions.listingId, input.listingId),
@@ -483,20 +503,32 @@ export const promotionRouter = createTRPCRouter({
         },
       });
 
-      return promotion ?? null;
+      const response = promotion ?? null;
+      if (response) {
+        await writePublicReadCache(anonymousCacheKey, response, 30);
+      }
+      return response;
     }),
 
   // Get featured/premium listings for homepage (public)
-  getFeatured: publicProcedure
+  getFeatured: publicReadProcedure
     .input(z.object({ limit: z.number().int().positive().max(12).default(6) }))
     .query(async ({ ctx, input }) => {
+      const anonymousCacheKey = ctx.user
+        ? null
+        : buildPublicReadCacheKey("promotion-featured", input);
+      const cached = await readPublicReadCache<PublicListingDto[]>(
+        anonymousCacheKey,
+      );
+      if (cached) return cached;
+
       const featuredListings = await ctx.db.query.listings.findMany({
         where: and(
           publicActiveListingWhere(new Date(), ctx.user),
           inArray(listings.promotionTier, ["featured", "premium"]),
           gt(listings.promotionExpiresAt, new Date())
         ),
-        columns: publicListingColumns,
+        columns: publicListingCardColumns,
         with: {
           media: {
             columns: publicMediaColumns,
@@ -516,18 +548,28 @@ export const promotionRouter = createTRPCRouter({
         limit: input.limit,
       });
 
-      return featuredListings.map(toPublicListing);
+      const response = featuredListings.map(toPublicListingCard);
+      await writePublicReadCache(anonymousCacheKey, response, 30);
+      return response;
     }),
 
   // Get premium listings for hero rotation (public)
-  getPremiumHero: publicProcedure.query(async ({ ctx }) => {
+  getPremiumHero: publicReadProcedure.query(async ({ ctx }) => {
+    const anonymousCacheKey = ctx.user
+      ? null
+      : buildPublicReadCacheKey("promotion-premium-hero", null);
+    const cached = await readPublicReadCache<PublicListingDto[]>(
+      anonymousCacheKey,
+    );
+    if (cached) return cached;
+
     const premiumListings = await ctx.db.query.listings.findMany({
       where: and(
         publicActiveListingWhere(new Date(), ctx.user),
         eq(listings.promotionTier, "premium"),
         gt(listings.promotionExpiresAt, new Date())
       ),
-      columns: publicListingColumns,
+      columns: publicListingCardColumns,
       with: {
         media: {
           columns: publicMediaColumns,
@@ -542,7 +584,9 @@ export const promotionRouter = createTRPCRouter({
       limit: 5,
     });
 
-    return premiumListings.map(toPublicListing);
+    const response = premiumListings.map(toPublicListingCard);
+    await writePublicReadCache(anonymousCacheKey, response, 30);
+    return response;
   }),
 
   // Expire stale promotions (admin or cron)

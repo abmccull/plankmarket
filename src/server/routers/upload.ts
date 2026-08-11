@@ -3,11 +3,37 @@ import {
   sellerProcedure,
   verifiedBuyerProcedure,
 } from "../trpc";
-import { disputeEvidence, media, listings } from "../db/schema";
+import { media, listings } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { deleteMediaWithProvider } from "@/server/services/uploadthing-files";
+import {
+  deleteOwnedMediaWithProvider,
+  MediaDeletionError,
+} from "@/server/services/uploadthing-files";
+
+function toMediaDeletionTrpcError(error: unknown): TRPCError {
+  if (error instanceof MediaDeletionError) {
+    if (error.failure === "not_found") {
+      return new TRPCError({ code: "NOT_FOUND", message: error.message });
+    }
+    if (error.failure === "evidence_retained") {
+      return new TRPCError({ code: "BAD_REQUEST", message: error.message });
+    }
+    if (
+      error.failure === "already_processing" ||
+      error.failure === "claim_lost"
+    ) {
+      return new TRPCError({ code: "CONFLICT", message: error.message });
+    }
+  }
+
+  return new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message: "The image could not be deleted. Please try again.",
+    cause: error,
+  });
+}
 
 export const uploadRouter = createTRPCRouter({
   // Upload records are created only by UploadThing's signed server callback.
@@ -62,62 +88,20 @@ export const uploadRouter = createTRPCRouter({
   deleteMedia: sellerProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.transaction(async (tx) => {
-        const [mediaRecord] = await tx
-          .select({ id: media.id, key: media.key })
-          .from(media)
-          .where(
-            and(
-              eq(media.id, input.id),
-              eq(media.uploaderId, ctx.user.id),
-            ),
-          )
-          .for("update");
-        if (!mediaRecord) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Media not found",
-          });
-        }
-
-        const [attachedEvidence] = await tx
-          .select({ id: disputeEvidence.id })
-          .from(disputeEvidence)
-          .where(eq(disputeEvidence.mediaId, input.id))
-          .limit(1);
-        if (attachedEvidence) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Evidence attached to a claim is retained with the transaction record",
-          });
-        }
-
-        try {
-          await deleteMediaWithProvider({
-            key: mediaRecord.key,
-            deleteMetadata: async () => {
-              await tx
-                .delete(media)
-                .where(
-                  and(
-                    eq(media.id, input.id),
-                    eq(media.uploaderId, ctx.user.id),
-                  ),
-                );
-            },
-          });
-        } catch {
-          console.error("Failed to delete seller upload", {
-            mediaId: input.id,
-            userId: ctx.user.id,
-          });
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "The image could not be deleted. Please try again.",
-          });
-        }
-      });
+      try {
+        await deleteOwnedMediaWithProvider({
+          mediaId: input.id,
+          uploaderId: ctx.user.id,
+          database: ctx.db,
+        });
+      } catch (error) {
+        console.error("Failed to delete seller upload", {
+          mediaId: input.id,
+          userId: ctx.user.id,
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
+        throw toMediaDeletionTrpcError(error);
+      }
       return { success: true };
     }),
 
@@ -150,62 +134,20 @@ export const uploadRouter = createTRPCRouter({
   deleteBuyerMedia: verifiedBuyerProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await ctx.db.transaction(async (tx) => {
-        const [mediaRecord] = await tx
-          .select({ id: media.id, key: media.key })
-          .from(media)
-          .where(
-            and(
-              eq(media.id, input.id),
-              eq(media.uploaderId, ctx.user.id),
-            ),
-          )
-          .for("update");
-        if (!mediaRecord) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Media not found",
-          });
-        }
-
-        const [attachedEvidence] = await tx
-          .select({ id: disputeEvidence.id })
-          .from(disputeEvidence)
-          .where(eq(disputeEvidence.mediaId, input.id))
-          .limit(1);
-        if (attachedEvidence) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Evidence attached to a claim is retained with the transaction record",
-          });
-        }
-
-        try {
-          await deleteMediaWithProvider({
-            key: mediaRecord.key,
-            deleteMetadata: async () => {
-              await tx
-                .delete(media)
-                .where(
-                  and(
-                    eq(media.id, input.id),
-                    eq(media.uploaderId, ctx.user.id),
-                  ),
-                );
-            },
-          });
-        } catch {
-          console.error("Failed to delete buyer upload", {
-            mediaId: input.id,
-            userId: ctx.user.id,
-          });
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "The image could not be deleted. Please try again.",
-          });
-        }
-      });
+      try {
+        await deleteOwnedMediaWithProvider({
+          mediaId: input.id,
+          uploaderId: ctx.user.id,
+          database: ctx.db,
+        });
+      } catch (error) {
+        console.error("Failed to delete buyer upload", {
+          mediaId: input.id,
+          userId: ctx.user.id,
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
+        throw toMediaDeletionTrpcError(error);
+      }
       return { success: true };
     }),
 });

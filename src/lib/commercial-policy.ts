@@ -1,3 +1,5 @@
+import releaseContract from "@/lib/release-contract.json";
+
 export const BASIS_POINTS_PER_UNIT = 10_000;
 
 /**
@@ -21,7 +23,7 @@ export interface CommercialPolicySnapshot extends CommercialPolicy {
 
 export const CURRENT_COMMERCIAL_POLICY: Readonly<CommercialPolicy> =
   Object.freeze({
-    version: 1,
+    version: releaseContract.commercialPolicyVersion,
     buyerMarketplaceFeeBps: 500,
     sellerMarketplaceFeeBps: 500,
     paymentProcessingRateBps: 290,

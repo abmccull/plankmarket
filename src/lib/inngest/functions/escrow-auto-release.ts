@@ -39,6 +39,25 @@ interface PayoutReleaseResult {
   sellerName?: string;
 }
 
+/** Soft fails that may clear later (status recovery, dispute close, etc.). */
+const RECOVERABLE_PAYOUT_SOFT_FAIL_REASONS = [
+  "Shipment lacks live Priority1 pickup evidence",
+  "Order is not a paid, provider-shipped order",
+  "Order has an open dispute",
+  "Source charge is refunded or disputed",
+] as const;
+
+export function isRecoverablePayoutSoftFail(reason: string | undefined): boolean {
+  if (!reason) return false;
+  return RECOVERABLE_PAYOUT_SOFT_FAIL_REASONS.some(
+    (candidate) => reason === candidate || reason.startsWith(candidate),
+  );
+}
+
+/** Max soft-retry attempts after the configured delay (12h apart). */
+export const PAYOUT_SOFT_RETRY_ATTEMPTS = 6;
+export const PAYOUT_SOFT_RETRY_INTERVAL = "12h";
+
 export function normalizePayoutDelayDays(value: unknown): number {
   const parsed =
     typeof value === "number"
@@ -77,6 +96,7 @@ export async function releaseSellerPayout(
           stripePaymentIntentId: orders.stripePaymentIntentId,
           stripeTransferId: orders.stripeTransferId,
           selectedQuoteId: orders.selectedQuoteId,
+          shippedAt: orders.shippedAt,
           shipmentQuoteId: shipments.quoteId,
           priority1ShipmentId: shipments.priority1ShipmentId,
           shipmentStatus: shipments.status,
@@ -110,7 +130,17 @@ export async function releaseSellerPayout(
           reason: "Order is not a paid, provider-shipped order",
         };
       }
-      if (!hasPersistedProviderPickupEvidence(order)) {
+      if (
+        !hasPersistedProviderPickupEvidence({
+          selectedQuoteId: order.selectedQuoteId,
+          shipmentQuoteId: order.shipmentQuoteId,
+          priority1ShipmentId: order.priority1ShipmentId,
+          shipmentStatus: order.shipmentStatus,
+          shipmentIsDryRun: order.shipmentIsDryRun,
+          shipmentTrackingEvents: order.shipmentTrackingEvents,
+          orderShippedAt: order.shippedAt,
+        })
+      ) {
         return {
           released: false,
           reason: "Shipment lacks live Priority1 pickup evidence",
@@ -311,15 +341,83 @@ export const escrowAutoRelease = inngest.createFunction(
     );
     await step.sleepUntil("wait-configured-payout-delay", releaseAt);
 
-    const result = await step.run("check-and-release", () =>
-      releaseSellerPayout(eventData.orderId),
-    );
+    let result: PayoutReleaseResult = {
+      released: false,
+      reason: "Payout release not attempted",
+    };
+
+    for (let attempt = 0; attempt < PAYOUT_SOFT_RETRY_ATTEMPTS; attempt++) {
+      result = await step.run(`check-and-release-${attempt}`, () =>
+        releaseSellerPayout(eventData.orderId),
+      );
+
+      if (result.released) {
+        break;
+      }
+
+      const recoverable = isRecoverablePayoutSoftFail(result.reason);
+      await step.run(`record-payout-soft-fail-${attempt}`, () =>
+        openReconciliationCase(db, {
+          caseKey: `payout-soft-defer:${eventData.orderId}`,
+          type: "payout_failure",
+          source: "stripe",
+          severity: recoverable ? "medium" : "high",
+          title: recoverable
+            ? "Seller payout deferred — will retry"
+            : "Seller payout soft-failed",
+          summary:
+            result.reason ??
+            "Payout release returned without transferring funds",
+          orderId: eventData.orderId,
+          details: {
+            workflow: "escrow-auto-release",
+            attempt,
+            recoverable,
+            reason: result.reason ?? null,
+          },
+        }),
+      );
+
+      if (!recoverable || attempt >= PAYOUT_SOFT_RETRY_ATTEMPTS - 1) {
+        // Exhausted soft retries (or permanent soft-fail): mark for admin retry.
+        await step.run(`mark-payout-soft-fail-${attempt}`, async () => {
+          await db
+            .update(orders)
+            .set({
+              transferFailedAt: new Date(),
+              transferError:
+                result.reason ??
+                "Payout release soft-failed after deferred retries",
+              updatedAt: new Date(),
+            })
+            .where(
+              and(eq(orders.id, eventData.orderId), eq(orders.escrowStatus, "held")),
+            );
+        });
+        break;
+      }
+
+      await step.sleep(
+        `wait-payout-soft-retry-${attempt}`,
+        PAYOUT_SOFT_RETRY_INTERVAL,
+      );
+    }
+
     if (result.released) {
       await step.run("resolve-payout-reconciliation", () =>
         resolveReconciliationCaseByKey(db, {
           caseKey: `payout-failure:${eventData.orderId}`,
           resolution:
             "Stripe accepted and the database persisted the validated seller transfer.",
+          details: {
+            orderId: eventData.orderId,
+          },
+        }),
+      );
+      await step.run("resolve-payout-soft-defer", () =>
+        resolveReconciliationCaseByKey(db, {
+          caseKey: `payout-soft-defer:${eventData.orderId}`,
+          resolution: "Payout released after deferred retry.",
           details: {
             orderId: eventData.orderId,
           },

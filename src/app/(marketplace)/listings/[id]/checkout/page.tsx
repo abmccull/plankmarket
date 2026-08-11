@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -71,6 +72,9 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<SavedAddressOption>("new");
   const [authoritativeTax, setAuthoritativeTax] =
     useState<AuthoritativeOrderTax | null>(null);
+  const [liftgateDelivery, setLiftgateDelivery] = useState(false);
+  const [residentialDelivery, setResidentialDelivery] = useState(false);
+  const [appointmentDelivery, setAppointmentDelivery] = useState(false);
 
   const { data: listing, isLoading } = trpc.listing.getById.useQuery({
     id: listingId,
@@ -194,6 +198,14 @@ export default function CheckoutPage() {
   const shippingState = watch("shippingState") || "";
   const shippingZip = watch("shippingZip") || "";
 
+  const handleAccessorialToggle = (
+    setter: Dispatch<SetStateAction<boolean>>,
+    checked: boolean,
+  ) => {
+    setSelectedQuote(null);
+    setter(checked);
+  };
+
   const directPurchasePricing =
     !isOfferCheckout && listing
       ? resolveListingUnitPrice({
@@ -237,6 +249,8 @@ export default function CheckoutPage() {
       return;
     }
 
+    // Always re-select freight after address step so totals match destination.
+    setSelectedQuote(null);
     setCurrentStep("shipping");
   };
 
@@ -380,6 +394,7 @@ export default function CheckoutPage() {
         size="sm"
         onClick={() => {
           if (currentStep === "shipping") {
+            setSelectedQuote(null);
             setCurrentStep("address");
           } else {
             router.back();
@@ -688,12 +703,107 @@ export default function CheckoutPage() {
           {/* Step 2: Shipping Quote Selection */}
           {currentStep === "shipping" && (
             <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Delivery requirements</CardTitle>
+                  <CardDescription>
+                    Include any delivery requirements so your freight quotes stay accurate.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="liftgate-delivery" className="text-sm font-medium">
+                        Liftgate delivery
+                      </Label>
+                      <p
+                        id="liftgate-delivery-description"
+                        className="text-sm text-muted-foreground"
+                      >
+                        Add this when the delivery site needs a powered tail lift to unload.
+                      </p>
+                    </div>
+                    <Switch
+                      id="liftgate-delivery"
+                      checked={liftgateDelivery}
+                      onCheckedChange={(checked) =>
+                        handleAccessorialToggle(setLiftgateDelivery, checked)
+                      }
+                      aria-describedby="liftgate-delivery-description"
+                      aria-label="Liftgate delivery"
+                    />
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="residential-delivery"
+                        className="text-sm font-medium"
+                      >
+                        Residential delivery
+                      </Label>
+                      <p
+                        id="residential-delivery-description"
+                        className="text-sm text-muted-foreground"
+                      >
+                        Use this when freight is going to a home or other non-commercial address.
+                      </p>
+                    </div>
+                    <Switch
+                      id="residential-delivery"
+                      checked={residentialDelivery}
+                      onCheckedChange={(checked) =>
+                        handleAccessorialToggle(
+                          setResidentialDelivery,
+                          checked,
+                        )
+                      }
+                      aria-describedby="residential-delivery-description"
+                      aria-label="Residential delivery"
+                    />
+                  </div>
+
+                  <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="appointment-delivery"
+                        className="text-sm font-medium"
+                      >
+                        Delivery appointment required
+                      </Label>
+                      <p
+                        id="appointment-delivery-description"
+                        className="text-sm text-muted-foreground"
+                      >
+                        Add this when the receiving site requires a scheduled delivery window.
+                      </p>
+                    </div>
+                    <Switch
+                      id="appointment-delivery"
+                      checked={appointmentDelivery}
+                      onCheckedChange={(checked) =>
+                        handleAccessorialToggle(
+                          setAppointmentDelivery,
+                          checked,
+                        )
+                      }
+                      aria-describedby="appointment-delivery-description"
+                      aria-label="Delivery appointment required"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
               <ShippingQuoteSelector
                 listingId={listingId}
                 destinationZip={shippingZip}
                 quantitySqFt={quantitySqFt}
+                liftgateDelivery={liftgateDelivery}
+                residentialDelivery={residentialDelivery}
+                appointmentDelivery={appointmentDelivery}
                 selectedQuote={selectedQuote}
                 onSelectQuote={setSelectedQuote}
+                onClearQuote={() => setSelectedQuote(null)}
               />
 
               <Button
@@ -748,7 +858,7 @@ export default function CheckoutPage() {
                     {listing.title}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {listing.seller?.displayName ?? "Verified Seller"}
+                    {listing.seller?.displayName ?? "Seller information unavailable"}
                   </p>
                 </div>
               </div>

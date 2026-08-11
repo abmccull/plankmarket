@@ -144,7 +144,9 @@ export default function TrackingTimeline({ orderId }: TrackingTimelineProps) {
         </div>
 
         {/* Document Links Section */}
-        {(shipment.bolUrl || shipment.deliveryReceiptUrl) && (
+        {(shipment.bolUrl ||
+          shipment.labelUrl ||
+          shipment.deliveryReceiptUrl) && (
           <>
             <Separator />
             <div className="space-y-2">
@@ -167,6 +169,30 @@ export default function TrackingTimeline({ orderId }: TrackingTimelineProps) {
                         aria-hidden="true"
                       />
                       Bill of Lading
+                      <ExternalLink
+                        className="ml-2 h-3 w-3"
+                        aria-hidden="true"
+                      />
+                    </a>
+                  </Button>
+                )}
+                {shipment.labelUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="justify-start"
+                    asChild
+                  >
+                    <a
+                      href={shipment.labelUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <FileText
+                        className="mr-2 h-4 w-4"
+                        aria-hidden="true"
+                      />
+                      Pallet Labels
                       <ExternalLink
                         className="ml-2 h-3 w-3"
                         aria-hidden="true"

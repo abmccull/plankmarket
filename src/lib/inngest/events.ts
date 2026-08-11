@@ -2,6 +2,13 @@ export const PLANKMARKET_EVENTS = {
   userRegistered: "user/registered",
   verificationSubmitted: "verification/submitted",
   listingCreated: "listing/created",
+  savedSearchInstantPage: "saved-search/instant-page",
+  savedSearchDigestPage: "saved-search/digest-page",
+  shipmentTrackingPage: "shipment/tracking-page",
+  buyerRequestAlertPage: "buyer-request-alert-page",
+  followupReminderPage: "followup/reminder-page",
+  automaticListingMarkdownPage: "listing/automatic-markdown-page",
+  stripeWebhookReceived: "stripe/webhook-received",
   checkoutStarted: "checkout/started",
   orderPaid: "order/paid",
   orderConfirmed: "order/confirmed",
@@ -28,6 +35,49 @@ export type PlankMarketEventSchemas = {
   };
   "listing/created": {
     data: { listingId: string; sellerId: string };
+  };
+  "saved-search/instant-page": {
+    data: {
+      listingId: string;
+      scanStartedAt: string;
+      afterSearchId?: string;
+    };
+  };
+  "saved-search/digest-page": {
+    data: {
+      scanStartedAt: string;
+      page: number;
+    };
+  };
+  "shipment/tracking-page": {
+    data: {
+      scanStartedAt: string;
+      afterUpdatedAt?: string;
+      afterShipmentId?: string;
+    };
+  };
+  "buyer-request-alert-page": {
+    data: {
+      scanStartedAt: string;
+      windowStartAt: string;
+      afterCreatedAt?: string;
+      afterRequestId?: string;
+    };
+  };
+  "followup/reminder-page": {
+    data: {
+      scanStartedAt: string;
+      afterDueAt?: string;
+      afterFollowupId?: string;
+    };
+  };
+  "listing/automatic-markdown-page": {
+    data: {
+      afterListingId?: string;
+    };
+  };
+  "stripe/webhook-received": {
+    data: { eventId: string; eventType: string };
   };
   "checkout/started": {
     data: {

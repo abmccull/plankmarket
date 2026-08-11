@@ -19,15 +19,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export const metadata: Metadata = {
   title: "For Buyers - Source Closeout Flooring",
   description:
-    "Source closeout and surplus flooring from verified businesses with detailed lot data, freight quotes, and a clear 5% buyer fee shown before payment.",
+    `Source closeout and surplus flooring with visible seller verification, detailed lot data, freight quotes, and a clear ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} shown before payment.`,
   openGraph: {
     title: "Source closeout flooring with less guesswork",
     description:
-      "Compare detailed surplus flooring lots, request freight quotes, and transact with verified businesses.",
+      "Compare detailed surplus flooring lots, review seller verification, request freight quotes, and keep protected transaction actions on-platform.",
     url: "https://plankmarket.com/for-buyers",
   },
 };
@@ -69,7 +70,7 @@ const STEPS = [
   {
     title: "Buy or make an offer",
     description:
-      "Use the listed price or negotiate through the platform. The 5% buyer fee and selected freight quote are shown before payment.",
+      `Use the listed price or negotiate through the platform. The ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} and selected freight quote are shown before payment.`,
   },
   {
     title: "Track delivery",
@@ -87,7 +88,7 @@ const FAQS = [
   {
     question: "What does it cost to buy?",
     answer:
-      "PlankMarket charges a 5% buyer fee on the inventory subtotal when a purchase is completed. Freight is quoted separately before payment, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin. Pro is optional and does not replace the transaction fee.",
+      `PlankMarket charges a ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on the inventory subtotal when a purchase is completed. Freight is quoted separately before payment, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin. Pro is optional and does not replace the transaction fee.`,
   },
   {
     question: "How is payment handled?",
@@ -115,8 +116,8 @@ export default function ForBuyersPage() {
                 Source closeout flooring with less guesswork.
               </h1>
               <p className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground lg:mx-0">
-                Compare surplus lots from verified businesses, see the product
-                evidence up front, see the buyer fee before payment, and keep
+                Compare surplus lots with visible seller verification and
+                product evidence, see the buyer fee before payment, and keep
                 offers, payment, and freight in one order trail.
               </p>
               <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
@@ -222,7 +223,7 @@ export default function ForBuyersPage() {
               <Badge className="w-fit" variant="outline">Transparent pricing</Badge>
               <CardTitle className="font-display text-3xl">Buyer total shown before payment</CardTitle>
               <CardDescription className="text-base">
-                A 5% buyer fee applies to the inventory subtotal only when a purchase is completed.
+                A {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} applies to the inventory subtotal only when a purchase is completed.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -231,7 +232,7 @@ export default function ForBuyersPage() {
                   <dt>Inventory subtotal</dt><dd>$10,000</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt>Buyer fee (5%)</dt><dd>$500</dd>
+                  <dt>Buyer fee ({PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeePercent}%)</dt><dd>$500</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t pt-2 font-semibold">
                   <dt>Before freight</dt><dd>$10,500</dd>

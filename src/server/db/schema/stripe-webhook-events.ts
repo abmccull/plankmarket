@@ -5,6 +5,7 @@ import {
   integer,
   text,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 export const stripeWebhookEvents = pgTable(
@@ -16,8 +17,13 @@ export const stripeWebhookEvents = pgTable(
     processedAt: timestamp("processed_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    eventCreatedAt: timestamp("event_created_at", { withTimezone: true }),
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
     status: varchar("status", { length: 20 })
-      .default("processing")
+      .default("pending")
       .notNull(),
     attemptCount: integer("attempt_count").default(0).notNull(),
     processingStartedAt: timestamp("processing_started_at", {
@@ -30,6 +36,11 @@ export const stripeWebhookEvents = pgTable(
     index("stripe_webhook_events_status_started_idx").on(
       table.status,
       table.processingStartedAt,
+    ),
+    index("stripe_webhook_events_pending_received_idx").on(
+      table.status,
+      table.receivedAt,
+      table.id,
     ),
   ],
 );

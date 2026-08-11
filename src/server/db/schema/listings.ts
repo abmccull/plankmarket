@@ -11,6 +11,7 @@ import {
   index,
   pgEnum,
   check,
+  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { ListingTaxCodeStatus } from "@/lib/tax-policy";
@@ -122,6 +123,12 @@ export const listings = pgTable(
     wearLayer: real("wear_layer"),
     brand: varchar("brand", { length: 255 }),
     modelNumber: varchar("model_number", { length: 255 }),
+    searchDocument: text("search_document").generatedAlwaysAs(sql`
+      lower(coalesce("title", ''))
+        || E'\\x1F' || lower(coalesce("description", ''))
+        || E'\\x1F' || lower(coalesce("brand", ''))
+        || E'\\x1F' || lower(coalesce("species", ''))
+    `),
 
     // Lot details
     sqFtPerBox: real("sq_ft_per_box"),
@@ -230,6 +237,7 @@ export const listings = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -237,6 +245,7 @@ export const listings = pgTable(
     soldAt: timestamp("sold_at", { withTimezone: true }),
   },
   (table) => [
+    unique("listings_id_seller_idx").on(table.id, table.sellerId),
     index("listings_seller_id_idx").on(table.sellerId),
     index("listings_status_idx").on(table.status),
     index("listings_material_type_idx").on(table.materialType),
@@ -249,6 +258,33 @@ export const listings = pgTable(
     index("listings_total_sq_ft_idx").on(table.totalSqFt),
     index("listings_location_lat_lng_idx").on(table.locationLat, table.locationLng),
     index("listings_tax_code_status_idx").on(table.taxCodeStatus),
+    index("listings_search_document_trgm_idx").using(
+      "gin",
+      table.searchDocument.op("gin_trgm_ops"),
+    ),
+    index("listings_public_browse_due_created_idx")
+      .on(table.confirmationDueAt, table.createdAt.desc())
+      .where(
+        sql`${table.status} = 'active'
+          AND ${table.lastConfirmedAt} IS NOT NULL
+          AND ${table.confirmationDueAt} IS NOT NULL`,
+      ),
+    index("listings_published_at_idx")
+      .on(table.publishedAt.desc())
+      .where(sql`${table.publishedAt} IS NOT NULL`),
+    index("listings_certifications_gin_idx").using(
+      "gin",
+      sql`coalesce(${table.certifications}, '[]'::jsonb)`,
+    ),
+    index("listings_seller_status_created_idx").on(
+      table.sellerId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+    index("listings_seller_views_idx").on(
+      table.sellerId,
+      table.viewsCount.desc(),
+    ),
     check(
       "listings_tax_code_status_check",
       sql`${table.taxCodeStatus} IN ('unassigned', 'pending_review', 'verified')`,

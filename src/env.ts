@@ -10,6 +10,8 @@ const productionRequired = (schema: z.ZodString) =>
 export const env = createEnv({
   server: {
     DATABASE_URL: z.string().url(),
+    DATABASE_MIGRATION_URL: z.string().url().optional(),
+    DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(10).optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
     STRIPE_SECRET_KEY: z.string().startsWith("sk_"),
     STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_"),
@@ -49,9 +51,13 @@ export const env = createEnv({
       ? z.string().min(1)
       : z.string().min(1).optional(),
     ANTHROPIC_API_KEY: productionRequired(z.string().min(16)),
+    ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
+      .enum(["true", "false"])
+      .default("false"),
     VERIFICATION_WEBHOOK_SECRET: productionRequired(z.string().min(32)),
     VERIFICATION_DOC_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
     PRIORITY1_API_KEY: productionRequired(z.string().min(1)),
+    PRIORITY1_DOCUMENT_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
     PRIORITY1_DRY_RUN: isLiveProduction
       ? z.literal("false").default("false")
       : z.enum(["true", "false"]).default("false"),
@@ -70,6 +76,8 @@ export const env = createEnv({
   },
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
+    DATABASE_MIGRATION_URL: process.env.DATABASE_MIGRATION_URL,
+    DATABASE_POOL_MAX: process.env.DATABASE_POOL_MAX,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
@@ -94,9 +102,13 @@ export const env = createEnv({
     INNGEST_EVENT_KEY: process.env.INNGEST_EVENT_KEY,
     INNGEST_SIGNING_KEY: process.env.INNGEST_SIGNING_KEY,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS:
+      process.env.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS,
     VERIFICATION_WEBHOOK_SECRET: process.env.VERIFICATION_WEBHOOK_SECRET,
     VERIFICATION_DOC_ALLOWED_HOSTS: process.env.VERIFICATION_DOC_ALLOWED_HOSTS,
     PRIORITY1_API_KEY: process.env.PRIORITY1_API_KEY,
+    PRIORITY1_DOCUMENT_ALLOWED_HOSTS:
+      process.env.PRIORITY1_DOCUMENT_ALLOWED_HOSTS,
     PRIORITY1_DRY_RUN: process.env.PRIORITY1_DRY_RUN,
     CRON_SECRET: process.env.CRON_SECRET,
     NODE_ENV: process.env.NODE_ENV,

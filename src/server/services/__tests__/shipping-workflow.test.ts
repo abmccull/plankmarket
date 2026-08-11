@@ -8,13 +8,17 @@ import {
   getSellerFreightFundingIneligibilityReason,
   getOrderDispatchIneligibilityReason,
   getNextBusinessDay,
+  getShippingBookingSnapshotKeyByToken,
+  isQuoteBookable,
   mapPriority1ShipmentStatus,
   mergeTrackingEvents,
   parseNmfcCode,
+  quoteArtifactTtlSeconds,
   requireShippingStateMatchesZip,
   requireShippingBookingSnapshotForOrder,
   resolveListingFreightFunding,
   resolveUsStateForZip,
+  selectTopShippingQuotes,
   shouldEmitProviderPickupEvent,
   type ShippingBookingSnapshot,
 } from "../shipping-workflow";
@@ -33,6 +37,7 @@ function snapshot(
     carrierScac: "DRYF",
     carrierRate: 300,
     shippingPrice: 375,
+    accessorialCodes: [],
     transitDays: 5,
     quoteExpiresAt: "2027-03-11T00:00:00.000Z",
     originLocation: {
@@ -277,11 +282,28 @@ describe("shipping-workflow", () => {
     ).toThrow("incomplete");
   });
 
-  it("formats Priority1 date windows as yyyy-MM-dd", () => {
+  it("formats Priority1 date windows as yyyy-MM-dd in freight business TZ", () => {
+    // Friday noon UTC = Friday in America/Chicago
     const friday = new Date("2026-03-13T12:00:00Z");
     const pickupDate = getNextBusinessDay(friday);
-    expect(pickupDate.getUTCDay()).toBe(1);
+    expect(pickupDate.getUTCDay()).toBe(1); // Monday
     expect(formatPickupDate(pickupDate)).toBe("2026-03-16");
+  });
+
+  it("does not advance the business day for late US evenings on UTC hosts", () => {
+    // Thursday 11pm America/Chicago ≈ Friday 04:00 UTC
+    const thursdayEveningChicago = new Date("2026-03-13T04:00:00Z");
+    const pickupDate = getNextBusinessDay(thursdayEveningChicago);
+    // Next business day from Thursday Chicago is Friday, not Monday
+    expect(formatPickupDate(pickupDate)).toBe("2026-03-13");
+    expect(pickupDate.getUTCDay()).toBe(5);
+  });
+
+  it("skips US freight holidays when computing next business day", () => {
+    // 2026-07-03 is July 4 observed (Friday). From Thu Jul 2, next business is Mon Jul 6.
+    const beforeHoliday = new Date("2026-07-02T17:00:00Z");
+    const pickupDate = getNextBusinessDay(beforeHoliday);
+    expect(formatPickupDate(pickupDate)).toBe("2026-07-06");
   });
 
   it("only emits NMFC fields when item and subcode are paired", () => {
@@ -421,10 +443,31 @@ describe("shipping-workflow", () => {
     );
   });
 
+  it("does not treat status-only provider progress as pickup evidence", () => {
+    const update = mapPriority1ShipmentStatus(
+      "dispatched",
+      providerStatus("Out for Delivery"),
+    );
+
+    expect(update.mappedStatus).toBe("out_for_delivery");
+    expect(update.pickupConfirmed).toBe(false);
+    expect(update.pickupConfirmedAt).toBeNull();
+  });
+
   it("never emits a payout-triggering pickup event in dry-run or terminal orders", () => {
     const statusUpdate = mapPriority1ShipmentStatus(
       "dispatched",
-      providerStatus("In Transit"),
+      providerStatus("In Transit", {
+        trackingStatuses: [
+          {
+            status: "PickedUp",
+            statusReason: "Picked up by carrier",
+            timeStamp: "2026-03-11T12:00:00.000Z",
+            city: "Denver",
+            state: "CO",
+          },
+        ],
+      }),
     );
     expect(
       shouldEmitProviderPickupEvent({
@@ -450,6 +493,17 @@ describe("shipping-workflow", () => {
         dryRun: false,
       }),
     ).toBe(false);
+    expect(
+      shouldEmitProviderPickupEvent({
+        statusUpdate: mapPriority1ShipmentStatus(
+          "dispatched",
+          providerStatus("In Transit"),
+        ),
+        orderStatus: "confirmed",
+        shippedAt: null,
+        dryRun: false,
+      }),
+    ).toBe(false);
   });
 
   it("merges tracking history without dropping or duplicating events", () => {
@@ -469,5 +523,44 @@ describe("shipping-workflow", () => {
       first,
       second,
     ]);
+  });
+
+  it("isQuoteBookable enforces the configured safety buffer", () => {
+    const now = Date.parse("2026-07-31T12:00:00.000Z");
+    // Default dispatch buffer = 5m
+    expect(isQuoteBookable("2026-07-31T12:10:00.000Z", now)).toBe(true);
+    expect(isQuoteBookable("2026-07-31T12:04:00.000Z", now)).toBe(false);
+    expect(isQuoteBookable("2026-07-31T11:59:00.000Z", now)).toBe(false);
+  });
+
+  it("quoteArtifactTtlSeconds caps to offer-bookable residual (minus 20m buffer)", () => {
+    const now = Date.parse("2026-07-31T12:00:00.000Z");
+    // Within offer buffer (20m) → unbookable for mint
+    expect(quoteArtifactTtlSeconds("2026-07-31T12:15:00.000Z", now)).toBeNull();
+    // 60m residual → 40m offer-bookable residual = 2400s → capped 1800
+    expect(quoteArtifactTtlSeconds("2026-07-31T13:00:00.000Z", now)).toBe(1800);
+    // 40m residual → 20m offer-bookable residual = 1200s
+    expect(
+      quoteArtifactTtlSeconds("2026-07-31T12:40:00.000Z", now, 1800),
+    ).toBe(1200);
+  });
+
+  it("scopes booking snapshots by quote token", () => {
+    expect(getShippingBookingSnapshotKeyByToken("abc")).toBe(
+      "shipping-booking-snapshot:token:abc",
+    );
+  });
+
+  it("selectTopShippingQuotes picks cheapest, fastest, and best value", () => {
+    const selected = selectTopShippingQuotes(
+      [
+        { quoteId: 1, shippingPrice: 100, transitDays: 5 },
+        { quoteId: 2, shippingPrice: 200, transitDays: 1 },
+        { quoteId: 3, shippingPrice: 150, transitDays: 3 },
+        { quoteId: 4, shippingPrice: 180, transitDays: 2 },
+      ],
+      3,
+    );
+    expect(selected.map((q) => q.quoteId)).toEqual([1, 3, 2]);
   });
 });

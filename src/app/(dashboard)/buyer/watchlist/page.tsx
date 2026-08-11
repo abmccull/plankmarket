@@ -4,7 +4,12 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Heart, Grid3X3, List } from "lucide-react";
+import {
+  QueryErrorState,
+  StatePanel,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
+import { Heart, Grid3X3, List } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -21,15 +26,19 @@ const statusConfig = {
 export default function BuyerWatchlistPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.watchlist.getMyWatchlist.useQuery({
-    page: 1,
-    limit: 50,
-  });
+  const { data, isLoading, isError, isFetching, refetch } =
+    trpc.watchlist.getMyWatchlist.useQuery({
+      page: 1,
+      limit: 50,
+    });
 
   const removeMutation = trpc.watchlist.remove.useMutation({
     onMutate: async ({ listingId }) => {
       await utils.watchlist.getMyWatchlist.cancel();
-      const prev = utils.watchlist.getMyWatchlist.getData({ page: 1, limit: 50 });
+      const prev = utils.watchlist.getMyWatchlist.getData({
+        page: 1,
+        limit: 50,
+      });
 
       utils.watchlist.getMyWatchlist.setData({ page: 1, limit: 50 }, (old) => {
         if (!old) return old;
@@ -41,7 +50,10 @@ export default function BuyerWatchlistPage() {
     },
     onError: (_err, _vars, context) => {
       if (context?.prev) {
-        utils.watchlist.getMyWatchlist.setData({ page: 1, limit: 50 }, context.prev);
+        utils.watchlist.getMyWatchlist.setData(
+          { page: 1, limit: 50 },
+          context.prev,
+        );
       }
       toast.error("Failed to remove from watchlist");
     },
@@ -55,25 +67,29 @@ export default function BuyerWatchlistPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Watchlist</h1>
           <p className="text-muted-foreground mt-1">
             Listings you are keeping an eye on
           </p>
         </div>
-        {data && data.items.length > 0 && (
-          <div className="flex items-center gap-3">
+        {data && data.items.length > 0 && !isError ? (
+          <div className="flex items-center justify-between gap-3 sm:justify-end">
             <span className="text-sm text-muted-foreground">
-              {data.items.length} {data.items.length === 1 ? "item" : "items"}
+              {data.total} {data.total === 1 ? "item" : "items"}
             </span>
-            <div className="flex border rounded-md">
+            <div
+              className="flex rounded-md border"
+              role="group"
+              aria-label="Watchlist layout"
+            >
               <Button
                 variant="ghost"
                 size="icon"
                 className={cn(
                   "h-8 w-8 rounded-r-none",
-                  viewMode === "grid" && "bg-accent"
+                  viewMode === "grid" && "bg-accent",
                 )}
                 onClick={() => setViewMode("grid")}
                 aria-label="Grid view"
@@ -86,7 +102,7 @@ export default function BuyerWatchlistPage() {
                 size="icon"
                 className={cn(
                   "h-8 w-8 rounded-l-none",
-                  viewMode === "list" && "bg-accent"
+                  viewMode === "list" && "bg-accent",
                 )}
                 onClick={() => setViewMode("list")}
                 aria-label="List view"
@@ -96,34 +112,44 @@ export default function BuyerWatchlistPage() {
               </Button>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : data?.items.length === 0 ? (
-        <div className="text-center py-12 border rounded-lg bg-muted/20">
-          <Heart className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">Your watchlist is empty</h3>
-          <p className="text-muted-foreground mt-1">
-            Browse listings and click the heart icon to save items here.
-          </p>
-        </div>
+        <StatePanelLoading label="Loading your watchlist" rows={6} />
+      ) : isError || !data ? (
+        <QueryErrorState
+          title="We couldn't load your watchlist"
+          description="Your saved listings are still intact. Check your connection and try again."
+          onRetry={() => void refetch()}
+          isRetrying={isFetching}
+          secondaryAction={{ label: "Browse listings", href: "/listings" }}
+        />
+      ) : data.items.length === 0 ? (
+        <StatePanel
+          icon={Heart}
+          title="Save promising lots for later"
+          description="Use the heart on any listing to build a shortlist, compare options, and return when you are ready to contact a seller or buy."
+          primaryAction={{ label: "Browse listings", href: "/listings" }}
+        />
       ) : (
-        <div className={cn(
-          "grid gap-4",
-          viewMode === "grid"
-            ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-            : "grid-cols-1"
-        )}>
-          {data?.items.map((item) => (
+        <div
+          className={cn(
+            "grid gap-4",
+            viewMode === "grid"
+              ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+              : "grid-cols-1",
+          )}
+          aria-label="Saved listings"
+        >
+          {data.items.map((item) => (
             <ListingCard
               key={item.id}
               listing={item.listing}
               isWatchlisted
-              onWatchlistToggle={(listingId) => removeMutation.mutate({ listingId })}
+              onWatchlistToggle={(listingId) =>
+                removeMutation.mutate({ listingId })
+              }
               statusBadge={statusConfig[item.buyerStatus]}
             />
           ))}

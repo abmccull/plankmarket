@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 import { conversations } from "./conversations";
 
@@ -98,6 +99,14 @@ export const followups = pgTable(
     index("followups_seller_id_idx").on(table.sellerId),
     index("followups_due_at_idx").on(table.dueAt),
     index("followups_status_idx").on(table.status),
+    index("followups_seller_status_due_idx").on(
+      table.sellerId,
+      table.status,
+      table.dueAt,
+    ),
+    index("followups_pending_due_id_idx")
+      .on(table.dueAt, table.id)
+      .where(sql`${table.status} = 'pending'`),
   ]
 );
 

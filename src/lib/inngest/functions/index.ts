@@ -1,15 +1,31 @@
 import {
+  instantSavedSearchAlertPage,
   instantSavedSearchAlerts,
+  savedSearchDigestScheduler,
   savedSearchAlerts,
 } from "./saved-search-alerts";
 import { listingExpiryWarning } from "./listing-expiry-warning";
 import { abandonedCheckout } from "./abandoned-checkout";
 import { escrowAutoRelease } from "./escrow-auto-release";
 import { shipmentDispatch } from "./shipment-dispatch";
-import { shipmentTracking } from "./shipment-tracking";
-import { buyerRequestAlerts } from "./buyer-request-alerts";
+import { shipmentCancellationScheduler } from "./shipment-cancellation";
+import {
+  stripeWebhookProcessor,
+  stripeWebhookRecovery,
+} from "./stripe-webhook";
+import {
+  shipmentTracking,
+  shipmentTrackingScheduler,
+} from "./shipment-tracking";
+import {
+  buyerRequestAlerts,
+  buyerRequestAlertScheduler,
+} from "./buyer-request-alerts";
 import { preferenceMatchAlerts } from "./preference-match-alerts";
-import { followupReminders } from "./followup-reminders";
+import {
+  followupReminders,
+  followupReminderScheduler,
+} from "./followup-reminders";
 import { onboardingDrip } from "./onboarding-drip";
 import { firstListingCongrats, firstPurchaseCongrats } from "./milestone-emails";
 import { offerAccepted } from "./offer-accepted";
@@ -20,21 +36,31 @@ import {
   proExpired,
 } from "./subscription-lifecycle";
 import { agentOfferHandler } from "./agent-offer-handler";
-import { agentMonitor } from "./agent-monitor";
 import { agentRepricer } from "./agent-repricer";
 import { businessVerification } from "./business-verification";
-import { automaticListingMarkdown } from "./automatic-listing-markdown";
+import {
+  automaticListingMarkdown,
+  automaticListingMarkdownScheduler,
+} from "./automatic-listing-markdown";
 
 export const functions = [
   instantSavedSearchAlerts,
+  instantSavedSearchAlertPage,
+  savedSearchDigestScheduler,
   savedSearchAlerts,
   listingExpiryWarning,
   abandonedCheckout,
   escrowAutoRelease,
   shipmentDispatch,
+  shipmentCancellationScheduler,
+  stripeWebhookProcessor,
+  stripeWebhookRecovery,
+  shipmentTrackingScheduler,
   shipmentTracking,
+  buyerRequestAlertScheduler,
   buyerRequestAlerts,
   preferenceMatchAlerts,
+  followupReminderScheduler,
   followupReminders,
   onboardingDrip,
   firstListingCongrats,
@@ -45,8 +71,8 @@ export const functions = [
   proPaymentFailed,
   proExpired,
   agentOfferHandler,
-  agentMonitor,
   agentRepricer,
   businessVerification,
+  automaticListingMarkdownScheduler,
   automaticListingMarkdown,
 ];

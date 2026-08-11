@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   pgTable,
   uuid,
   text,
@@ -32,6 +33,10 @@ export const media = pgTable(
     mimeType: varchar("mime_type", { length: 100 }),
     altText: varchar("alt_text", { length: 255 }),
     sortOrder: integer("sort_order").default(0).notNull(),
+    deletionClaimToken: varchar("deletion_claim_token", { length: 64 }),
+    deletionClaimedAt: timestamp("deletion_claimed_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -41,6 +46,9 @@ export const media = pgTable(
     index("media_sort_order_idx").on(table.listingId, table.sortOrder),
     index("media_buyer_request_id_idx").on(table.buyerRequestId),
     index("media_uploader_id_idx").on(table.uploaderId),
+    index("media_pending_deletion_claim_idx")
+      .on(table.deletionClaimedAt)
+      .where(sql`${table.deletionClaimToken} is not null`),
     uniqueIndex("media_uploadthing_key_unique_idx")
       .on(table.key)
       .where(sql`${table.key} is not null`),
@@ -48,6 +56,24 @@ export const media = pgTable(
       "media_uploader_required_check",
       sql`${table.uploaderId} is not null`,
     ),
+    check(
+      "media_one_parent_max_check",
+      sql`num_nonnulls(${table.listingId}, ${table.buyerRequestId}) <= 1`,
+    ),
+    check(
+      "media_deletion_claim_consistency_check",
+      sql`(${table.deletionClaimToken} is null) = (${table.deletionClaimedAt} is null)`,
+    ),
+    foreignKey({
+      columns: [table.listingId, table.uploaderId],
+      foreignColumns: [listings.id, listings.sellerId],
+      name: "media_listing_owner_lineage_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.buyerRequestId, table.uploaderId],
+      foreignColumns: [buyerRequests.id, buyerRequests.buyerId],
+      name: "media_buyer_request_owner_lineage_fk",
+    }).onDelete("cascade"),
   ]
 );
 

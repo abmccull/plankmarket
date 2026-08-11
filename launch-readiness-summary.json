@@ -1,0 +1,90 @@
+{
+  "product": "PlankMarket",
+  "reviewDate": "2026-08-03",
+  "decision": "Not ready for broad production transactional launch",
+  "nextEnvironment": "Protected preview or staging after exact SHA freeze",
+  "candidate": {
+    "branch": "codex/plankmarket-launch-candidate",
+    "baseHead": "95d5f7d56f893ba2fe30dd1c8d34ec68902620fa",
+    "upstreamAhead": 0,
+    "upstreamBehind": 0,
+    "modifiedPaths": 188,
+    "untrackedPaths": 102,
+    "committed": false,
+    "pushed": false,
+    "deployed": false
+  },
+  "engineering": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "testTypecheck": "passed",
+    "unitIntegrationTests": {
+      "status": "passed",
+      "files": 165,
+      "tests": 1101
+    },
+    "shipping": {
+      "status": "passed",
+      "tests": 53,
+      "priority1DryRun": "passed"
+    },
+    "databaseCheck": {
+      "status": "passed locally",
+      "sqlFiles": 26,
+      "documentedHistoricalBootstrapGaps": 7,
+      "productionTargetCertified": false
+    },
+    "dependencyAudits": {
+      "productionVulnerabilities": 0,
+      "rootVulnerabilities": 0,
+      "rootSbom": "generated",
+      "pinnedDeployCliSbom": "generated"
+    },
+    "build": {
+      "status": "passed",
+      "routesOrPagesGenerated": 148
+    },
+    "publicE2E": {
+      "status": "passed serially",
+      "tests": 6,
+      "parallelHostedCertification": "pending"
+    }
+  },
+  "ux": {
+    "publicCandidateScore": 8.9,
+    "systemCohesion": 9.0,
+    "broadRenderedChecks": 20,
+    "exactFinalDeltaChecks": 9,
+    "axeViolations": 0,
+    "consoleOrPageErrors": 0,
+    "authenticatedProviderStatesCertified": false
+  },
+  "security": {
+    "repositoryFindingsReviewed": 18,
+    "repositoryFindingsResolvedInSource": 18,
+    "knownOpenFindingsFromReviewedSet": 0,
+    "productionSecurityCertified": false
+  },
+  "liveProduction": {
+    "candidateParity": false,
+    "advertisedBuyerFeePercent": 3,
+    "advertisedSellerFeePercent": 2,
+    "candidateBuyerFeePercent": 5,
+    "candidateSellerFeePercent": 5,
+    "candidateHealthRoutesPresentLive": false
+  },
+  "blockingGates": [
+    "Freeze, review, commit, and push one exact release SHA",
+    "Reconcile commercial, legal, checkout, refund, and marketing truth",
+    "Certify real Supabase schema, grants, RLS, migrations, and 0033 constraints",
+    "Certify Stripe money movement and Priority1 shipping end to end with read-back",
+    "Verify remaining providers, secret scopes, deployment protections, and rollback",
+    "Launch with authentic curated inventory and accountable seller operations",
+    "Complete manual accessibility, performance, backup, restore, and incident drills"
+  ],
+  "launchModes": {
+    "protectedPreview": "go after exact SHA freeze",
+    "inviteOnlyBeta": "conditional after live certification",
+    "broadProduction": "no-go"
+  }
+}

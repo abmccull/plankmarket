@@ -34,6 +34,8 @@ function queryResult(value: MockQueryReturn): QuotesQueryResult {
   return value as unknown as QuotesQueryResult;
 }
 
+const futureExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
 const mockQuotes = [
   {
     quoteId: 1,
@@ -45,8 +47,8 @@ const mockQuotes = [
     buyerFreightCharge: 250.0,
     sellerFreightContribution: 0,
     transitDays: 3,
-    estimatedDelivery: "2026-02-20T00:00:00.000Z",
-    quoteExpiresAt: "2026-02-15T00:00:00.000Z",
+    estimatedDelivery: "2099-02-20T00:00:00.000Z",
+    quoteExpiresAt: futureExpiry,
   },
   {
     quoteId: 2,
@@ -58,8 +60,8 @@ const mockQuotes = [
     buyerFreightCharge: 285.0,
     sellerFreightContribution: 0,
     transitDays: 2,
-    estimatedDelivery: "2026-02-19T00:00:00.000Z",
-    quoteExpiresAt: "2026-02-15T00:00:00.000Z",
+    estimatedDelivery: "2099-02-19T00:00:00.000Z",
+    quoteExpiresAt: futureExpiry,
   },
   {
     quoteId: 3,
@@ -71,8 +73,8 @@ const mockQuotes = [
     buyerFreightCharge: 320.0,
     sellerFreightContribution: 0,
     transitDays: 5,
-    estimatedDelivery: "2026-02-22T00:00:00.000Z",
-    quoteExpiresAt: "2026-02-15T00:00:00.000Z",
+    estimatedDelivery: "2099-02-22T00:00:00.000Z",
+    quoteExpiresAt: futureExpiry,
   },
 ];
 
@@ -81,6 +83,9 @@ describe("ShippingQuoteSelector", () => {
     listingId: "listing-123",
     destinationZip: "12345",
     quantitySqFt: 1000,
+    liftgateDelivery: false,
+    residentialDelivery: false,
+    appointmentDelivery: false,
     selectedQuote: null,
     onSelectQuote: vi.fn(),
   };
@@ -243,6 +248,14 @@ describe("ShippingQuoteSelector", () => {
   });
 
   it("enables query only when destinationZip is 5+ characters", () => {
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
+      data: mockQuotes,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }));
+
     render(<ShippingQuoteSelector {...defaultProps} destinationZip="12345" />);
 
     expect(trpc.shipping.getQuotes.useQuery).toHaveBeenCalledWith(
@@ -250,11 +263,49 @@ describe("ShippingQuoteSelector", () => {
         listingId: "listing-123",
         destinationZip: "12345",
         quantitySqFt: 1000,
+        liftgateDelivery: false,
+        residentialDelivery: false,
+        appointmentDelivery: false,
       },
-      {
+      expect.objectContaining({
         enabled: true,
-      }
+        staleTime: 30_000,
+        refetchInterval: expect.any(Function),
+      }),
     );
+  });
+
+  it("clears the selected quote when accessorial filters change", () => {
+    const onClearQuote = vi.fn();
+
+    vi.mocked(trpc.shipping.getQuotes.useQuery).mockReturnValue(queryResult({
+      data: mockQuotes,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }));
+
+    const { rerender } = render(
+      <ShippingQuoteSelector
+        {...defaultProps}
+        selectedQuote={mockQuotes[0]}
+        onClearQuote={onClearQuote}
+      />,
+    );
+
+    onClearQuote.mockClear();
+
+    rerender(
+      <ShippingQuoteSelector
+        {...defaultProps}
+        liftgateDelivery
+        selectedQuote={mockQuotes[0]}
+        onClearQuote={onClearQuote}
+      />,
+    );
+
+    expect(onClearQuote).toHaveBeenCalledTimes(1);
   });
 
   it("shows singular 'business day' for 1-day transit", () => {

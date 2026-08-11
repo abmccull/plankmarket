@@ -8,30 +8,20 @@
  */
 
 /**
- * Generate a display name based on user's first name + location, with fallback
- * to anonymous role-based names when name is not available.
+ * Generate a non-identifying role-based display name. When an internal user
+ * ID is available, append a stable opaque code so multiple anonymous parties
+ * remain distinguishable without exposing names or locations.
  *
  * @example
- * getAnonymousDisplayName({ role: "seller", businessState: "TX", name: "John Smith", businessCity: "Austin" })
- * // => "John from Austin, TX"
- *
- * @example
- * getAnonymousDisplayName({ role: "seller", businessState: "TX", name: "John Smith" })
- * // => "John from TX"
- *
- * @example
- * getAnonymousDisplayName({ role: "seller", name: "John Smith" })
- * // => "John"
- *
- * @example
- * getAnonymousDisplayName({ role: "seller", businessState: "FL" })
- * // => "Verified Seller in FL"
+ * getAnonymousDisplayName({ id: "user-123", role: "seller" })
+ * // => "Verified Seller PM-..."
  *
  * @example
  * getAnonymousDisplayName({ role: "admin", businessState: null })
  * // => "PlankMarket Support"
  */
 export function getAnonymousDisplayName(user: {
+  id?: string;
   role: string;
   businessState?: string | null;
   name?: string | null;
@@ -42,27 +32,15 @@ export function getAnonymousDisplayName(user: {
     return "PlankMarket Support";
   }
 
-  // Extract first name if available
-  const firstName = user.name?.split(" ")[0]?.trim();
-
-  if (firstName) {
-    if (user.businessCity && user.businessState) {
-      return `${firstName} from ${user.businessCity}, ${user.businessState}`;
-    }
-    if (user.businessState) {
-      return `${firstName} from ${user.businessState}`;
-    }
-    return firstName;
-  }
-
-  // Fallback: anonymous role-based display name
   const roleLabel = getRoleLabel(user.role);
-
-  if (user.businessState) {
-    return `Verified ${roleLabel} in ${user.businessState}`;
-  }
-
-  return `Verified ${roleLabel}`;
+  const anonymousCode = user.id
+    ? ` PM-${simpleHash(`plankmarket:${user.id}`)
+        .toString(36)
+        .toUpperCase()
+        .padStart(5, "0")
+        .slice(-5)}`
+    : "";
+  return `Verified ${roleLabel}${anonymousCode}`;
 }
 
 /**

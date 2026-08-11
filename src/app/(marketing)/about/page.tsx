@@ -47,15 +47,45 @@ export const metadata: Metadata = {
 
 export const revalidate = 3600;
 
+const PROBLEM_CARDS = [
+  {
+    icon: TrendingDown,
+    label: "Fragmented",
+    subtitle: "Liquidation Channels",
+    description:
+      "Surplus flooring still moves through a mix of calls, broker relationships, and ad hoc liquidation paths.",
+  },
+  {
+    icon: Package,
+    label: "Limited",
+    subtitle: "Recovery Options",
+    description:
+      "Sellers often choose between discounting harder, holding inventory longer, using brokers, or disposing of material.",
+  },
+  {
+    icon: Globe,
+    label: "Rare",
+    subtitle: "Purpose-Built Workflows",
+    description:
+      "Specialized flooring resale workflows exist, but the market is still fragmented and inconsistent for buyers and sellers.",
+  },
+  {
+    icon: TrendingDown,
+    label: "Time",
+    subtitle: "Erodes Value",
+    description:
+      "The longer closeout inventory sits, the harder it is to recover value and reclaim warehouse capacity.",
+  },
+] as const;
+
 export default function AboutPage() {
   return (
     <>
-      {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
+        <div className="absolute top-20 left-10 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+        <div className="absolute bottom-10 right-10 h-96 w-96 rounded-full bg-accent/10 blur-3xl" />
 
-        <div className="container mx-auto px-4 relative z-10">
+        <div className="container relative z-10 mx-auto px-4">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Our Mission
@@ -66,24 +96,32 @@ export default function AboutPage() {
                 Flooring Industry
               </span>
             </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              PlankMarket creates a transparent, efficient marketplace that makes it easy to buy and sell surplus flooring materials — reducing waste while helping businesses recover value from excess inventory.
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
+              PlankMarket creates a transparent, efficient marketplace that
+              makes it easier to buy and sell surplus flooring materials -
+              reducing waste while helping businesses recover value from excess
+              inventory.
             </p>
           </div>
         </div>
       </section>
 
-      {/* The Problem */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
+          <div className="mx-auto grid max-w-5xl items-center gap-12 md:grid-cols-2">
             <div>
-              <Badge variant="outline" className="mb-4">The Problem</Badge>
-              <h2 className="font-display text-3xl mb-4">
-                Billions in Wasted Inventory
+              <Badge variant="outline" className="mb-4">
+                The Problem
+              </Badge>
+              <h2 className="mb-4 font-display text-3xl">
+                Surplus Inventory Still Moves Through Fragmented Channels
               </h2>
-              <p className="text-muted-foreground mb-4">
-                Every year, billions of dollars in flooring inventory sits unused in warehouses across the country. Overstock from builders, discontinued product lines, slight seconds, and closeout materials all represent perfectly usable flooring that deserves a second chance.
+              <p className="mb-4 text-muted-foreground">
+                Overstock from builders, discontinued product lines, slight
+                seconds, and closeout materials all represent usable flooring
+                that often sits longer than it should. The category still leans
+                on manual liquidation paths that make recovery slower and less
+                predictable than it needs to be.
               </p>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 {[
@@ -94,29 +132,28 @@ export default function AboutPage() {
                   "Project cancellations leave contractors with unreturnable stock",
                 ].map((item) => (
                   <li key={item} className="flex items-start gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                    <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {[
-                { icon: TrendingDown, label: "Billions", subtitle: "In Surplus Inventory", description: "The US flooring industry generates billions in overstock, closeout, and discontinued inventory annually" },
-                { icon: Package, label: "Limited", subtitle: "Liquidation Options", description: "Sellers typically choose between liquidators, donation, or disposal — all at significant loss" },
-                { icon: Globe, label: "No", subtitle: "Dedicated B2B Platform", description: "Until now, no marketplace focused exclusively on surplus flooring materials" },
-                { icon: TrendingDown, label: "Up to 80%", subtitle: "Value Lost", description: "Surplus materials often sell for a fraction of original value through traditional channels" },
-              ].map((stat) => (
+              {PROBLEM_CARDS.map((stat) => (
                 <Card key={stat.label} className="text-center">
                   <CardHeader className="pb-2">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mx-auto mb-2">
+                    <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-secondary/10">
                       <stat.icon className="h-4 w-4 text-primary" />
                     </div>
-                    <div className="font-display text-2xl text-primary">{stat.label}</div>
+                    <div className="font-display text-2xl text-primary">
+                      {stat.label}
+                    </div>
                     <CardTitle className="text-sm">{stat.subtitle}</CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <p className="text-xs text-muted-foreground">{stat.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {stat.description}
+                    </p>
                   </CardContent>
                 </Card>
               ))}
@@ -125,56 +162,87 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Our Solution */}
-      <section className="py-20 bg-muted/30">
+      <section className="bg-muted/30 py-20">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="mb-12 text-center">
             <h2 className="font-display text-3xl">Our Solution</h2>
             <p className="mt-3 text-muted-foreground">
               A purpose-built B2B marketplace for surplus and closeout flooring
             </p>
           </div>
-          <div className="grid md:grid-cols-2 gap-16 items-start max-w-5xl mx-auto">
+          <div className="mx-auto grid max-w-5xl items-start gap-16 md:grid-cols-2">
             <div>
-              <Badge variant="outline" className="mb-4">For Sellers</Badge>
-              <h3 className="font-display text-xl mb-4">
-                Reach Buyers Nationwide
+              <Badge variant="outline" className="mb-4">
+                For Sellers
+              </Badge>
+              <h3 className="mb-4 font-display text-xl">
+                Reach Qualified Buyers
               </h3>
               <ul className="space-y-3">
                 {[
-                  { icon: Users, text: "Nationwide platform reaching qualified buyers" },
+                  { icon: Users, text: "Business marketplace built for qualified buyers and sellers" },
                   { icon: Zap, text: "Simple listing tools with photos and detailed specs" },
-                  { icon: CreditCard, text: "Stripe-processed payments with seller transfer after carrier pickup" },
-                  { icon: MessageSquare, text: "Built-in messaging and order management" },
-                  { icon: DollarSign, text: "Fast, reliable payouts after successful delivery" },
+                  {
+                    icon: CreditCard,
+                    text: "Stripe-processed payments with seller transfer after carrier pickup",
+                  },
+                  {
+                    icon: MessageSquare,
+                    text: "Built-in messaging and order management",
+                  },
+                  {
+                    icon: DollarSign,
+                    text: "Projected seller transfer shown before acceptance",
+                  },
                 ].map((item) => (
                   <li key={item.text} className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-secondary/10">
                       <item.icon className="h-4 w-4 text-primary" />
                     </div>
-                    <span className="text-sm text-muted-foreground mt-1">{item.text}</span>
+                    <span className="mt-1 text-sm text-muted-foreground">
+                      {item.text}
+                    </span>
                   </li>
                 ))}
               </ul>
             </div>
             <div>
-              <Badge variant="outline" className="mb-4">For Buyers</Badge>
-              <h3 className="font-display text-xl mb-4">
-                Source Materials Below Cost
+              <Badge variant="outline" className="mb-4">
+                For Buyers
+              </Badge>
+              <h3 className="mb-4 font-display text-xl">
+                Source Surplus Materials with More Clarity
               </h3>
               <ul className="space-y-3">
                 {[
-                  { icon: Search, text: "Searchable database across all major material types" },
-                  { icon: Eye, text: "Advanced filters by material, color, finish, lot size, location" },
-                  { icon: DollarSign, text: "Transparent pricing with no hidden fees" },
-                  { icon: Shield, text: "Verified sellers you can trust" },
-                  { icon: CreditCard, text: "Stripe-processed payments with tracked shipping and dispute reporting" },
+                  {
+                    icon: Search,
+                    text: "Searchable database across major material types",
+                  },
+                  {
+                    icon: Eye,
+                    text: "Advanced filters by material, color, finish, lot size, and location",
+                  },
+                  {
+                    icon: DollarSign,
+                    text: "Transparent pricing with no hidden inventory fees",
+                  },
+                  {
+                    icon: Shield,
+                    text: "Seller verification status shown on each listing",
+                  },
+                  {
+                    icon: CreditCard,
+                    text: "Stripe-processed payments with tracked shipping and dispute reporting",
+                  },
                 ].map((item) => (
                   <li key={item.text} className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-secondary/10">
                       <item.icon className="h-4 w-4 text-secondary" />
                     </div>
-                    <span className="text-sm text-muted-foreground mt-1">{item.text}</span>
+                    <span className="mt-1 text-sm text-muted-foreground">
+                      {item.text}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -183,9 +251,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Sustainability */}
-      <section className="relative py-16 bg-gradient-to-br from-primary to-secondary text-primary-foreground overflow-hidden">
-        {/* Wood grain texture close-up as decorative background */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary to-secondary py-16 text-primary-foreground">
         <Image
           src="https://images.unsplash.com/photo-1688127145963-1063f22622a5?w=1400&q=80&fit=crop"
           alt=""
@@ -194,25 +260,45 @@ export default function AboutPage() {
           aria-hidden="true"
           loading="lazy"
         />
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="text-center mb-12">
+        <div className="container relative z-10 mx-auto px-4">
+          <div className="mb-12 text-center">
             <h2 className="font-display text-3xl">Sustainability & Impact</h2>
             <p className="mt-3 text-white/80">
               Every transaction represents materials saved from waste
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
+          <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { icon: Recycle, title: "Divert from Landfills", description: "Redirect usable materials from disposal" },
-              { icon: TrendingDown, title: "Reduce Production", description: "Lower demand for new manufacturing" },
-              { icon: Leaf, title: "Cut Emissions", description: "Reduce carbon from manufacturing and disposal" },
-              { icon: Heart, title: "Extend Lifecycles", description: "Give quality materials a second life" },
+              {
+                icon: Recycle,
+                title: "Divert from Landfills",
+                description: "Redirect usable materials from disposal",
+              },
+              {
+                icon: TrendingDown,
+                title: "Reduce Production",
+                description: "Lower demand for new manufacturing",
+              },
+              {
+                icon: Leaf,
+                title: "Cut Emissions",
+                description:
+                  "Reduce carbon from manufacturing and disposal",
+              },
+              {
+                icon: Heart,
+                title: "Extend Lifecycles",
+                description: "Give quality materials a second life",
+              },
             ].map((item) => (
-              <div key={item.title} className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+              <div
+                key={item.title}
+                className="rounded-2xl bg-white/10 p-6 text-center backdrop-blur-sm"
+              >
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white/20">
                   <item.icon className="h-6 w-6" />
                 </div>
-                <h3 className="font-semibold mb-1">{item.title}</h3>
+                <h3 className="mb-1 font-semibold">{item.title}</h3>
                 <p className="text-sm text-white/70">{item.description}</p>
               </div>
             ))}
@@ -220,54 +306,61 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Who We Serve */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="mb-12 text-center">
             <h2 className="font-display text-3xl">Who We Serve</h2>
             <p className="mt-3 text-muted-foreground">
               Designed for flooring professionals across the supply chain
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
               {
                 icon: HardHat,
                 title: "Builders & Contractors",
-                description: "Source affordable materials for projects or liquidate surplus from completed jobs",
+                description:
+                  "Source affordable materials for projects or liquidate surplus from completed jobs",
               },
               {
                 icon: Warehouse,
                 title: "Distributors & Wholesalers",
-                description: "Clear out discontinued inventory and overstock efficiently",
+                description:
+                  "Clear out discontinued inventory and overstock efficiently",
               },
               {
                 icon: Store,
                 title: "Retailers & Showrooms",
-                description: "Sell floor models, samples, and previous season inventory",
+                description:
+                  "Sell floor models, samples, and previous season inventory",
               },
               {
                 icon: Building,
                 title: "Manufacturers",
-                description: "Move closeout inventory and slight seconds to qualified buyers",
+                description:
+                  "Move closeout inventory and slight seconds to qualified buyers",
               },
               {
                 icon: Paintbrush,
                 title: "Property Managers",
-                description: "Find affordable materials for renovations and repairs",
+                description:
+                  "Find affordable materials for renovations and repairs",
               },
               {
                 icon: Hammer,
                 title: "Flooring Installers",
-                description: "Source materials for clients or sell leftover inventory from jobs",
+                description:
+                  "Source materials for clients or sell leftover inventory from jobs",
               },
             ].map((item) => (
               <Card key={item.title} className="card-hover-lift">
                 <CardHeader>
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-2">
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-secondary/20">
                     <item.icon className="h-6 w-6 text-primary" />
                   </div>
-                  <CardTitle className="font-display text-lg">{item.title}</CardTitle>
+                  <CardTitle className="font-display text-lg">
+                    {item.title}
+                  </CardTitle>
                   <CardDescription>{item.description}</CardDescription>
                 </CardHeader>
               </Card>
@@ -276,27 +369,51 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Our Values */}
-      <section className="py-20 bg-muted/30">
+      <section className="bg-muted/30 py-20">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="mb-12 text-center">
             <h2 className="font-display text-3xl">Our Values</h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-4xl mx-auto">
+          <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4 md:grid-cols-5">
             {[
-              { icon: Eye, title: "Transparency", description: "Clear pricing and honest policies" },
-              { icon: Shield, title: "Security", description: "Verified sellers, tracked shipping, and dispute reporting" },
-              { icon: Zap, title: "Efficiency", description: "Simple tools that save time" },
-              { icon: Leaf, title: "Sustainability", description: "Circular economy in flooring" },
-              { icon: Heart, title: "Support", description: "Responsive customer service" },
+              {
+                icon: Eye,
+                title: "Transparency",
+                description: "Clear pricing and honest policies",
+              },
+              {
+                icon: Shield,
+                title: "Security",
+                description:
+                  "Visible verification, tracked shipping, and dispute reporting",
+              },
+              {
+                icon: Zap,
+                title: "Efficiency",
+                description: "Simple tools that save time",
+              },
+              {
+                icon: Leaf,
+                title: "Sustainability",
+                description: "Circular economy in flooring",
+              },
+              {
+                icon: Heart,
+                title: "Support",
+                description: "Order-linked support and dispute records",
+              },
             ].map((item) => (
               <Card key={item.title} className="card-hover-lift text-center">
                 <CardHeader className="items-center">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-1">
+                  <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-secondary/20">
                     <item.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <CardTitle className="text-sm font-semibold">{item.title}</CardTitle>
-                  <CardDescription className="text-xs">{item.description}</CardDescription>
+                  <CardTitle className="text-sm font-semibold">
+                    {item.title}
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    {item.description}
+                  </CardDescription>
                 </CardHeader>
               </Card>
             ))}
@@ -304,24 +421,20 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
-            <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl mb-4">
-                Join the Marketplace
-              </h2>
-              <p className="text-white/80 mb-8 max-w-xl mx-auto">
-                Whether you have surplus flooring to sell or are looking for affordable materials, PlankMarket is here to help. Together, we can make the flooring industry more sustainable.
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white">
+            <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-accent/20 blur-3xl" />
+            <div className="relative z-10 text-center">
+              <h2 className="mb-4 font-display text-3xl">Join the Marketplace</h2>
+              <p className="mx-auto mb-8 max-w-xl text-white/80">
+                Whether you have surplus flooring to sell or are looking for
+                affordable materials, PlankMarket is here to help. Together, we
+                can make the flooring industry more sustainable.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
                 <Link href="/register?role=seller">
-                  <Button
-                    size="xl"
-                    variant="gold"
-                  >
+                  <Button size="xl" variant="gold">
                     Start Selling <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
@@ -329,7 +442,7 @@ export default function AboutPage() {
                   <Button
                     size="xl"
                     variant="secondary"
-                    className="border-2 border-white/70 text-white bg-white/10 hover:bg-white/20"
+                    className="border-2 border-white/70 bg-white/10 text-white hover:bg-white/20"
                   >
                     Browse Listings
                   </Button>

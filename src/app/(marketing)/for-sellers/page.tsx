@@ -22,11 +22,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CarryingCostCalculator } from "@/components/marketing/carrying-cost-calculator";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export const metadata: Metadata = {
   title: "For Sellers - Sell Surplus Flooring",
   description:
-    "List closeout and surplus flooring with no listing fee. Sell to verified businesses with integrated offers, freight milestones, and a clear 5% seller fee with projected seller transfer before acceptance.",
+    `List closeout and surplus flooring with no listing fee. Sell to verified businesses with integrated offers, freight milestones, and a clear ${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} with projected seller transfer before acceptance.`,
   openGraph: {
     title: "Turn surplus flooring into working capital",
     description:
@@ -85,7 +86,7 @@ const FAQS = [
   {
     question: "Does it cost anything to list?",
     answer:
-      "There is no listing or insertion fee and no required subscription. PlankMarket charges a 5% seller platform fee on completed inventory sales. The seller's Stripe processing fee also applies to the inventory subtotal.",
+      `There is no listing or insertion fee and no required subscription. PlankMarket charges a ${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on completed inventory sales. The seller's Stripe processing fee also applies to the inventory subtotal.`,
   },
   {
     question: "What is required for business verification?",
@@ -138,8 +139,8 @@ export default function ForSellersPage() {
             </div>
             <div className="relative hidden h-[390px] overflow-hidden rounded-2xl shadow-elevation-lg lg:block">
               <Image
-                src="https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?w=1000&q=80&fit=crop"
-                alt="Palletized flooring inventory prepared in a warehouse"
+                src="https://images.unsplash.com/photo-1739204618173-3e89def7140f?w=1000&q=80&fit=crop"
+                alt="Rows of palletized wood inventory stored in a warehouse"
                 fill
                 className="object-cover"
                 priority
@@ -175,7 +176,7 @@ export default function ForSellersPage() {
         <div className="container mx-auto grid gap-4 px-4 py-6 text-sm sm:grid-cols-3">
           {[
             "No listing or insertion fee",
-            "5% platform fee on completed inventory sales",
+            `${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on completed inventory sales`,
             "Seller transfer initiated after confirmed pickup",
           ].map((item) => (
             <div key={item} className="flex items-center gap-2 sm:justify-center">
@@ -258,7 +259,7 @@ export default function ForSellersPage() {
               <Badge className="w-fit" variant="outline">Pay when it sells</Badge>
               <CardTitle className="font-display text-3xl">Know what you keep before you accept</CardTitle>
               <CardDescription className="text-base">
-                No listing fee. A 5% seller fee and inventory-only Stripe processing apply on completed sales.
+                No listing fee. A {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} and inventory-only Stripe processing apply on completed sales.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -277,7 +278,7 @@ export default function ForSellersPage() {
                 </div>
               </dl>
               <p className="text-sm text-muted-foreground">
-                Example uses the current 2.9% + $0.30 seller Stripe fee on the
+                Example uses the current {PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel} seller Stripe fee on the
                 inventory subtotal. Freight is shown separately to the buyer and
                 the displayed freight charge may include carrier charges plus
                 PlankMarket shipping service margin.

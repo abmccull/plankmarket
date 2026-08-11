@@ -82,9 +82,9 @@ export default function SellerGuidePage() {
               {
                 icon: UserCheck,
                 step: "1",
-                title: "Register & Verify",
+                title: "Create Your Account",
                 description:
-                  "Create a seller account with your business name, contact info, EIN, and verification documents. Our team reviews applications within 1-3 business days.",
+                  "Register with your business name and contact information. Add EIN and supporting documents later in the resumable verification flow; publishing stays locked until approval.",
               },
               {
                 icon: ClipboardList,
@@ -98,7 +98,7 @@ export default function SellerGuidePage() {
                 step: "3",
                 title: "Create Your First Listing",
                 description:
-                  "Upload high-quality photos, specify material details, set competitive pricing, and publish. The more detailed your listing, the faster it sells.",
+                  "Upload clear photos, specify material details, set pricing, and publish an accurate record buyers can evaluate.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift relative">
@@ -422,9 +422,9 @@ export default function SellerGuidePage() {
                   },
                   {
                     icon: Camera,
-                    title: "8+ Photos",
+                    title: "Document the Lot",
                     description:
-                      "Listings with 8 or more photos sell significantly faster. Show every angle and detail.",
+                      "Show packaging, labels, material, finish, quantity, and any defects buyers should evaluate.",
                   },
                   {
                     icon: Star,
@@ -513,13 +513,13 @@ export default function SellerGuidePage() {
       {/* CTA */}
       <section className="py-20 bg-muted/30">
         <div className="container mx-auto px-4">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
+          <div className="relative overflow-hidden rounded-3xl bg-primary p-8 text-primary-foreground sm:p-12">
+            <div className="absolute top-0 right-0 h-64 w-64 rounded-full bg-accent/15 blur-3xl" />
             <div className="text-center relative z-10">
               <h2 className="font-display text-3xl mb-4">
                 Ready to Start Selling?
               </h2>
-              <p className="text-white/80 mb-8 max-w-xl mx-auto">
+              <p className="mx-auto mb-8 max-w-xl text-primary-foreground">
                 Create your seller account today and turn your surplus flooring inventory into revenue. Our team is here to help you succeed.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -534,8 +534,8 @@ export default function SellerGuidePage() {
                 <Link href="/contact">
                   <Button
                     size="xl"
-                    variant="secondary"
-                    className="border-2 border-white/70 text-white bg-white/10 hover:bg-white/20"
+                    variant="outline"
+                    className="border-2 border-primary-foreground bg-primary-foreground text-primary hover:bg-primary-foreground/90 hover:text-primary"
                   >
                     Contact Support
                   </Button>

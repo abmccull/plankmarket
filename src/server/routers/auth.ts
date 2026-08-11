@@ -609,6 +609,48 @@ export const authRouter = createTRPCRouter({
     if (!ctx.user) {
       return { user: null, isAuthenticated: false };
     }
+
+    let assurance: {
+      currentLevel: "aal1" | "aal2";
+      nextLevel: "aal1" | "aal2";
+      hasVerifiedTotp: boolean;
+      lastFactorVerificationAt: string | null;
+      recentVerificationSatisfied: boolean;
+    } = {
+      currentLevel: "aal1",
+      nextLevel: "aal1",
+      hasVerifiedTotp: false,
+      lastFactorVerificationAt: null,
+      recentVerificationSatisfied: false,
+    };
+
+    try {
+      const [assuranceState, factorState] = await Promise.all([
+        ctx.getAuthAssurance(),
+        ctx.supabase.auth.mfa.listFactors(),
+      ]);
+
+      if (factorState.error) {
+        throw factorState.error;
+      }
+
+      assurance = {
+        currentLevel:
+          assuranceState.currentLevel === "aal2" ? "aal2" : "aal1",
+        nextLevel:
+          assuranceState.nextLevel === "aal2" ? "aal2" : "aal1",
+        hasVerifiedTotp: factorState.data.totp.length > 0,
+        lastFactorVerificationAt: assuranceState.lastFactorVerificationAt,
+        recentVerificationSatisfied:
+          assuranceState.recentVerificationSatisfied,
+      };
+    } catch (error) {
+      console.error("[auth] failed to load MFA session state", {
+        authUserId: ctx.authUser?.id,
+        error: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+
     return {
       user: {
         id: ctx.user.id,
@@ -621,6 +663,7 @@ export const authRouter = createTRPCRouter({
         verificationStatus: ctx.user.verificationStatus,
         stripeOnboardingComplete: ctx.user.stripeOnboardingComplete,
         zipCode: ctx.user.zipCode,
+        assurance,
       },
       isAuthenticated: true,
     };
@@ -718,8 +761,6 @@ export const authRouter = createTRPCRouter({
         where: eq(users.id, input.userId),
         columns: {
           id: true,
-          businessCity: true,
-          businessState: true,
           role: true,
           verificationStatus: true,
           createdAt: true,
@@ -737,8 +778,6 @@ export const authRouter = createTRPCRouter({
       return {
         id: user.id,
         role: user.role,
-        businessCity: user.businessCity,
-        businessState: user.businessState,
         verified: user.verificationStatus === "verified",
         createdAt: user.createdAt,
         proStatus: user.proStatus,

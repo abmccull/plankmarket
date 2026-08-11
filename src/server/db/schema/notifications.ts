@@ -9,6 +9,7 @@ import {
   index,
   pgEnum,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 
 export const notificationTypeEnum = pgEnum("notification_type", [
@@ -43,6 +44,13 @@ export const notifications = pgTable(
     index("notifications_user_id_idx").on(table.userId),
     index("notifications_read_idx").on(table.userId, table.read),
     index("notifications_created_at_idx").on(table.createdAt),
+    index("notifications_user_created_desc_idx").on(
+      table.userId,
+      table.createdAt.desc(),
+    ),
+    index("notifications_user_unread_created_idx")
+      .on(table.userId, table.createdAt.desc())
+      .where(sql`${table.read} = false`),
   ]
 );
 

@@ -25,4 +25,4 @@ For orders, payments, seller transfers, refunds, disputes, shipping, verificatio
 - Shipping workflow: `npm run test:shipping`
 - Build: `npm run build`
 
-Choose targeted checks first, then run the broad gate appropriate to the change. Do not create a project skill until a repeated operational workflow needs more than these instructions and existing managed Supabase, payments, security, and ship-readiness skills.
+Choose targeted checks first, then run the broad gate appropriate to the change. The repeated-workflow threshold is now met by the existing `.grok/workflows` recipes; route repeated graph audits through `.codex/skills/plankmarket-ops/SKILL.md` while keeping one-off checks under the instructions above.

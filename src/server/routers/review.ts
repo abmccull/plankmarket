@@ -2,7 +2,7 @@ import {
   createTRPCRouter,
   protectedProcedure,
   verifiedProcedure,
-  publicProcedure,
+  publicReadProcedure,
 } from "../trpc";
 import {
   createReviewSchema,
@@ -156,7 +156,7 @@ export const reviewRouter = createTRPCRouter({
     }),
 
   // Get all reviews where a user is the reviewee (works for any user)
-  getByReviewee: publicProcedure
+  getByReviewee: publicReadProcedure
     .input(
       z.object({
         userId: z.string().uuid(),
@@ -232,7 +232,7 @@ export const reviewRouter = createTRPCRouter({
     }),
 
   // Get reputation for any user (rating, review count, completed transactions)
-  getUserReputation: publicProcedure
+  getUserReputation: publicReadProcedure
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       // Get average rating and review count where user is reviewee

@@ -20,22 +20,27 @@ export default function ConversationPage() {
   const { user } = useAuthStore();
   const conversationId = params.conversationId as string;
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pendingReadMessageIdRef = useRef<{
+    conversationId: string;
+    messageId: string;
+  } | null>(null);
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
+  const [isTabVisible, setIsTabVisible] = useState(true);
+  const [optimisticLastReadAt, setOptimisticLastReadAt] = useState<{
+    conversationId: string;
+    readAt: string;
+  } | null>(null);
 
   // Get conversation details (includes listing, buyer, seller info)
   const { data: conversationData, isLoading: isLoadingConversation } =
-    trpc.message.getMyConversations.useQuery(
+    trpc.message.getConversation.useQuery(
+      { conversationId },
       {
-        page: 1,
-        limit: 100,
+        enabled: !!conversationId,
       },
-      {
-        select: (data) =>
-          data.conversations.find((c) => c.id === conversationId),
-      }
     );
 
-  // Get messages with polling every 5 seconds
+  // Get messages with visible-tab polling only.
   const { data: messages, isLoading: isLoadingMessages } =
     trpc.message.getMessages.useQuery(
       {
@@ -43,20 +48,38 @@ export default function ConversationPage() {
         limit: 100,
       },
       {
-        refetchInterval: 5000, // Poll for new messages every 5 seconds
         enabled: !!conversationId,
-      }
+        refetchInterval: isTabVisible ? 10000 : false,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: true,
+      },
     );
 
   // Mark as read mutation
-  const { mutate: markAsRead } = trpc.message.markAsRead.useMutation();
+  const utils = trpc.useUtils();
+  const { mutate: markAsRead } = trpc.message.markAsRead.useMutation({
+    onSuccess: (result) => {
+      if (result.lastReadAt) {
+        setOptimisticLastReadAt({
+          conversationId,
+          readAt: new Date(result.lastReadAt).toISOString(),
+        });
+      }
+      utils.message.getConversation.invalidate({ conversationId });
+      utils.message.getMyConversations.invalidate();
+      utils.message.getUnreadCount.invalidate();
+    },
+    onError: () => {
+      pendingReadMessageIdRef.current = null;
+    },
+  });
 
   // Send message mutation
-  const utils = trpc.useUtils();
   const { mutateAsync: sendMessage } = trpc.message.sendMessage.useMutation({
     onSuccess: () => {
       // Invalidate messages to refetch
       utils.message.getMessages.invalidate({ conversationId });
+      utils.message.getConversation.invalidate({ conversationId });
       utils.message.getMyConversations.invalidate();
       utils.message.getUnreadCount.invalidate();
     },
@@ -65,12 +88,79 @@ export default function ConversationPage() {
     },
   });
 
-  // Mark conversation as read when opened
   useEffect(() => {
-    if (conversationId) {
-      markAsRead({ conversationId });
+    const handleVisibilityChange = () => {
+      setIsTabVisible(document.visibilityState !== "hidden");
+    };
+
+    handleVisibilityChange();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+    };
+  }, []);
+
+  const isBuyer = conversationData?.buyerId === user?.id;
+  const serverLastReadAt = conversationData
+    ? isBuyer
+      ? conversationData.buyerLastReadAt
+      : conversationData.sellerLastReadAt
+    : null;
+  const effectiveLastReadAt =
+    optimisticLastReadAt?.conversationId === conversationId
+      ? optimisticLastReadAt.readAt
+      : (serverLastReadAt ?? null);
+  const latestUnreadIncomingMessage = messages
+    ? [...messages]
+        .reverse()
+        .find((message) => {
+          if (message.senderId === user?.id) {
+            return false;
+          }
+
+          if (!effectiveLastReadAt) {
+            return true;
+          }
+
+          return (
+            new Date(message.createdAt).getTime() >
+            new Date(effectiveLastReadAt).getTime()
+          );
+        })
+    : null;
+
+  // Acknowledge only the newest unseen inbound message while the thread is visible.
+  useEffect(() => {
+    if (
+      !conversationId ||
+      !isTabVisible ||
+      !latestUnreadIncomingMessage ||
+      !conversationData ||
+      (pendingReadMessageIdRef.current?.conversationId === conversationId &&
+        pendingReadMessageIdRef.current.messageId ===
+          latestUnreadIncomingMessage.id)
+    ) {
+      return;
     }
-  }, [conversationId, markAsRead]);
+
+    pendingReadMessageIdRef.current = {
+      conversationId,
+      messageId: latestUnreadIncomingMessage.id,
+    };
+    markAsRead({
+      conversationId,
+      latestMessageId: latestUnreadIncomingMessage.id,
+    });
+  }, [
+    conversationData,
+    conversationId,
+    isTabVisible,
+    latestUnreadIncomingMessage,
+    markAsRead,
+  ]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -125,7 +215,6 @@ export default function ConversationPage() {
   }
 
   // Determine the other party
-  const isBuyer = conversationData.buyerId === user?.id;
   const otherParty = isBuyer
     ? conversationData.seller
     : conversationData.buyer;

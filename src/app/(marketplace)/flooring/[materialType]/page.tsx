@@ -19,12 +19,12 @@ const materialLabels: Record<string, string> = {
 };
 
 const materialDescriptions: Record<string, string> = {
-  hardwood: "Browse surplus hardwood flooring from verified sellers nationwide. Find new overstock, closeout, and discontinued solid hardwood at wholesale prices.",
-  engineered: "Shop engineered hardwood flooring deals. Surplus and closeout engineered wood from top manufacturers at discounted prices.",
-  laminate: "Discover laminate flooring closeouts and overstock. Quality laminate planks from verified sellers at below-wholesale pricing.",
-  vinyl_lvp: "Find luxury vinyl plank (LVP) surplus inventory. Waterproof vinyl flooring from manufacturers and distributors at liquidation prices.",
-  bamboo: "Browse bamboo flooring surplus and closeout deals. Sustainable bamboo planks from verified wholesale sellers.",
-  tile: "Shop surplus tile flooring inventory. Porcelain, ceramic, and stone tile from wholesalers and manufacturers at closeout prices.",
+  hardwood: "Browse surplus hardwood flooring with seller verification shown on every lot. Find new overstock, closeout, and discontinued solid hardwood where seller territories currently allow visibility.",
+  engineered: "Shop engineered hardwood flooring deals with seller verification shown on each listing. Surplus and closeout engineered wood appears where seller territories currently allow visibility.",
+  laminate: "Discover laminate flooring closeouts and overstock with visible seller verification. Quality laminate planks appear where seller territories currently allow visibility.",
+  vinyl_lvp: "Find luxury vinyl plank (LVP) surplus inventory from sellers serving supported markets. Waterproof vinyl flooring appears where seller territories currently allow visibility.",
+  bamboo: "Browse bamboo flooring surplus and closeout deals with seller verification shown on each listing. Available lots depend on seller territories and current market coverage.",
+  tile: "Shop surplus tile flooring inventory with visible seller verification. Porcelain, ceramic, and stone tile listings depend on seller territories and current market coverage.",
 };
 
 const validMaterialTypes = ["hardwood", "engineered", "laminate", "vinyl_lvp", "bamboo", "tile"];
@@ -132,7 +132,7 @@ export default async function MaterialTypePage(props: MaterialTypePageProps) {
         {/* Results count */}
         {result.total > 0 && (
           <div className="mb-6 text-sm text-muted-foreground">
-            Showing {(page - 1) * limit + 1}-{Math.min(page * limit, result.total)} of {result.total} listings
+            Showing {(page - 1) * limit + 1}-{Math.min(page * limit, result.total)} of {result.total}{result.totalIsExact ? "" : "+"} listings
           </div>
         )}
 

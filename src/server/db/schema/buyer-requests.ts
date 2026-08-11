@@ -9,6 +9,7 @@ import {
   real,
   jsonb,
   index,
+  unique,
   uniqueIndex,
   pgEnum,
 } from "drizzle-orm/pg-core";
@@ -84,10 +85,19 @@ export const buyerRequests = pgTable(
       .notNull(),
   },
   (table) => [
+    unique("buyer_requests_id_buyer_idx").on(table.id, table.buyerId),
     index("buyer_requests_buyer_id_idx").on(table.buyerId),
     index("buyer_requests_status_idx").on(table.status),
     index("buyer_requests_destination_zip_idx").on(table.destinationZip),
     index("buyer_requests_created_at_idx").on(table.createdAt),
+    index("buyer_requests_status_created_idx").on(
+      table.status,
+      table.createdAt.desc(),
+    ),
+    index("buyer_requests_material_types_gin_idx").using(
+      "gin",
+      table.materialTypes,
+    ),
   ]
 );
 
@@ -116,6 +126,10 @@ export const buyerRequestResponses = pgTable(
   (table) => [
     index("buyer_request_responses_request_id_idx").on(table.requestId),
     index("buyer_request_responses_seller_id_idx").on(table.sellerId),
+    index("buyer_request_responses_seller_created_idx").on(
+      table.sellerId,
+      table.createdAt.desc(),
+    ),
     uniqueIndex("buyer_request_responses_request_seller_unique_idx").on(
       table.requestId,
       table.sellerId,

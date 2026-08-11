@@ -119,7 +119,9 @@ export default function CarryingCostCalculatorPage() {
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto text-lg leading-relaxed">
                 List your surplus on PlankMarket and get it in front of verified
-                buyers nationwide. 2% fee only when you sell. No listing costs.
+                buyers in supported markets. A 5% seller marketplace fee plus
+                disclosed inventory payment processing applies when it sells.
+                No listing fee.
               </p>
               <Link href="/register?role=seller">
                 <Button size="xl" variant="gold">

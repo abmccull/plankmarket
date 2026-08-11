@@ -11,12 +11,21 @@ import {
   Loader2,
 } from "lucide-react";
 import type { ListingStatus, OrderStatus } from "@/types";
+import { cn } from "@/lib/utils";
 
 const listingStatusConfig: Record<
   ListingStatus,
   {
     label: string;
-    variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "gold" | "verified";
+    variant:
+      | "default"
+      | "secondary"
+      | "destructive"
+      | "outline"
+      | "success"
+      | "warning"
+      | "gold"
+      | "verified";
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
@@ -31,7 +40,13 @@ const orderStatusConfig: Record<
   OrderStatus,
   {
     label: string;
-    variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
+    variant:
+      | "default"
+      | "secondary"
+      | "destructive"
+      | "outline"
+      | "success"
+      | "warning";
     icon: React.ComponentType<{ className?: string }>;
   }
 > = {
@@ -48,7 +63,11 @@ export function ListingStatusBadge({ status }: { status: ListingStatus }) {
   const config = listingStatusConfig[status];
   const Icon = config.icon;
   return (
-    <Badge variant={config.variant} className="flex items-center gap-1">
+    <Badge
+      variant={config.variant}
+      className="inline-flex w-fit items-center gap-1 whitespace-nowrap"
+      aria-label={`${config.label} listing status`}
+    >
       <Icon className="h-3 w-3" aria-hidden="true" />
       {config.label}
     </Badge>
@@ -59,8 +78,15 @@ export function OrderStatusBadge({ status }: { status: OrderStatus }) {
   const config = orderStatusConfig[status];
   const Icon = config.icon;
   return (
-    <Badge variant={config.variant} className="flex items-center gap-1">
-      <Icon className="h-3 w-3" aria-hidden="true" />
+    <Badge
+      variant={config.variant}
+      className="inline-flex w-fit items-center gap-1 whitespace-nowrap"
+      aria-label={`${config.label} order status`}
+    >
+      <Icon
+        className={cn("h-3 w-3", status === "processing" && "animate-spin")}
+        aria-hidden="true"
+      />
       {config.label}
     </Badge>
   );

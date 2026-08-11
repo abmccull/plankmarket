@@ -1,13 +1,19 @@
 import { z } from "zod";
 import type { FreightFundingMode } from "@/lib/freight-funding";
 
-export const getShippingQuotesSchema = z.object({
-  listingId: z.string().uuid(),
-  destinationZip: z
-    .string()
-    .regex(/^\d{5}(?:-\d{4})?$/, "Enter a valid US ZIP code"),
-  quantitySqFt: z.number().positive(),
-}).strict();
+export const getShippingQuotesSchema = z
+  .object({
+    listingId: z.string().uuid(),
+    destinationZip: z
+      .string()
+      .regex(/^\d{5}(?:-\d{4})?$/, "Enter a valid US ZIP code"),
+    quantitySqFt: z.number().positive(),
+    /** Optional door-delivery accessorials priced into carrier rates. */
+    liftgateDelivery: z.boolean().optional(),
+    residentialDelivery: z.boolean().optional(),
+    appointmentDelivery: z.boolean().optional(),
+  })
+  .strict();
 
 export interface ShippingQuote {
   quoteId: number; // Priority1 rateQuote.id

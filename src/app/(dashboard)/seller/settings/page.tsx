@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { updateProfileSchema, type UpdateProfileInput } from "@/lib/validators/auth";
@@ -136,6 +137,34 @@ export default function SellerSettingsPage() {
           </CardContent>
         </Card>
       </form>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Security</CardTitle>
+          <CardDescription>
+            Protect payout and Stripe account-management actions with an authenticator app.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Authenticator status</span>
+            <span>
+              {user?.assurance?.hasVerifiedTotp ? "Configured" : "Not configured"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Current assurance</span>
+            <span className="uppercase">
+              {user?.assurance?.currentLevel ?? "aal1"}
+            </span>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/mfa?intent=manage&next=/seller/settings">
+              Manage authenticator
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

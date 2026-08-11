@@ -23,7 +23,68 @@ import zipcodes from "zipcodes";
 type NullableString = string | null | undefined;
 type NullableNumber = number | null | undefined;
 
+/** Minimum residual life required at carrier dispatch / capture re-check. */
 export const SHIPPING_DISPATCH_SAFETY_BUFFER_MS = 5 * 60 * 1000;
+/**
+ * Residual life required when creating a PaymentIntent (covers card-entry time).
+ */
+export const SHIPPING_PAYMENT_BOOKABILITY_BUFFER_MS = 10 * 60 * 1000;
+/**
+ * Residual life required when minting/offering rates and consuming into an order
+ * (covers browse → checkout → pay window).
+ */
+export const SHIPPING_OFFER_BOOKABILITY_BUFFER_MS = 20 * 60 * 1000;
+/** Max Redis TTL for secure quote tokens and booking snapshots. */
+export const SHIPPING_QUOTE_ARTIFACT_TTL_CAP_SECONDS = 1800;
+/** Max Redis TTL for buyer-agnostic Priority1 rate-response cache. */
+export const SHIPPING_RATE_RESPONSE_CACHE_TTL_CAP_SECONDS = 600;
+
+/**
+ * A quote is bookable only when it still has enough residual life for the
+ * given safety buffer (dispatch / payment / offer).
+ */
+export function isQuoteBookable(
+  expiresAt: Date | string | number,
+  nowMs: number = Date.now(),
+  bufferMs: number = SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
+): boolean {
+  const expiresAtMs =
+    expiresAt instanceof Date
+      ? expiresAt.getTime()
+      : typeof expiresAt === "number"
+        ? expiresAt
+        : new Date(expiresAt).getTime();
+  if (!Number.isFinite(expiresAtMs)) return false;
+  return expiresAtMs > nowMs + bufferMs;
+}
+
+/**
+ * Shared TTL for quote token + booking snapshot artifacts. Returns null when
+ * the quote is no longer offer-bookable (do not mint). Caps at residual life
+ * minus the offer buffer so Redis keys do not outlive order consume acceptance.
+ */
+export function quoteArtifactTtlSeconds(
+  expiresAt: Date | string | number,
+  nowMs: number = Date.now(),
+  capSeconds: number = SHIPPING_QUOTE_ARTIFACT_TTL_CAP_SECONDS,
+): number | null {
+  if (!isQuoteBookable(expiresAt, nowMs, SHIPPING_OFFER_BOOKABILITY_BUFFER_MS)) {
+    return null;
+  }
+  const expiresAtMs =
+    expiresAt instanceof Date
+      ? expiresAt.getTime()
+      : typeof expiresAt === "number"
+        ? expiresAt
+        : new Date(expiresAt).getTime();
+  const bookableResidualMs =
+    expiresAtMs - nowMs - SHIPPING_OFFER_BOOKABILITY_BUFFER_MS;
+  if (bookableResidualMs <= 0) return null;
+  return Math.min(
+    capSeconds,
+    Math.max(1, Math.floor(bookableResidualMs / 1000)),
+  );
+}
 
 export interface ListingFreightFundingSnapshot {
   freightPaymentMode: "buyer_pays" | "seller_pays" | null | undefined;
@@ -212,6 +273,9 @@ export const shippingBookingSnapshotSchema = z
     carrierScac: z.string().min(1),
     carrierRate: z.number().nonnegative(),
     shippingPrice: z.number().nonnegative(),
+    accessorialCodes: z
+      .array(z.enum(["LGDEL", "RESD", "APPT"]))
+      .default([]),
     commercialPolicy: z
       .object({
         version: z.number().int().positive(),
@@ -285,9 +349,71 @@ export interface ShippingSnapshotOrderContext {
 }
 
 export const SHIPPING_BOOKING_SNAPSHOT_PREFIX = "shipping-booking-snapshot";
+export const SHIPPING_BOOKING_SNAPSHOT_TOKEN_PREFIX =
+  "shipping-booking-snapshot:token";
 
+/**
+ * @deprecated Prefer token-scoped snapshots via
+ * {@link getShippingBookingSnapshotKeyByToken}. Global quoteId keys race when
+ * the rate cache reuses Priority1 quote IDs across buyers.
+ */
 export function getShippingBookingSnapshotKey(quoteId: string | number): string {
   return `${SHIPPING_BOOKING_SNAPSHOT_PREFIX}:${quoteId}`;
+}
+
+/** Token-scoped booking snapshot — unique per getQuotes mint. */
+export function getShippingBookingSnapshotKeyByToken(quoteToken: string): string {
+  return `${SHIPPING_BOOKING_SNAPSHOT_TOKEN_PREFIX}:${quoteToken}`;
+}
+
+export function getShippingQuoteTokenKey(quoteToken: string): string {
+  return `shipping-quote-token:${quoteToken}`;
+}
+
+/**
+ * Select top shipping quotes: cheapest, fastest (if distinct), then best value
+ * among remaining (lowest price-per-transit-day).
+ */
+export function selectTopShippingQuotes<
+  T extends {
+    quoteId: number;
+    shippingPrice: number;
+    transitDays: number;
+  },
+>(quotes: T[], limit = 3): T[] {
+  if (quotes.length === 0 || limit <= 0) return [];
+  if (quotes.length <= limit) {
+    return [...quotes].sort((a, b) => a.shippingPrice - b.shippingPrice);
+  }
+
+  const byPrice = [...quotes].sort(
+    (a, b) => a.shippingPrice - b.shippingPrice,
+  );
+  const bySpeed = [...quotes].sort(
+    (a, b) => a.transitDays - b.transitDays || a.shippingPrice - b.shippingPrice,
+  );
+
+  const selected = new Map<number, T>();
+  if (byPrice[0]) selected.set(byPrice[0].quoteId, byPrice[0]);
+  if (bySpeed[0]) selected.set(bySpeed[0].quoteId, bySpeed[0]);
+
+  if (selected.size < limit) {
+    const remaining = quotes
+      .filter((q) => !selected.has(q.quoteId))
+      .sort((a, b) => {
+        const valueA = a.shippingPrice / Math.max(a.transitDays, 1);
+        const valueB = b.shippingPrice / Math.max(b.transitDays, 1);
+        return valueA - valueB || a.shippingPrice - b.shippingPrice;
+      });
+    for (const quote of remaining) {
+      if (selected.size >= limit) break;
+      selected.set(quote.quoteId, quote);
+    }
+  }
+
+  return Array.from(selected.values()).sort(
+    (a, b) => a.shippingPrice - b.shippingPrice,
+  );
 }
 
 function moneyMatches(snapshotAmount: number, orderAmount: number | string | null) {
@@ -416,34 +542,159 @@ export function normalizeUsZip(zip: string): string {
   return match[1];
 }
 
-export function getNextBusinessDay(from = new Date()): Date {
-  const date = new Date(from);
-  date.setDate(date.getDate() + 1);
+/**
+ * US freight business calendar. Vercel/Node typically run UTC; host-local
+ * getDay/getDate mis-compute next pickup for late US evenings.
+ */
+export const FREIGHT_BUSINESS_TIMEZONE = "America/Chicago";
 
-  while (date.getDay() === 0 || date.getDay() === 6) {
-    date.setDate(date.getDate() + 1);
-  }
-
-  return date;
+function zonedCalendarDate(
+  date: Date,
+  timeZone: string = FREIGHT_BUSINESS_TIMEZONE,
+): string {
+  // en-CA yields stable YYYY-MM-DD
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
-export function addBusinessDays(from: Date, days: number): Date {
-  const date = new Date(from);
-  let remaining = Math.max(0, days);
-
-  while (remaining > 0) {
-    date.setDate(date.getDate() + 1);
-    if (date.getDay() !== 0 && date.getDay() !== 6) remaining--;
+/** Represent a calendar YMD as UTC noon (stable weekday + formatting). */
+function calendarDateToUtcNoon(ymd: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) {
+    throw new Error(`Invalid calendar date: ${ymd}`);
   }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
 
-  return date;
+function addCalendarDaysUtcNoon(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * US federal holidays commonly observed by LTL carriers (fixed + observed
+ * weekday shifts for 2025–2028). Values are YYYY-MM-DD in freight TZ.
+ * Extend annually as needed.
+ */
+const FREIGHT_US_HOLIDAYS = new Set([
+  // 2025
+  "2025-01-01",
+  "2025-01-20",
+  "2025-02-17",
+  "2025-05-26",
+  "2025-06-19",
+  "2025-07-04",
+  "2025-09-01",
+  "2025-11-11",
+  "2025-11-27",
+  "2025-12-25",
+  // 2026
+  "2026-01-01",
+  "2026-01-19",
+  "2026-02-16",
+  "2026-05-25",
+  "2026-06-19",
+  "2026-07-03", // July 4 observed (Saturday)
+  "2026-09-07",
+  "2026-11-11",
+  "2026-11-26",
+  "2026-12-25",
+  // 2027
+  "2027-01-01",
+  "2027-01-18",
+  "2027-02-15",
+  "2027-05-31",
+  "2027-06-18", // Juneteenth observed (Saturday)
+  "2027-07-05", // July 4 observed (Sunday)
+  "2027-09-06",
+  "2027-11-11",
+  "2027-11-25",
+  "2027-12-24", // Christmas observed (Saturday)
+  "2027-12-31", // New Year's observed (Saturday)
+  // 2028
+  "2028-01-17",
+  "2028-02-21",
+  "2028-05-29",
+  "2028-06-19",
+  "2028-07-04",
+  "2028-09-04",
+  "2028-11-10", // Veterans Day observed (Saturday)
+  "2028-11-23",
+  "2028-12-25",
+]);
+
+export function isFreightBusinessDay(date: Date): boolean {
+  const day = date.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  return !FREIGHT_US_HOLIDAYS.has(formatPriority1Date(date));
+}
+
+export function getNextBusinessDay(
+  from = new Date(),
+  timeZone: string = FREIGHT_BUSINESS_TIMEZONE,
+): Date {
+  let cursor = calendarDateToUtcNoon(zonedCalendarDate(from, timeZone));
+  cursor = addCalendarDaysUtcNoon(cursor, 1);
+  while (!isFreightBusinessDay(cursor)) {
+    cursor = addCalendarDaysUtcNoon(cursor, 1);
+  }
+  return cursor;
+}
+
+export function addBusinessDays(
+  from: Date,
+  days: number,
+  timeZone: string = FREIGHT_BUSINESS_TIMEZONE,
+): Date {
+  let cursor = calendarDateToUtcNoon(zonedCalendarDate(from, timeZone));
+  let remaining = Math.max(0, days);
+  while (remaining > 0) {
+    cursor = addCalendarDaysUtcNoon(cursor, 1);
+    if (isFreightBusinessDay(cursor)) remaining--;
+  }
+  return cursor;
+}
+
+/** Priority1 accessorial codes used for common lumber/flooring delivery needs. */
+export const FREIGHT_ACCESSORIAL_CODES = {
+  liftgateDelivery: "LGDEL",
+  residentialDelivery: "RESD",
+  appointmentDelivery: "APPT",
+} as const;
+
+export type FreightAccessorialFlags = {
+  liftgateDelivery?: boolean;
+  residentialDelivery?: boolean;
+  appointmentDelivery?: boolean;
+};
+
+export function resolveFreightAccessorialCodes(
+  flags: FreightAccessorialFlags | null | undefined,
+): string[] {
+  if (!flags) return [];
+  const codes: string[] = [];
+  if (flags.liftgateDelivery) codes.push(FREIGHT_ACCESSORIAL_CODES.liftgateDelivery);
+  if (flags.residentialDelivery) {
+    codes.push(FREIGHT_ACCESSORIAL_CODES.residentialDelivery);
+  }
+  if (flags.appointmentDelivery) {
+    codes.push(FREIGHT_ACCESSORIAL_CODES.appointmentDelivery);
+  }
+  return codes;
 }
 
 export function formatPriority1Date(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+  // Prefer UTC components when the date is our UTC-noon calendar representation.
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
     2,
     "0",
-  )}-${String(date.getDate()).padStart(2, "0")}`;
+  )}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 export function formatPickupDate(date: Date): string {
@@ -460,7 +711,8 @@ export function formatPriority1DateValue(value: string | Date): string {
   if (Number.isNaN(date.getTime())) {
     throw new Error("Priority1 returned an invalid date");
   }
-  return formatPriority1Date(date);
+  // Provider timestamps: format in freight business TZ, not host-local.
+  return zonedCalendarDate(date, FREIGHT_BUSINESS_TIMEZONE);
 }
 
 export function computePalletsNeeded(params: {
@@ -700,11 +952,7 @@ export function mapPriority1ShipmentStatus(
   return {
     mappedStatus,
     trackingEvents: normalizeTrackingStatusesToEvents(trackingStatuses),
-    pickupConfirmed:
-      Boolean(pickupConfirmedAt) ||
-      mappedStatus === "in_transit" ||
-      mappedStatus === "out_for_delivery" ||
-      mappedStatus === "delivered",
+    pickupConfirmed: Boolean(pickupConfirmedAt),
     pickupConfirmedAt,
     delivered: mappedStatus === "delivered",
     deliveredAt,

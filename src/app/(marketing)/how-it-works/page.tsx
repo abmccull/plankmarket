@@ -26,7 +26,7 @@ import { TransactionTimelineExplainer } from "@/components/marketplace/transacti
 export const metadata: Metadata = {
   title: "How It Works - Buy & Sell Surplus Flooring",
   description:
-    "Discover how PlankMarket works for buyers and sellers. Browse surplus flooring inventory, purchase securely via Stripe, and coordinate freight shipping nationwide.",
+    "Discover how PlankMarket works for buyers and sellers. Browse surplus flooring inventory, purchase through Stripe, and coordinate freight in supported markets.",
   openGraph: {
     title: "How PlankMarket Works",
     description:
@@ -140,7 +140,7 @@ export default function HowItWorksPage() {
                 step: "1",
                 title: "List Your Inventory",
                 description:
-                  "Create detailed listings in minutes. Upload high-quality photos, specify material type, color, finish, dimensions, and quantity. The more detail, the faster it sells.",
+                  "Use the guided flow to upload photos and record material type, color, finish, dimensions, quantity, and condition.",
               },
               {
                 icon: DollarSign,
@@ -217,7 +217,7 @@ export default function HowItWorksPage() {
             {[
               {
                 icon: Shield,
-                title: "Verified Sellers",
+                title: "Visible Seller Verification",
                 description:
                   "Seller verification status appears on marketplace listings. Review the status, listing photos, condition, and available reputation history before purchasing.",
               },
@@ -235,9 +235,9 @@ export default function HowItWorksPage() {
               },
               {
                 icon: Globe,
-                title: "Nationwide Shipping",
+                title: "Supported-Market Shipping",
                 description:
-                  "Buy and sell flooring materials across the country. Buyers select an integrated carrier quote at checkout, and sellers prepare the order for scheduled pickup.",
+                  "Buy and sell flooring where seller territories and current supported-market coverage overlap. Buyers select an integrated carrier quote at checkout when available, and sellers prepare the order for scheduled pickup.",
               },
             ].map((item) => (
               <Card key={item.title} className="card-hover-lift">

@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/select";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetTitle,
   SheetTrigger,
@@ -57,9 +58,10 @@ import {
   Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SortOption, PromotionTier } from "@/types";
+import type { SearchFilters, SortOption, PromotionTier } from "@/types";
 import { toast } from "sonner";
 import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
+import type { FreightEstimateStatus } from "@/components/listings/listing-evidence";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "date_newest", label: "Newest First" },
@@ -82,6 +84,7 @@ interface ListingItem {
   buyNowPrice: number | null;
   locationCity: string | null;
   locationState: string | null;
+  freightEstimateStatus?: FreightEstimateStatus;
   freshnessStatus?: ListingFreshnessStatus;
   lastConfirmedAt?: Date | string | null;
   viewsCount: number;
@@ -94,8 +97,6 @@ interface ListingItem {
     displayName: string;
     verified: boolean;
     role: string;
-    businessCity?: string | null;
-    businessState: string | null;
   } | null;
 }
 
@@ -103,6 +104,7 @@ interface ListingsBrowseClientProps {
   initialData: {
     items: ListingItem[];
     total: number;
+    totalIsExact: boolean;
     totalPages: number;
     page: number;
     limit: number;
@@ -125,10 +127,88 @@ function buildDefaultSavedSearchName(searchParams: URLSearchParams): string {
     .slice(0, 2);
 
   if (badges.length > 0) {
-    return badges.join(" • ");
+    return badges.join(" | ");
   }
 
   return "All Listings";
+}
+
+const FILTER_PARAM_KEYS: Array<keyof SearchFilters> = [
+  "materialType",
+  "species",
+  "colorFamily",
+  "finishType",
+  "width",
+  "thickness",
+  "wearLayer",
+  "priceMin",
+  "priceMax",
+  "condition",
+  "state",
+  "certifications",
+  "minLotSize",
+  "maxLotSize",
+  "maxDistance",
+  "buyerZip",
+  "sellerVerified",
+  "freightReady",
+  "fullLotOnly",
+];
+
+function buildListingsUrl(params: URLSearchParams) {
+  const query = params.toString();
+  return query ? `/listings?${query}` : "/listings";
+}
+
+function writeFilterParams(params: URLSearchParams, filters: SearchFilters) {
+  for (const key of FILTER_PARAM_KEYS) {
+    params.delete(key);
+  }
+
+  const setCsvParam = (key: keyof SearchFilters, value?: Array<string | number>) => {
+    if (value && value.length > 0) {
+      params.set(String(key), value.join(","));
+    }
+  };
+
+  setCsvParam("materialType", filters.materialType);
+  setCsvParam("condition", filters.condition);
+  setCsvParam("species", filters.species);
+  setCsvParam("colorFamily", filters.colorFamily);
+  setCsvParam("finishType", filters.finishType);
+  setCsvParam("state", filters.state);
+  setCsvParam("certifications", filters.certifications);
+  setCsvParam("width", filters.width);
+  setCsvParam("thickness", filters.thickness);
+  setCsvParam("wearLayer", filters.wearLayer);
+
+  if (filters.priceMin !== undefined) {
+    params.set("priceMin", String(filters.priceMin));
+  }
+  if (filters.priceMax !== undefined) {
+    params.set("priceMax", String(filters.priceMax));
+  }
+  if (filters.minLotSize !== undefined) {
+    params.set("minLotSize", String(filters.minLotSize));
+  }
+  if (filters.maxLotSize !== undefined) {
+    params.set("maxLotSize", String(filters.maxLotSize));
+  }
+  if (filters.maxDistance !== undefined) {
+    params.set("maxDistance", String(filters.maxDistance));
+  }
+  if (filters.buyerZip) {
+    params.set("buyerZip", filters.buyerZip);
+  }
+  if (filters.sellerVerified === true) {
+    params.set("sellerVerified", "true");
+  }
+  if (filters.freightReady === true) {
+    params.set("freightReady", "true");
+  }
+  if (filters.fullLotOnly !== undefined) {
+    params.set("fullLotOnly", String(filters.fullLotOnly));
+  }
 }
 
 export function ListingsBrowseClient({
@@ -141,10 +221,9 @@ export function ListingsBrowseClient({
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuthStore();
   const { isPro } = useProStatus();
   const track = useTrack();
-  const [searchInput, setSearchInput] = useState(initialParams.query ?? "");
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const zeroResultImpressionRef = useRef<string | null>(null);
   const saveIntentHandledRef = useRef(false);
@@ -167,6 +246,10 @@ export function ListingsBrowseClient({
     () => searchParamsToFilters(currentSearchParams),
     [currentSearchParams],
   );
+  const currentSort = currentSearchParams.get("sort") ?? initialParams.sort;
+  const currentLimit = Number(currentSearchParams.get("limit") ?? initialData.limit);
+  const viewMode: "grid" | "list" = currentLimit >= 50 ? "list" : "grid";
+  const filterStateKey = currentFilters.buyerZip ?? user?.zipCode ?? "";
   const searchGapContext = useMemo(
     () => buildSearchGapAnalyticsContext(currentFilters),
     [currentFilters],
@@ -189,46 +272,77 @@ export function ListingsBrowseClient({
     currentSearchParams,
   );
 
+  const navigateWithParams = useCallback(
+    (mutate: (params: URLSearchParams) => void) => {
+      const params = new URLSearchParams(rawSearchParams.toString());
+      mutate(params);
+      router.push(buildListingsUrl(params));
+    },
+    [rawSearchParams, router],
+  );
+
   const updateParams = useCallback(
     (updates: Record<string, string | undefined>) => {
-      const params = new URLSearchParams(rawSearchParams.toString());
-      Object.entries(updates).forEach(([key, value]) => {
-        if (value !== undefined && value !== "") {
-          params.set(key, value);
-        } else {
-          params.delete(key);
+      navigateWithParams((params) => {
+        Object.entries(updates).forEach(([key, value]) => {
+          if (value !== undefined && value !== "") {
+            params.set(key, value);
+          } else {
+            params.delete(key);
+          }
+        });
+        if (!updates.page) {
+          params.delete("page");
         }
       });
-      // Reset to page 1 when filters change (unless we're explicitly setting page)
-      if (!updates.page) {
-        params.delete("page");
-      }
-      router.push(`/listings?${params.toString()}`);
     },
-    [router, rawSearchParams]
+    [navigateWithParams],
   );
+
+  const updateFilters = useCallback(
+    (updates: Partial<SearchFilters>) => {
+      navigateWithParams((params) => {
+        writeFilterParams(params, {
+          ...currentFilters,
+          ...updates,
+        });
+        params.delete("page");
+      });
+    },
+    [currentFilters, navigateWithParams],
+  );
+
+  const clearFilters = useCallback(() => {
+    navigateWithParams((params) => {
+      for (const key of FILTER_PARAM_KEYS) {
+        params.delete(String(key));
+      }
+      params.delete("page");
+    });
+  }, [navigateWithParams]);
 
   const handleViewModeChange = useCallback(
     (mode: "grid" | "list") => {
       const GRID_LIMITS = ["12", "24", "48"];
       const LIST_LIMITS = ["50", "100", "250"];
-      setViewMode(mode);
-      const currentLimit = String(initialParams.limit);
-      if (mode === "list" && GRID_LIMITS.includes(currentLimit)) {
+      const nextLimit = String(currentLimit);
+      if (mode === "list" && GRID_LIMITS.includes(nextLimit)) {
         updateParams({ limit: "50" });
-      } else if (mode === "grid" && LIST_LIMITS.includes(currentLimit)) {
+      } else if (mode === "grid" && LIST_LIMITS.includes(nextLimit)) {
         updateParams({ limit: "24" });
       }
     },
-    [initialParams.limit, updateParams]
+    [currentLimit, updateParams],
   );
 
   const handleSearchChange = useCallback(
     (value: string) => {
-      setSearchInput(value);
       clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
-        updateParams({ query: value || undefined });
+        const normalized = value.trim();
+        updateParams({
+          query: normalized.length >= 3 ? normalized : undefined,
+        });
       }, 300);
     },
     [updateParams]
@@ -242,10 +356,10 @@ export function ListingsBrowseClient({
     } else {
       params.delete("page");
     }
-    return `/listings?${params.toString()}`;
+    return buildListingsUrl(params);
   };
 
-  const currentPage = initialParams.page;
+  const currentPage = initialData.page;
   const savedSearchCount = savedSearches?.length ?? 0;
   const atSearchLimit =
     isAuthenticated && !isPro && savedSearchCount >= FREE_LIMITS.savedSearches;
@@ -439,29 +553,53 @@ export function ListingsBrowseClient({
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h1 className="sr-only">Browse surplus flooring listings</h1>
+      <header className="mb-6 max-w-3xl">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-secondary">
+          Current marketplace inventory
+        </p>
+        <h1 className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">
+          Browse surplus flooring listings
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">
+          Compare lot economics, seller verification, inventory freshness, and
+          freight readiness before you contact a seller.
+        </p>
+      </header>
       {/* Search Bar */}
       <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search flooring by material, species, brand..."
+            key={currentFilters.query ?? ""}
+            placeholder="Search flooring by material, species, brand (3+ characters)..."
             className="pl-10"
-            value={searchInput}
+            defaultValue={currentFilters.query ?? ""}
             onChange={(e) => handleSearchChange(e.target.value)}
+            minLength={3}
           />
         </div>
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+          onClick={() => {
+            setIsMobileFilterOpen(false);
+            setIsFilterPanelOpen((open) => !open);
+          }}
           className={cn("hidden md:flex", isFilterPanelOpen && "bg-accent")}
           aria-label="Toggle filters"
           aria-expanded={isFilterPanelOpen}
         >
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
-        <Sheet>
+        <Sheet
+          open={isMobileFilterOpen}
+          onOpenChange={(open) => {
+            setIsMobileFilterOpen(open);
+            if (open) {
+              setIsFilterPanelOpen(false);
+            }
+          }}
+        >
           <SheetTrigger asChild>
             <Button
               variant="outline"
@@ -472,10 +610,40 @@ export function ListingsBrowseClient({
               <SlidersHorizontal className="h-4 w-4" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left">
-            <SheetTitle>Filters</SheetTitle>
-            <div className="mt-4 overflow-y-auto">
-              <FacetedFilters />
+          <SheetContent side="left" className="flex flex-col gap-0 p-0">
+            <div className="shrink-0 border-b px-5 py-4 pr-12">
+              <SheetTitle>Filters</SheetTitle>
+              <p className="mt-1 text-sm text-muted-foreground" aria-live="polite">
+                {initialData.total.toLocaleString()}
+                {initialData.totalIsExact ? "" : "+"} listing
+                {initialData.total !== 1 ? "s" : ""} match
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <FacetedFilters
+                key={`mobile-${filterStateKey}`}
+                filters={currentFilters}
+                onFiltersChange={updateFilters}
+                onClearFilters={clearFilters}
+              />
+            </div>
+            <div className="grid shrink-0 grid-cols-[auto_1fr] gap-3 border-t bg-background px-5 py-4 shadow-[0_-8px_24px_rgba(49,32,21,0.08)]">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11"
+                onClick={clearFilters}
+                disabled={!hasFilters}
+              >
+                Clear
+              </Button>
+              <SheetClose asChild>
+                <Button type="button" className="min-h-11">
+                  Show {initialData.total.toLocaleString()}
+                  {initialData.totalIsExact ? "" : "+"} result
+                  {initialData.total !== 1 ? "s" : ""}
+                </Button>
+              </SheetClose>
             </div>
           </SheetContent>
         </Sheet>
@@ -484,12 +652,12 @@ export function ListingsBrowseClient({
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="text-sm text-muted-foreground">
-          {initialData.total.toLocaleString()} listing
+          {initialData.total.toLocaleString()}{initialData.totalIsExact ? "" : "+"} listing
           {initialData.total !== 1 ? "s" : ""} found
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Select
-            value={String(initialParams.limit)}
+            value={String(currentLimit)}
             onValueChange={(v) => updateParams({ limit: v })}
           >
             <SelectTrigger
@@ -515,7 +683,7 @@ export function ListingsBrowseClient({
             </SelectContent>
           </Select>
           <Select
-            value={initialParams.sort}
+            value={currentSort}
             onValueChange={(v) => updateParams({ sort: v })}
           >
             <SelectTrigger
@@ -599,7 +767,12 @@ export function ListingsBrowseClient({
       <div className="flex gap-8">
         {isFilterPanelOpen && (
           <aside className="w-64 shrink-0 hidden md:block">
-            <FacetedFilters />
+            <FacetedFilters
+              key={`desktop-${filterStateKey}`}
+              filters={currentFilters}
+              onFiltersChange={updateFilters}
+              onClearFilters={clearFilters}
+            />
           </aside>
         )}
 
@@ -630,7 +803,7 @@ export function ListingsBrowseClient({
               <p className="mx-auto mt-2 max-w-2xl text-muted-foreground">
                 {hasFilters
                   ? "Keep your criteria working. We can alert you, send your request to sellers, or help matching inventory get listed."
-                  : "Be first to know when inventory arrives, or tell verified sellers exactly what your business needs."}
+                  : "Be first to know when inventory arrives, or tell qualified sellers exactly what your business needs."}
               </p>
 
               <div className="mt-8 grid gap-4 text-left md:grid-cols-3">
@@ -730,7 +903,7 @@ export function ListingsBrowseClient({
                 <Button
                   className="mt-6"
                   variant="ghost"
-                  onClick={() => router.push("/listings")}
+                  onClick={clearFilters}
                 >
                   Clear all filters
                 </Button>
@@ -768,7 +941,7 @@ export function ListingsBrowseClient({
                     </Button>
                   )}
                   <span className="text-sm text-muted-foreground px-4">
-                    Page {currentPage} of {initialData.totalPages}
+                    Page {currentPage} of {initialData.totalPages}{initialData.totalIsExact ? "" : "+"}
                   </span>
                   {currentPage < initialData.totalPages ? (
                     <Link href={buildPageUrl(currentPage + 1)}>

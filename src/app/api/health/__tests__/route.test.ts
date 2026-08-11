@@ -1,72 +1,31 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  execute: vi.fn(),
-}));
-
-vi.mock("@/server/db", () => ({
-  db: {
-    execute: mocks.execute,
-  },
-}));
-
 const { GET } = await import("../route");
-const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
 describe("GET /api/health", () => {
+  const request = new Request("https://www.plankmarket.com/api/health", {
+    headers: { "x-request-id": "health-test-req-1234" },
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterAll(() => {
-    consoleError.mockRestore();
+    vi.restoreAllMocks();
   });
 
-  it("returns healthy only when the complete schema contract passes", async () => {
-    mocks.execute.mockResolvedValue([
-      {
-        schemaReady: true,
-        missingArtifactCount: 0,
-        missingArtifacts: [],
-      },
-    ]);
-
-    const response = await GET();
+  it("returns cheap public liveness without database or deploy metadata", async () => {
+    const response = await GET(request);
+    const body = await response.json();
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.headers.get("x-request-id")).toBe("health-test-req-1234");
+    expect(response.headers.get("server-timing")).toBeTruthy();
+    expect(body).toMatchObject({
       status: "ok",
-      checks: { database: "ok", schema: "ok" },
+      checks: { app: "ok" },
     });
-  });
-
-  it("distinguishes a reachable database from an incomplete schema", async () => {
-    mocks.execute.mockResolvedValue([
-      {
-        schemaReady: false,
-        missingArtifactCount: 2,
-        missingArtifacts: ["column:orders.tax_amount"],
-      },
-    ]);
-
-    const response = await GET();
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "unhealthy",
-      checks: { database: "ok", schema: "not_ready" },
-    });
-  });
-
-  it("fails closed when the database readiness query cannot run", async () => {
-    mocks.execute.mockRejectedValue(new Error("database unavailable"));
-
-    const response = await GET();
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      status: "unhealthy",
-      checks: { database: "unavailable", schema: "unavailable" },
-    });
+    expect(body).not.toHaveProperty("meta");
   });
 });

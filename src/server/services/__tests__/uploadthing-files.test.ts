@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import {
+
+vi.mock("@/server/db", () => ({ db: {} }));
+
+const {
   deleteMediaWithProvider,
   deleteUploadThingFile,
-} from "@/server/services/uploadthing-files";
+  getUploadThingFileKeyFromUrl,
+} = await import("@/server/services/uploadthing-files");
 
 describe("UploadThing deletion", () => {
   it("treats an already-missing remote object as an idempotent success", async () => {
@@ -45,5 +49,19 @@ describe("UploadThing deletion", () => {
     });
 
     expect(calls).toEqual(["remote", "metadata"]);
+  });
+
+  it("extracts trusted UploadThing keys from hosted file URLs", () => {
+    expect(
+      getUploadThingFileKeyFromUrl("https://utfs.io/f/verification-doc"),
+    ).toBe("verification-doc");
+    expect(
+      getUploadThingFileKeyFromUrl(
+        "https://example-app.ufs.sh/f/verification%20doc",
+      ),
+    ).toBe("verification doc");
+    expect(
+      getUploadThingFileKeyFromUrl("https://example.com/f/verification-doc"),
+    ).toBeNull();
   });
 });

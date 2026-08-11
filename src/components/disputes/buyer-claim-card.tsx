@@ -44,6 +44,14 @@ const REASON_OPTIONS = [
   ["missing_documentation", "Missing documentation"],
   ["other", "Other order issue"],
 ] as const;
+const ALLOWED_EVIDENCE_TYPES = new Set([
+  "application/pdf",
+  "image/heic",
+  "image/heif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 type ReasonCode = (typeof REASON_OPTIONS)[number][0];
 
@@ -65,8 +73,7 @@ function validateFiles(files: File[], maximum: number) {
   const invalid = files.find(
     (file) =>
       file.size > 8 * 1024 * 1024 ||
-      (!file.type.startsWith("image/") &&
-        file.type !== "application/pdf"),
+      !ALLOWED_EVIDENCE_TYPES.has(file.type.toLowerCase()),
   );
   if (invalid) {
     return `${invalid.name} is unsupported or larger than 8 MB.`;
@@ -241,7 +248,7 @@ export function BuyerClaimCard({ orderId }: { orderId: string }) {
                   {existing.evidence.map((item) => (
                     <a
                       key={item.id}
-                      href={item.media.url}
+                      href={`/api/disputes/evidence/${item.media.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-muted"

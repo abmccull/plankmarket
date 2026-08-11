@@ -299,4 +299,45 @@ describe("preferences active-listing default application", () => {
       freightDropCharge: null,
     });
   });
+
+  it("updates analytics consent without resetting profile completion fields", async () => {
+    const insertedValues: Array<Record<string, unknown>> = [];
+    const conflictUpdates: Array<Record<string, unknown>> = [];
+    const insert = vi.fn(() => {
+      const builder = {
+        values: vi.fn((values: Record<string, unknown>) => {
+          insertedValues.push(values);
+          return builder;
+        }),
+        onConflictDoUpdate: vi.fn(
+          (config: { set: Record<string, unknown> }) => {
+            conflictUpdates.push(config.set);
+            return builder;
+          },
+        ),
+        returning: vi.fn().mockResolvedValue([
+          {
+            analyticsTrackingEnabled: true,
+            analyticsConsentUpdatedAt: new Date(),
+          },
+        ]),
+      };
+      return builder;
+    });
+    const caller = createCaller(createCallerContext({ insert }));
+
+    await caller.preferences.setAnalyticsConsent({ enabled: true });
+
+    expect(insertedValues[0]).toMatchObject({
+      userId: SELLER_ID,
+      role: "seller",
+      analyticsTrackingEnabled: true,
+    });
+    expect(conflictUpdates[0]).toMatchObject({
+      analyticsTrackingEnabled: true,
+    });
+    expect(conflictUpdates[0]).not.toHaveProperty("role");
+    expect(conflictUpdates[0]).not.toHaveProperty("profileComplete");
+    expect(conflictUpdates[0]).not.toHaveProperty("completedAt");
+  });
 });

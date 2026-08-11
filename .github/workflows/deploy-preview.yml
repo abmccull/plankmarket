@@ -8,28 +8,29 @@ concurrency:
   group: preview-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+permissions:
+  contents: read
 
 jobs:
-  deploy:
-    name: Deploy Preview
+  validate:
+    name: Validate Preview
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.22.0
           cache: npm
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
 
       - name: Quality and security gate
         env:
@@ -44,63 +45,406 @@ jobs:
           npm run db:check
           npm run build
 
-      - name: Install pinned Vercel CLI
-        run: npm install -g vercel@55.0.0
+      - name: Audit root dependency graph
+        id: audit_root
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p ci-artifacts
+          set +e
+          npm audit --audit-level=high --json > ci-artifacts/npm-audit-root.json
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $status
 
-      - name: Link Vercel Project
+      - name: Audit deploy CLI dependency graph
+        id: audit_vercel_cli
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          npm audit --prefix .github/vercel-cli --audit-level=high --json > ci-artifacts/npm-audit-vercel-cli.json
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Generate SBOM evidence
+        shell: bash
+        run: |
+          ./node_modules/.bin/cyclonedx-npm \
+            --ignore-npm-errors \
+            --package-lock-only \
+            --output-reproducible \
+            --of JSON \
+            -o ci-artifacts/sbom-root.cdx.json
+          (
+            cd .github/vercel-cli
+            ../../node_modules/.bin/cyclonedx-npm \
+              --ignore-npm-errors \
+              --package-lock-only \
+              --output-reproducible \
+              --of JSON \
+              -o ../../ci-artifacts/sbom-vercel-cli.cdx.json
+          )
+
+      - name: Enforce full dependency audit gate
+        if: always()
+        shell: bash
+        env:
+          ROOT_AUDIT_STATUS: ${{ steps.audit_root.outputs.status }}
+          VERCEL_CLI_AUDIT_STATUS: ${{ steps.audit_vercel_cli.outputs.status }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const checks = [
+            ['root', 'ci-artifacts/npm-audit-root.json', Number(process.env.ROOT_AUDIT_STATUS ?? '1')],
+            ['vercel-cli', 'ci-artifacts/npm-audit-vercel-cli.json', Number(process.env.VERCEL_CLI_AUDIT_STATUS ?? '1')],
+          ];
+
+          let failed = false;
+          for (const [name, file, status] of checks) {
+            const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const counts = report.metadata?.vulnerabilities ?? {};
+            console.log(`${name}: ${JSON.stringify(counts)}`);
+            if (status !== 0 || (counts.high ?? 0) > 0 || (counts.critical ?? 0) > 0) {
+              failed = true;
+            }
+          }
+
+          if (failed) {
+            process.exit(1);
+          }
+          NODE
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: preview-validation-evidence
+          path: ci-artifacts
+          if-no-files-found: error
+
+  preflight_preview:
+    name: Preview Preflight
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: preview
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      PREVIEW_GIT_BRANCH: ${{ github.head_ref }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
+
+      - name: Link protected preview project
+        shell: bash
         run: |
           mkdir -p .vercel
-          echo '{"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}"}' > .vercel/project.json
+          cat <<EOF > .vercel/project.json
+          {"projectId":"$VERCEL_PROJECT_ID","orgId":"$VERCEL_ORG_ID"}
+          EOF
 
-      - name: Pull Vercel Environment
+      - name: Pull protected preview settings
         run: >-
-          vercel pull --yes --environment=preview
-          --git-branch="${{ github.head_ref }}"
-          --token=${{ secrets.VERCEL_TOKEN }}
+          ./.github/vercel-cli/node_modules/.bin/vercel pull --yes --environment=preview
+          --git-branch="$PREVIEW_GIT_BRANCH"
+          --token="$VERCEL_TOKEN"
 
-      - name: Export Preview Environment for Preflight
+      - name: Pull protected preview environment
         run: >-
-          vercel env pull .vercel/.env.preview.local --yes
+          ./.github/vercel-cli/node_modules/.bin/vercel env pull .vercel/.env.preview.local --yes
           --environment=preview
-          --git-branch="${{ github.head_ref }}"
-          --token=${{ secrets.VERCEL_TOKEN }}
+          --git-branch="$PREVIEW_GIT_BRANCH"
+          --token="$VERCEL_TOKEN"
 
-      - name: Validate Preview Environment
+      - name: Validate preview environment
         run: npm run env:check:preview -- --file .vercel/.env.preview.local
 
-      - name: Build
-        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Deploy Preview
-        id: deploy
+      - name: Audit preview marketplace data before deploy
+        shell: bash
         run: |
-          url=$(vercel deploy --prebuilt --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+          if grep -Eq '^(DATABASE_URL|DATABASE_MIGRATION_URL)=' .vercel/.env.preview.local; then
+            npm run db:audit:marketplace -- --file .vercel/.env.preview.local
+          else
+            echo "Preview database audit skipped: no target database URL available."
+          fi
 
-      - name: Verify Preview
+      - name: Remove transient preview env file
+        if: always()
+        run: rm -f .vercel/.env.preview.local
+
+  deploy:
+    name: Deploy Preview
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: preflight_preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: preview
+    permissions:
+      contents: read
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
+
+      - name: Link preview project
+        shell: bash
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          mkdir -p .vercel
+          cat <<EOF > .vercel/project.json
+          {"projectId":"$VERCEL_PROJECT_ID","orgId":"$VERCEL_ORG_ID"}
+          EOF
+
+      - name: Deploy preview
+        id: deploy
+        shell: bash
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          raw_url=$(
+            .github/vercel-cli/node_modules/.bin/vercel deploy \
+              --archive=tgz \
+              --yes \
+              --token="$VERCEL_TOKEN" \
+              --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
+              --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA"
+          )
+          url=$(DEPLOY_URL="$raw_url" node <<'NODE'
+          const value = process.env.DEPLOY_URL?.trim();
+          let url;
+          try {
+            url = new URL(value);
+          } catch {
+            console.error('Vercel returned an invalid deployment URL');
+            process.exit(1);
+          }
+          const isVercelDeployment =
+            url.hostname !== 'vercel.app' && url.hostname.endsWith('.vercel.app');
+          if (
+            url.protocol !== 'https:' ||
+            !isVercelDeployment ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== '/' ||
+            url.search ||
+            url.hash
+          ) {
+            console.error('Vercel returned an untrusted deployment URL');
+            process.exit(1);
+          }
+          process.stdout.write(url.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
+  verify_preview_liveness:
+    name: Verify Preview Liveness
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      DEPLOY_URL: ${{ needs.deploy.outputs.url }}
+    steps:
+      - name: Verify preview liveness
         run: >-
-          vercel curl /api/health
-          --deployment "${{ steps.deploy.outputs.url }}"
-          --fail --retry 5 --retry-all-errors
-          --token=${{ secrets.VERCEL_TOKEN }}
+          curl -fsS --retry 5 --retry-all-errors
+          "$DEPLOY_URL/api/health"
+
+  verify_preview_readiness:
+    name: Verify Preview Readiness
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: preview
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+
+      - name: Revalidate preview deployment URL
+        id: deployment_url
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          url=$(node <<'NODE'
+          const value = process.env.CANDIDATE_URL?.trim();
+          let url;
+          try {
+            url = new URL(value);
+          } catch {
+            process.exit(1);
+          }
+          const isVercelDeployment =
+            url.hostname !== 'vercel.app' && url.hostname.endsWith('.vercel.app');
+          if (
+            url.protocol !== 'https:' ||
+            !isVercelDeployment ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== '/' ||
+            url.search ||
+            url.hash
+          ) {
+            process.exit(1);
+          }
+          process.stdout.write(url.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify preview readiness and candidate fingerprint
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DEPLOY_URL: ${{ steps.deployment_url.outputs.url }}
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
+        run: |
+          curl -fsS --retry 5 --retry-all-errors \
+            -H "authorization: Bearer $CRON_SECRET" \
+            "$DEPLOY_URL/api/health/ready" \
+            -o readiness.json
+          node <<'NODE'
+          const fs = require('fs');
+          const packageJson = require('./package.json');
+          const releaseContract = require('./src/lib/release-contract.json');
+
+          const payload = JSON.parse(fs.readFileSync('readiness.json', 'utf8'));
+          const release = payload?.meta?.release;
+          if (!release) {
+            console.error('Protected readiness did not return release metadata.');
+            process.exit(1);
+          }
+
+          const expected = {
+            buildSha: process.env.EXPECTED_BUILD_SHA,
+            packageVersion: packageJson.version,
+            schemaVersion: releaseContract.schemaVersion,
+            commercialPolicyVersion: releaseContract.commercialPolicyVersion,
+          };
+          expected.fingerprint = [
+            `pkg:${expected.packageVersion}`,
+            `schema:${expected.schemaVersion}`,
+            `policy:${expected.commercialPolicyVersion}`,
+            `sha:${expected.buildSha}`,
+          ].join('|');
+
+          for (const [field, expectedValue] of Object.entries(expected)) {
+            if (release[field] !== expectedValue) {
+              console.error(`Preview ${field} mismatch: expected ${expectedValue}, received ${release[field] ?? 'null'}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+  smoke_preview:
+    name: Smoke Preview
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs:
+      - deploy
+      - verify_preview_liveness
+      - verify_preview_readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: preview
+    permissions:
+      contents: read
+    env:
+      PREVIEW_URL: ${{ needs.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Run deployed public marketplace smoke
         env:
-          PLAYWRIGHT_BASE_URL: ${{ steps.deploy.outputs.url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          PLAYWRIGHT_BASE_URL: ${{ env.PREVIEW_URL }}
         run: npm run test:e2e:public
 
-      - name: Comment PR with Preview URL
-        uses: actions/github-script@v7
+  comment_preview:
+    name: Comment Preview URL
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs:
+      - deploy
+      - smoke_preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Comment PR with preview URL
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        env:
+          PREVIEW_URL: ${{ needs.deploy.outputs.url }}
         with:
           script: |
-            const url = '${{ steps.deploy.outputs.url }}';
+            const parsed = new URL(process.env.PREVIEW_URL);
+            const isVercelDeployment =
+              parsed.hostname !== 'vercel.app' && parsed.hostname.endsWith('.vercel.app');
+            if (
+              parsed.protocol !== 'https:' ||
+              !isVercelDeployment ||
+              parsed.username ||
+              parsed.password ||
+              parsed.port ||
+              parsed.pathname !== '/' ||
+              parsed.search ||
+              parsed.hash
+            ) {
+              core.setFailed('Refusing to publish an untrusted preview URL');
+              return;
+            }
+            const url = parsed.origin;
             const body = `**Preview Deployment**\n\nPreview: ${url}\n\nBuilt from commit \`${context.sha.substring(0, 7)}\``;
 
-            // Find existing bot comment
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,

@@ -21,7 +21,6 @@ interface SponsoredListing {
   seller?: {
     verified: boolean;
     role: string;
-    businessState: string | null;
   } | null;
 }
 

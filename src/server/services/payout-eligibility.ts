@@ -53,15 +53,30 @@ export function hasPersistedProviderPickupEvidence(params: {
   shipmentStatus: string;
   shipmentIsDryRun: boolean;
   shipmentTrackingEvents: unknown;
+  /** Order-level shippedAt set after provider-confirmed pickup emission. */
+  orderShippedAt?: Date | string | null;
 }): boolean {
-  return (
-    Boolean(params.selectedQuoteId) &&
-    params.shipmentQuoteId === params.selectedQuoteId &&
-    Boolean(params.priority1ShipmentId) &&
-    !params.shipmentIsDryRun &&
-    ["in_transit", "out_for_delivery", "delivered"].includes(
+  if (
+    !params.selectedQuoteId ||
+    params.shipmentQuoteId !== params.selectedQuoteId ||
+    !params.priority1ShipmentId ||
+    params.shipmentIsDryRun ||
+    !["in_transit", "out_for_delivery", "delivered"].includes(
       params.shipmentStatus,
-    ) &&
-    hasPersistedPickupTrackingEvent(params.shipmentTrackingEvents)
-  );
+    )
+  ) {
+    return false;
+  }
+
+  // Prefer explicit tracking-event evidence; also accept order.shippedAt set
+  // when Priority1 confirmed pickup via actualPickupDate without statuses.
+  if (hasPersistedPickupTrackingEvent(params.shipmentTrackingEvents)) {
+    return true;
+  }
+  if (params.orderShippedAt == null) return false;
+  const shippedAtMs =
+    params.orderShippedAt instanceof Date
+      ? params.orderShippedAt.getTime()
+      : new Date(params.orderShippedAt).getTime();
+  return Number.isFinite(shippedAtMs);
 }

@@ -8,6 +8,7 @@ describe("middleware route boundaries", () => {
   it.each([
     ["/seller", true],
     ["/seller/orders", true],
+    ["/seller/payments", true],
     ["/seller-guide", false],
     ["/sellers", false],
     ["/sellers/11111111-1111-4111-8111-111111111111", false],
@@ -16,6 +17,12 @@ describe("middleware route boundaries", () => {
     ["/buyers-guide", false],
     ["/admin", true],
     ["/admin/finance", true],
+    ["/messages", true],
+    ["/messages/11111111-1111-4111-8111-111111111111", true],
+    ["/offers", true],
+    ["/notifications", true],
+    ["/preferences", true],
+    ["/settings/subscription", true],
     ["/administrator", false],
   ])("classifies %s without prefix collisions", (pathname, expected) => {
     expect(isProtectedAppPath(pathname)).toBe(expected);

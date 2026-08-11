@@ -88,7 +88,10 @@ vi.mock("@/server/services/stripe-order-transfer", () => ({
   findStripeTransferForOrder: mocks.findTransfer,
 }));
 
-import { releaseSellerPayout } from "../escrow-auto-release";
+import {
+  isRecoverablePayoutSoftFail,
+  releaseSellerPayout,
+} from "../escrow-auto-release";
 
 function orderRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -104,6 +107,7 @@ function orderRow(overrides: Record<string, unknown> = {}) {
     stripePaymentIntentId: "pi_1",
     stripeTransferId: null,
     selectedQuoteId: "quote_1",
+    shippedAt: new Date("2026-07-30T12:15:00.000Z"),
     shipmentQuoteId: "quote_1",
     priority1ShipmentId: "9001",
     shipmentStatus: "in_transit",
@@ -241,6 +245,7 @@ describe("releaseSellerPayout", () => {
   it("fails closed for an in-transit row that has no persisted pickup event", async () => {
     mocks.state.orderRow = orderRow({
       shipmentTrackingEvents: [],
+      shippedAt: null,
     });
 
     const result = await releaseSellerPayout("order_1");
@@ -254,5 +259,21 @@ describe("releaseSellerPayout", () => {
     expect(mocks.findTransfer).not.toHaveBeenCalled();
     expect(mocks.state.orderUpdates).toHaveLength(0);
     expect(mocks.state.failureUpdates).toHaveLength(0);
+  });
+});
+
+describe("isRecoverablePayoutSoftFail", () => {
+  it("treats evidence and dispute misses as recoverable for deferred retry", () => {
+    expect(
+      isRecoverablePayoutSoftFail(
+        "Shipment lacks live Priority1 pickup evidence",
+      ),
+    ).toBe(true);
+    expect(isRecoverablePayoutSoftFail("Order has an open dispute")).toBe(
+      true,
+    );
+    expect(
+      isRecoverablePayoutSoftFail("Payment hold status is released"),
+    ).toBe(false);
   });
 });

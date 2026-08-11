@@ -176,6 +176,10 @@ scratch database restored from the verified baseline workflow; do not treat
    npm run db:push
    ```
 
+   The development push command first ensures the required `pg_trgm`
+   extension exists, then applies the Drizzle schema. Production environments
+   should continue to use the reviewed SQL migrations and readiness checks.
+
 3. (Optional) Seed with sample data:
    ```bash
    npm run db:seed

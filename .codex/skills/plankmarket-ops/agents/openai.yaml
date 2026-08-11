@@ -1,0 +1,4 @@
+interface:
+  display_name: "PlankMarket Ops"
+  short_description: "Run bounded PlankMarket evidence graphs"
+  default_prompt: "Use $plankmarket-ops to run a read-only PlankMarket evidence graph and report verified gaps."

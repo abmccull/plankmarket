@@ -31,20 +31,26 @@ function loadDatabaseUrl(): { databaseUrl: string; sourceLabel: string } {
     if (!existsSync(filePath)) {
       throw new Error(`Env file not found: ${filePath}`);
     }
-    const databaseUrl = parseDotEnv(readFileSync(filePath)).DATABASE_URL;
+    const parsedEnv = parseDotEnv(readFileSync(filePath));
+    const databaseUrl =
+      parsedEnv.DATABASE_MIGRATION_URL ?? parsedEnv.DATABASE_URL;
     if (!databaseUrl) {
-      throw new Error(`DATABASE_URL is missing from ${filePath}`);
+      throw new Error(
+        `DATABASE_URL or DATABASE_MIGRATION_URL is missing from ${filePath}`,
+      );
     }
     return { databaseUrl, sourceLabel: filePath };
   }
 
-  if (!process.env.DATABASE_URL) {
+  const databaseUrl =
+    process.env.DATABASE_MIGRATION_URL ?? process.env.DATABASE_URL;
+  if (!databaseUrl) {
     throw new Error(
-      "DATABASE_URL is required. Pass --file <target-env-file> or set it in the process environment.",
+      "DATABASE_URL or DATABASE_MIGRATION_URL is required. Pass --file <target-env-file> or set it in the process environment.",
     );
   }
   return {
-    databaseUrl: process.env.DATABASE_URL,
+    databaseUrl,
     sourceLabel: "process environment",
   };
 }

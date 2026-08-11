@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQLWrapper } from "drizzle-orm";
 import { savedSearches } from "@/server/db/schema/saved-searches";
 import type { SearchFilters } from "@/types";
 
@@ -18,6 +18,11 @@ export function savedSearchMaterialOverlapWhere(
     materialTypes.map((materialType) => sql`${materialType}`),
     sql`, `,
   );
+
+  return savedSearchFiltersMatchMaterialListWhere(materialParameters);
+}
+
+function savedSearchFiltersMatchMaterialListWhere(materialParameters: SQLWrapper) {
   const selectedMaterials = sql`${savedSearches.filters}->'materialType'`;
 
   return sql<boolean>`(

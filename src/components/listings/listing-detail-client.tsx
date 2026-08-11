@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { SellerPaymentNotReadyDialog } from "@/components/checkout/seller-payment-not-ready-dialog";
 import { MakeOfferModal } from "@/components/offers/make-offer-modal";
@@ -22,6 +23,7 @@ import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 import {
   Heart,
   Share2,
+  AlertTriangle,
   MapPin,
   Shield,
   Clock,
@@ -33,7 +35,11 @@ import {
 import { StarRating } from "@/components/shared/star-rating";
 import { toast } from "sonner";
 import { getAnonymousInitials } from "@/lib/identity/display-name";
-import type { FreightEstimateStatus } from "@/components/listings/listing-evidence";
+import {
+  getListingEvidenceAlerts,
+  type FreightEstimateStatus,
+} from "@/components/listings/listing-evidence";
+import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 
 interface ListingDetailClientProps {
   listing: {
@@ -50,22 +56,31 @@ interface ListingDetailClientProps {
     moq: number | null;
     moqUnit: "pallets" | "sqft" | null;
     freightEstimateStatus: FreightEstimateStatus;
+    freshnessStatus?: ListingFreshnessStatus;
+    lastConfirmedAt?: Date | string | null;
     locationCity: string | null;
     locationState: string | null;
     viewsCount: number;
     watchlistCount: number;
     createdAt: Date | string;
+    media?: { url: string }[];
     seller: {
       id: string;
       displayName: string;
       verified: boolean;
       createdAt: Date | string;
       stripeOnboardingComplete: boolean;
-      businessCity: string | null;
-      businessState: string | null;
       role: string;
     } | null;
   };
+}
+
+function formatMoq(moq: number | null, unit: "pallets" | "sqft" | null) {
+  if (!moq) return "Full-lot or seller terms";
+  if (unit === "pallets") {
+    return `${moq.toLocaleString()} pallet${moq === 1 ? "" : "s"}`;
+  }
+  return formatSqFt(moq);
 }
 
 export function ListingDetailClient({ listing }: ListingDetailClientProps) {
@@ -212,6 +227,37 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
   const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
   const buyerFee = calculateBuyerFee(lotValue);
+  const freightReady =
+    listing.freightEstimateStatus === "quote_request_ready";
+  const evidenceAlerts = getListingEvidenceAlerts({
+    totalSqFt: listing.totalSqFt,
+    moq: listing.moq,
+    moqUnit: listing.moqUnit,
+    condition: listing.condition,
+    locationCity: listing.locationCity,
+    locationState: listing.locationState,
+    freightEstimateStatus: listing.freightEstimateStatus,
+    freshnessStatus: listing.freshnessStatus,
+    lastConfirmedAt: listing.lastConfirmedAt,
+    media: listing.media,
+    seller: listing.seller,
+  });
+  const knownNowItems = [
+    `Direct purchase unit price ${formatPricePerSqFt(directPurchaseUnitPrice)}`,
+    `Lot subtotal ${formatCurrency(lotValue)}`,
+    `Buyer marketplace fee ${formatCurrency(buyerFee)}`,
+    `Minimum order ${formatMoq(listing.moq, listing.moqUnit)}`,
+  ];
+  const calculatedLaterItems = [
+    freightReady
+      ? "Freight quote is calculated after destination details are entered at checkout."
+      : "Freight quote is not ready from this listing yet because seller freight setup is incomplete.",
+    purchaseConfig?.canSplitLots === false
+      ? "Full-lot purchasing rules are fixed now."
+      : purchaseConfig?.partialQuantityMarkupPercent != null
+        ? `Partial-lot pricing adds +${purchaseConfig.partialQuantityMarkupPercent}% below the full lot.`
+        : "Partial-lot pricing depends on seller purchase rules.",
+  ];
 
   return (
     <>
@@ -320,7 +366,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Shipping</span>
                 <span className="font-medium text-right">
-                  {listing.freightEstimateStatus === "quote_request_ready"
+                  {freightReady
                     ? "Quote request at checkout"
                     : "Contact seller for freight"}
                 </span>
@@ -332,14 +378,80 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
               </div>
             </div>
 
+            <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Known now
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-foreground">
+                  {knownNowItems.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Calculated later
+                </p>
+                <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                  {calculatedLaterItems.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {evidenceAlerts.length > 0 && (
+              <div className="space-y-3">
+                {evidenceAlerts.map((alert) => {
+                  const blocked = alert.tone === "blocked";
+
+                  return (
+                    <div
+                      key={`${alert.tone}-${alert.title}`}
+                      className={
+                        blocked
+                          ? "rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+                          : "rounded-xl border border-amber-300/40 bg-amber-50/60 p-4 dark:bg-amber-950/10"
+                      }
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={
+                            blocked
+                              ? "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+                              : "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                          }
+                        >
+                          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={blocked ? "destructive" : "warning"}>
+                              {blocked ? "Blocked" : "Warning"}
+                            </Badge>
+                            <p className="text-sm font-semibold">{alert.title}</p>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {alert.detail}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Actions */}
             {isOwnListing ? (
               <div className="flex flex-col gap-3">
-                <Link href={`/seller/listings/${listing.id}/edit`}>
-                  <Button className="w-full" size="lg">
+                <Button asChild className="w-full" size="lg">
+                  <Link href={`/seller/listings/${listing.id}/edit`}>
                     Edit Listing
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
                 <Button
                   variant="outline"
                   className="w-full"
@@ -353,33 +465,36 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
               <div className="space-y-2">
                 {/* Primary action - Buy Now or Purchase */}
                 {listing.buyNowPrice ? (
-                  <Link
-                    href={
-                      isAuthenticated
-                        ? `/listings/${listing.id}/checkout`
-                        : `/login?redirect=/listings/${listing.id}/checkout`
-                    }
-                    className="block"
-                    onClick={handleBuyNowClick}
+                  <Button
+                    asChild
+                    variant="secondary"
+                    className="w-full tabular-nums"
+                    size="lg"
                   >
-                    <Button variant="secondary" className="w-full tabular-nums" size="lg">
+                    <Link
+                      href={
+                        isAuthenticated
+                          ? `/listings/${listing.id}/checkout`
+                          : `/login?redirect=/listings/${listing.id}/checkout`
+                      }
+                      onClick={handleBuyNowClick}
+                    >
                       Buy Now - {formatPricePerSqFt(listing.buyNowPrice)}
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 ) : !listing.allowOffers ? (
-                  <Link
-                    href={
-                      isAuthenticated
-                        ? `/listings/${listing.id}/checkout`
-                        : `/login?redirect=/listings/${listing.id}/checkout`
-                    }
-                    className="block"
-                    onClick={handleBuyNowClick}
-                  >
-                    <Button className="w-full" size="lg">
+                  <Button asChild className="w-full" size="lg">
+                    <Link
+                      href={
+                        isAuthenticated
+                          ? `/listings/${listing.id}/checkout`
+                          : `/login?redirect=/listings/${listing.id}/checkout`
+                      }
+                      onClick={handleBuyNowClick}
+                    >
                       Purchase
-                    </Button>
-                  </Link>
+                    </Link>
+                  </Button>
                 ) : null}
 
                 {/* Secondary actions - Make Offer and Contact Seller */}
@@ -545,6 +660,75 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div
+        data-testid="mobile-listing-action-bar"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-8px_30px_rgba(41,26,17,0.12)] backdrop-blur lg:hidden"
+      >
+        <div className="mx-auto flex max-w-lg items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground">Direct purchase</p>
+            <p className="truncate font-display text-lg font-bold text-primary tabular-nums">
+              <span>{formatCurrency(directPurchaseUnitPrice)}</span>
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                / sq ft
+              </span>
+            </p>
+          </div>
+
+          {isOwnListing ? (
+            <Button asChild size="lg">
+              <Link
+                href={`/seller/listings/${listing.id}/edit`}
+                aria-label="Edit this listing"
+              >
+                Edit listing
+              </Link>
+            </Button>
+          ) : listing.buyNowPrice ? (
+            <Button
+              asChild
+              variant="secondary"
+              size="lg"
+            >
+              <Link
+                href={
+                  isAuthenticated
+                    ? `/listings/${listing.id}/checkout`
+                    : `/login?redirect=/listings/${listing.id}/checkout`
+                }
+                onClick={handleBuyNowClick}
+                aria-label={`Buy now at ${formatPricePerSqFt(listing.buyNowPrice)}`}
+              >
+                Buy now
+              </Link>
+            </Button>
+          ) : !listing.allowOffers ? (
+            <Button asChild size="lg">
+              <Link
+                href={
+                  isAuthenticated
+                    ? `/listings/${listing.id}/checkout`
+                    : `/login?redirect=/listings/${listing.id}/checkout`
+                }
+                onClick={handleBuyNowClick}
+                aria-label="Purchase this listing"
+              >
+                Purchase
+              </Link>
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              onClick={handleMakeOfferClick}
+              disabled={isPurchaseConfigLoading || !purchaseConfig}
+              aria-label="Make an offer from the mobile action bar"
+            >
+              Make offer
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Payment Not Ready Dialog */}

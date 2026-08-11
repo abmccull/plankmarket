@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/lib/inngest/client";
+import { isAllowedEvidenceMimeType } from "@/server/security/evidence-files";
 import {
   disputeEvidence,
   disputeMessages,
@@ -20,8 +21,12 @@ import {
   shipments,
 } from "@/server/db/schema";
 import { hasPersistedProviderPickupEvidence } from "@/server/services/payout-eligibility";
-import { openReconciliationCase } from "@/server/services/reconciliation-cases";
+import {
+  openReconciliationCase,
+  resolveReconciliationCaseByKey,
+} from "@/server/services/reconciliation-cases";
 import { processOrderRefund } from "@/server/services/refund";
+import { canViewFreightDocuments } from "@/server/security/freight-document-access";
 import {
   adminProcedure,
   createTRPCRouter,
@@ -37,6 +42,41 @@ const TERMINAL_DISPUTE_STATUSES = [
   "resolved_seller",
   "closed",
 ] as const;
+
+interface DisputeRefundIntentDetails {
+  baselineRefundedAmountCents: number;
+  intendedRefundAmountCents: number;
+  targetRefundedAmountCents: number;
+  outcome: "resolved_buyer";
+  resolution: string;
+  confirmPartialSettlement: boolean;
+}
+
+function parseDisputeRefundIntentDetails(
+  details: unknown,
+): DisputeRefundIntentDetails | null {
+  if (!details || typeof details !== "object") return null;
+  const candidate = details as Record<string, unknown>;
+  if (
+    typeof candidate.baselineRefundedAmountCents !== "number" ||
+    typeof candidate.intendedRefundAmountCents !== "number" ||
+    typeof candidate.targetRefundedAmountCents !== "number" ||
+    candidate.outcome !== "resolved_buyer" ||
+    typeof candidate.resolution !== "string" ||
+    typeof candidate.confirmPartialSettlement !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    baselineRefundedAmountCents: candidate.baselineRefundedAmountCents,
+    intendedRefundAmountCents: candidate.intendedRefundAmountCents,
+    targetRefundedAmountCents: candidate.targetRefundedAmountCents,
+    outcome: "resolved_buyer",
+    resolution: candidate.resolution,
+    confirmPartialSettlement: candidate.confirmPartialSettlement,
+  };
+}
 
 const disputeStatusSchema = z.enum([
   ...ACTIVE_DISPUTE_STATUSES,
@@ -204,7 +244,6 @@ export const disputeRouter = createTRPCRouter({
                   media: {
                     columns: {
                       id: true,
-                      url: true,
                       fileName: true,
                       mimeType: true,
                     },
@@ -226,6 +265,10 @@ export const disputeRouter = createTRPCRouter({
         orderDeliveredAt: order.deliveredAt,
         shipmentDeliveredAt: order.shipment?.deliveredAt ?? null,
       });
+      const canSeeFreightDocuments = canViewFreightDocuments({
+        viewerRole: ctx.user.role,
+        orderStatus: order.status,
+      });
       return {
         ...evaluateBuyerClaimEligibility({
           orderStatus: order.status,
@@ -234,8 +277,10 @@ export const disputeRouter = createTRPCRouter({
         }),
         existingDispute: order.dispute ?? null,
         carrierDocuments: {
-          bolUrl: order.shipment?.bolUrl ?? null,
-          deliveryReceiptUrl: order.shipment?.deliveryReceiptUrl ?? null,
+          bolUrl: canSeeFreightDocuments ? order.shipment?.bolUrl ?? null : null,
+          deliveryReceiptUrl: canSeeFreightDocuments
+            ? order.shipment?.deliveryReceiptUrl ?? null
+            : null,
         },
         canCreate:
           !order.dispute &&
@@ -403,9 +448,7 @@ export const disputeRouter = createTRPCRouter({
           uploadedEvidence.length !== mediaIds.length ||
           uploadedEvidence.some(
             (item) =>
-              !item.mimeType ||
-              (!item.mimeType.startsWith("image/") &&
-                item.mimeType !== "application/pdf"),
+              !isAllowedEvidenceMimeType(item.mimeType),
           )
         ) {
           throw new TRPCError({
@@ -549,9 +592,7 @@ export const disputeRouter = createTRPCRouter({
           uploadedEvidence.length !== mediaIds.length ||
           uploadedEvidence.some(
             (item) =>
-              !item.mimeType ||
-              (!item.mimeType.startsWith("image/") &&
-                item.mimeType !== "application/pdf"),
+              !isAllowedEvidenceMimeType(item.mimeType),
           )
         ) {
           throw new TRPCError({
@@ -780,7 +821,6 @@ export const disputeRouter = createTRPCRouter({
               media: {
                 columns: {
                   id: true,
-                  url: true,
                   fileName: true,
                   mimeType: true,
                   fileSize: true,
@@ -908,129 +948,320 @@ export const disputeRouter = createTRPCRouter({
       }
 
       let refundedAmountCents = 0;
+      let refundIntentDetails: DisputeRefundIntentDetails | null = null;
+      let disputeRefundCaseKey: string | null = null;
+      let finalOrderRefundSnapshot: {
+        paymentStatus: string | null;
+        refundedAmountCents: number;
+      } | null = null;
       if (input.outcome === "resolved_buyer") {
-        if (
-          !dispute.order.stripePaymentIntentId ||
-          !["succeeded", "partially_refunded"].includes(
-            dispute.order.paymentStatus ?? "",
-          )
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "The remaining order payment is not refundable",
+        disputeRefundCaseKey = `dispute-refund:${dispute.id}`;
+        const existingRefundCase =
+          await ctx.db.query.reconciliationCases.findFirst({
+            where: eq(reconciliationCases.caseKey, disputeRefundCaseKey),
+            columns: { details: true },
           });
-        }
+        const persistedRefundIntent = parseDisputeRefundIntentDetails(
+          existingRefundCase?.details,
+        );
         const totalCents = Math.round(Number(dispute.order.totalPrice) * 100);
         const alreadyRefundedCents = Math.round(
           Number(dispute.order.refundedAmount ?? 0) * 100,
         );
         const remainingCents = totalCents - alreadyRefundedCents;
-        if (remainingCents <= 0) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "This order has already been fully refunded",
-          });
-        }
-        refundedAmountCents = input.refundAmountCents ?? remainingCents;
-        if (refundedAmountCents > remainingCents) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Refund cannot exceed the remaining ${remainingCents} cents`,
-          });
-        }
-        if (
-          refundedAmountCents < remainingCents &&
-          input.confirmPartialSettlement !== true
-        ) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message:
-              "Confirm that this partial refund is the final settlement before closing the claim",
-          });
+        const matchesPersistedRefundIntent =
+          persistedRefundIntent?.outcome === "resolved_buyer" &&
+          persistedRefundIntent.resolution === input.resolution &&
+          persistedRefundIntent.confirmPartialSettlement ===
+            (input.confirmPartialSettlement === true);
+        let closeFromVerifiedRetry = false;
+        if (matchesPersistedRefundIntent) {
+          if (dispute.order.paymentStatus === "refund_pending") {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "Stripe has not yet confirmed this refund. The claim remains open until the refund succeeds.",
+            });
+          }
+          if (
+            alreadyRefundedCents ===
+              persistedRefundIntent.targetRefundedAmountCents &&
+            ["partially_refunded", "refunded"].includes(
+              dispute.order.paymentStatus ?? "",
+            )
+          ) {
+            refundedAmountCents =
+              persistedRefundIntent.intendedRefundAmountCents;
+            closeFromVerifiedRetry = true;
+          } else if (
+            alreadyRefundedCents >
+            persistedRefundIntent.targetRefundedAmountCents
+          ) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "The order refund total no longer matches the saved claim settlement. Reconciliation review is required before closing the claim.",
+            });
+          }
         }
 
-        try {
-          await processOrderRefund({
-            db: ctx.db,
-            orderId: dispute.orderId,
-            amountCents: refundedAmountCents,
-            reason: `Claim resolved for buyer: ${input.resolution}`,
-          });
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown refund error";
-          await openReconciliationCase(ctx.db, {
-            caseKey: `dispute-refund:${dispute.id}`,
-            type: "dispute_resolution",
-            source: "system",
-            severity: "high",
-            title: `Claim refund needs review: ${dispute.order.orderNumber}`,
-            summary: "The claim remains open because its refund did not complete.",
-            orderId: dispute.orderId,
-            disputeId: dispute.id,
-            amountCents: refundedAmountCents,
-            actorId: ctx.user.id,
-            details: {
-              errorName:
-                error instanceof Error ? error.name : "UnknownError",
-              errorMessage,
-              outcome: input.outcome,
-            },
-          });
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message:
-              "The refund did not complete. The claim remains open and a reconciliation case was created.",
-          });
+        if (!closeFromVerifiedRetry) {
+          if (
+            !dispute.order.stripePaymentIntentId ||
+            !["succeeded", "partially_refunded"].includes(
+              dispute.order.paymentStatus ?? "",
+            )
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "The remaining order payment is not refundable",
+            });
+          }
+          if (remainingCents <= 0) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "This order has already been fully refunded",
+            });
+          }
+          refundedAmountCents = input.refundAmountCents ?? remainingCents;
+          if (refundedAmountCents > remainingCents) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Refund cannot exceed the remaining ${remainingCents} cents`,
+            });
+          }
+          if (
+            refundedAmountCents < remainingCents &&
+            input.confirmPartialSettlement !== true
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Confirm that this partial refund is the final settlement before closing the claim",
+            });
+          }
+        }
+
+        refundIntentDetails = {
+          baselineRefundedAmountCents: closeFromVerifiedRetry
+            ? persistedRefundIntent!.baselineRefundedAmountCents
+            : alreadyRefundedCents,
+          intendedRefundAmountCents: refundedAmountCents,
+          targetRefundedAmountCents: closeFromVerifiedRetry
+            ? persistedRefundIntent!.targetRefundedAmountCents
+            : alreadyRefundedCents + refundedAmountCents,
+          outcome: "resolved_buyer",
+          resolution: input.resolution,
+          confirmPartialSettlement: input.confirmPartialSettlement === true,
+        };
+
+        if (!closeFromVerifiedRetry) {
+          try {
+            const refundResult = await processOrderRefund({
+              db: ctx.db,
+              orderId: dispute.orderId,
+              amountCents: refundedAmountCents,
+              reason: `Claim resolved for buyer: ${input.resolution}`,
+            });
+            if (refundResult.state !== "succeeded") {
+              await openReconciliationCase(ctx.db, {
+                caseKey: disputeRefundCaseKey,
+                type: "dispute_resolution",
+                source: "system",
+                severity: "high",
+                title: `Claim refund pending review: ${dispute.order.orderNumber}`,
+                summary:
+                  "The claim remains open because Stripe has not confirmed the refund as succeeded.",
+                orderId: dispute.orderId,
+                disputeId: dispute.id,
+                amountCents: refundedAmountCents,
+                actorId: ctx.user.id,
+                details: {
+                  ...refundIntentDetails,
+                  refundId: refundResult.refundId,
+                  refundState: refundResult.state,
+                  providerStatus: refundResult.providerStatus,
+                },
+              });
+              throw new TRPCError({
+                code: "CONFLICT",
+                message:
+                  refundResult.state === "refund_pending"
+                    ? "Stripe has not yet confirmed this refund. The claim remains open until the refund succeeds."
+                    : "Stripe did not confirm this refund. The claim remains open and a reconciliation case was created.",
+              });
+            }
+          } catch (error) {
+            if (error instanceof TRPCError) {
+              throw error;
+            }
+            const errorMessage =
+              error instanceof Error ? error.message : "Unknown refund error";
+            await openReconciliationCase(ctx.db, {
+              caseKey: disputeRefundCaseKey,
+              type: "dispute_resolution",
+              source: "system",
+              severity: "high",
+              title: `Claim refund needs review: ${dispute.order.orderNumber}`,
+              summary: "The claim remains open because its refund did not complete.",
+              orderId: dispute.orderId,
+              disputeId: dispute.id,
+              amountCents: refundedAmountCents,
+              actorId: ctx.user.id,
+              details: {
+                ...refundIntentDetails,
+                errorName:
+                  error instanceof Error ? error.name : "UnknownError",
+                errorMessage,
+              },
+            });
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message:
+                "The refund did not complete. The claim remains open and a reconciliation case was created.",
+            });
+          }
         }
       }
 
       const resolvedAt = new Date();
-      const updated = await ctx.db.transaction(async (tx) => {
-        await tx
-          .select({ id: orders.id })
-          .from(orders)
-          .where(eq(orders.id, dispute.orderId))
-          .for("update");
-        const [current] = await tx
-          .select({ status: disputes.status })
-          .from(disputes)
-          .where(eq(disputes.id, dispute.id))
-          .for("update");
-        if (!current || isTerminalDisputeStatus(current.status)) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "This claim was resolved by another request",
+      const updated = await (async () => {
+        try {
+          return await ctx.db.transaction(async (tx) => {
+            const [lockedOrder] = await tx
+              .select({
+                id: orders.id,
+                paymentStatus: orders.paymentStatus,
+                refundedAmount: orders.refundedAmount,
+              })
+              .from(orders)
+              .where(eq(orders.id, dispute.orderId))
+              .for("update");
+            if (!lockedOrder) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Order not found",
+              });
+            }
+            if (input.outcome === "resolved_buyer" && refundIntentDetails) {
+              const lockedRefundedAmountCents = Math.round(
+                Number(lockedOrder.refundedAmount ?? 0) * 100,
+              );
+              finalOrderRefundSnapshot = {
+                paymentStatus: lockedOrder.paymentStatus,
+                refundedAmountCents: lockedRefundedAmountCents,
+              };
+              if (lockedOrder.paymentStatus === "refund_pending") {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message:
+                    "Stripe has not yet confirmed this refund. The claim remains open until the refund succeeds.",
+                });
+              }
+              if (
+                !["partially_refunded", "refunded"].includes(
+                  lockedOrder.paymentStatus ?? "",
+                ) ||
+                lockedRefundedAmountCents !==
+                  refundIntentDetails.targetRefundedAmountCents
+              ) {
+                throw new TRPCError({
+                  code: "CONFLICT",
+                  message:
+                    "The order refund total changed before the claim could be closed. Reconciliation review is required.",
+                });
+              }
+            }
+            const [current] = await tx
+              .select({ status: disputes.status })
+              .from(disputes)
+              .where(eq(disputes.id, dispute.id))
+              .for("update");
+            if (!current || isTerminalDisputeStatus(current.status)) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "This claim was resolved by another request",
+              });
+            }
+            const [resolved] = await tx
+              .update(disputes)
+              .set({
+                status: input.outcome,
+                resolution: input.resolution,
+                resolvedBy: ctx.user.id,
+                resolvedAt,
+                resolvedRefundAmountCents:
+                  input.outcome === "resolved_buyer"
+                    ? refundedAmountCents
+                    : null,
+                updatedAt: resolvedAt,
+              })
+              .where(
+                and(
+                  eq(disputes.id, dispute.id),
+                  inArray(disputes.status, [...ACTIVE_DISPUTE_STATUSES]),
+                ),
+              )
+              .returning();
+            if (!resolved) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "This claim changed before it could be resolved",
+              });
+            }
+            return resolved;
           });
+        } catch (error) {
+          if (
+            error instanceof TRPCError &&
+            input.outcome === "resolved_buyer" &&
+            refundIntentDetails &&
+            disputeRefundCaseKey &&
+            [
+              "Stripe has not yet confirmed this refund. The claim remains open until the refund succeeds.",
+              "The order refund total changed before the claim could be closed. Reconciliation review is required.",
+            ].includes(error.message)
+          ) {
+            const refundSnapshot = finalOrderRefundSnapshot as
+              | {
+                  paymentStatus: string | null;
+                  refundedAmountCents: number;
+                }
+              | null;
+            await openReconciliationCase(ctx.db, {
+              caseKey: disputeRefundCaseKey,
+              type: "dispute_resolution",
+              source: "system",
+              severity: "high",
+              title: `Claim refund requires final verification: ${dispute.order.orderNumber}`,
+              summary: error.message,
+              orderId: dispute.orderId,
+              disputeId: dispute.id,
+              amountCents: refundIntentDetails.intendedRefundAmountCents,
+              actorId: ctx.user.id,
+              details: {
+                ...refundIntentDetails,
+                observedPaymentStatus: refundSnapshot?.paymentStatus ?? null,
+                observedRefundedAmountCents:
+                  refundSnapshot?.refundedAmountCents ?? null,
+              },
+            });
+          }
+          throw error;
         }
-        const [resolved] = await tx
-          .update(disputes)
-          .set({
-            status: input.outcome,
-            resolution: input.resolution,
-            resolvedBy: ctx.user.id,
-            resolvedAt,
-            resolvedRefundAmountCents:
-              input.outcome === "resolved_buyer"
-                ? refundedAmountCents
-                : null,
-            updatedAt: resolvedAt,
-          })
-          .where(
-            and(
-              eq(disputes.id, dispute.id),
-              inArray(disputes.status, [...ACTIVE_DISPUTE_STATUSES]),
-            ),
-          )
-          .returning();
-        if (!resolved) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "This claim changed before it could be resolved",
-          });
-        }
-        return resolved;
-      });
+      })();
+
+      if (input.outcome === "resolved_buyer") {
+        await resolveReconciliationCaseByKey(ctx.db, {
+          caseKey: `dispute-refund:${dispute.id}`,
+          actorId: ctx.user.id,
+          resolution:
+            "The saved buyer-favor refund intent now matches the authoritative refunded total, so the claim was closed.",
+          details: {
+            resolvedRefundAmountCents: refundedAmountCents,
+          },
+        });
+      }
 
       let payoutRequeued = false;
       if (input.outcome === "resolved_seller") {

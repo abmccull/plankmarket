@@ -18,8 +18,8 @@ type OfferEvent = {
     id: string;
     displayName: string;
     role: string;
-    businessCity: string | null;
-    businessState: string | null;
+    businessCity?: string | null;
+    businessState?: string | null;
   };
   pricePerSqFt?: number | null;
   quantitySqFt?: number | null;

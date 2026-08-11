@@ -6,12 +6,11 @@ import { ProSuccessActions } from "@/components/subscription/pro-success-actions
 const UNLOCKED_FEATURES = [
   "Unlimited active listings",
   "Unlimited saved searches",
-  "AI agent workflows",
+  "Saved-search monitoring and seller repricing tools",
   "Market intelligence",
   "Seller CRM",
   "Bulk CSV import",
   "$15/month promotion credit",
-  "Priority verification (24hr)",
   "Pro badge on profile",
 ] as const;
 

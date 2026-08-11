@@ -44,6 +44,14 @@ export const conversations = pgTable(
     index("conversations_buyer_id_idx").on(table.buyerId),
     index("conversations_seller_id_idx").on(table.sellerId),
     index("conversations_last_message_at_idx").on(table.lastMessageAt),
+    index("conversations_buyer_last_message_idx").on(
+      table.buyerId,
+      table.lastMessageAt.desc(),
+    ),
+    index("conversations_seller_last_message_idx").on(
+      table.sellerId,
+      table.lastMessageAt.desc(),
+    ),
   ]
 );
 
@@ -70,6 +78,10 @@ export const messages = pgTable(
     index("messages_conversation_id_idx").on(table.conversationId),
     index("messages_sender_id_idx").on(table.senderId),
     index("messages_created_at_idx").on(table.createdAt),
+    index("messages_conversation_created_idx").on(
+      table.conversationId,
+      table.createdAt.desc(),
+    ),
   ]
 );
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ListingsBrowseClient } from "../listings-browse-client";
@@ -52,7 +52,31 @@ vi.mock("@/lib/feature-flags", () => ({
 }));
 
 vi.mock("@/components/search/faceted-filters", () => ({
-  FacetedFilters: () => <div>Filters</div>,
+  FacetedFilters: ({
+    onFiltersChange,
+    onClearFilters,
+  }: {
+    onFiltersChange: (updates: Record<string, unknown>) => void;
+    onClearFilters: () => void;
+  }) => (
+    <div>
+      <button
+        onClick={() =>
+          onFiltersChange({
+            materialType: ["tile"],
+            buyerZip: "84003",
+            maxDistance: 150,
+            sellerVerified: true,
+            freightReady: true,
+            fullLotOnly: false,
+          })
+        }
+      >
+        Apply mock filters
+      </button>
+      <button onClick={onClearFilters}>Clear mock filters</button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/search/listing-card", () => ({
@@ -100,6 +124,7 @@ vi.mock("@/components/saved-searches/save-search-dialog", () => ({
 const emptyData = {
   items: [],
   total: 0,
+  totalIsExact: true,
   totalPages: 0,
   page: 1,
   limit: 24,
@@ -199,6 +224,63 @@ describe("ListingsBrowseClient search gap", () => {
     expect(sellerAuthUrl.searchParams.get("redirect")).toContain(
       "/seller/listings/new?",
     );
+  });
+
+  it("gives the mobile filter drawer a persistent result action", async () => {
+    const user = userEvent.setup();
+    renderBrowse();
+
+    await user.click(screen.getByRole("button", { name: "Open filters" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    expect(within(dialog).getByText("0 listings match")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Clear" }),
+    ).toBeEnabled();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Show 0 results" }),
+    );
+    expect(screen.queryByRole("dialog", { name: "Filters" })).not.toBeInTheDocument();
+  });
+
+  it("pushes filter changes into the listings URL instead of local-only state", async () => {
+    const user = userEvent.setup();
+    renderBrowse();
+
+    await user.click(screen.getByRole("button", { name: "Toggle filters" }));
+    await user.click(screen.getAllByRole("button", { name: "Apply mock filters" })[0]!);
+
+    const pushedPath = mockPush.mock.calls.at(-1)?.[0] as string;
+    const pushedUrl = new URL(pushedPath, "https://plankmarket.test");
+
+    expect(pushedUrl.pathname).toBe("/listings");
+    expect(pushedUrl.searchParams.get("query")).toBe("oak");
+    expect(pushedUrl.searchParams.get("materialType")).toBe("tile");
+    expect(pushedUrl.searchParams.get("priceMax")).toBe("4");
+    expect(pushedUrl.searchParams.get("buyerZip")).toBe("84003");
+    expect(pushedUrl.searchParams.get("maxDistance")).toBe("150");
+    expect(pushedUrl.searchParams.get("sellerVerified")).toBe("true");
+    expect(pushedUrl.searchParams.get("freightReady")).toBe("true");
+    expect(pushedUrl.searchParams.get("fullLotOnly")).toBe("false");
+    expect(pushedUrl.searchParams.get("page")).toBeNull();
+  });
+
+  it("clears facet params from the URL while preserving the search query", async () => {
+    const user = userEvent.setup();
+    renderBrowse();
+
+    await user.click(screen.getByRole("button", { name: "Toggle filters" }));
+    await user.click(screen.getAllByRole("button", { name: "Clear mock filters" })[0]!);
+
+    const pushedPath = mockPush.mock.calls.at(-1)?.[0] as string;
+    const pushedUrl = new URL(pushedPath, "https://plankmarket.test");
+
+    expect(pushedUrl.pathname).toBe("/listings");
+    expect(pushedUrl.searchParams.get("query")).toBe("oak");
+    expect(pushedUrl.searchParams.get("materialType")).toBeNull();
+    expect(pushedUrl.searchParams.get("priceMax")).toBeNull();
+    expect(pushedUrl.searchParams.get("buyerZip")).toBeNull();
   });
 
   it("opens the existing saved-search flow and records completion", async () => {

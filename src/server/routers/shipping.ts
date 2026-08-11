@@ -22,18 +22,34 @@ import {
 import { resolveSellingTerritoryEligibility } from "@/lib/selling-territory";
 import { assertListingVisibleToBuyer } from "@/server/security/listing-visibility";
 import {
-  addBusinessDays,
   computePalletsNeeded,
   formatPriority1Date,
-  formatPriority1DateValue,
   getNextBusinessDay,
-  getShippingBookingSnapshotKey,
+  getShippingBookingSnapshotKeyByToken,
+  getShippingQuoteTokenKey,
+  isQuoteBookable,
+  SHIPPING_OFFER_BOOKABILITY_BUFFER_MS,
   normalizeUsZip,
   parseNmfcCode,
+  quoteArtifactTtlSeconds,
+  resolveFreightAccessorialCodes,
   resolveListingFreightFunding,
   resolveUsStateForZip,
+  selectTopShippingQuotes,
   shippingBookingSnapshotSchema,
 } from "@/server/services/shipping-workflow";
+import {
+  buildShippingRateResponseCacheKey,
+  normalizePriority1RateQuotes,
+  readShippingRateResponseCache,
+  type ShippingRateCacheProviderMode,
+  writeShippingRateResponseCache,
+} from "@/server/services/shipping-rate-cache";
+import { canViewFreightDocuments } from "@/server/security/freight-document-access";
+import {
+  fetchPriority1DocumentUrl,
+  shipmentDocumentIdentifiersFrom,
+} from "@/server/services/shipment-documents";
 
 function listingConditionIsUsed(condition: string): boolean {
   return ["slight_damage", "returns", "seconds", "remnants", "other"].includes(
@@ -173,12 +189,19 @@ export const shippingRouter = createTRPCRouter({
       const now = new Date();
       const pickupDate = getNextBusinessDay(now);
       const pickupDateISO = pickupDate.toISOString();
+      const pickupDateKey = formatPriority1Date(pickupDate);
       const nmfc = parseNmfcCode(nmfcCode);
+      const piecesPerPallet = Math.max(1, Math.floor(Number(boxesPerPallet) || 1));
+      const accessorialCodes = resolveFreightAccessorialCodes({
+        liftgateDelivery: input.liftgateDelivery,
+        residentialDelivery: input.residentialDelivery,
+        appointmentDelivery: input.appointmentDelivery,
+      });
       const rateItem = {
         freightClass: freightClass ?? "125",
         packagingType: "Pallet",
         units: palletsNeeded,
-        pieces: 1,
+        pieces: piecesPerPallet,
         totalWeight: palletWeight * palletsNeeded,
         length: palletLength,
         width: palletWidth,
@@ -190,38 +213,109 @@ export const shippingRouter = createTRPCRouter({
         isMachinery: false,
         ...(nmfc ?? {}),
       };
+      const providerMode: ShippingRateCacheProviderMode =
+        priority1.isDryRun() ? "dry_run" : "live";
 
-      let ratesResponse;
+      const rateCacheKey = buildShippingRateResponseCacheKey({
+        providerMode,
+        listingId: input.listingId,
+        title: listing.title,
+        condition: listing.condition,
+        originZip,
+        destinationZip,
+        pickupDate: pickupDateKey,
+        quantitySqFt: input.quantitySqFt,
+        palletsNeeded,
+        piecesPerPallet,
+        palletWeight,
+        palletLength,
+        palletWidth,
+        palletHeight,
+        freightClass,
+        nmfcCode: nmfcCode ?? null,
+        freightPaymentMode: listing.freightPaymentMode,
+        sellerFreightStates: listing.sellerFreightStates ?? null,
+        freightDropCharge:
+          listing.freightDropCharge == null
+            ? null
+            : Number(listing.freightDropCharge),
+        accessorialCodes,
+      });
+
+      let normalizedRateQuotes = null;
       try {
-        ratesResponse = await priority1.getRates({
-          originZipCode: originZip,
-          destinationZipCode: destinationZip,
-          pickupDate: pickupDateISO,
-          items: [rateItem],
+        normalizedRateQuotes = await readShippingRateResponseCache({
+          redisClient: redis,
+          cacheKey: rateCacheKey,
+          providerMode,
+          now,
         });
       } catch (error) {
-        console.error("Failed to fetch shipping rates from Priority1:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Unable to fetch shipping rates. Please try again later.",
-        });
+        console.error("Failed to read cached shipping rates from Redis:", error);
       }
 
-      const allQuotes = (ratesResponse.rateQuotes ?? []).flatMap((quote) => {
-        const carrierRate = quote.rateQuoteDetail.total;
+      if (!normalizedRateQuotes) {
+        let ratesResponse;
+        try {
+          ratesResponse = await priority1.getRates({
+            originZipCode: originZip,
+            destinationZipCode: destinationZip,
+            pickupDate: pickupDateISO,
+            items: [rateItem],
+            ...(accessorialCodes.length > 0
+              ? {
+                  accessorialServices: accessorialCodes.map((code) => ({
+                    code,
+                  })),
+                }
+              : {}),
+          });
+        } catch (error) {
+          console.error("Failed to fetch shipping rates from Priority1:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Unable to fetch shipping rates. Please try again later.",
+          });
+        }
+
+        normalizedRateQuotes = normalizePriority1RateQuotes({
+          quotes: ratesResponse.rateQuotes ?? [],
+          now,
+          pickupDate,
+        });
+
+        try {
+          await writeShippingRateResponseCache({
+            redisClient: redis,
+            cacheKey: rateCacheKey,
+            providerMode,
+            quotes: normalizedRateQuotes,
+            now,
+          });
+        } catch (error) {
+          console.error("Failed to write cached shipping rates to Redis:", error);
+        }
+      }
+
+      const mintNowMs = Date.now();
+      const allQuotes = normalizedRateQuotes.flatMap((quote) => {
+        const quoteExpiresAt = new Date(quote.quoteExpiresAt);
+        // Align with order consumption: never mint near-expiry quotes.
         if (
-          !quote.id ||
-          !quote.carrierName ||
-          !quote.carrierCode ||
-          !Number.isFinite(carrierRate) ||
-          carrierRate < 0 ||
-          !Number.isInteger(quote.transitDays) ||
-          quote.transitDays < 0
+          !isQuoteBookable(
+            quoteExpiresAt,
+            mintNowMs,
+            SHIPPING_OFFER_BOOKABILITY_BUFFER_MS,
+          )
         ) {
           return [];
         }
+        const ttlSeconds = quoteArtifactTtlSeconds(quoteExpiresAt, mintNowMs);
+        if (ttlSeconds == null) {
+          return [];
+        }
 
-        const shippingPrice = applyShippingMarkup(carrierRate);
+        const shippingPrice = applyShippingMarkup(quote.carrierRate);
         const freightFunding = resolveListingFreightFunding({
           listing: {
             freightPaymentMode: listing.freightPaymentMode,
@@ -231,39 +325,21 @@ export const shippingRouter = createTRPCRouter({
           fullFreightCharge: shippingPrice,
           destinationState,
         });
-        const quoteExpiresAt = quote.expirationDate
-          ? new Date(quote.expirationDate)
-          : new Date(now.getTime() + 30 * 60 * 1000);
-        if (
-          Number.isNaN(quoteExpiresAt.getTime()) ||
-          quoteExpiresAt.getTime() <= now.getTime()
-        ) {
-          return [];
-        }
-        const estimatedDeliveryDate = quote.deliveryDate
-          ? new Date(quote.deliveryDate)
-          : addBusinessDays(pickupDate, quote.transitDays);
-        if (Number.isNaN(estimatedDeliveryDate.getTime())) {
-          return [];
-        }
-        const estimatedDeliveryWindowDate =
-          formatPriority1DateValue(estimatedDeliveryDate);
-        if (estimatedDeliveryWindowDate < formatPriority1Date(pickupDate)) {
-          return [];
-        }
-        const estimatedDelivery = estimatedDeliveryDate.toISOString();
+        const estimatedDeliveryDate = new Date(quote.estimatedDelivery);
+        const estimatedDelivery = quote.estimatedDelivery;
         const quoteToken = randomUUID();
         const snapshot = shippingBookingSnapshotSchema.parse({
           version: 1,
-          quoteId: quote.id,
+          quoteId: quote.quoteId,
           listingId: input.listingId,
           buyerId: ctx.user.id,
           quantitySqFt: input.quantitySqFt,
           destinationZip,
           carrierName: quote.carrierName,
-          carrierScac: quote.carrierCode,
-          carrierRate,
+          carrierScac: quote.carrierScac,
+          carrierRate: quote.carrierRate,
           shippingPrice,
+          accessorialCodes,
           commercialPolicy: captureCommercialPolicy(now),
           transitDays: quote.transitDays,
           quoteExpiresAt: quoteExpiresAt.toISOString(),
@@ -287,7 +363,7 @@ export const shippingRouter = createTRPCRouter({
               freightClass,
               packagingType: "Pallet",
               units: palletsNeeded,
-              pieces: 1,
+              pieces: piecesPerPallet,
               totalWeight: palletWeight * palletsNeeded,
               length: palletLength,
               width: palletWidth,
@@ -305,17 +381,17 @@ export const shippingRouter = createTRPCRouter({
             endTime: "17:00",
           },
           deliveryWindow: {
-            date: estimatedDeliveryWindowDate,
+            date: formatPriority1Date(estimatedDeliveryDate),
             startTime: "08:00",
             endTime: "17:00",
           },
         });
 
         return [{
-          quoteId: quote.id,
+          quoteId: quote.quoteId,
           quoteToken,
           carrierName: quote.carrierName,
-          carrierScac: quote.carrierCode,
+          carrierScac: quote.carrierScac,
           shippingPrice,
           buyerFreightCharge: freightFunding.buyerFreightCharge,
           sellerFreightContribution:
@@ -325,45 +401,28 @@ export const shippingRouter = createTRPCRouter({
           appliedBuyerDropCharge:
             freightFunding.appliedBuyerDropCharge,
           destinationState,
-          carrierRate,
+          carrierRate: quote.carrierRate,
           transitDays: quote.transitDays,
           estimatedDelivery,
           quoteExpiresAt: quoteExpiresAt.toISOString(),
           snapshot,
+          ttlSeconds,
         }];
       });
 
-      // Select top 3: cheapest, fastest, and best value middle option
-      const byPrice = [...allQuotes].sort((a, b) => a.shippingPrice - b.shippingPrice);
-      const bySpeed = [...allQuotes].sort((a, b) => a.transitDays - b.transitDays || a.shippingPrice - b.shippingPrice);
-
-      const selectedMap = new Map<number, typeof allQuotes[0]>();
-
-      // 1. Cheapest option
-      if (byPrice[0]) selectedMap.set(byPrice[0].quoteId, byPrice[0]);
-
-      // 2. Fastest option (if different from cheapest)
-      if (bySpeed[0]) selectedMap.set(bySpeed[0].quoteId, bySpeed[0]);
-
-      // 3. Fill remaining slot(s) with next best by price that isn't already selected
-      for (const q of byPrice) {
-        if (selectedMap.size >= 3) break;
-        if (!selectedMap.has(q.quoteId)) selectedMap.set(q.quoteId, q);
+      // Top 3: cheapest, fastest (if distinct), then best value (price/day).
+      const topQuotes = selectTopShippingQuotes(allQuotes, 3);
+      if (topQuotes.length === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "No bookable freight rates remain for this destination (quotes may be near expiry or filtered). Refresh rates and try again.",
+        });
       }
-
-      const topQuotes = Array.from(selectedMap.values())
-        .sort((a, b) => a.shippingPrice - b.shippingPrice);
 
       try {
         await Promise.all(
           topQuotes.map((quote) => {
-            const secondsUntilProviderExpiry = Math.max(
-              1,
-              Math.floor(
-                (new Date(quote.quoteExpiresAt).getTime() - Date.now()) / 1000,
-              ),
-            );
-            const ttlSeconds = Math.min(1800, secondsUntilProviderExpiry);
             const cachedQuote = JSON.stringify({
               quoteId: quote.quoteId,
               quoteToken: quote.quoteToken,
@@ -388,25 +447,20 @@ export const shippingRouter = createTRPCRouter({
               destinationState: quote.destinationState,
             });
 
-            return (
-            Promise.all([
+            // Token-scoped artifacts only — never share booking snapshot by
+            // Priority1 quoteId (rate cache reuses quote IDs across buyers).
+            return Promise.all([
               redis.set(
-                `shipping-quote-token:${quote.quoteToken}`,
+                getShippingQuoteTokenKey(quote.quoteToken),
                 cachedQuote,
-                { ex: ttlSeconds },
+                { ex: quote.ttlSeconds },
               ),
               redis.set(
-                `shipping-quote:${quote.quoteId}`,
-                cachedQuote,
-                { ex: ttlSeconds },
-              ),
-              redis.set(
-                getShippingBookingSnapshotKey(quote.quoteId),
+                getShippingBookingSnapshotKeyByToken(quote.quoteToken),
                 JSON.stringify(quote.snapshot),
-                { ex: secondsUntilProviderExpiry },
+                { ex: quote.ttlSeconds },
               ),
-            ])
-            );
+            ]);
           }),
         );
       } catch (error) {
@@ -417,20 +471,28 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      // Return top 3 quotes WITHOUT carrierRate (internal cost stays server-side)
-      const quotes: ShippingQuote[] = topQuotes.map((quote) => ({
-        quoteId: quote.quoteId,
-        quoteToken: quote.quoteToken,
-        carrierName: quote.carrierName,
-        carrierScac: quote.carrierScac,
-        shippingPrice: quote.shippingPrice,
-        buyerFreightCharge: quote.buyerFreightCharge,
-        sellerFreightContribution: quote.sellerFreightContribution,
-        freightFundingMode: quote.freightFundingMode,
-        transitDays: quote.transitDays,
-        estimatedDelivery: quote.estimatedDelivery,
-        quoteExpiresAt: quote.quoteExpiresAt,
-      }));
+      // Return top 3 quotes WITHOUT carrierRate (internal cost stays server-side).
+      // Cap displayed/client bookability to Redis artifact life so UI expiry
+      // matches what order consume can actually use.
+      const responseNowMs = Date.now();
+      const quotes: ShippingQuote[] = topQuotes.map((quote) => {
+        const providerExpiresMs = new Date(quote.quoteExpiresAt).getTime();
+        const artifactExpiresMs = responseNowMs + quote.ttlSeconds * 1000;
+        const effectiveExpiresMs = Math.min(providerExpiresMs, artifactExpiresMs);
+        return {
+          quoteId: quote.quoteId,
+          quoteToken: quote.quoteToken,
+          carrierName: quote.carrierName,
+          carrierScac: quote.carrierScac,
+          shippingPrice: quote.shippingPrice,
+          buyerFreightCharge: quote.buyerFreightCharge,
+          sellerFreightContribution: quote.sellerFreightContribution,
+          freightFundingMode: quote.freightFundingMode,
+          transitDays: quote.transitDays,
+          estimatedDelivery: quote.estimatedDelivery,
+          quoteExpiresAt: new Date(effectiveExpiresMs).toISOString(),
+        };
+      });
       return quotes;
     }),
 
@@ -473,10 +535,10 @@ export const shippingRouter = createTRPCRouter({
         return null;
       }
 
-      const canSeeFreightDocuments =
-        ctx.user.role === "admin" ||
-        ctx.user.role === "seller" ||
-        order.status === "delivered";
+      const canSeeFreightDocuments = canViewFreightDocuments({
+        viewerRole: ctx.user.role,
+        orderStatus: order.status,
+      });
 
       // Tracking milestones are participant-visible. Provider internals and
       // freight documents stay hidden from buyers until identity release.
@@ -504,7 +566,11 @@ export const shippingRouter = createTRPCRouter({
     .input(
       z.object({
         orderId: z.string().uuid(),
-        documentType: z.enum(["BillOfLading", "DeliveryReceipt"]),
+        documentType: z.enum([
+          "BillOfLading",
+          "DeliveryReceipt",
+          "PalletLabel",
+        ]),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -543,14 +609,10 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      const isAdmin = ctx.user.role === "admin";
-      const isSeller = ctx.user.role === "seller";
-      const isDelivered = order.status === "delivered";
-      const canAccessDocument =
-        isAdmin ||
-        (input.documentType === "BillOfLading" && isSeller) ||
-        (input.documentType === "DeliveryReceipt" &&
-          (isSeller || isDelivered));
+      const canAccessDocument = canViewFreightDocuments({
+        viewerRole: ctx.user.role,
+        orderStatus: order.status,
+      });
       if (!canAccessDocument) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -559,30 +621,29 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
-      const identifier = shipment.proNumber
-        ? { proNumber: shipment.proNumber }
-        : order.trackingNumber
-          ? { bolNumber: order.trackingNumber }
-          : null;
-      if (!identifier) {
+      const identifiers = shipmentDocumentIdentifiersFrom({
+        proNumber: shipment.proNumber,
+        bolNumber: shipment.bolNumber,
+        trackingNumber: order.trackingNumber,
+      });
+      if (identifiers.length === 0) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Shipment does not have a PRO or BOL identifier",
         });
       }
 
-      // Call priority1.getDocuments()
       try {
-        const documentsResponse = await priority1.getDocuments({
-          shipmentImageTypeId: input.documentType,
-          imageFormatTypeId: "PDF",
-          ...identifier,
-        });
-
-        if (!documentsResponse.imageUrl) {
-          throw new Error("Priority1 did not return a document URL");
+        const document = await fetchPriority1DocumentUrl(
+          input.documentType,
+          identifiers,
+        );
+        if (!document.url) {
+          throw new Error(
+            document.error ?? "Priority1 did not return a document URL",
+          );
         }
-        return { imageUrl: documentsResponse.imageUrl };
+        return { imageUrl: document.url };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Failed to fetch shipping document from Priority1", {

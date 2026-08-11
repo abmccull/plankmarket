@@ -1,4 +1,7 @@
-const PROTECTED_PATHS = ["/seller", "/buyer", "/admin"] as const;
+import {
+  isHighAssuranceRoute,
+  isPrivateAppPath,
+} from "@/lib/auth/auth-assurance";
 
 /**
  * Match a complete route segment, not a string prefix. For example,
@@ -9,5 +12,7 @@ export function isPathWithin(pathname: string, routePrefix: string): boolean {
 }
 
 export function isProtectedAppPath(pathname: string): boolean {
-  return PROTECTED_PATHS.some((path) => isPathWithin(pathname, path));
+  return isPrivateAppPath(pathname);
 }
+
+export { isHighAssuranceRoute };

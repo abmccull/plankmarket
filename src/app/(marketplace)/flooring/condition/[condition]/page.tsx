@@ -26,7 +26,7 @@ const conditionDescriptions: Record<string, string> = {
   "slight_damage": "Discover slightly damaged flooring at steep discounts. Minor cosmetic imperfections that don't affect installation or performance.",
   "seconds": "Shop factory seconds flooring. Minor cosmetic variations from manufacturing — same quality, lower price.",
   "remnants": "Find flooring remnants and partial lots. Ideal for smaller projects, repairs, and accent installations.",
-  "returns": "Browse returned flooring inventory at discounted prices. Customer returns and overorders available from verified sellers.",
+  "returns": "Browse returned flooring inventory at discounted prices. Customer returns and overorders include seller verification status on each listing.",
 };
 
 const validConditions = ["new_overstock", "discontinued", "closeout", "slight_damage", "seconds", "remnants", "returns"];
@@ -140,7 +140,7 @@ export default async function ConditionPage(props: ConditionPageProps) {
         {/* Results count */}
         {result.total > 0 && (
           <div className="mb-6 text-sm text-muted-foreground">
-            Showing {(page - 1) * limit + 1}-{Math.min(page * limit, result.total)} of {result.total} listings
+            Showing {(page - 1) * limit + 1}-{Math.min(page * limit, result.total)} of {result.total}{result.totalIsExact ? "" : "+"} listings
           </div>
         )}
 

@@ -7,6 +7,7 @@ import {
   jsonb,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 import type { SearchFilters } from "@/types";
 
@@ -39,6 +40,13 @@ export const savedSearches = pgTable(
   (table) => [
     index("saved_searches_user_id_idx").on(table.userId),
     index("saved_searches_alert_enabled_idx").on(table.alertEnabled),
+    index("saved_searches_due_alerts_idx")
+      .on(
+        table.alertFrequency,
+        sql`coalesce(${table.lastAlertAt}, ${table.createdAt})`,
+        table.id,
+      )
+      .where(sql`${table.alertEnabled} = true`),
   ]
 );
 

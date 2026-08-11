@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchStore } from "@/lib/stores/search-store";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +14,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X, SlidersHorizontal } from "lucide-react";
-import type { MaterialType, ConditionType, Species, ColorFamily, FinishType, Certification } from "@/types";
+import type {
+  SearchFilters,
+  MaterialType,
+  ConditionType,
+  Species,
+  ColorFamily,
+  FinishType,
+  Certification,
+} from "@/types";
 import { WIDTH_OPTIONS, THICKNESS_OPTIONS, DISTANCE_OPTIONS, getWearLayerOptions } from "@/lib/constants/flooring";
 
 const MATERIAL_OPTIONS: { value: MaterialType; label: string }[] = [
@@ -90,89 +97,118 @@ const badgeClass = (isActive: boolean | undefined) =>
       : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
   }`;
 
-export function FacetedFilters() {
-  const { filters, setFilters, clearFilters } = useSearchStore();
+interface FacetedFiltersProps {
+  filters: SearchFilters;
+  onFiltersChange: (updates: Partial<SearchFilters>) => void;
+  onClearFilters: () => void;
+}
+
+export function FacetedFilters({
+  filters,
+  onFiltersChange,
+  onClearFilters,
+}: FacetedFiltersProps) {
   const user = useAuthStore((s) => s.user);
   const [localZip, setLocalZip] = useState(filters.buyerZip || user?.zipCode || "");
 
-  const toggleMaterial = (value: MaterialType) => {
-    const current = filters.materialType || [];
+  const updateArrayFilter = <
+    Key extends keyof SearchFilters,
+    Value extends string | number,
+  >(
+    key: Key,
+    value: Value,
+  ) => {
+    const current = (filters[key] as Value[] | undefined) || [];
     const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
+      ? current.filter((item) => item !== value)
       : [...current, value];
-    setFilters({ materialType: updated.length > 0 ? updated : undefined });
+
+    return updated.length > 0 ? updated : undefined;
+  };
+
+  const toggleMaterial = (value: MaterialType) => {
+    const updatedMaterialType = updateArrayFilter("materialType", value) as
+      | SearchFilters["materialType"]
+      | undefined;
+    const allowedWearLayerValues = new Set(
+      getWearLayerOptions(updatedMaterialType).map((option) => option.value),
+    );
+    const nextWearLayer = filters.wearLayer?.filter((layer) =>
+      allowedWearLayerValues.has(layer),
+    );
+
+    onFiltersChange({
+      materialType: updatedMaterialType,
+      wearLayer: nextWearLayer?.length ? nextWearLayer : undefined,
+    });
   };
 
   const toggleCondition = (value: ConditionType) => {
-    const current = filters.condition || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ condition: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      condition: updateArrayFilter("condition", value) as
+        | SearchFilters["condition"]
+        | undefined,
+    });
   };
 
   const toggleSpecies = (value: Species) => {
-    const current = filters.species || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ species: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      species: updateArrayFilter("species", value) as
+        | SearchFilters["species"]
+        | undefined,
+    });
   };
 
   const toggleColorFamily = (value: ColorFamily) => {
-    const current = filters.colorFamily || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ colorFamily: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      colorFamily: updateArrayFilter("colorFamily", value) as
+        | SearchFilters["colorFamily"]
+        | undefined,
+    });
   };
 
   const toggleFinish = (value: FinishType) => {
-    const current = filters.finishType || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ finishType: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      finishType: updateArrayFilter("finishType", value) as
+        | SearchFilters["finishType"]
+        | undefined,
+    });
   };
 
   const toggleState = (value: string) => {
-    const current = filters.state || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ state: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      state: updateArrayFilter("state", value) as SearchFilters["state"] | undefined,
+    });
   };
 
   const toggleCertification = (value: Certification) => {
-    const current = filters.certifications || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ certifications: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      certifications: updateArrayFilter("certifications", value) as
+        | SearchFilters["certifications"]
+        | undefined,
+    });
   };
 
   const toggleWidth = (value: number) => {
-    const current = filters.width || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ width: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      width: updateArrayFilter("width", value) as SearchFilters["width"] | undefined,
+    });
   };
 
   const toggleThickness = (value: number) => {
-    const current = filters.thickness || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ thickness: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      thickness: updateArrayFilter("thickness", value) as
+        | SearchFilters["thickness"]
+        | undefined,
+    });
   };
 
   const toggleWearLayer = (value: number) => {
-    const current = filters.wearLayer || [];
-    const updated = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
-    setFilters({ wearLayer: updated.length > 0 ? updated : undefined });
+    onFiltersChange({
+      wearLayer: updateArrayFilter("wearLayer", value) as
+        | SearchFilters["wearLayer"]
+        | undefined,
+    });
   };
 
   const wearLayerOptions = getWearLayerOptions(filters.materialType);
@@ -191,7 +227,12 @@ export function FacetedFilters() {
     filters.priceMin !== undefined ||
     filters.priceMax !== undefined ||
     filters.minLotSize !== undefined ||
-    filters.maxDistance !== undefined;
+    filters.maxLotSize !== undefined ||
+    filters.buyerZip !== undefined ||
+    filters.maxDistance !== undefined ||
+    filters.sellerVerified !== undefined ||
+    filters.freightReady !== undefined ||
+    filters.fullLotOnly !== undefined;
 
   return (
     <div className="space-y-6">
@@ -204,7 +245,10 @@ export function FacetedFilters() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={clearFilters}
+            onClick={() => {
+              setLocalZip(user?.zipCode || "");
+              onClearFilters();
+            }}
             className="text-xs"
           >
             Clear all
@@ -277,6 +321,77 @@ export function FacetedFilters() {
 
       <Separator />
 
+      {/* Buying confidence */}
+      <div>
+        <Label className="mb-2 block text-xs font-medium text-muted-foreground">
+          Buying confidence
+        </Label>
+        <div className="flex flex-wrap gap-1.5" aria-label="Buying confidence filters">
+          <button
+            type="button"
+            aria-pressed={filters.sellerVerified === true}
+            onClick={() =>
+              onFiltersChange({
+                sellerVerified:
+                  filters.sellerVerified === true ? undefined : true,
+              })
+            }
+            className={badgeClass(filters.sellerVerified === true)}
+          >
+            Verified sellers
+          </button>
+          <button
+            type="button"
+            aria-pressed={filters.freightReady === true}
+            onClick={() =>
+              onFiltersChange({
+                freightReady: filters.freightReady === true ? undefined : true,
+              })
+            }
+            className={badgeClass(filters.freightReady === true)}
+          >
+            Freight quote ready
+          </button>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* Lot format */}
+      <div>
+        <Label className="mb-2 block text-xs font-medium text-muted-foreground">
+          Lot format
+        </Label>
+        <div className="flex flex-wrap gap-1.5" aria-label="Lot format filters">
+          <button
+            type="button"
+            aria-pressed={filters.fullLotOnly === true}
+            onClick={() =>
+              onFiltersChange({
+                fullLotOnly: filters.fullLotOnly === true ? undefined : true,
+              })
+            }
+            className={badgeClass(filters.fullLotOnly === true)}
+          >
+            Full lot only
+          </button>
+          <button
+            type="button"
+            aria-pressed={filters.fullLotOnly === false}
+            onClick={() =>
+              onFiltersChange({
+                fullLotOnly: filters.fullLotOnly === false ? undefined : false,
+              })
+            }
+            className={badgeClass(filters.fullLotOnly === false)}
+          >
+            Split lots allowed
+          </button>
+        </div>
+      </div>
+
+      <Separator />
+
       {/* Price Range */}
       <div>
         <Label className="text-xs font-medium text-muted-foreground mb-2 block">
@@ -289,7 +404,7 @@ export function FacetedFilters() {
             step="0.01"
             value={filters.priceMin ?? ""}
             onChange={(e) =>
-              setFilters({
+              onFiltersChange({
                 priceMin: e.target.value
                   ? parseFloat(e.target.value)
                   : undefined,
@@ -303,7 +418,7 @@ export function FacetedFilters() {
             step="0.01"
             value={filters.priceMax ?? ""}
             onChange={(e) =>
-              setFilters({
+              onFiltersChange({
                 priceMax: e.target.value
                   ? parseFloat(e.target.value)
                   : undefined,
@@ -327,7 +442,7 @@ export function FacetedFilters() {
             placeholder="Min"
             value={filters.minLotSize ?? ""}
             onChange={(e) =>
-              setFilters({
+              onFiltersChange({
                 minLotSize: e.target.value
                   ? parseInt(e.target.value)
                   : undefined,
@@ -340,7 +455,7 @@ export function FacetedFilters() {
             placeholder="Max"
             value={filters.maxLotSize ?? ""}
             onChange={(e) =>
-              setFilters({
+              onFiltersChange({
                 maxLotSize: e.target.value
                   ? parseInt(e.target.value)
                   : undefined,
@@ -565,9 +680,12 @@ export function FacetedFilters() {
               const val = e.target.value.replace(/\D/g, "").slice(0, 5);
               setLocalZip(val);
               if (val.length === 5) {
-                setFilters({ buyerZip: val });
+                onFiltersChange({ buyerZip: val });
               } else if (val.length === 0) {
-                setFilters({ buyerZip: undefined, maxDistance: undefined });
+                onFiltersChange({
+                  buyerZip: undefined,
+                  maxDistance: undefined,
+                });
               }
             }}
             className="h-8 text-xs"
@@ -578,13 +696,19 @@ export function FacetedFilters() {
             onValueChange={(v) => {
               const dist = parseInt(v);
               if (dist === 0) {
-                setFilters({ maxDistance: undefined });
+                onFiltersChange({ maxDistance: undefined });
               } else {
-                setFilters({ maxDistance: dist, buyerZip: localZip || undefined });
+                onFiltersChange({
+                  maxDistance: dist,
+                  buyerZip: localZip || undefined,
+                });
               }
             }}
           >
-            <SelectTrigger className="h-8 text-xs">
+            <SelectTrigger
+              className="h-8 text-xs"
+              aria-label="Maximum distance from buyer ZIP code"
+            >
               <SelectValue placeholder="Select distance" />
             </SelectTrigger>
             <SelectContent>

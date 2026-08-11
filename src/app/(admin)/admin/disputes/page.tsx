@@ -407,7 +407,7 @@ export default function AdminDisputesPage() {
                   {detail.evidence.map((item) => (
                     <a
                       key={item.id}
-                      href={item.media.url}
+                      href={`/api/disputes/evidence/${item.media.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 rounded-md border p-3 text-sm hover:bg-muted"

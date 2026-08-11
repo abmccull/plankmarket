@@ -1,0 +1,257 @@
+schema_version: 1
+graph_id: "plankmarket-transaction-state-ux"
+target:
+  kind: "repository-deployment-provider-snapshot"
+  locator: "${PLANKMARKET_REPO_ROOT}"
+  fingerprint: "git:${GIT_HEAD};tree:${DIRTY_TREE_SHA256};deploy:${DEPLOYMENT_ID};providers:${PROVIDER_STATE_SHA256}"
+authority: "read_only"
+max_parallel_workers: 4
+defaults:
+  max_retries: 1
+  max_iterations: 2
+human_gate:
+  required: false
+  approved: false
+anchors:
+  - id: "desktop-render"
+    type: "rendered-capture-set"
+    locator: "${DESKTOP_CAPTURE_LOCATOR}"
+    required: true
+  - id: "mobile-render"
+    type: "rendered-capture-set"
+    locator: "${MOBILE_CAPTURE_LOCATOR}"
+    required: true
+  - id: "state-matrix"
+    type: "route-fixture-state-map"
+    locator: "${STATE_MATRIX_LOCATOR}"
+    required: true
+  - id: "runtime-observation"
+    type: "console-network-test-output"
+    locator: "${RUNTIME_EVIDENCE_LOCATOR}"
+    required: true
+mutation_gates:
+  - id: transaction-semantics-change
+    action: transaction_semantics_change
+    scope: "${TRANSACTION_SEMANTICS_SCOPE}"
+    target: "${TRANSACTION_SEMANTICS_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+  - id: transaction-record-mutation
+    action: transaction_record_mutation
+    scope: "${TRANSACTION_RECORD_SCOPE}"
+    target: "${TRANSACTION_RECORD_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+  - id: provider-or-deployment-mutation
+    action: provider_or_deployment_mutation
+    scope: "${PROVIDER_DEPLOYMENT_SCOPE}"
+    target: "${PROVIDER_DEPLOYMENT_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+metadata:
+  runtime_binding:
+    git_head: "${GIT_HEAD}"
+    dirty_tree_sha256: "${DIRTY_TREE_SHA256}"
+    deployment_id: "${DEPLOYMENT_ID}"
+    base_url: "${BOUND_BASE_URL}"
+    provider_project_ids: "${PROVIDER_PROJECT_IDS}"
+    provider_state_sha256: "${PROVIDER_STATE_SHA256}"
+    observed_at: "${OBSERVED_AT_ISO8601}"
+    desktop_capture_locator: "${DESKTOP_CAPTURE_LOCATOR}"
+    mobile_capture_locator: "${MOBILE_CAPTURE_LOCATOR}"
+    state_matrix_locator: "${STATE_MATRIX_LOCATOR}"
+    runtime_evidence_locator: "${RUNTIME_EVIDENCE_LOCATOR}"
+  required_states: ["loading", "empty", "blocked", "warning", "error", "recovery", "success"]
+  required_viewports: ["desktop", "mobile"]
+nodes:
+  - id: "bind-target"
+    objective: >-
+      Resolve and verify the exact Git root, branch, HEAD, dirty-tree hash, deployment ID, base URL,
+      provider project/account IDs, snapshot hash, fixture identities, and observation time. Halt on
+      unresolved placeholders, target mismatch, unsafe production fixtures, or secret-bearing evidence.
+    depends_on: []
+    authority: "read_only"
+    resources:
+      reads: ["git", "deployment metadata", "provider metadata", "route and fixture manifest"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/00-target.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 6
+    failure_policy:
+      on_failure: "halt"
+  - id: "render-buyer-checkout"
+    objective: >-
+      Render buyer listing, offer, checkout, shipping selection, payment preparation, confirmation,
+      order, cancellation, refund, and dispute surfaces at desktop and mobile sizes. Capture loading,
+      empty, blocked, warning, error, recovery, and success states without creating charges or orders.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${BOUND_BASE_URL}", "buyer test fixtures", "browser console and network logs"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/10-buyer-checkout.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 7
+    failure_policy:
+      on_failure: "continue"
+  - id: "render-seller-fulfillment"
+    objective: >-
+      Render seller offer/order acceptance, verification blocks, shipment quote and selection,
+      booking-pending, BOL/document access, dispatch, tracking, cancellation, claim, payout-pending,
+      and completion surfaces at desktop and mobile sizes without booking or altering a shipment.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${BOUND_BASE_URL}", "seller and shipment test fixtures", "browser console and network logs"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/20-seller-fulfillment.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 7
+    failure_policy:
+      on_failure: "continue"
+  - id: "render-trust-and-blocks"
+    objective: >-
+      Render authentication, MFA/recovery, buyer and seller verification, identity masking,
+      permission denial, stale listing, unavailable inventory, dispute, evidence-file, and admin-gated
+      states. Verify clear next actions, data minimization, focus behavior, and safe recovery on both viewports.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${BOUND_BASE_URL}", "auth/verification fixtures", "accessibility tree", "browser logs"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/30-trust-blocks.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 7
+    failure_policy:
+      on_failure: "continue"
+  - id: "test-state-robustness"
+    objective: >-
+      Exercise the declared state matrix with safe fixtures and browser/runtime tests. Verify route
+      refresh, back/forward, retry, duplicate submission prevention, responsive layout, keyboard and
+      focus behavior, console errors, failed requests, and recovery-to-success continuity. Do not
+      interpret source-only branches as rendered proof.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${STATE_MATRIX_LOCATOR}", "${RUNTIME_EVIDENCE_LOCATOR}", "Playwright/test output", "rendered captures"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/40-state-robustness.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 7
+    failure_policy:
+      on_failure: "continue"
+  - id: "reduce-ux-evidence"
+    objective: >-
+      Deterministically validate and deduplicate rendered findings by route, fixture, state, viewport,
+      and capture hash; retain conflicts and rejection reasons; emit expected/completed/partial/failed/
+      blocked/malformed/retried counts and a coverage matrix for every required state and viewport.
+    depends_on: ["render-buyer-checkout", "render-seller-fulfillment", "render-trust-and-blocks", "test-state-robustness"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/10-buyer-checkout.json", "${RUN_DIR}/20-seller-fulfillment.json", "${RUN_DIR}/30-trust-blocks.json", "${RUN_DIR}/40-state-robustness.json"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/50-reduced-ux-evidence.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 4
+    failure_policy:
+      on_failure: "halt"
+  - id: "fresh-risk-verifier"
+    objective: >-
+      In fresh context, reopen the highest-risk buyer and seller state transitions and independently
+      verify that captures match the bound target and fixture. Challenge success, recovery, blocked,
+      payment, shipping, refund, and payout claims; downgrade source-only or stale evidence.
+    depends_on: ["reduce-ux-evidence"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/00-target.json", "${RUN_DIR}/50-reduced-ux-evidence.json", "highest-risk rendered captures and runtime logs"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/60-fresh-verification.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "halt"
+  - id: "integrate-ux-verdict"
+    objective: >-
+      Act as the sole integrator. Produce the final route/state/viewport coverage ledger, verified
+      defects, design weaknesses, evidence gaps, and human-gated change proposals. Do not change
+      checkout semantics, create provider records, execute SQL, or deploy.
+    depends_on: ["fresh-risk-verifier"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/50-reduced-ux-evidence.json", "${RUN_DIR}/60-fresh-verification.json"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/70-ux-verdict.yaml"
+      format: "yaml"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "halt"

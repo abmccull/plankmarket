@@ -1,0 +1,264 @@
+schema_version: 1
+graph_id: "plankmarket-commercial-validation"
+target:
+  kind: "repository-deployment-provider-snapshot"
+  locator: "${PLANKMARKET_REPO_ROOT}"
+  fingerprint: "git:${GIT_HEAD};tree:${DIRTY_TREE_SHA256};deploy:${DEPLOYMENT_ID};providers:${PROVIDER_STATE_SHA256}"
+authority: "read_only"
+max_parallel_workers: 4
+defaults:
+  max_retries: 1
+  max_iterations: 2
+human_gate:
+  required: false
+  approved: false
+anchors:
+  - id: "genuine-inventory"
+    type: "supplier-export"
+    locator: "${INVENTORY_EXPORT_LOCATOR}"
+    required: true
+  - id: "buyer-demand"
+    type: "named-rfq-records"
+    locator: "${RFQ_EVIDENCE_LOCATOR}"
+    required: true
+  - id: "settled-trades"
+    type: "settlement-records"
+    locator: "${SETTLED_TRADE_LOCATOR}"
+    required: true
+  - id: "delivery-economics"
+    type: "freight-invoices-and-claims"
+    locator: "${FREIGHT_CLAIMS_LOCATOR}"
+    required: true
+  - id: "retention"
+    type: "repeat-behavior-records"
+    locator: "${REPEAT_BEHAVIOR_LOCATOR}"
+    required: true
+mutation_gates:
+  - id: paid-acquisition-change
+    action: paid_acquisition_change
+    scope: "${PAID_ACQUISITION_SCOPE}"
+    target: "${PAID_ACQUISITION_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+  - id: commercial-claim-publication
+    action: commercial_claim_publication
+    scope: "${COMMERCIAL_CLAIM_SCOPE}"
+    target: "${COMMERCIAL_CLAIM_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+  - id: operational-state-mutation
+    action: operational_state_mutation
+    scope: "${OPERATIONAL_MUTATION_SCOPE}"
+    target: "${OPERATIONAL_MUTATION_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+metadata:
+  runtime_binding:
+    git_head: "${GIT_HEAD}"
+    dirty_tree_sha256: "${DIRTY_TREE_SHA256}"
+    deployment_id: "${DEPLOYMENT_ID}"
+    provider_project_ids: "${PROVIDER_PROJECT_IDS}"
+    provider_state_sha256: "${PROVIDER_STATE_SHA256}"
+    observed_at: "${OBSERVED_AT_ISO8601}"
+    inventory_export_locator: "${INVENTORY_EXPORT_LOCATOR}"
+    rfq_evidence_locator: "${RFQ_EVIDENCE_LOCATOR}"
+    settled_trade_locator: "${SETTLED_TRADE_LOCATOR}"
+    freight_claims_locator: "${FREIGHT_CLAIMS_LOCATOR}"
+    repeat_behavior_locator: "${REPEAT_BEHAVIOR_LOCATOR}"
+  invalid_traction_evidence:
+    - "seed listings"
+    - "demo or test transactions"
+    - "inventory depletion without settled trade lineage"
+    - "polished UI"
+    - "projections"
+nodes:
+  - id: "bind-target"
+    objective: >-
+      Resolve and verify the exact Git root, branch, HEAD, dirty-tree hash, deployment ID,
+      provider project/account IDs, snapshot hash, and observation time. Halt on any unresolved
+      placeholder, target mismatch, or secret-bearing fingerprint.
+    depends_on: []
+    authority: "read_only"
+    resources:
+      reads: ["git", "deployment metadata", "provider account metadata"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/00-target.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 5
+    failure_policy:
+      on_failure: "halt"
+  - id: "verify-genuine-supply"
+    objective: >-
+      Measure sellable inventory from genuine supplier exports and source records, with supplier,
+      SKU/lot, quantity, freshness, and ownership lineage. Exclude seed, demo, duplicate, stale,
+      unavailable, or synthetic listings and report the excluded counts.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${INVENTORY_EXPORT_LOCATOR}", "inventory integration snapshots", "listing lineage"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/10-genuine-supply.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "continue"
+  - id: "verify-buyer-demand"
+    objective: >-
+      Measure genuine buyer demand from named RFQs or equivalent attributable requests. Deduplicate
+      buyers and requests, separate tests and internal records, and preserve request-to-listing or
+      request-to-quote lineage. Do not infer demand from traffic or saved seed data.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${RFQ_EVIDENCE_LOCATOR}", "buyer request records", "quote lineage"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/20-buyer-demand.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "continue"
+  - id: "verify-settled-trades"
+    objective: >-
+      Trace genuine orders through payment status, fee, seller transfer eligibility, settlement,
+      refund, dispute, and net marketplace economics. Count only provider-confirmed settled value;
+      label pending, failed, refunded, test-mode, and unlinked records separately.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${SETTLED_TRADE_LOCATOR}", "order/payment lineage", "read-only payment-provider snapshots"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/30-settled-trades.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 3
+    failure_policy:
+      on_failure: "continue"
+  - id: "verify-delivery-and-repeat"
+    objective: >-
+      Reconcile settled trades to freight quotes and invoices, shipment completion, claims and
+      losses, contribution margin, and attributable repeat purchase or seller behavior. Keep
+      delivery success, claims, cancellations, and missing lineage distinct.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${FREIGHT_CLAIMS_LOCATOR}", "${REPEAT_BEHAVIOR_LOCATOR}", "shipment/order lineage"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/40-delivery-repeat.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 3
+    failure_policy:
+      on_failure: "continue"
+  - id: "reduce-commercial-evidence"
+    objective: >-
+      Deterministically validate and deduplicate worker evidence, retain conflicts and rejection
+      reasons, and emit expected/completed/partial/failed/blocked/malformed/retried counts. Calculate
+      commercial metrics only from linked genuine evidence and mark every unsupported claim unverified.
+    depends_on: ["verify-genuine-supply", "verify-buyer-demand", "verify-settled-trades", "verify-delivery-and-repeat"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/10-genuine-supply.json", "${RUN_DIR}/20-buyer-demand.json", "${RUN_DIR}/30-settled-trades.json", "${RUN_DIR}/40-delivery-repeat.json"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/50-reduced-commercial-evidence.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 4
+    failure_policy:
+      on_failure: "halt"
+  - id: "fresh-risk-verifier"
+    objective: >-
+      In fresh context, challenge the target binding, evidence lineage, settled-value calculations,
+      exclusions, conflicts, and any proposed traction claim. Independently reopen high-risk source
+      records; reject claims based on seed listings, projections, UI polish, or unverified provider state.
+    depends_on: ["reduce-commercial-evidence"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/00-target.json", "${RUN_DIR}/50-reduced-commercial-evidence.json", "required commercial anchors"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/60-fresh-verification.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "halt"
+  - id: "integrate-commercial-verdict"
+    objective: >-
+      Act as the sole integrator. Produce the final read-only verdict, coverage ledger, verified
+      metrics, disputed findings, evidence gaps, and explicit human-gated next actions. Do not start
+      acquisition, publish claims, or mutate application or provider state.
+    depends_on: ["fresh-risk-verifier"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/50-reduced-commercial-evidence.json", "${RUN_DIR}/60-fresh-verification.json"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/70-commercial-verdict.yaml"
+      format: "yaml"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "halt"

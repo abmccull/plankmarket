@@ -6,7 +6,14 @@
  * 8 users, 16 listings, orders, reviews, watchlist, notifications, saved searches.
  *
  * Usage: npm run db:seed
+ *
+ * Safety:
+ * - Refuses to run against non-local Postgres or Supabase Auth targets.
+ * - Requires PLANKMARKET_DESTRUCTIVE_SEED_ACK=local-dev-reset-ok for every run.
+ * - Refuses to run when NODE_ENV is not test/development.
  */
+
+import { pathToFileURL } from "node:url";
 
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
@@ -14,7 +21,10 @@ dotenv.config({ path: ".env.local" });
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type User as SupabaseAuthUser,
+} from "@supabase/supabase-js";
 import zipcodes from "zipcodes";
 import { calculateOrderFees } from "@/lib/fees";
 import { captureCommercialPolicy } from "@/lib/commercial-policy";
@@ -42,30 +52,180 @@ import {
 // Config
 // ---------------------------------------------------------------------------
 
-const DATABASE_URL = process.env.DATABASE_URL;
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const LOCAL_DATABASE_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "0.0.0.0",
+  "host.docker.internal",
+  "db",
+  "postgres",
+]);
+const LOCAL_SUPABASE_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "0.0.0.0",
+  "host.docker.internal",
+  "supabase",
+  "kong",
+]);
 
-if (!DATABASE_URL || !SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error("Missing required environment variables:");
-  if (!DATABASE_URL) console.error("  - DATABASE_URL");
-  if (!SUPABASE_URL) console.error("  - NEXT_PUBLIC_SUPABASE_URL");
-  if (!SERVICE_ROLE_KEY) console.error("  - SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
-}
+export const DESTRUCTIVE_SEED_ACK_ENV =
+  "PLANKMARKET_DESTRUCTIVE_SEED_ACK";
+export const DESTRUCTIVE_SEED_ACK_VALUE = "local-dev-reset-ok";
+export const SEED_AUTH_MARKER = "plankmarket-local-seed-v1";
 
-const queryClient = postgres(DATABASE_URL, { max: 1 });
-const db = drizzle(queryClient);
+type SeedRuntimeConfig = {
+  databaseUrl: string;
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  nodeEnv: string;
+};
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+type SeedIdentity = {
+  email?: string | null;
+  appMetadata?: Record<string, unknown> | null;
+};
+
+let queryClient: ReturnType<typeof postgres> | null = null;
+let db!: ReturnType<typeof drizzle>;
+let supabase!: ReturnType<typeof createClient>;
 
 const PASSWORD = "Password123!";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+export function normalizeSeedNodeEnv(nodeEnv: string | undefined): string {
+  return nodeEnv?.trim().toLowerCase() || "development";
+}
+
+function normalizeUrlHostname(hostname: string): string {
+  const normalized = hostname.trim().toLowerCase();
+  return normalized.startsWith("[") && normalized.endsWith("]")
+    ? normalized.slice(1, -1)
+    : normalized;
+}
+
+export function isLocalSeedDatabaseUrl(databaseUrl: string): boolean {
+  try {
+    const url = new URL(databaseUrl);
+    return (
+      ["postgres:", "postgresql:"].includes(url.protocol) &&
+      LOCAL_DATABASE_HOSTS.has(normalizeUrlHostname(url.hostname))
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isLocalSeedSupabaseUrl(supabaseUrl: string): boolean {
+  try {
+    const url = new URL(supabaseUrl);
+    return (
+      ["http:", "https:"].includes(url.protocol) &&
+      LOCAL_SUPABASE_HOSTS.has(normalizeUrlHostname(url.hostname))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function getUrlHostname(value: string): string {
+  try {
+    return new URL(value).hostname || "unknown";
+  } catch {
+    return "invalid URL";
+  }
+}
+
+export function resolveSeedRuntimeConfig(
+  env: NodeJS.ProcessEnv,
+): SeedRuntimeConfig {
+  const databaseUrl = env.DATABASE_URL;
+  const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!databaseUrl || !supabaseUrl || !serviceRoleKey) {
+    const missing = [
+      !databaseUrl ? "DATABASE_URL" : null,
+      !supabaseUrl ? "NEXT_PUBLIC_SUPABASE_URL" : null,
+      !serviceRoleKey ? "SUPABASE_SERVICE_ROLE_KEY" : null,
+    ].filter((value): value is string => value !== null);
+    throw new Error(
+      `Missing required environment variables:\n${missing
+        .map((key) => `  - ${key}`)
+        .join("\n")}`,
+    );
+  }
+
+  if (!isLocalSeedDatabaseUrl(databaseUrl)) {
+    throw new Error(
+      `Refusing to seed a non-local database target. DATABASE_URL must point to an approved local host, received "${getUrlHostname(databaseUrl)}".`,
+    );
+  }
+
+  if (!isLocalSeedSupabaseUrl(supabaseUrl)) {
+    throw new Error(
+      `Refusing to seed a non-local Supabase Auth target. NEXT_PUBLIC_SUPABASE_URL must point to an approved local host, received "${getUrlHostname(supabaseUrl)}".`,
+    );
+  }
+
+  const nodeEnv = normalizeSeedNodeEnv(env.NODE_ENV);
+  if (!["development", "test"].includes(nodeEnv)) {
+    throw new Error(
+      `Refusing destructive seed in NODE_ENV=${nodeEnv}. The seed is restricted to development and test environments.`,
+    );
+  }
+
+  if (env[DESTRUCTIVE_SEED_ACK_ENV] !== DESTRUCTIVE_SEED_ACK_VALUE) {
+    throw new Error(
+      `Refusing destructive seed without explicit confirmation. Set ${DESTRUCTIVE_SEED_ACK_ENV}=${DESTRUCTIVE_SEED_ACK_VALUE} only after confirming both targets are disposable local services.`,
+    );
+  }
+
+  return {
+    databaseUrl,
+    supabaseUrl,
+    serviceRoleKey,
+    nodeEnv,
+  };
+}
+
+export function assertDisposableSeedDataset(
+  databaseIdentities: readonly SeedIdentity[],
+  authIdentities: readonly SeedIdentity[],
+  seedEmails: ReadonlySet<string>,
+): void {
+  const isSeedOwned = (identity: SeedIdentity) => {
+    const normalizedEmail = identity.email?.trim().toLowerCase();
+    return (
+      (normalizedEmail ? seedEmails.has(normalizedEmail) : false) ||
+      identity.appMetadata?.seededBy === SEED_AUTH_MARKER
+    );
+  };
+
+  const unsafeDatabaseIdentities =
+    databaseIdentities.filter((identity) => !isSeedOwned(identity)).length;
+  const unsafeAuthIdentities =
+    authIdentities.filter((identity) => !isSeedOwned(identity)).length;
+
+  if (unsafeDatabaseIdentities > 0 || unsafeAuthIdentities > 0) {
+    throw new Error(
+      "Refusing destructive seed because the target contains non-seed identities. Use a fresh disposable local database and Supabase Auth instance.",
+    );
+  }
+}
+
+function initializeSeedClients(config: SeedRuntimeConfig) {
+  queryClient = postgres(config.databaseUrl, { max: 1 });
+  db = drizzle(queryClient);
+  supabase = createClient(config.supabaseUrl, config.serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
 
 function geoFromZip(zip: string) {
   const data = zipcodes.lookup(zip);
@@ -741,7 +901,44 @@ function getFlooringImage(materialType: string, index: number): string {
 // ---------------------------------------------------------------------------
 
 async function seed() {
+  initializeSeedClients(resolveSeedRuntimeConfig(process.env));
   console.log("Starting PlankMarket database seed...\n");
+
+  const seedEmails = new Set(USERS_DATA.map((user) => user.email.toLowerCase()));
+  const existingDatabaseUsers = await db
+    .select({ email: users.email })
+    .from(users);
+
+  const existingAuthUsers: SupabaseAuthUser[] = [];
+  const visitedAuthPages = new Set<number>();
+  let authPage: number | null = 1;
+  while (authPage !== null) {
+    if (visitedAuthPages.has(authPage) || visitedAuthPages.size >= 100) {
+      throw new Error(
+        "Refusing destructive seed because Supabase Auth users could not be enumerated conclusively.",
+      );
+    }
+    visitedAuthPages.add(authPage);
+
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page: authPage,
+      perPage: 1000,
+    });
+    if (error) {
+      throw error;
+    }
+    existingAuthUsers.push(...data.users);
+    authPage = data.nextPage;
+  }
+
+  assertDisposableSeedDataset(
+    existingDatabaseUsers,
+    existingAuthUsers.map((user) => ({
+      email: user.email,
+      appMetadata: user.app_metadata,
+    })),
+    seedEmails,
+  );
 
   // -----------------------------------------------------------------------
   // 1. Clear existing data (reverse FK dependency order)
@@ -756,17 +953,31 @@ async function seed() {
     offers, orders, media, listings, users,
   ];
   for (const table of tables) {
-    try { await db.delete(table); } catch { /* table may not exist */ }
-  }
-
-  // Delete all Supabase auth users
-  const { data: existingAuthUsers } = await supabase.auth.admin.listUsers();
-  if (existingAuthUsers?.users) {
-    for (const u of existingAuthUsers.users) {
-      await supabase.auth.admin.deleteUser(u.id);
+    try {
+      await db.delete(table);
+    } catch (error) {
+      if ((error as { code?: string }).code !== "42P01") {
+        throw error;
+      }
     }
   }
-  console.log("  Done — all tables and auth users cleared\n");
+
+  // Delete only accounts owned by this local seed. Never sweep an Auth tenant.
+  if (existingAuthUsers.length > 0) {
+    for (const u of existingAuthUsers) {
+      const isSeedOwned =
+        (u.email ? seedEmails.has(u.email.toLowerCase()) : false) ||
+        u.app_metadata?.seededBy === SEED_AUTH_MARKER;
+      if (!isSeedOwned) continue;
+
+      const { error: deleteUserError } =
+        await supabase.auth.admin.deleteUser(u.id);
+      if (deleteUserError) {
+        throw deleteUserError;
+      }
+    }
+  }
+  console.log("  Done — local tables and seed-owned auth users cleared\n");
 
   // -----------------------------------------------------------------------
   // 2. Create users (auth + public table)
@@ -780,6 +991,9 @@ async function seed() {
         email: u.email,
         password: PASSWORD,
         email_confirm: true,
+        app_metadata: {
+          seededBy: SEED_AUTH_MARKER,
+        },
       });
 
     if (authError || !authData.user) {
@@ -1768,15 +1982,20 @@ async function seed() {
   // -----------------------------------------------------------------------
   // Done — close connection
   // -----------------------------------------------------------------------
-  await queryClient.end();
+  await queryClient?.end();
 }
 
-seed()
-  .then(() => {
+async function main() {
+  try {
+    await seed();
     console.log("Seed completed successfully!");
     process.exit(0);
-  })
-  .catch((err) => {
+  } catch (err) {
     console.error("\nSeed failed:", err);
     process.exit(1);
-  });
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void main();
+}

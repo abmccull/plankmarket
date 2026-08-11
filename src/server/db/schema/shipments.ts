@@ -1,4 +1,5 @@
 import {
+  check,
   pgTable,
   uuid,
   text,
@@ -9,6 +10,7 @@ import {
   jsonb,
   boolean,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { orders } from "./orders";
 
 // Tracking event interface for jsonb column
@@ -44,6 +46,7 @@ export const shipments = pgTable(
     // Priority1 IDs
     priority1ShipmentId: varchar("priority1_shipment_id", { length: 255 }),
     proNumber: varchar("pro_number", { length: 255 }),
+    bolNumber: varchar("bol_number", { length: 255 }),
 
     // Carrier info
     carrierName: varchar("carrier_name", { length: 255 }),
@@ -67,6 +70,15 @@ export const shipments = pgTable(
 
     // Error tracking
     lastError: text("last_error"),
+    cancellationRequestedAt: timestamp("cancellation_requested_at", {
+      withTimezone: true,
+    }),
+    cancellationClaimToken: varchar("cancellation_claim_token", {
+      length: 64,
+    }),
+    cancellationClaimedAt: timestamp("cancellation_claimed_at", {
+      withTimezone: true,
+    }),
 
     // Timestamps
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -87,6 +99,18 @@ export const shipments = pgTable(
     index("shipments_status_idx").on(table.status),
     index("shipments_priority1_shipment_id_idx").on(table.priority1ShipmentId),
     index("shipments_pro_number_idx").on(table.proNumber),
+    index("shipments_status_updated_id_idx").on(
+      table.status,
+      table.updatedAt,
+      table.id,
+    ),
+    index("shipments_cancellation_requested_idx")
+      .on(table.cancellationRequestedAt, table.id)
+      .where(sql`${table.cancellationRequestedAt} is not null and ${table.status} <> 'cancelled'`),
+    check(
+      "shipments_cancellation_claim_consistency_check",
+      sql`(${table.cancellationClaimToken} is null) = (${table.cancellationClaimedAt} is null)`,
+    ),
   ]
 );
 

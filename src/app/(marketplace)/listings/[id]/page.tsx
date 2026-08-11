@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 import {
   notFound,
   redirect,
@@ -7,8 +7,8 @@ import {
 } from "next/navigation";
 import type { Metadata } from "next";
 import Script from "next/script";
+import { headers } from "next/headers";
 import { TRPCError } from "@trpc/server";
-import { createServerCaller } from "@/lib/trpc/server";
 import {
   formatCurrency,
   formatSqFt,
@@ -23,6 +23,10 @@ import { ImageGallery } from "@/components/listings/image-gallery";
 import { TransactionTimelineExplainer } from "@/components/marketplace/transaction-timeline";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
+import {
+  getPublicListingByRouteParam,
+  recordPublicListingView,
+} from "@/server/public/listing-reads";
 
 const materialLabels: Record<string, string> = {
   hardwood: "Hardwood",
@@ -77,23 +81,21 @@ function isNotFoundError(error: unknown): boolean {
   return error instanceof TRPCError && error.code === "NOT_FOUND";
 }
 
+const getListingViewModel = cache(async (id: string) => {
+  const requestHeaders = new Headers(await headers());
+  return getPublicListingByRouteParam(id, requestHeaders);
+});
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  try {
-    const caller = await createServerCaller();
+  const canonicalUrl = `/listings/${id}`;
 
-    // Check if id is a UUID or a slug
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    const listing = isUUID
-      ? await caller.listing.getById({ id })
-      : await caller.listing.getBySlug({ slug: id });
+  try {
+    const { listing } = await getListingViewModel(id);
 
     const materialLabel = materialLabels[listing.materialType] || listing.materialType;
     const conditionLabel = conditionLabels[listing.condition] || listing.condition;
     const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
-
-    // Use slug for canonical URL if available, otherwise use ID
-    const canonicalUrl = `/listings/${listing.slug || listing.id}`;
 
     return {
       title: listing.title,
@@ -109,31 +111,30 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     };
   } catch (error) {
     if (isNotFoundError(error)) {
-      return { title: "Listing Not Found" };
+      return {
+        title: "Listing Not Found",
+        description: "This PlankMarket listing is unavailable or no longer public.",
+        alternates: {
+          canonical: canonicalUrl,
+        },
+      };
     }
-    throw error;
+
+    return {
+      title: "Listing details unavailable",
+      description:
+        "Review public listing evidence, seller verification, and freight readiness on PlankMarket.",
+      alternates: {
+        canonical: canonicalUrl,
+      },
+    };
   }
 }
 
 async function ListingContent({ id }: { id: string }) {
-  const caller = await createServerCaller();
-  let listing;
+  let listingView;
   try {
-    // Check if id is a UUID or a slug
-    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-    if (isUUID) {
-      // Fetch by ID
-      listing = await caller.listing.getById({ id });
-
-      // If listing has a slug, redirect to slug URL (SEO: prefer canonical slug URLs)
-      if (listing.slug) {
-        redirect(`/listings/${listing.slug}`, RedirectType.replace);
-      }
-    } else {
-      // Fetch by slug
-      listing = await caller.listing.getBySlug({ slug: id });
-    }
+    listingView = await getListingViewModel(id);
   } catch (error) {
     // redirect() is implemented as an internal exception. Preserve it before
     // applying ordinary application error handling.
@@ -144,9 +145,20 @@ async function ListingContent({ id }: { id: string }) {
     throw error;
   }
 
-  if (!listing) {
+  if (!listingView) {
     notFound();
   }
+
+  const { listing, requestedById, viewerIdentifier } = listingView;
+  if (requestedById && listing.slug) {
+    redirect(`/listings/${listing.slug}`, RedirectType.replace);
+  }
+
+  // View tracking is intentionally separate from the pure listing read so
+  // metadata generation and page rendering can share the same cached payload.
+  void recordPublicListingView(listing.id, viewerIdentifier).catch(() => {
+    // Non-fatal: view tracking must never break the listing page.
+  });
 
   const materialLabel = materialLabels[listing.materialType] || listing.materialType;
   const conditionLabel = conditionLabels[listing.condition] || listing.condition;
@@ -185,7 +197,7 @@ async function ListingContent({ id }: { id: string }) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
       />
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 pt-8 pb-28 lg:pb-8">
         {/* Breadcrumbs */}
         <Breadcrumbs
           items={[
@@ -211,6 +223,11 @@ async function ListingContent({ id }: { id: string }) {
                   <Badge variant="secondary">{listing.species}</Badge>
                 )}
               </div>
+              <ListingEvidence
+                variant="compact"
+                className="mt-4"
+                listing={listing}
+              />
             </div>
 
             {/* Description */}
@@ -227,8 +244,8 @@ async function ListingContent({ id }: { id: string }) {
               <CardHeader>
                 <CardTitle className="text-xl">Listing evidence</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Decision details supplied by this listing and the seller
-                  account. Confirm condition and freight details before paying.
+                  Public evidence from this listing and seller account, separated
+                  into what is known now and what must be calculated later.
                 </p>
               </CardHeader>
               <CardContent>
@@ -242,7 +259,7 @@ async function ListingContent({ id }: { id: string }) {
                 <CardTitle className="text-xl">Product Specifications</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
                   <SpecItem label="Material" value={materialLabel} />
                   {listing.species && <SpecItem label="Species" value={listing.species} />}
                   {listing.finish && (
@@ -259,7 +276,7 @@ async function ListingContent({ id }: { id: string }) {
                   {listing.length && <SpecItem label="Length" value={`${listing.length}"`} />}
                   {listing.color && <SpecItem label="Color" value={listing.color} />}
                   {listing.brand && <SpecItem label="Brand" value={listing.brand} />}
-                </div>
+                </dl>
               </CardContent>
             </Card>
 
@@ -269,7 +286,7 @@ async function ListingContent({ id }: { id: string }) {
                 <CardTitle className="text-xl">Lot Details</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <dl className="grid grid-cols-2 gap-4 md:grid-cols-3">
                   <SpecItem label="Total Sq Ft" value={formatSqFt(listing.totalSqFt)} />
                   {listing.totalPallets && (
                     <SpecItem label="Pallets" value={listing.totalPallets.toString()} />
@@ -300,7 +317,7 @@ async function ListingContent({ id }: { id: string }) {
                       value={`${listing.palletWeight.toLocaleString()} lbs`}
                     />
                   )}
-                </div>
+                </dl>
                 {listing.freightEstimateStatus === "quote_request_ready" && (
                   <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                     <Truck className="h-4 w-4" />
@@ -347,7 +364,23 @@ async function ListingContent({ id }: { id: string }) {
 
 function ListingDetailSkeleton() {
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div
+      className="container mx-auto px-4 py-8"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading public listing details"
+    >
+      <div className="mb-6 max-w-2xl space-y-2">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Loading listing details
+        </p>
+        <h1 className="text-2xl font-semibold">Checking current public evidence</h1>
+        <p className="text-sm text-muted-foreground">
+          Pricing, seller verification, photos, and freight readiness are still
+          being fetched. Final delivered cost is not shown until freight details
+          are available.
+        </p>
+      </div>
       <Skeleton className="h-4 w-48 mb-4" />
       <div className="grid lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">

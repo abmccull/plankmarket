@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 process.env.SKIP_ENV_VALIDATION = "1";
 process.env.DATABASE_URL ??=
   "postgresql://postgres:postgres@localhost:5432/plankmarket_test";
@@ -26,7 +28,10 @@ vi.mock("@upstash/ratelimit", () => ({
 
 vi.mock("@/lib/redis/client", () => ({
   getRedisClient: () => ({}),
-  redis: {},
+  redis: {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue("OK"),
+  },
 }));
 
 vi.mock("@/server/services/content-moderation", () => ({

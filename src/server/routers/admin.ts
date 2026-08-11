@@ -30,12 +30,15 @@ import { z } from "zod";
 import { priority1 } from "@/server/services/priority1";
 import { selectPriority1Shipment } from "@/server/services/priority1-selection";
 import { inngest } from "@/lib/inngest/client";
+import { buildListingCreatedEvent } from "@/lib/inngest/events";
 import { sendVerificationApprovedEmail, sendVerificationRejectedEmail, sendRefundEmail } from "@/lib/email/send";
 import { processOrderRefund } from "@/server/services/refund";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 import { cancelPriority1ShipmentForOrder } from "@/server/services/shipment-cancellation";
 import { cancelUncapturedOrderPayment } from "@/server/services/payment-intent-cancellation";
+import { openReconciliationCase } from "@/server/services/reconciliation-cases";
 import {
+  getShipmentIdentifier,
   mapPriority1ShipmentStatus,
   mergeTrackingEvents,
   shouldEmitProviderPickupEvent,
@@ -1422,9 +1425,14 @@ export const adminRouter = createTRPCRouter({
         });
       }
 
+      const restoredAt = new Date();
       await ctx.db
         .update(listings)
-        .set({ status: "active", updatedAt: new Date() })
+        .set({
+          status: "active",
+          publishedAt: restoredAt,
+          updatedAt: restoredAt,
+        })
         .where(eq(listings.id, input.listingId));
 
       // Notify the seller
@@ -1436,6 +1444,24 @@ export const adminRouter = createTRPCRouter({
         data: { listingId: listing.id },
         read: false,
       });
+
+      try {
+        const event = buildListingCreatedEvent({
+          listingId: listing.id,
+          sellerId: listing.sellerId,
+        });
+        await inngest.send({
+          ...event,
+          id: `listing-restored:${listing.id}:${restoredAt.getTime()}`,
+        });
+      } catch {
+        // Daily/weekly digests still discover the refreshed publishedAt value;
+        // an instant-alert provider failure must not undo the admin decision.
+        console.error("Failed to enqueue restored listing alert", {
+          listingId: listing.id,
+          sellerId: listing.sellerId,
+        });
+      }
 
       return { success: true };
     }),
@@ -1574,13 +1600,14 @@ export const adminRouter = createTRPCRouter({
           (order.paymentStatus === "succeeded" ||
             order.paymentStatus === "partially_refunded"),
       );
-      if (refundedPaidOrder) {
-        await processOrderRefund({
-          db: ctx.db,
-          orderId: input.orderId,
-          reason: `Admin force-cancel: ${input.reason}`,
-        });
-      } else {
+      const refundResult = refundedPaidOrder
+        ? await processOrderRefund({
+            db: ctx.db,
+            orderId: input.orderId,
+            reason: `Admin force-cancel: ${input.reason}`,
+          })
+        : null;
+      if (!refundedPaidOrder) {
         await cancelUncapturedOrderPayment({
           orderId: order.id,
           paymentIntentId: order.stripePaymentIntentId,
@@ -1590,7 +1617,11 @@ export const adminRouter = createTRPCRouter({
       }
 
       const adminAuditNote = refundedPaidOrder
-        ? `[Admin force-cancel completed as full refund: ${input.reason}]`
+        ? refundResult?.state === "succeeded"
+          ? `[Admin force-cancel completed as full refund: ${input.reason}]`
+          : refundResult?.state === "refund_pending"
+            ? `[Admin force-cancel queued refund pending Stripe confirmation: ${input.reason}]`
+            : `[Admin force-cancel queued refund for reconciliation review: ${input.reason}]`
         : `[Admin force-cancelled unpaid order: ${input.reason}]`;
       await ctx.db
         .update(orders)
@@ -1642,7 +1673,11 @@ export const adminRouter = createTRPCRouter({
         ]);
       }
 
-      return { success: true };
+      return {
+        success: true,
+        refundState: refundResult?.state ?? null,
+        providerStatus: refundResult?.providerStatus ?? null,
+      };
     }),
 
   // Refund an order (full or partial)
@@ -1681,44 +1716,48 @@ export const adminRouter = createTRPCRouter({
         reason: input.reason,
       });
 
-      // Await both provider submissions so serverless teardown cannot discard
-      // them. Stable Resend keys make a retried admin request harmless.
       const refundAmountFormatted = `$${result.amountRefunded.toFixed(2)}`;
-      const emailResults = await Promise.allSettled([
-        sendRefundEmail({
-          to: order.buyer.email,
-          name: order.buyer.name,
-          recipientRole: "buyer",
-          orderNumber: order.orderNumber,
-          refundAmount: refundAmountFormatted,
-          reason: input.reason,
-          orderId: order.id,
-          idempotencyKey: `refund-buyer-${result.refundId}`,
-        }),
-        sendRefundEmail({
-          to: order.seller.email,
-          name: order.seller.name,
-          recipientRole: "seller",
-          orderNumber: order.orderNumber,
-          refundAmount: refundAmountFormatted,
-          reason: input.reason,
-          orderId: order.id,
-          idempotencyKey: `refund-seller-${result.refundId}`,
-        }),
-      ]);
-      emailResults.forEach((emailResult, index) => {
-        if (emailResult.status === "rejected") {
-          console.error(
-            `Failed to send ${index === 0 ? "buyer" : "seller"} refund email:`,
-            emailResult.reason,
-          );
-        }
-      });
+      if (result.state === "succeeded") {
+        // Await both provider submissions so serverless teardown cannot discard
+        // them. Stable Resend keys make a retried admin request harmless.
+        const emailResults = await Promise.allSettled([
+          sendRefundEmail({
+            to: order.buyer.email,
+            name: order.buyer.name,
+            recipientRole: "buyer",
+            orderNumber: order.orderNumber,
+            refundAmount: refundAmountFormatted,
+            reason: input.reason,
+            orderId: order.id,
+            idempotencyKey: `refund-buyer-${result.refundId}`,
+          }),
+          sendRefundEmail({
+            to: order.seller.email,
+            name: order.seller.name,
+            recipientRole: "seller",
+            orderNumber: order.orderNumber,
+            refundAmount: refundAmountFormatted,
+            reason: input.reason,
+            orderId: order.id,
+            idempotencyKey: `refund-seller-${result.refundId}`,
+          }),
+        ]);
+        emailResults.forEach((emailResult, index) => {
+          if (emailResult.status === "rejected") {
+            console.error(
+              `Failed to send ${index === 0 ? "buyer" : "seller"} refund email:`,
+              emailResult.reason,
+            );
+          }
+        });
+      }
 
       return {
         success: true,
         refundId: result.refundId,
         amountRefunded: result.amountRefunded,
+        refundState: result.state,
+        providerStatus: result.providerStatus,
       };
     }),
 
@@ -2019,6 +2058,7 @@ export const adminRouter = createTRPCRouter({
               status: true,
               shippedAt: true,
               deliveredAt: true,
+              trackingNumber: true,
             },
           },
         },
@@ -2068,6 +2108,18 @@ export const adminRouter = createTRPCRouter({
       const terminalOrder = ["cancelled", "refunded"].includes(
         shipment.order.status,
       );
+      const statusProNumber = getShipmentIdentifier(
+        p1Shipment.shipmentIdentifiers,
+        "PRO",
+      );
+      const statusBolNumber = getShipmentIdentifier(
+        p1Shipment.shipmentIdentifiers,
+        "BILL_OF_LADING",
+      );
+      const proNumber = shipment.proNumber || statusProNumber || null;
+      const bolNumber = shipment.bolNumber || statusBolNumber || null;
+      const trackingNumber =
+        shipment.order.trackingNumber || proNumber || bolNumber || null;
       const pickupAt = statusUpdate.pickupConfirmedAt ?? new Date();
       const deliveredAt = statusUpdate.deliveredAt ?? new Date();
 
@@ -2077,6 +2129,28 @@ export const adminRouter = createTRPCRouter({
         shippedAt: shipment.order.shippedAt,
         dryRun: providerDryRun,
       });
+
+      if (statusUpdate.mappedStatus === "cancelled") {
+        await openReconciliationCase(ctx.db, {
+          caseKey: `shipment-provider-cancelled:${shipment.orderId}`,
+          type: "shipment_ambiguity",
+          source: "priority1",
+          severity: "high",
+          title: "Priority1 shipment is cancelled",
+          summary:
+            "Priority1 reports the shipment as cancelled; order requires reconciliation.",
+          orderId: shipment.orderId,
+          externalReference:
+            shipment.priority1ShipmentId ?? String(p1Shipment.id),
+          details: {
+            shipmentId: shipment.id,
+            orderNumber: shipment.order.orderNumber,
+            priority1ShipmentId: String(p1Shipment.id),
+            proNumber,
+            bolNumber,
+          },
+        });
+      }
 
       // Commit live-provider evidence before the payout event can execute.
       const [updatedShipment] = await ctx.db
@@ -2090,6 +2164,8 @@ export const adminRouter = createTRPCRouter({
           carrierScac: p1Shipment.carrierCode || shipment.carrierScac,
           carrierName: p1Shipment.carrierName || shipment.carrierName,
           priority1ShipmentId: String(p1Shipment.id),
+          proNumber: proNumber ?? shipment.proNumber,
+          bolNumber: bolNumber ?? shipment.bolNumber,
           isDryRun: providerDryRun,
           deliveredAt: statusUpdate.delivered
             ? deliveredAt
@@ -2100,8 +2176,39 @@ export const adminRouter = createTRPCRouter({
               : null,
           updatedAt: new Date(),
         })
-        .where(eq(shipments.id, input.shipmentId))
+        .where(
+          and(
+            eq(shipments.id, input.shipmentId),
+            notInArray(shipments.status, ["cancelled"]),
+            isNull(shipments.cancellationRequestedAt),
+            isNull(shipments.cancellationClaimToken),
+          ),
+        )
         .returning();
+
+      if (!updatedShipment) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Shipment was cancelled or cancellation-claimed before admin sync could persist Priority1 evidence",
+        });
+      }
+
+      if (
+        trackingNumber &&
+        trackingNumber !== shipment.order.trackingNumber
+      ) {
+        await ctx.db
+          .update(orders)
+          .set({
+            trackingNumber,
+            ...(p1Shipment.carrierName
+              ? { carrier: p1Shipment.carrierName }
+              : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, shipment.orderId));
+      }
 
       if (needsPickupEvent) {
         await inngest.send({

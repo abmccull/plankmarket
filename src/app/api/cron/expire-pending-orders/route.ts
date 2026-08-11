@@ -10,8 +10,7 @@ import {
   canApplyPaymentIntentProcessing,
   isStripePaymentIntentCancelable,
 } from "@/server/services/order-transitions";
-import { cancelPriority1ShipmentForOrder } from "@/server/services/shipment-cancellation";
-import { reconcileOrderRefundFromStripe } from "@/server/services/refund";
+import { reconcileOrderRefundLifecycleFromStripe } from "@/server/services/refund";
 import { redis } from "@/lib/redis/client";
 
 const ORDER_EXPIRY_MINUTES = 45;
@@ -130,18 +129,9 @@ export async function GET(req: NextRequest) {
               return false;
             }
 
-            await tx
-              .update(orders)
-              .set({
-                paymentStatus: "refund_pending",
-                escrowStatus: "refunded",
-                updatedAt: new Date(),
-              })
-              .where(eq(orders.id, order.id));
             return true;
           });
           if (shouldRefund) {
-            await cancelPriority1ShipmentForOrder(order.id);
             const refund = await stripe.refunds.create(
               {
                 payment_intent: paymentIntent.id,
@@ -155,11 +145,9 @@ export async function GET(req: NextRequest) {
                 idempotencyKey: `late-order-payment-refund:${paymentIntent.id}`,
               },
             );
-            await reconcileOrderRefundFromStripe({
+            await reconcileOrderRefundLifecycleFromStripe({
               db,
-              orderId: order.id,
-              refundedAmountCents: paymentIntent.amount_received,
-              stripeRefundId: refund.id,
+              refund,
               reason:
                 "Payment was captured after the checkout and freight quote window expired",
             });

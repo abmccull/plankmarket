@@ -13,6 +13,7 @@ import {
   getRelatedPosts,
   renderMarkdown,
   extractHeadings,
+  serializeJsonLd,
 } from "@/lib/blog";
 
 export const revalidate = 3600;
@@ -110,7 +111,7 @@ export default async function BlogPostPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <article className="container mx-auto px-4 py-12 sm:py-16">
         {/* Breadcrumbs */}

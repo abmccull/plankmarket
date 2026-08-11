@@ -134,6 +134,12 @@ export const orders = pgTable(
     stripePaymentIntentId: varchar("stripe_payment_intent_id", {
       length: 255,
     }),
+    paymentIntentClaimToken: varchar("payment_intent_claim_token", {
+      length: 64,
+    }),
+    paymentIntentClaimedAt: timestamp("payment_intent_claimed_at", {
+      withTimezone: true,
+    }),
     stripeTransferId: varchar("stripe_transfer_id", { length: 255 }),
     paymentStatus: varchar("payment_status", { length: 50 })
       .default("pending")
@@ -212,6 +218,12 @@ export const orders = pgTable(
     index("orders_status_idx").on(table.status),
     index("orders_created_at_idx").on(table.createdAt),
     index("orders_order_number_idx").on(table.orderNumber),
+    index("orders_seller_payment_confirmed_idx")
+      .on(table.sellerId, table.paymentStatus, table.confirmedAt.desc())
+      .where(sql`${table.confirmedAt} IS NOT NULL`),
+    index("orders_seller_refunded_at_idx")
+      .on(table.sellerId, table.refundedAt.desc())
+      .where(sql`${table.refundedAt} IS NOT NULL`),
     check(
       "orders_freight_funding_mode_check",
       sql`${table.freightFundingMode} IN ('buyer_pays', 'seller_pays', 'seller_pays_selected_states')`,
@@ -231,6 +243,10 @@ export const orders = pgTable(
     check(
       "orders_payment_status_check",
       sql`${table.paymentStatus} IN ('pending', 'processing', 'succeeded', 'failed', 'reconciliation_required', 'refund_pending', 'partially_refunded', 'refunded', 'paid')`,
+    ),
+    check(
+      "orders_payment_intent_claim_consistency_check",
+      sql`(${table.paymentIntentClaimToken} IS NULL) = (${table.paymentIntentClaimedAt} IS NULL)`,
     ),
     check(
       "orders_payment_hold_status_check",

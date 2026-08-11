@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mockEnv = vi.hoisted(() => ({
   PRIORITY1_DRY_RUN: "true",
   PRIORITY1_API_KEY: "dry-run-key",
+  PRIORITY1_DOCUMENT_ALLOWED_HOSTS:
+    "priority1.example,*.priority1.example,cdn.priority1docs.example",
   NODE_ENV: "test",
 }));
 
@@ -11,10 +13,12 @@ vi.mock("@/env", () => ({
 }));
 
 import {
+  getAllowedPriority1DocumentHosts,
   priority1,
   type DispatchRequest,
   type P1ShipmentStatus,
   type StatusResponse,
+  validatePriority1DocumentUrl,
 } from "../priority1";
 import { selectPriority1Shipment } from "../priority1-selection";
 
@@ -359,7 +363,9 @@ describe("priority1 live response validation", () => {
   });
 
   it.each([
-    ["shipment ID", { id: 0 }],
+    // id:0 fails identity parse — plain API error (no booked shipment id)
+    ["shipment ID", { id: 0 }, "Priority1ApiError"],
+    // Valid id present but payload invalid — post-book validation error
     [
       "identifier type",
       {
@@ -367,13 +373,14 @@ describe("priority1 live response validation", () => {
           { type: "PRO_NUMBER", value: "9001", primaryForType: true },
         ],
       },
+      "Priority1PostBookValidationError",
     ],
-    ["shipment cost", { totalCost: -1 }],
-  ])("rejects malformed dispatch %s", async (_label, override) => {
+    ["shipment cost", { totalCost: -1 }, "Priority1PostBookValidationError"],
+  ])("rejects malformed dispatch %s", async (_label, override, errorName) => {
     useLiveResponse(makeLiveDispatchResponse(override));
     await expect(
       priority1.dispatch(makeDispatchRequest()),
-    ).rejects.toMatchObject({ name: "Priority1ApiError", status: 502 });
+    ).rejects.toMatchObject({ name: errorName, status: 502 });
   });
 
   it("accepts a validated live dispatch response", async () => {
@@ -382,6 +389,55 @@ describe("priority1 live response validation", () => {
     expect(response.id).toBe(9001);
     expect(response.totalCost).toBe(300);
     expect(response.shipmentIdentifiers[1]?.type).toBe("PRO");
+  });
+
+  it("accepts configured Priority1 document hosts and normalizes default ports", async () => {
+    expect(getAllowedPriority1DocumentHosts()).toEqual([
+      "priority1.example",
+      "*.priority1.example",
+      "cdn.priority1docs.example",
+    ]);
+    expect(
+      validatePriority1DocumentUrl(
+        "https://Priority1.Example:443/bol/9001.pdf#section",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        ok: true,
+        normalizedUrl: "https://priority1.example/bol/9001.pdf",
+      }),
+    );
+    expect(
+      validatePriority1DocumentUrl(
+        "https://files.priority1.example/labels/9001.pdf",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["http URL", "http://priority1.example/receipt/PRO-9001.pdf", /HTTPS/i],
+    [
+      "credentialed URL",
+      "https://user:pass@priority1.example/receipt/PRO-9001.pdf",
+      /credentials/i,
+    ],
+    [
+      "custom port",
+      "https://priority1.example:8443/receipt/PRO-9001.pdf",
+      /port/i,
+    ],
+    [
+      "foreign host",
+      "https://evil.example/receipt/PRO-9001.pdf",
+      /not allowed/i,
+    ],
+  ])("rejects %s before persistence", (_label, url, message) => {
+    expect(validatePriority1DocumentUrl(url)).toEqual(
+      expect.objectContaining({
+        ok: false,
+        reason: expect.stringMatching(message),
+      }),
+    );
   });
 
   it("rejects malformed status events before they become pickup evidence", async () => {
@@ -522,7 +578,62 @@ describe("priority1 live response validation", () => {
     );
   });
 
-  it("rejects unsafe document URLs and malformed JSON", async () => {
+  it.each([
+    ["http URL", "http://priority1.example/receipt/PRO-9001.pdf"],
+    [
+      "credentialed URL",
+      "https://user:pass@priority1.example/receipt/PRO-9001.pdf",
+    ],
+    [
+      "custom port",
+      "https://priority1.example:8443/receipt/PRO-9001.pdf",
+    ],
+    [
+      "foreign host",
+      "https://evil.example/receipt/PRO-9001.pdf",
+    ],
+  ])(
+    "soft-drops invalid %s in live dispatch responses (booking still succeeds)",
+    async (_label, documentUrl) => {
+      useLiveResponse(
+        makeLiveDispatchResponse({
+          capacityProviderBolUrl: documentUrl,
+        }),
+      );
+      const response = await priority1.dispatch(makeDispatchRequest());
+      expect(response.id).toBe(9001);
+      expect(response.capacityProviderBolUrl).toBeNull();
+    },
+  );
+
+  it.each([
+    ["http URL", "http://priority1.example/receipt/PRO-9001.pdf"],
+    [
+      "credentialed URL",
+      "https://user:pass@priority1.example/receipt/PRO-9001.pdf",
+    ],
+    [
+      "custom port",
+      "https://priority1.example:8443/receipt/PRO-9001.pdf",
+    ],
+    [
+      "foreign host",
+      "https://evil.example/receipt/PRO-9001.pdf",
+    ],
+  ])("rejects %s in live document responses", async (_label, imageUrl) => {
+    const request = {
+      shipmentImageTypeId: "DeliveryReceipt" as const,
+      imageFormatTypeId: "PDF" as const,
+      proNumber: "PRO-9001",
+    };
+    useLiveResponse({ imageUrl });
+    await expect(priority1.getDocuments(request)).rejects.toMatchObject({
+      name: "Priority1ApiError",
+      status: 502,
+    });
+  });
+
+  it("rejects malformed document URLs and malformed JSON", async () => {
     const request = {
       shipmentImageTypeId: "DeliveryReceipt" as const,
       imageFormatTypeId: "PDF" as const,
@@ -540,9 +651,12 @@ describe("priority1 live response validation", () => {
     );
   });
 
-  it("accepts empty cancellation success and validates non-empty responses", async () => {
+  it("rejects empty cancellation bodies and validates non-empty responses", async () => {
     useLiveResponse("", { raw: true });
-    await expect(priority1.cancel({ id: 9001 })).resolves.toBeUndefined();
+    await expect(priority1.cancel({ id: 9001 })).rejects.toMatchObject({
+      name: "Priority1ApiError",
+      status: 502,
+    });
 
     useLiveResponse({ id: 9001, cancellationSuccess: true });
     await expect(priority1.cancel({ id: 9001 })).resolves.toBeUndefined();

@@ -98,6 +98,23 @@ describe("hasPersistedProviderPickupEvidence", () => {
     ).toBe(true);
   });
 
+  it("accepts order.shippedAt when tracking statuses are empty", () => {
+    expect(
+      hasPersistedProviderPickupEvidence({
+        ...validEvidence,
+        shipmentTrackingEvents: [],
+        orderShippedAt: new Date("2026-07-11T18:00:00.000Z"),
+      }),
+    ).toBe(true);
+    expect(
+      hasPersistedProviderPickupEvidence({
+        ...validEvidence,
+        shipmentTrackingEvents: [],
+        orderShippedAt: null,
+      }),
+    ).toBe(false);
+  });
+
   it("rejects dry-run, pre-pickup, missing-ID, quote-mismatch, and proofless rows", () => {
     expect(
       hasPersistedProviderPickupEvidence({

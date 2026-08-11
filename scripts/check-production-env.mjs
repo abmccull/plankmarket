@@ -83,10 +83,24 @@ function looksLikeHostedDatabaseUrl(value) {
   }
 }
 
+function normalizeDatabaseUrl(value) {
+  try {
+    const url = new URL(value);
+    url.password = "";
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
 const schema = z.object({
   DATABASE_URL: z.string().refine(looksLikeHostedDatabaseUrl, {
     message: "must be a non-local postgres connection string",
   }),
+  DATABASE_MIGRATION_URL: z.string().refine(looksLikeHostedDatabaseUrl, {
+    message: "must be a non-local postgres connection string",
+  }),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(4),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(32),
   STRIPE_SECRET_KEY:
     requestedMode === "production"
@@ -114,9 +128,14 @@ const schema = z.object({
   INNGEST_EVENT_KEY: z.string().min(16),
   INNGEST_SIGNING_KEY: z.string().min(16),
   ANTHROPIC_API_KEY: z.string().min(16),
+  ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS:
+    requestedMode === "production"
+      ? z.literal("false").default("false")
+      : z.enum(["true", "false"]).default("false"),
   VERIFICATION_WEBHOOK_SECRET: z.string().min(32),
   VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1),
   PRIORITY1_API_KEY: z.string().min(16),
+  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: z.string().min(1),
   PRIORITY1_DRY_RUN:
     requestedMode === "production"
       ? z.literal("false")
@@ -170,6 +189,18 @@ try {
     );
   }
 
+  const priority1HostList = env.PRIORITY1_DOCUMENT_ALLOWED_HOSTS?.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (
+    !priority1HostList?.length ||
+    priority1HostList.some((host) => /example\.com/i.test(host))
+  ) {
+    issues.push(
+      "PRIORITY1_DOCUMENT_ALLOWED_HOSTS: must list real production-safe hosts",
+    );
+  }
+
   if (
     env.STRIPE_TAX_BUYER_FEE_TREATMENT === "taxable" &&
     !env.STRIPE_TAX_BUYER_FEE_TAX_CODE
@@ -182,6 +213,26 @@ try {
   if (env.STRIPE_TAX_MODE === "connected_account_liable") {
     issues.push(
       "STRIPE_TAX_MODE: connected_account_liable is calculation-ready only; production checkout remains blocked until connected-account transaction and reversal certification is implemented",
+    );
+  }
+
+  if (
+    requestedMode === "production" &&
+    env.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS !== "false"
+  ) {
+    issues.push(
+      "ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: must remain false in production until privacy/legal approval explicitly changes the policy",
+    );
+  }
+
+  if (
+    env.DATABASE_URL &&
+    env.DATABASE_MIGRATION_URL &&
+    normalizeDatabaseUrl(env.DATABASE_URL) ===
+      normalizeDatabaseUrl(env.DATABASE_MIGRATION_URL)
+  ) {
+    issues.push(
+      "DATABASE_MIGRATION_URL: must be a direct database connection distinct from the pooled runtime DATABASE_URL",
     );
   }
 

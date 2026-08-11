@@ -82,7 +82,7 @@ export function PremiumHeroBanner() {
             </div>
             {listing.seller && (
               <p className="text-sm text-white/70 mb-4">
-                by Verified Seller{listing.seller.businessState ? ` in ${listing.seller.businessState}` : ""}
+                by {listing.seller.displayName}
               </p>
             )}
             <Link href={`/listings/${listing.slug || listing.id}`}>

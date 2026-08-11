@@ -49,8 +49,15 @@ export const users = pgTable("users", {
   // Business verification fields
   businessWebsite: text("business_website"),
   einTaxId: text("ein_tax_id"),
+  einLast4: varchar("ein_last_4", { length: 4 }),
   aiVerificationScore: real("ai_verification_score"),
   aiVerificationNotes: text("ai_verification_notes"),
+  verificationDataPurgeAfter: timestamp("verification_data_purge_after", {
+    withTimezone: true,
+  }),
+  verificationEvidencePurgedAt: timestamp("verification_evidence_purged_at", {
+    withTimezone: true,
+  }),
 
   // Geo fields for distance filtering
   zipCode: varchar("zip_code", { length: 5 }),
@@ -83,6 +90,9 @@ export const users = pgTable("users", {
     .where(sql`${table.stripeAccountId} is not null`),
   index("users_verification_submission_id_idx").on(
     table.verificationSubmissionId,
+  ),
+  index("users_verification_data_purge_after_idx").on(
+    table.verificationDataPurgeAfter,
   ),
   check(
     "users_verification_status_check",

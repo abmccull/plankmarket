@@ -74,6 +74,7 @@ async function main() {
         carrierScac: selectedQuote.carrierCode,
         carrierRate: selectedQuote.rateQuoteDetail.total,
         shippingPrice: selectedQuote.rateQuoteDetail.total * 1.25,
+        accessorialCodes: [],
         transitDays: selectedQuote.transitDays,
         quoteExpiresAt:
           selectedQuote.expirationDate ?? "2026-03-11T23:59:59.000Z",

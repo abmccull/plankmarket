@@ -3,27 +3,25 @@ import {
   shouldRevealIdentity,
 } from "./identity/display-name";
 
-/**
- * Mask level determines what information is shown.
- */
-type MaskLevel = "hidden" | "masked" | "full";
+type MaskLevel = "hidden" | "full";
 
 /**
- * Determine the mask level for contact info based on order status.
+ * Determine the identity and contact visibility for an order.
  *
- * | Order Status                     | Identity        | Email/Phone |
- * |----------------------------------|-----------------|-------------|
- * | pending                          | Anonymous       | Hidden      |
- * | confirmed, processing            | Anonymous       | Hidden      |
- * | shipped                          | Anonymous       | Masked      |
- * | delivered, completed             | Full real name  | Full        |
- * | cancelled, refunded              | Anonymous       | Hidden      |
+ * | Order status                      | Identity       | Email/phone |
+ * |-----------------------------------|----------------|-------------|
+ * | pending, confirmed, processing    | Anonymous      | Hidden      |
+ * | shipped                           | Anonymous      | Hidden      |
+ * | delivered, completed              | Full real name | Full        |
+ * | cancelled, refunded               | Anonymous      | Hidden      |
+ *
+ * Operational ship-to fields are released separately by the order router
+ * after confirmation. They must not be confused with profile identity.
  */
 export function getMaskLevel(orderStatus: string): {
   identity: "anonymous" | "full";
   contact: MaskLevel;
 } {
-  // Check if identity should be revealed (delivered or completed)
   if (shouldRevealIdentity(orderStatus)) {
     return {
       identity: "full",
@@ -31,15 +29,6 @@ export function getMaskLevel(orderStatus: string): {
     };
   }
 
-  // Shipped orders show masked contact info
-  if (orderStatus === "shipped") {
-    return {
-      identity: "anonymous",
-      contact: "masked",
-    };
-  }
-
-  // All other statuses hide contact info
   return {
     identity: "anonymous",
     contact: "hidden",
@@ -47,54 +36,22 @@ export function getMaskLevel(orderStatus: string): {
 }
 
 /**
- * Mask an email address.
- * "john.doe@example.com" → "jo***@example.com"
- * "a@b.com" → "a***@b.com"
+ * Legacy helpers remain fail-closed for any caller that still imports them.
+ * Partial email domains and phone tails can identify a business.
  */
 export function maskEmail(email: string): string {
-  const [localPart, domain] = email.split("@");
-  if (!localPart || !domain) {
-    return email; // Invalid email, return as-is
-  }
-
-  // Show first 1-2 characters based on length, then asterisks
-  const visibleChars = localPart.length === 1 ? 1 : 2;
-  const maskedLocal = localPart.slice(0, visibleChars) + "***";
-
-  return `${maskedLocal}@${domain}`;
+  void email;
+  return "Hidden until delivery";
 }
 
-/**
- * Mask a phone number.
- * "555-123-4567" → "***-***-4567"
- * "(555) 123-4567" → "(***) ***-4567"
- */
 export function maskPhone(phone: string): string {
-  // Extract last 4 digits
-  const digits = phone.replace(/\D/g, "");
-  const lastFour = digits.slice(-4);
-
-  // Detect format and apply masking
-  if (phone.includes("(") && phone.includes(")")) {
-    // Format: (555) 123-4567 → (***) ***-4567
-    return `(***) ***-${lastFour}`;
-  } else if (phone.includes("-")) {
-    // Format: 555-123-4567 → ***-***-4567
-    return `***-***-${lastFour}`;
-  } else {
-    // No specific format detected, just show asterisks and last 4
-    return `******${lastFour}`;
-  }
+  void phone;
+  return "Hidden until delivery";
 }
 
 /**
- * Apply masking to a user object based on order status.
- * This function is the main entry point used by order routers.
- *
- * @param user - The user data from the database (has name, businessName, email, phone, role, businessState)
- * @param orderStatus - The current order status
- * @param isAdmin - Whether the viewer is an admin (admins always see full info)
- * @returns Masked user object
+ * Shape a counterparty for an order without revealing profile identity before
+ * delivery. Admins retain full access for support and dispute operations.
  */
 export function maskUserForOrder(
   user: {
@@ -116,7 +73,6 @@ export function maskUserForOrder(
   email: string | null;
   phone: string | null;
 } {
-  // Admins always see full information
   if (isAdmin) {
     return {
       id: user.id,
@@ -128,31 +84,18 @@ export function maskUserForOrder(
   }
 
   const maskLevel = getMaskLevel(orderStatus);
-
-  // Determine display name based on identity mask level
-  const displayName =
-    maskLevel.identity === "full"
-      ? user.name
-      : getAnonymousDisplayName({ role: user.role ?? "buyer", businessState: user.businessState, name: user.name, businessCity: user.businessCity });
-
-  // Apply contact masking based on contact mask level
-  let maskedEmail: string | null = null;
-  let maskedPhone: string | null = null;
-
-  if (maskLevel.contact === "full") {
-    maskedEmail = user.email ?? null;
-    maskedPhone = user.phone ?? null;
-  } else if (maskLevel.contact === "masked") {
-    maskedEmail = user.email ? maskEmail(user.email) : null;
-    maskedPhone = user.phone ? maskPhone(user.phone) : null;
-  }
-  // For "hidden", leave as null (already set above)
+  const identityRevealed = maskLevel.identity === "full";
 
   return {
     id: user.id,
-    name: displayName,
-    businessName: maskLevel.identity === "full" ? (user.businessName ?? null) : null,
-    email: maskedEmail,
-    phone: maskedPhone,
+    name: identityRevealed
+      ? user.name
+      : getAnonymousDisplayName({
+          id: user.id,
+          role: user.role ?? "buyer",
+        }),
+    businessName: identityRevealed ? (user.businessName ?? null) : null,
+    email: maskLevel.contact === "full" ? (user.email ?? null) : null,
+    phone: maskLevel.contact === "full" ? (user.phone ?? null) : null,
   };
 }

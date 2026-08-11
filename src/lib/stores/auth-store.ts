@@ -12,6 +12,13 @@ interface AuthUser {
   verificationStatus: string;
   stripeOnboardingComplete: boolean;
   zipCode: string | null;
+  assurance?: {
+    currentLevel: "aal1" | "aal2";
+    nextLevel: "aal1" | "aal2";
+    hasVerifiedTotp: boolean;
+    lastFactorVerificationAt: string | null;
+    recentVerificationSatisfied: boolean;
+  };
 }
 
 interface AuthState {

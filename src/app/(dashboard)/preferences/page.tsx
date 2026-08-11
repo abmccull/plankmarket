@@ -1365,6 +1365,57 @@ function ActiveListingApplyPanel({
   );
 }
 
+function PrivacyCard({
+  analyticsTrackingEnabled,
+  setAnalyticsTrackingEnabled,
+}: {
+  analyticsTrackingEnabled: boolean | null;
+  setAnalyticsTrackingEnabled: React.Dispatch<
+    React.SetStateAction<boolean | null>
+  >;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Privacy</CardTitle>
+        <CardDescription>
+          Product analytics stay off until you opt in. PostHog is configured
+          for pseudonymous IDs, masked inputs, and no session recording.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
+          <div className="space-y-1">
+            <Label htmlFor="analytics-tracking-enabled">
+              Allow product analytics
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Turn this on to help PlankMarket measure product usage. Turn it
+              off to stop future PostHog capture for this account on signed-in
+              devices.
+            </p>
+          </div>
+          <Switch
+            id="analytics-tracking-enabled"
+            checked={analyticsTrackingEnabled === true}
+            onCheckedChange={(checked) =>
+              setAnalyticsTrackingEnabled(checked)
+            }
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Current choice:{" "}
+          {analyticsTrackingEnabled === null
+            ? "not decided yet"
+            : analyticsTrackingEnabled
+              ? "analytics allowed"
+              : "analytics disabled"}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function PreferencesPage() {
   const { user } = useAuthStore();
   const role = (user?.role ?? "buyer") as "buyer" | "seller";
@@ -1374,6 +1425,8 @@ export default function PreferencesPage() {
   const [buyerPrefs, setBuyerPrefs] = useState<BuyerPrefs>(defaultBuyerPrefs);
   const [sellerPrefs, setSellerPrefs] =
     useState<SellerPrefs>(defaultSellerPrefs);
+  const [analyticsTrackingEnabled, setAnalyticsTrackingEnabled] =
+    useState<boolean | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [applyToActiveListings, setApplyToActiveListings] = useState(false);
   const [applyToActiveListingsConfirmed, setApplyToActiveListingsConfirmed] =
@@ -1389,6 +1442,7 @@ export default function PreferencesPage() {
     if (existingPrefs) {
       setMode("dashboard");
     }
+    setAnalyticsTrackingEnabled(existingPrefs?.analyticsTrackingEnabled ?? null);
   }, [existingPrefs]);
 
   useEffect(() => {
@@ -1549,6 +1603,7 @@ export default function PreferencesPage() {
       if (role === "buyer") {
         await upsertMutation.mutateAsync({
           role: "buyer",
+          analyticsTrackingEnabled,
           preferredZip: buyerPrefs.preferredZip || undefined,
           preferredRadiusMiles: buyerPrefs.preferredRadiusMiles,
           preferredShippingMode: buyerPrefs.preferredShippingMode,
@@ -1596,6 +1651,7 @@ export default function PreferencesPage() {
         );
         await upsertMutation.mutateAsync({
           role: "seller",
+          analyticsTrackingEnabled,
           originZip: sellerPrefs.originZip || undefined,
           shipCapable: sellerPrefs.shipCapable,
           leadTimeDaysMin: sellerPrefs.leadTimeDaysMin
@@ -1769,6 +1825,10 @@ export default function PreferencesPage() {
             <BuyerStep1 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
             <BuyerStep2 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
             <BuyerStep3 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+            <PrivacyCard
+              analyticsTrackingEnabled={analyticsTrackingEnabled}
+              setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
+            />
           </div>
         ) : (
           <div className="space-y-6">
@@ -1776,6 +1836,10 @@ export default function PreferencesPage() {
             <SellerStep2 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
             <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
             <SellerStep4 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+            <PrivacyCard
+              analyticsTrackingEnabled={analyticsTrackingEnabled}
+              setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
+            />
             <ActiveListingApplyPanel
               enabled={applyToActiveListings}
               onEnabledChange={(enabled) => {
@@ -1861,6 +1925,10 @@ export default function PreferencesPage() {
       )}
 
       {role === "buyer" ? renderBuyerStep() : renderSellerStep()}
+      <PrivacyCard
+        analyticsTrackingEnabled={analyticsTrackingEnabled}
+        setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
+      />
 
       <div className="flex items-center justify-between pt-2">
         <Button

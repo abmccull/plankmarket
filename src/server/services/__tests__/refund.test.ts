@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const providerMocks = vi.hoisted(() => ({
   retrievePaymentIntent: vi.fn(),
   createRefund: vi.fn(),
+  retrieveCharge: vi.fn(),
   retrieveTransfer: vi.fn(),
   createReversal: vi.fn(),
   findTransfer: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@/lib/stripe", () => ({
   stripe: {
     paymentIntents: { retrieve: providerMocks.retrievePaymentIntent },
     refunds: { create: providerMocks.createRefund },
+    charges: { retrieve: providerMocks.retrieveCharge },
     transfers: {
       retrieve: providerMocks.retrieveTransfer,
       createReversal: providerMocks.createReversal,
@@ -54,6 +56,7 @@ import {
   calculateTargetTransferReversalCents,
   canIssuePartialOrderRefund,
   processOrderRefund,
+  reconcileOrderRefundLifecycleFromStripe,
   reconcileOrderRefundFromStripe,
   requiresManualFreightAllocation,
   reverseOrderTransferForDispute,
@@ -115,7 +118,15 @@ const sellerFundedOrder: MockRefundOrder = {
 function createMockDatabase(
   order: MockRefundOrder,
   adminUsers: Array<{ id: string }> = [{ id: "admin-1" }],
+  stripeDispute: { id: string; status: string; source: string } | null = null,
+  orderLookup:
+    | { id: string; stripePaymentIntentId: string | null }
+    | null = {
+    id: order.id,
+    stripePaymentIntentId: order.stripePaymentIntentId,
+  },
 ) {
+  const currentOrder = { ...order };
   const updateSets: Array<Record<string, unknown>> = [];
   const insertedValues: unknown[] = [];
   const tx = {
@@ -124,7 +135,7 @@ function createMockDatabase(
         return {
           from: vi.fn(() => ({
             where: vi.fn(() => ({
-              for: vi.fn().mockResolvedValue([order]),
+              for: vi.fn().mockResolvedValue([currentOrder]),
             })),
           })),
         };
@@ -133,8 +144,19 @@ function createMockDatabase(
         return {
           from: vi.fn(() => ({
             where: vi.fn().mockResolvedValue([
-              { stripeAccountId: order.sellerStripeAccountId },
+              { stripeAccountId: currentOrder.sellerStripeAccountId },
             ]),
+          })),
+        };
+      }
+      if ("source" in selection) {
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              for: vi.fn().mockResolvedValue(
+                stripeDispute ? [stripeDispute] : [],
+              ),
+            })),
           })),
         };
       }
@@ -147,6 +169,7 @@ function createMockDatabase(
     update: vi.fn(() => ({
       set: vi.fn((values: Record<string, unknown>) => {
         updateSets.push(values);
+        Object.assign(currentOrder, values);
         return { where: vi.fn().mockResolvedValue([]) };
       }),
     })),
@@ -158,6 +181,11 @@ function createMockDatabase(
     })),
   };
   const db = {
+    query: {
+      orders: {
+        findFirst: vi.fn().mockResolvedValue(orderLookup),
+      },
+    },
     transaction: vi.fn(
       (callback: (transaction: typeof tx) => Promise<unknown>) =>
         callback(tx),
@@ -203,7 +231,21 @@ beforeEach(() => {
     metadata: { orderId: baseOrder.id },
     latest_charge: "ch_order",
   });
-  providerMocks.createRefund.mockResolvedValue({ id: "re_order" });
+  providerMocks.createRefund.mockResolvedValue({
+    id: "re_order",
+    status: "succeeded",
+    amount: 2_500,
+    charge: "ch_order",
+    payment_intent: "pi_order",
+    metadata: {
+      orderId: baseOrder.id,
+      cumulativeRefundCents: "2500",
+    },
+  });
+  providerMocks.retrieveCharge.mockResolvedValue({
+    id: "ch_order",
+    amount_refunded: 2_500,
+  });
   providerMocks.retrieveTransfer.mockResolvedValue(matchingTransfer());
   providerMocks.createReversal.mockResolvedValue({
     id: "trr_order",
@@ -315,11 +357,15 @@ describe("direct partial refund transfer recovery", () => {
         amountCents: 2_500,
         reason: "partial adjustment",
       }),
-    ).resolves.toEqual({
-      refundId: "re_order",
-      amountRefunded: 25,
-      transferReversalId: "trr_partial",
-    });
+    ).resolves.toEqual(
+      expect.objectContaining({
+        refundId: "re_order",
+        amountRefunded: 25,
+        transferReversalId: "trr_partial",
+        state: "succeeded",
+        providerStatus: "succeeded",
+      }),
+    );
     expect(
       providerMocks.resolveReconciliationCaseByKey,
     ).toHaveBeenCalledWith(
@@ -370,11 +416,15 @@ describe("direct partial refund transfer recovery", () => {
         amountCents: 2_500,
         reason: "partial adjustment",
       }),
-    ).resolves.toEqual({
-      refundId: "re_order",
-      amountRefunded: 25,
-      transferReversalId: "trr_orphan_partial",
-    });
+    ).resolves.toEqual(
+      expect.objectContaining({
+        refundId: "re_order",
+        amountRefunded: 25,
+        transferReversalId: "trr_orphan_partial",
+        state: "succeeded",
+        providerStatus: "succeeded",
+      }),
+    );
 
     expect(providerMocks.findTransfer).toHaveBeenCalledTimes(1);
     expect(providerMocks.retrieveTransfer).not.toHaveBeenCalled();
@@ -508,6 +558,280 @@ describe("direct partial refund transfer recovery", () => {
       }),
     );
   });
+
+  it("records a pending Stripe refund without applying local terminal effects", async () => {
+    providerMocks.createRefund.mockResolvedValue({
+      id: "re_pending",
+      status: "pending",
+      amount: 2_500,
+      charge: "ch_order",
+      payment_intent: "pi_order",
+      metadata: {
+        orderId: baseOrder.id,
+        cumulativeRefundCents: "2500",
+      },
+    });
+    const { db, updateSets, insertedValues } = createMockDatabase(baseOrder);
+
+    await expect(
+      processOrderRefund({
+        db,
+        orderId: baseOrder.id,
+        amountCents: 2_500,
+        reason: "pending refund",
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        refundId: "re_pending",
+        amountRefunded: 25,
+        state: "refund_pending",
+        providerStatus: "pending",
+      }),
+    );
+
+    expect(providerMocks.createReversal).not.toHaveBeenCalled();
+    expect(insertedValues).toHaveLength(0);
+    expect(updateSets[0]).toEqual(
+      expect.objectContaining({
+        paymentStatus: "refund_pending",
+        stripeRefundId: "re_pending",
+      }),
+    );
+  });
+
+  it.each([
+    ["requires_action"],
+    ["failed"],
+    ["canceled"],
+  ])(
+    "records a %s Stripe refund as reconciliation required",
+    async (providerStatus) => {
+      providerMocks.createRefund.mockResolvedValue({
+        id: `re_${providerStatus}`,
+        status: providerStatus,
+        amount: 2_500,
+        charge: "ch_order",
+        payment_intent: "pi_order",
+        metadata: {
+          orderId: baseOrder.id,
+          cumulativeRefundCents: "2500",
+        },
+      });
+      const { db, updateSets } = createMockDatabase(baseOrder);
+
+      await expect(
+        processOrderRefund({
+          db,
+          orderId: baseOrder.id,
+          amountCents: 2_500,
+          reason: "operator refund",
+        }),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          refundId: `re_${providerStatus}`,
+          amountRefunded: 25,
+          state: "reconciliation_required",
+          providerStatus,
+        }),
+      );
+
+      expect(providerMocks.createReversal).not.toHaveBeenCalled();
+      expect(updateSets[0]).toEqual(
+        expect.objectContaining({
+          paymentStatus: "reconciliation_required",
+          stripeRefundId: `re_${providerStatus}`,
+        }),
+      );
+      expect(providerMocks.openReconciliationCase).toHaveBeenCalledWith(
+        db,
+        expect.objectContaining({
+          caseKey: `refund-reconciliation:${baseOrder.id}`,
+          details: expect.objectContaining({ providerStatus }),
+        }),
+      );
+    },
+  );
+
+  it("replays a succeeded refund lifecycle idempotently before a later charge webhook", async () => {
+    const { db } = createMockDatabase({
+      ...baseOrder,
+      paymentStatus: "refund_pending",
+    });
+
+    await expect(
+      reconcileOrderRefundLifecycleFromStripe({
+        db,
+        refund: {
+          id: "re_pending",
+          status: "succeeded",
+          amount: 2_500,
+          charge: "ch_order",
+          payment_intent: "pi_order",
+          metadata: {
+            orderId: baseOrder.id,
+            cumulativeRefundCents: "2500",
+          },
+        } as never,
+        reason: "Stripe refund.updated reconciliation",
+      }),
+    ).resolves.toEqual({
+      orderId: baseOrder.id,
+      state: "succeeded",
+      updated: true,
+    });
+
+    await expect(
+      reconcileOrderRefundLifecycleFromStripe({
+        db,
+        refund: {
+          id: "re_pending",
+          status: "succeeded",
+          amount: 2_500,
+          charge: "ch_order",
+          payment_intent: "pi_order",
+          metadata: {
+            orderId: baseOrder.id,
+            cumulativeRefundCents: "2500",
+          },
+        } as never,
+        reason: "Stripe refund.updated replay",
+      }),
+    ).resolves.toEqual({
+      orderId: baseOrder.id,
+      state: "succeeded",
+      updated: false,
+    });
+  });
+
+  it("prefers the provider charge refunded total over stale metadata drift", async () => {
+    providerMocks.retrieveCharge.mockResolvedValueOnce({
+      id: "ch_order",
+      amount_refunded: 5_000,
+    });
+    providerMocks.createReversal.mockResolvedValueOnce({
+      id: "trr_drift",
+      amount: 3_750,
+    });
+    const { db, updateSets } = createMockDatabase({
+      ...baseOrder,
+      paymentStatus: "refund_pending",
+    });
+
+    await expect(
+      reconcileOrderRefundLifecycleFromStripe({
+        db,
+        refund: {
+          id: "re_drift",
+          status: "succeeded",
+          amount: 2_500,
+          charge: "ch_order",
+          payment_intent: "pi_order",
+          metadata: {
+            orderId: baseOrder.id,
+            cumulativeRefundCents: "2500",
+          },
+        } as never,
+        reason: "Stripe refund.updated reconciliation",
+      }),
+    ).resolves.toEqual({
+      orderId: baseOrder.id,
+      state: "succeeded",
+      updated: true,
+    });
+
+    expect(updateSets[0]).toEqual(
+      expect.objectContaining({
+        paymentStatus: "partially_refunded",
+        refundedAmount: 50,
+        transferReversedAmount: 37.5,
+      }),
+    );
+  });
+
+  it("refuses refund lifecycle reconciliation when metadata.orderId and payment intent disagree", async () => {
+    const { db, updateSets } = createMockDatabase(
+      {
+        ...baseOrder,
+        paymentStatus: "refund_pending",
+      },
+      [{ id: "admin-1" }],
+      null,
+      {
+        id: baseOrder.id,
+        stripePaymentIntentId: "pi_other",
+      },
+    );
+
+    await expect(
+      reconcileOrderRefundLifecycleFromStripe({
+        db,
+        refund: {
+          id: "re_mismatch",
+          status: "succeeded",
+          amount: 2_500,
+          charge: "ch_order",
+          payment_intent: "pi_order",
+          metadata: {
+            orderId: baseOrder.id,
+            cumulativeRefundCents: "2500",
+          },
+        } as never,
+        reason: "Stripe refund.updated reconciliation",
+      }),
+    ).resolves.toEqual({
+      orderId: null,
+      state: "ignored",
+      updated: false,
+    });
+
+    expect(updateSets).toHaveLength(0);
+    expect(providerMocks.openReconciliationCase).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        caseKey: "refund-mismatch:re_mismatch",
+        details: expect.objectContaining({
+          metadataOrderId: baseOrder.id,
+          paymentIntentId: "pi_order",
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    [
+      "under_review",
+      "Manual refunds are blocked while a Stripe dispute is still open.",
+    ],
+    [
+      "resolved_buyer",
+      "Manual refunds are blocked because Stripe already closed the chargeback against the platform.",
+    ],
+  ])(
+    "blocks manual refunds when the Stripe dispute is %s",
+    async (disputeStatus, expectedMessage) => {
+      const { db } = createMockDatabase(
+        baseOrder,
+        [{ id: "admin-1" }],
+        {
+          id: "dp_blocked",
+          status: disputeStatus,
+          source: "stripe",
+        },
+      );
+
+      await expect(
+        processOrderRefund({
+          db,
+          orderId: baseOrder.id,
+          amountCents: 2_500,
+          reason: "blocked refund",
+        }),
+      ).rejects.toThrow(expectedMessage);
+
+      expect(providerMocks.createRefund).not.toHaveBeenCalled();
+      expect(providerMocks.createReversal).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("seller-funded freight allocation policy", () => {
@@ -606,6 +930,8 @@ describe("seller-funded freight allocation policy", () => {
         refundId: "re_order",
         amountRefunded: 25,
         transferReversalId: "trr_seller_partial",
+        state: "succeeded",
+        providerStatus: "succeeded",
       });
 
       expect(providerMocks.createRefund).toHaveBeenCalledTimes(1);
@@ -648,11 +974,15 @@ describe("seller-funded freight allocation policy", () => {
           orderId: order.id,
           reason: "full cancellation",
         }),
-      ).resolves.toEqual({
-        refundId: "re_order",
-        amountRefunded: 100,
-        transferReversalId: stripeTransferId ? "trr_order" : undefined,
-      });
+      ).resolves.toEqual(
+        expect.objectContaining({
+          refundId: "re_order",
+          amountRefunded: 100,
+          transferReversalId: stripeTransferId ? "trr_order" : undefined,
+          state: "succeeded",
+          providerStatus: "succeeded",
+        }),
+      );
 
       expect(providerMocks.createRefund).toHaveBeenCalledTimes(1);
       expect(providerMocks.cancelShipment).toHaveBeenCalledWith(

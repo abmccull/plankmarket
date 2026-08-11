@@ -9,7 +9,7 @@ import {
   getMessagesSchema,
 } from "@/lib/validators/message";
 import { conversations, messages, listings, media, orders } from "../db/schema";
-import { eq, and, or, desc, asc, gt, lt, sql, inArray } from "drizzle-orm";
+import { eq, and, or, desc, asc, gt, lt, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { detectSelfReference } from "@/lib/content-filter";
@@ -25,6 +25,12 @@ const conversationPartyColumns = {
   businessState: true,
   verificationStatus: true,
 } as const;
+
+type ConversationIdentity = {
+  listingId: string;
+  buyerId: string;
+  sellerId: string;
+};
 
 function conversationIdentityKey(conversation: {
   listingId: string;
@@ -49,6 +55,46 @@ async function canRevealConversationIdentity(
   });
 
   return Boolean(deliveredOrder);
+}
+
+async function getRevealableConversationKeys(
+  db: typeof import("@/server/db").db,
+  conversationsList: ConversationIdentity[],
+) {
+  if (conversationsList.length === 0) {
+    return new Set<string>();
+  }
+
+  const uniqueConversations = [...new Map(
+    conversationsList.map((conversation) => [
+      conversationIdentityKey(conversation),
+      conversation,
+    ]),
+  ).values()];
+
+  const deliveredTriplets = uniqueConversations.map((conversation) =>
+    and(
+      eq(orders.listingId, conversation.listingId),
+      eq(orders.buyerId, conversation.buyerId),
+      eq(orders.sellerId, conversation.sellerId),
+    ),
+  );
+
+  const deliveredOrders = await db
+    .select({
+      listingId: orders.listingId,
+      buyerId: orders.buyerId,
+      sellerId: orders.sellerId,
+    })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.status, "delivered"),
+        or(...deliveredTriplets)!,
+      ),
+    );
+
+  return new Set(deliveredOrders.map(conversationIdentityKey));
 }
 
 function shapeConversation<
@@ -243,6 +289,64 @@ export const messageRouter = createTRPCRouter({
       return message;
     }),
 
+  getConversation: protectedProcedure
+    .input(z.object({ conversationId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const conversation = await ctx.db.query.conversations.findFirst({
+        where: and(
+          eq(conversations.id, input.conversationId),
+          or(
+            eq(conversations.buyerId, ctx.user.id),
+            eq(conversations.sellerId, ctx.user.id),
+          ),
+        ),
+        with: {
+          listing: {
+            columns: {
+              id: true,
+              title: true,
+            },
+            with: {
+              media: {
+                columns: {
+                  id: true,
+                  url: true,
+                  altText: true,
+                  sortOrder: true,
+                },
+                limit: 1,
+                orderBy: [asc(media.sortOrder)],
+              },
+            },
+          },
+          buyer: {
+            columns: conversationPartyColumns,
+          },
+          seller: {
+            columns: conversationPartyColumns,
+          },
+          messages: {
+            limit: 1,
+            orderBy: [desc(messages.createdAt)],
+          },
+        },
+      });
+
+      if (!conversation) {
+        return null;
+      }
+
+      const revealableConversationKeys = await getRevealableConversationKeys(
+        ctx.db,
+        [conversation],
+      );
+
+      return shapeConversation(
+        conversation,
+        revealableConversationKeys.has(conversationIdentityKey(conversation)),
+      );
+    }),
+
   // Get all conversations for current user
   getMyConversations: protectedProcedure
     .input(
@@ -295,26 +399,9 @@ export const messageRouter = createTRPCRouter({
         },
       });
 
-      const deliveredOrders = conversationsList.length
-        ? await ctx.db
-            .select({
-              listingId: orders.listingId,
-              buyerId: orders.buyerId,
-              sellerId: orders.sellerId,
-            })
-            .from(orders)
-            .where(
-              and(
-                eq(orders.status, "delivered"),
-                inArray(
-                  orders.listingId,
-                  [...new Set(conversationsList.map((item) => item.listingId))],
-                ),
-              ),
-            )
-        : [];
-      const revealableConversationKeys = new Set(
-        deliveredOrders.map(conversationIdentityKey),
+      const revealableConversationKeys = await getRevealableConversationKeys(
+        ctx.db,
+        conversationsList,
       );
       const shapedConversations = conversationsList.map((conversation) =>
         shapeConversation(
@@ -390,17 +477,6 @@ export const messageRouter = createTRPCRouter({
         },
       });
 
-      // Update user's lastReadAt
-      const isBuyer = conversation.buyerId === ctx.user.id;
-      await ctx.db
-        .update(conversations)
-        .set(
-          isBuyer
-            ? { buyerLastReadAt: new Date() }
-            : { sellerLastReadAt: new Date() }
-        )
-        .where(eq(conversations.id, input.conversationId));
-
       const revealIdentity = await canRevealConversationIdentity(
         ctx.db,
         conversation,
@@ -413,11 +489,23 @@ export const messageRouter = createTRPCRouter({
 
   // Mark a conversation as read
   markAsRead: protectedProcedure
-    .input(z.object({ conversationId: z.string().uuid() }))
+    .input(
+      z.object({
+        conversationId: z.string().uuid(),
+        latestMessageId: z.string().uuid(),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       // Find conversation and verify participation
       const conversation = await ctx.db.query.conversations.findFirst({
         where: eq(conversations.id, input.conversationId),
+        columns: {
+          id: true,
+          buyerId: true,
+          sellerId: true,
+          buyerLastReadAt: true,
+          sellerLastReadAt: true,
+        },
       });
 
       if (!conversation) {
@@ -438,19 +526,71 @@ export const messageRouter = createTRPCRouter({
         });
       }
 
-      // Update lastReadAt based on user role
       const isBuyer = conversation.buyerId === ctx.user.id;
+      const currentLastReadAt = isBuyer
+        ? conversation.buyerLastReadAt
+        : conversation.sellerLastReadAt;
+
+      const latestMessage = await ctx.db.query.messages.findFirst({
+        where: and(
+          eq(messages.id, input.latestMessageId),
+          eq(messages.conversationId, input.conversationId),
+        ),
+        columns: {
+          id: true,
+          senderId: true,
+          createdAt: true,
+        },
+      });
+
+      if (!latestMessage || latestMessage.senderId === ctx.user.id) {
+        return {
+          updated: false,
+          lastReadAt: currentLastReadAt,
+        };
+      }
+
+      if (
+        currentLastReadAt &&
+        latestMessage.createdAt <= currentLastReadAt
+      ) {
+        return {
+          updated: false,
+          lastReadAt: currentLastReadAt,
+        };
+      }
+
       const [updated] = await ctx.db
         .update(conversations)
         .set(
           isBuyer
-            ? { buyerLastReadAt: new Date() }
-            : { sellerLastReadAt: new Date() }
+            ? { buyerLastReadAt: latestMessage.createdAt }
+            : { sellerLastReadAt: latestMessage.createdAt }
         )
-        .where(eq(conversations.id, input.conversationId))
-        .returning();
+        .where(
+          and(
+            eq(conversations.id, input.conversationId),
+            isBuyer
+              ? or(
+                  sql`${conversations.buyerLastReadAt} IS NULL`,
+                  lt(conversations.buyerLastReadAt, latestMessage.createdAt),
+                )
+              : or(
+                  sql`${conversations.sellerLastReadAt} IS NULL`,
+                  lt(conversations.sellerLastReadAt, latestMessage.createdAt),
+                ),
+          ),
+        )
+        .returning({
+          lastReadAt: isBuyer
+            ? conversations.buyerLastReadAt
+            : conversations.sellerLastReadAt,
+        });
 
-      return updated;
+      return {
+        updated: Boolean(updated),
+        lastReadAt: updated?.lastReadAt ?? currentLastReadAt,
+      };
     }),
 
   // Get unread message count for current user

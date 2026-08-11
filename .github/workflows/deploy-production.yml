@@ -8,19 +8,20 @@ concurrency:
   group: production-deploy
   cancel-in-progress: false
 
-env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+permissions:
+  contents: read
 
 jobs:
-  quality:
-    name: Quality & Security Gate
+  validate:
+    name: Validate Production
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.22.0
           cache: npm
@@ -28,113 +29,587 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
 
-      - name: Type Check
+      - name: Quality and security gate
         env:
           SKIP_ENV_VALIDATION: true
-        run: npm run typecheck
-
-      - name: Test Type Check
-        run: npm run typecheck:tests
-
-      - name: Unit and component tests
-        run: npm run test
-
-      - name: Shipping workflow tests
-        run: npm run test:shipping
-
-      - name: Production dependency audit
-        run: npm run audit:prod
-
-      - name: Migration integrity
-        run: npm run db:check
-
-      - name: Production build
-        env:
-          SKIP_ENV_VALIDATION: true
-        run: npm run build
-
-  deploy:
-    name: Stage, Verify & Promote
-    needs: quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.0
-          cache: npm
-
-      - name: Install locked dependencies
-        run: npm ci
-
-      - name: Install pinned Vercel CLI
-        run: npm install -g vercel@55.0.0
-
-      - name: Link Vercel Project
         run: |
-          mkdir -p .vercel
-          echo '{"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}"}' > .vercel/project.json
+          npm run lint
+          npm run typecheck
+          npm run typecheck:tests
+          npm run test
+          npm run test:shipping
+          npm run audit:prod
+          npm run db:check
+          npm run build
 
-      - name: Pull Vercel Environment
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Export Production Environment for Preflight
-        run: >-
-          vercel env pull .vercel/.env.production.local --yes
-          --environment=production
-          --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Validate Production Environment
-        run: npm run env:check:production -- --file .vercel/.env.production.local
-
-      # This is intentionally read-only. The historical baseline is unresolved,
-      # so forward migrations remain a reviewed manual operation documented in
-      # drizzle/BASELINE_STRATEGY.md.
-      - name: Verify target database schema before build
-        run: npm run db:check:target -- --file .vercel/.env.production.local
-
-      - name: Audit target marketplace data before build
-        run: npm run db:audit:marketplace -- --file .vercel/.env.production.local
-
-      - name: Build
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Create staged production deployment
-        id: stage
+      - name: Audit root dependency graph
+        id: audit_root
+        continue-on-error: true
         shell: bash
         run: |
-          deployment_url=$(vercel deploy --prebuilt --prod --skip-domain --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
-          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+          mkdir -p ci-artifacts
+          set +e
+          npm audit --audit-level=high --json > ci-artifacts/npm-audit-root.json
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $status
 
-      - name: Verify staged deployment
+      - name: Audit deploy CLI dependency graph
+        id: audit_vercel_cli
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          npm audit --prefix .github/vercel-cli --audit-level=high --json > ci-artifacts/npm-audit-vercel-cli.json
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $status
+
+      - name: Generate SBOM evidence
+        shell: bash
+        run: |
+          ./node_modules/.bin/cyclonedx-npm \
+            --ignore-npm-errors \
+            --package-lock-only \
+            --output-reproducible \
+            --of JSON \
+            -o ci-artifacts/sbom-root.cdx.json
+          (
+            cd .github/vercel-cli
+            ../../node_modules/.bin/cyclonedx-npm \
+              --ignore-npm-errors \
+              --package-lock-only \
+              --output-reproducible \
+              --of JSON \
+              -o ../../ci-artifacts/sbom-vercel-cli.cdx.json
+          )
+
+      - name: Enforce full dependency audit gate
+        if: always()
+        shell: bash
+        env:
+          ROOT_AUDIT_STATUS: ${{ steps.audit_root.outputs.status }}
+          VERCEL_CLI_AUDIT_STATUS: ${{ steps.audit_vercel_cli.outputs.status }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const checks = [
+            ['root', 'ci-artifacts/npm-audit-root.json', Number(process.env.ROOT_AUDIT_STATUS ?? '1')],
+            ['vercel-cli', 'ci-artifacts/npm-audit-vercel-cli.json', Number(process.env.VERCEL_CLI_AUDIT_STATUS ?? '1')],
+          ];
+
+          let failed = false;
+          for (const [name, file, status] of checks) {
+            const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const counts = report.metadata?.vulnerabilities ?? {};
+            console.log(`${name}: ${JSON.stringify(counts)}`);
+            if (status !== 0 || (counts.high ?? 0) > 0 || (counts.critical ?? 0) > 0) {
+              failed = true;
+            }
+          }
+
+          if (failed) {
+            process.exit(1);
+          }
+          NODE
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: production-validation-evidence
+          path: ci-artifacts
+          if-no-files-found: error
+
+  preflight_production:
+    name: Production Preflight
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    permissions:
+      contents: read
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
+
+      - name: Link protected production project
+        shell: bash
+        run: |
+          mkdir -p .vercel
+          cat <<EOF > .vercel/project.json
+          {"projectId":"$VERCEL_PROJECT_ID","orgId":"$VERCEL_ORG_ID"}
+          EOF
+
+      - name: Pull protected production settings
         run: >-
-          vercel curl /api/health
-          --deployment "${{ steps.stage.outputs.url }}"
-          --fail --retry 5 --retry-all-errors
-          --token=${{ secrets.VERCEL_TOKEN }}
+          ./.github/vercel-cli/node_modules/.bin/vercel pull --yes --environment=production
+          --token="$VERCEL_TOKEN"
+
+      - name: Pull protected production environment
+        run: >-
+          ./.github/vercel-cli/node_modules/.bin/vercel env pull .vercel/.env.production.local --yes
+          --environment=production
+          --token="$VERCEL_TOKEN"
+
+      - name: Validate production environment
+        run: npm run env:check:production -- --file .vercel/.env.production.local
+
+      - name: Verify target database schema before deploy
+        run: npm run db:check:target -- --file .vercel/.env.production.local
+
+      - name: Audit target marketplace data before deploy
+        run: npm run db:audit:marketplace -- --file .vercel/.env.production.local
+
+      - name: Remove transient production env file
+        if: always()
+        run: rm -f .vercel/.env.production.local
+
+  deploy:
+    name: Stage Production Deployment
+    needs: preflight_production
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
+
+      - name: Link production project
+        shell: bash
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          mkdir -p .vercel
+          cat <<EOF > .vercel/project.json
+          {"projectId":"$VERCEL_PROJECT_ID","orgId":"$VERCEL_ORG_ID"}
+          EOF
+
+      - name: Create staged production deployment
+        id: deploy
+        shell: bash
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          raw_url=$(
+            .github/vercel-cli/node_modules/.bin/vercel deploy \
+              --prod \
+              --skip-domain \
+              --archive=tgz \
+              --yes \
+              --token="$VERCEL_TOKEN" \
+              --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
+              --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA"
+          )
+          url=$(DEPLOY_URL="$raw_url" node <<'NODE'
+          const value = process.env.DEPLOY_URL?.trim();
+          let url;
+          try {
+            url = new URL(value);
+          } catch {
+            console.error('Vercel returned an invalid deployment URL');
+            process.exit(1);
+          }
+          const isVercelDeployment =
+            url.hostname !== 'vercel.app' && url.hostname.endsWith('.vercel.app');
+          if (
+            url.protocol !== 'https:' ||
+            !isVercelDeployment ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== '/' ||
+            url.search ||
+            url.hash
+          ) {
+            console.error('Vercel returned an untrusted deployment URL');
+            process.exit(1);
+          }
+          process.stdout.write(url.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
+  verify_staged_liveness:
+    name: Verify Staged Liveness
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      STAGED_URL: ${{ needs.deploy.outputs.url }}
+    steps:
+      - name: Verify staged liveness
+        run: >-
+          curl -fsS --retry 5 --retry-all-errors
+          "$STAGED_URL/api/health"
+
+  verify_staged_readiness:
+    name: Verify Staged Readiness
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+
+      - name: Revalidate staged deployment URL
+        id: deployment_url
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          url=$(node <<'NODE'
+          const value = process.env.CANDIDATE_URL?.trim();
+          let url;
+          try {
+            url = new URL(value);
+          } catch {
+            process.exit(1);
+          }
+          const isVercelDeployment =
+            url.hostname !== 'vercel.app' && url.hostname.endsWith('.vercel.app');
+          if (
+            url.protocol !== 'https:' ||
+            !isVercelDeployment ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== '/' ||
+            url.search ||
+            url.hash
+          ) {
+            process.exit(1);
+          }
+          process.stdout.write(url.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify staged readiness and candidate fingerprint
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          STAGED_URL: ${{ steps.deployment_url.outputs.url }}
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
+        run: |
+          curl -fsS --retry 5 --retry-all-errors \
+            -H "authorization: Bearer $CRON_SECRET" \
+            "$STAGED_URL/api/health/ready" \
+            -o readiness.json
+          node <<'NODE'
+          const fs = require('fs');
+          const packageJson = require('./package.json');
+          const releaseContract = require('./src/lib/release-contract.json');
+
+          const payload = JSON.parse(fs.readFileSync('readiness.json', 'utf8'));
+          const release = payload?.meta?.release;
+          if (!release) {
+            console.error('Protected readiness did not return release metadata.');
+            process.exit(1);
+          }
+
+          const expected = {
+            buildSha: process.env.EXPECTED_BUILD_SHA,
+            packageVersion: packageJson.version,
+            schemaVersion: releaseContract.schemaVersion,
+            commercialPolicyVersion: releaseContract.commercialPolicyVersion,
+          };
+          expected.fingerprint = [
+            `pkg:${expected.packageVersion}`,
+            `schema:${expected.schemaVersion}`,
+            `policy:${expected.commercialPolicyVersion}`,
+            `sha:${expected.buildSha}`,
+          ].join('|');
+
+          for (const [field, expectedValue] of Object.entries(expected)) {
+            if (release[field] !== expectedValue) {
+              console.error(`Staged ${field} mismatch: expected ${expectedValue}, received ${release[field] ?? 'null'}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+  smoke_staged:
+    name: Smoke Staged Production
+    needs:
+      - deploy
+      - verify_staged_liveness
+      - verify_staged_readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+    env:
+      STAGED_URL: ${{ needs.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Run staged public marketplace smoke
         env:
-          PLAYWRIGHT_BASE_URL: ${{ steps.stage.outputs.url }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          PLAYWRIGHT_BASE_URL: ${{ env.STAGED_URL }}
         run: npm run test:e2e:public
 
-      - name: Promote verified deployment
-        run: >-
-          vercel promote "${{ steps.stage.outputs.url }}"
-          --yes --token=${{ secrets.VERCEL_TOKEN }}
+  promote:
+    name: Promote Verified Deployment
+    needs:
+      - deploy
+      - smoke_staged
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Verify production
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Revalidate staged deployment URL
+        id: staged_url
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          url=$(node <<'NODE'
+          const value = process.env.CANDIDATE_URL?.trim();
+          let url;
+          try {
+            url = new URL(value);
+          } catch {
+            process.exit(1);
+          }
+          const isVercelDeployment =
+            url.hostname !== 'vercel.app' && url.hostname.endsWith('.vercel.app');
+          if (
+            url.protocol !== 'https:' ||
+            !isVercelDeployment ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== '/' ||
+            url.search ||
+            url.hash
+          ) {
+            process.exit(1);
+          }
+          process.stdout.write(url.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned deploy CLI dependencies
+        run: npm ci --prefix .github/vercel-cli
+
+      - name: Link production project
+        shell: bash
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          mkdir -p .vercel
+          cat <<EOF > .vercel/project.json
+          {"projectId":"$VERCEL_PROJECT_ID","orgId":"$VERCEL_ORG_ID"}
+          EOF
+
+      - name: Promote verified deployment
+        env:
+          STAGED_URL: ${{ steps.staged_url.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: >-
-          vercel curl /api/health
-          --fail --retry 5 --retry-all-errors
-          --token=${{ secrets.VERCEL_TOKEN }}
+          ./.github/vercel-cli/node_modules/.bin/vercel promote "$STAGED_URL"
+          --yes --token="$VERCEL_TOKEN"
+
+      - name: Resolve promoted production alias
+        id: production_alias
+        shell: bash
+        env:
+          EXPECTED_PRODUCTION_URL: ${{ vars.PRODUCTION_APP_URL }}
+          STAGED_URL: ${{ steps.staged_url.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          expected_url=$(node <<'NODE'
+          const value = process.env.EXPECTED_PRODUCTION_URL?.trim();
+          let url;
+          try {
+            url = new URL(value);
+          } catch {
+            console.error('PRODUCTION_APP_URL must be an absolute URL');
+            process.exit(1);
+          }
+          const isPlankMarketHost =
+            url.hostname === 'plankmarket.com' || url.hostname.endsWith('.plankmarket.com');
+          if (
+            url.protocol !== 'https:' ||
+            !isPlankMarketHost ||
+            url.username ||
+            url.password ||
+            url.port ||
+            url.pathname !== '/' ||
+            url.search ||
+            url.hash
+          ) {
+            console.error('PRODUCTION_APP_URL is not a trusted PlankMarket origin');
+            process.exit(1);
+          }
+          process.stdout.write(url.origin);
+          NODE
+          )
+          ./.github/vercel-cli/node_modules/.bin/vercel alias list --json --limit 100 --token="$VERCEL_TOKEN" > .vercel/aliases.json
+          production_url=$(EXPECTED_PRODUCTION_URL="$expected_url" node <<'NODE'
+          const fs = require('fs');
+
+          const stagedHost = new URL(process.env.STAGED_URL).hostname;
+          const expectedUrl = new URL(process.env.EXPECTED_PRODUCTION_URL);
+          const aliases = JSON.parse(fs.readFileSync('.vercel/aliases.json', 'utf8')).aliases ?? [];
+          const expectedAlias = aliases.find(
+            (entry) => entry?.url === stagedHost && entry?.alias === expectedUrl.hostname,
+          );
+          if (!expectedAlias) {
+            console.error('The promoted deployment is not bound to PRODUCTION_APP_URL');
+            process.exit(1);
+          }
+          process.stdout.write(expectedUrl.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$production_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production liveness
+        env:
+          PRODUCTION_URL: ${{ steps.production_alias.outputs.url }}
+        run: >-
+          curl -fsS --retry 5 --retry-all-errors
+          "$PRODUCTION_URL/api/health"
+
+      - name: Revalidate production URL before secret use
+        id: production_url
+        shell: bash
+        env:
+          CANDIDATE_URL: ${{ steps.production_alias.outputs.url }}
+          EXPECTED_PRODUCTION_URL: ${{ vars.PRODUCTION_APP_URL }}
+        run: |
+          url=$(node <<'NODE'
+          let candidate;
+          let expected;
+          try {
+            candidate = new URL(process.env.CANDIDATE_URL?.trim());
+            expected = new URL(process.env.EXPECTED_PRODUCTION_URL?.trim());
+          } catch {
+            process.exit(1);
+          }
+          const isPlankMarketHost =
+            candidate.hostname === 'plankmarket.com' ||
+            candidate.hostname.endsWith('.plankmarket.com');
+          if (
+            candidate.origin !== expected.origin ||
+            candidate.protocol !== 'https:' ||
+            !isPlankMarketHost ||
+            candidate.username ||
+            candidate.password ||
+            candidate.port ||
+            candidate.pathname !== '/' ||
+            candidate.search ||
+            candidate.hash
+          ) {
+            process.exit(1);
+          }
+          process.stdout.write(candidate.origin);
+          NODE
+          )
+          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production readiness and candidate fingerprint
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          PRODUCTION_URL: ${{ steps.production_url.outputs.url }}
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
+        run: |
+          curl -fsS --retry 5 --retry-all-errors \
+            -H "authorization: Bearer $CRON_SECRET" \
+            "$PRODUCTION_URL/api/health/ready" \
+            -o production-readiness.json
+          node <<'NODE'
+          const fs = require('fs');
+          const packageJson = require('./package.json');
+          const releaseContract = require('./src/lib/release-contract.json');
+
+          const payload = JSON.parse(fs.readFileSync('production-readiness.json', 'utf8'));
+          const release = payload?.meta?.release;
+          if (!release) {
+            console.error('Protected production readiness did not return release metadata.');
+            process.exit(1);
+          }
+
+          const expected = {
+            buildSha: process.env.EXPECTED_BUILD_SHA,
+            packageVersion: packageJson.version,
+            schemaVersion: releaseContract.schemaVersion,
+            commercialPolicyVersion: releaseContract.commercialPolicyVersion,
+          };
+          expected.fingerprint = [
+            `pkg:${expected.packageVersion}`,
+            `schema:${expected.schemaVersion}`,
+            `policy:${expected.commercialPolicyVersion}`,
+            `sha:${expected.buildSha}`,
+          ].join('|');
+
+          for (const [field, expectedValue] of Object.entries(expected)) {
+            if (release[field] !== expectedValue) {
+              console.error(`Production ${field} mismatch: expected ${expectedValue}, received ${release[field] ?? 'null'}`);
+              process.exit(1);
+            }
+          }
+          NODE

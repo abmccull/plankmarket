@@ -79,6 +79,10 @@ export const inventorySources = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex("inventory_sources_id_seller_idx").on(
+      table.id,
+      table.sellerId,
+    ),
     uniqueIndex("inventory_sources_seller_external_uidx").on(
       table.sellerId,
       table.externalSourceId,
@@ -132,6 +136,11 @@ export const inventorySourceItems = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex("inventory_source_items_id_source_seller_idx").on(
+      table.id,
+      table.sourceId,
+      table.sellerId,
+    ),
     uniqueIndex("inventory_source_items_source_external_uidx").on(
       table.sourceId,
       table.externalItemId,
@@ -201,6 +210,11 @@ export const inventoryIngestBatches = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex("inventory_ingest_batches_id_source_seller_idx").on(
+      table.id,
+      table.sourceId,
+      table.sellerId,
+    ),
     uniqueIndex("inventory_ingest_batches_source_idempotency_uidx").on(
       table.sourceId,
       table.idempotencyKey,
@@ -291,6 +305,14 @@ export const inventoryAdjustments = pgTable(
     check(
       "inventory_adjustments_actor_type_check",
       sql`${table.actorType} in ('feed', 'seller', 'admin', 'system')`,
+    ),
+    check(
+      "inventory_adjustments_source_item_requires_source_check",
+      sql`${table.sourceItemId} is null or ${table.sourceId} is not null`,
+    ),
+    check(
+      "inventory_adjustments_ingest_batch_requires_source_check",
+      sql`${table.ingestBatchId} is null or ${table.sourceId} is not null`,
     ),
   ],
 );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   toConversationParty,
+  toPublicListingCard,
   toPublicListing,
   toPublicReview,
   type PublicListingSource,
@@ -99,16 +100,18 @@ describe("public marketplace DTOs", () => {
     expect(result).not.toHaveProperty("locationZip");
     expect(result).not.toHaveProperty("locationLat");
     expect(result).not.toHaveProperty("locationLng");
+    expect(result.locationCity).toBeNull();
+    expect(result.locationState).toBe("CO");
     expect(result.freightEstimateStatus).toBe("quote_request_ready");
     expect(result.freshnessStatus).toBe("fresh");
     expect(result.lastConfirmedAt).toEqual(new Date("2026-07-29T00:00:00Z"));
     expect(result.media[0]).not.toHaveProperty("key");
     expect(result.seller).not.toHaveProperty("name");
+    expect(result.seller).not.toHaveProperty("businessCity");
+    expect(result.seller).not.toHaveProperty("businessState");
     expect(result.seller).not.toHaveProperty("businessAddress");
     expect(result.seller).not.toHaveProperty("phone");
-    expect(result.seller?.displayName).toMatch(
-      /^Verified (Seller|Supplier) in Denver, CO$/,
-    );
+    expect(result.seller?.displayName).toMatch(/^Verified (Seller|Supplier)$/);
   });
 
   it("reveals a conversation name only after the server authorizes it", () => {
@@ -121,18 +124,38 @@ describe("public marketplace DTOs", () => {
       verificationStatus: "verified",
     };
 
-    expect(toConversationParty(party, false)).toMatchObject({
+    const anonymousParty = toConversationParty(party, false);
+    expect(anonymousParty).toMatchObject({
       name: null,
       identityRevealed: false,
     });
-    expect(toConversationParty(party, false).displayName).toMatch(
-      /^Verified (Buyer|Professional) in Boulder, CO$/,
+    expect(anonymousParty).not.toHaveProperty("businessCity");
+    expect(anonymousParty).not.toHaveProperty("businessState");
+    expect(anonymousParty.displayName).toMatch(
+      /^Verified (Buyer|Professional)$/,
     );
     expect(toConversationParty(party, true)).toMatchObject({
       name: "Jane Contractor",
       identityRevealed: true,
       displayName: "Jane Contractor",
+      businessCity: "Boulder",
+      businessState: "CO",
     });
+  });
+
+  it("uses a slim card projection for catalog collections", () => {
+    const result = toPublicListingCard(listingSource as never);
+
+    expect(result).toMatchObject({
+      id: listingSource.id,
+      title: listingSource.title,
+      totalSqFt: listingSource.totalSqFt,
+      freightEstimateStatus: "quote_request_ready",
+    });
+    expect(result).not.toHaveProperty("description");
+    expect(result).not.toHaveProperty("certifications");
+    expect(result).not.toHaveProperty("palletWeight");
+    expect(result).not.toHaveProperty("locationZip");
   });
 
   it("keeps public reviews free of order and relationship identifiers", () => {

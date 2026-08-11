@@ -30,6 +30,10 @@ import {
   sampleRequestActionSchema,
 } from "@/lib/validators/sample-request";
 import { isListingVisibleToBuyers } from "@/lib/listing-freshness";
+import {
+  addRetentionDays,
+  SAMPLE_REQUEST_PII_RETENTION_DAYS,
+} from "@/lib/privacy-retention";
 import { resolveSellingTerritoryEligibility } from "@/lib/selling-territory";
 
 const OPEN_SAMPLE_REQUEST_STATUSES = [
@@ -68,6 +72,7 @@ type SampleRequestRecord = {
   deliveredAt: Date | null;
   lastActionReason: string | null;
   auditLog: Array<Record<string, unknown>>;
+  piiPurgedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   listing: {
@@ -107,6 +112,7 @@ function serializeSampleRequest(
   request: SampleRequestRecord,
   actorRole: SampleRequestRole,
 ) {
+  const isPurged = request.piiPurgedAt !== null;
   const canViewAddress = canActorAccessSampleAddress({
     actorRole,
     status: request.status,
@@ -141,7 +147,9 @@ function serializeSampleRequest(
       actorRole,
     }),
     shippingAddress:
-      actorRole === "buyer" || canViewAddress
+      isPurged
+        ? null
+        : actorRole === "buyer" || canViewAddress
         ? {
             name: request.shippingName,
             address1: request.shippingAddress1,
@@ -152,7 +160,8 @@ function serializeSampleRequest(
             phone: request.shippingPhone,
           }
         : null,
-    shippingAddressShared: actorRole === "buyer" || canViewAddress,
+    shippingAddressShared:
+      !isPurged && (actorRole === "buyer" || canViewAddress),
   };
 }
 
@@ -507,14 +516,26 @@ export const sampleRequestRouter = createTRPCRouter({
             updatePayload.approvedAt = occurredAt;
           } else if (input.action === "decline") {
             updatePayload.declinedAt = occurredAt;
+            updatePayload.retentionPurgeAfter = addRetentionDays(
+              occurredAt,
+              SAMPLE_REQUEST_PII_RETENTION_DAYS,
+            );
           } else if (input.action === "cancel") {
             updatePayload.cancelledAt = occurredAt;
+            updatePayload.retentionPurgeAfter = addRetentionDays(
+              occurredAt,
+              SAMPLE_REQUEST_PII_RETENTION_DAYS,
+            );
           } else if (input.action === "ship") {
             updatePayload.shippedAt = occurredAt;
             updatePayload.carrier = input.carrier?.trim() || null;
             updatePayload.trackingNumber = input.trackingNumber?.trim() || null;
           } else if (input.action === "deliver") {
             updatePayload.deliveredAt = occurredAt;
+            updatePayload.retentionPurgeAfter = addRetentionDays(
+              occurredAt,
+              SAMPLE_REQUEST_PII_RETENTION_DAYS,
+            );
           }
         }
 

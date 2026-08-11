@@ -66,6 +66,42 @@ export const publicListingColumns = {
   expiresAt: true,
 } as const;
 
+// Browse cards deliberately avoid description, specification, certification,
+// and document-sized fields. Keep this projection aligned with ListingCard.
+export const publicListingCardColumns = {
+  id: true,
+  sellerId: true,
+  title: true,
+  slug: true,
+  status: true,
+  materialType: true,
+  species: true,
+  sqFtPerBox: true,
+  boxesPerPallet: true,
+  totalSqFt: true,
+  totalPallets: true,
+  moq: true,
+  moqUnit: true,
+  palletWeight: true,
+  palletLength: true,
+  palletWidth: true,
+  palletHeight: true,
+  freightClass: true,
+  locationCity: true,
+  locationState: true,
+  locationZip: true,
+  askPricePerSqFt: true,
+  buyNowPrice: true,
+  condition: true,
+  viewsCount: true,
+  watchlistCount: true,
+  promotionTier: true,
+  promotionExpiresAt: true,
+  lastConfirmedAt: true,
+  confirmationDueAt: true,
+  createdAt: true,
+} as const;
+
 export const publicMediaColumns = {
   id: true,
   url: true,
@@ -76,8 +112,6 @@ export const publicMediaColumns = {
 export const publicSellerColumns = {
   id: true,
   role: true,
-  businessCity: true,
-  businessState: true,
   verificationStatus: true,
   createdAt: true,
   stripeOnboardingComplete: true,
@@ -102,6 +136,7 @@ export const publicReviewColumns = {
 } as const;
 
 type PublicListingKey = keyof typeof publicListingColumns;
+type PublicListingCardKey = keyof typeof publicListingCardColumns;
 type PublicMediaKey = keyof typeof publicMediaColumns;
 type PublicSellerKey = keyof typeof publicSellerColumns;
 type PublicReviewKey = keyof typeof publicReviewColumns;
@@ -114,23 +149,14 @@ export type PublicListingSource = Pick<Listing, PublicListingKey> & {
   seller?: PublicSellerSource | null;
 };
 
-function locationSuffix(user: {
-  businessCity: string | null;
-  businessState: string | null;
-}): string {
-  if (user.businessCity && user.businessState) {
-    return ` in ${user.businessCity}, ${user.businessState}`;
-  }
-  if (user.businessState) return ` in ${user.businessState}`;
-  if (user.businessCity) return ` in ${user.businessCity}`;
-  return "";
-}
+export type PublicListingCardSource = Pick<Listing, PublicListingCardKey> & {
+  media?: Array<Pick<Media, PublicMediaKey>>;
+  seller?: PublicSellerSource | null;
+};
 
 export function getMaskedDisplayName(user: {
   id: string;
   role: User["role"];
-  businessCity: string | null;
-  businessState: string | null;
   verificationStatus?: string;
 }): string {
   if (user.role === "admin") return "PlankMarket Support";
@@ -138,15 +164,13 @@ export function getMaskedDisplayName(user: {
   const roleLabel = getRoleLabel(user.role, user.id);
   const verificationPrefix =
     user.verificationStatus === "verified" ? "Verified " : "";
-  return `${verificationPrefix}${roleLabel}${locationSuffix(user)}`;
+  return `${verificationPrefix}${roleLabel}`;
 }
 
 export function toPublicSeller(user: PublicSellerSource) {
   return {
     id: user.id,
     role: user.role,
-    businessCity: user.businessCity,
-    businessState: user.businessState,
     verified: user.verificationStatus === "verified",
     createdAt: user.createdAt,
     stripeOnboardingComplete: user.stripeOnboardingComplete,
@@ -211,7 +235,9 @@ export function toPublicListing(listing: PublicListingSource) {
     palletHeight: listing.palletHeight,
     nmfcCode: listing.nmfcCode,
     freightClass: listing.freightClass,
-    locationCity: listing.locationCity,
+    // Public inventory is state-level only. The real origin city remains
+    // server-side for carrier quotes and order operations.
+    locationCity: null,
     locationState: listing.locationState,
     freightEstimateStatus,
     askPricePerSqFt: listing.askPricePerSqFt,
@@ -263,12 +289,73 @@ export function toConversationParty(
   return {
     id: user.id,
     role: user.role,
-    businessCity: user.businessCity,
-    businessState: user.businessState,
     verified: user.verificationStatus === "verified",
     identityRevealed: revealIdentity,
     name: revealedName,
     displayName: revealedName || maskedDisplayName,
+    ...(revealIdentity
+      ? {
+          businessCity: user.businessCity,
+          businessState: user.businessState,
+        }
+      : {}),
+  };
+}
+
+export function toPublicListingCard(listing: PublicListingCardSource) {
+  const freightEstimateStatus =
+    listing.palletWeight &&
+    listing.palletLength &&
+    listing.palletWidth &&
+    listing.palletHeight &&
+    listing.locationZip &&
+    listing.locationCity &&
+    listing.locationState &&
+    listing.freightClass &&
+    listing.totalPallets &&
+    listing.sqFtPerBox &&
+    listing.boxesPerPallet &&
+    listing.seller?.businessAddress &&
+    listing.seller.phone
+      ? ("quote_request_ready" as const)
+      : ("seller_setup_required" as const);
+
+  return {
+    id: listing.id,
+    sellerId: listing.sellerId,
+    title: listing.title,
+    slug: listing.slug,
+    status: listing.status,
+    materialType: listing.materialType,
+    species: listing.species,
+    totalSqFt: listing.totalSqFt,
+    moq: listing.moq,
+    moqUnit: listing.moqUnit,
+    locationCity: null,
+    locationState: listing.locationState,
+    freightEstimateStatus,
+    askPricePerSqFt: listing.askPricePerSqFt,
+    buyNowPrice: listing.buyNowPrice,
+    condition: listing.condition,
+    viewsCount: listing.viewsCount,
+    watchlistCount: listing.watchlistCount,
+    promotionTier: listing.promotionTier,
+    promotionExpiresAt: listing.promotionExpiresAt,
+    lastConfirmedAt: listing.lastConfirmedAt,
+    confirmationDueAt: listing.confirmationDueAt,
+    freshnessStatus: getListingFreshnessStatus({
+      lastConfirmedAt: listing.lastConfirmedAt,
+      confirmationDueAt: listing.confirmationDueAt,
+    }),
+    createdAt: listing.createdAt,
+    media:
+      listing.media?.map((item) => ({
+        id: item.id,
+        url: item.url,
+        altText: item.altText,
+        sortOrder: item.sortOrder,
+      })) ?? [],
+    seller: listing.seller ? toPublicSeller(listing.seller) : null,
   };
 }
 

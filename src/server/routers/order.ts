@@ -30,10 +30,13 @@ import {
 } from "@/server/services/inventory-reservation";
 import { canSellerUpdateOrderStatus } from "@/server/services/order-transitions";
 import {
-  getShippingBookingSnapshotKey,
+  getShippingBookingSnapshotKeyByToken,
+  getShippingQuoteTokenKey,
   getSellerFreightFundingIneligibilityReason,
   freightFundingMatchesQuotedTerms,
-  SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
+  isQuoteBookable,
+  quoteArtifactTtlSeconds,
+  SHIPPING_OFFER_BOOKABILITY_BUFFER_MS,
   requireShippingStateMatchesZip,
   resolveListingFreightFunding,
   shippingBookingSnapshotSchema,
@@ -52,11 +55,16 @@ import {
   type CommercialPolicy,
 } from "@/lib/commercial-policy";
 import {
+  addRetentionDays,
+  SHIPPING_ADDRESS_RETENTION_DAYS,
+} from "@/lib/privacy-retention";
+import {
   calculateOrderTax,
   TaxReadinessError,
   type CalculateOrderTaxInput,
 } from "@/server/services/stripe-tax";
 import { validateThenCompareDeletePair } from "@/server/services/verified-artifact-consumption";
+import { assertSellerPayoutReadyForOrderReservation } from "@/server/services/seller-payout-readiness";
 
 type DbExecutor =
   | Database
@@ -375,6 +383,7 @@ function parseRedisJsonValue(
 
 async function consumeAcceptedOfferShippingArtifacts<T>(params: {
   selectedQuoteToken?: string;
+  /** @deprecated Ignored — consume is token-only to avoid shared quoteId races. */
   selectedQuoteId?: string;
   buyerId: string;
   listingId: string;
@@ -404,19 +413,26 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
     destinationState: string;
   };
   validationResult: T;
+  /** Restore Redis artifacts if the DB transaction fails after CAS-delete. */
+  restoreArtifacts: {
+    quoteKey: string;
+    quoteValue: string;
+    snapshotKey: string;
+    snapshotValue: string;
+    quoteExpiresAt: Date;
+  };
 }> {
-  const quoteKey = params.selectedQuoteToken
-    ? `shipping-quote-token:${params.selectedQuoteToken}`
-    : params.selectedQuoteId
-      ? `shipping-quote:${params.selectedQuoteId}`
-      : null;
-
-  if (!quoteKey) {
+  if (!params.selectedQuoteToken) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "A valid shipping quote is required before checkout.",
     });
   }
+
+  const quoteKey = getShippingQuoteTokenKey(params.selectedQuoteToken);
+  const snapshotKey = getShippingBookingSnapshotKeyByToken(
+    params.selectedQuoteToken,
+  );
 
   const cachedQuote = await redis.get(quoteKey);
   if (!cachedQuote) {
@@ -473,7 +489,11 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
   if (
     !quote.quoteExpiresAt ||
     Number.isNaN(new Date(quote.quoteExpiresAt).getTime()) ||
-    new Date(quote.quoteExpiresAt) <= new Date()
+    !isQuoteBookable(
+      quote.quoteExpiresAt,
+      Date.now(),
+      SHIPPING_OFFER_BOOKABILITY_BUFFER_MS,
+    )
   ) {
     throw new TRPCError({
       code: "BAD_REQUEST",
@@ -483,7 +503,6 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
 
   const quoteId = String(quote.quoteId);
   const quoteExpiresAt = new Date(quote.quoteExpiresAt);
-  const snapshotKey = getShippingBookingSnapshotKey(quoteId);
   const cachedSnapshot = await redis.get(snapshotKey);
   if (!cachedSnapshot) {
     throw new TRPCError({
@@ -518,8 +537,11 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
     bookingSnapshot.transitDays === quote.transitDays &&
     new Date(bookingSnapshot.quoteExpiresAt).getTime() ===
       quoteExpiresAt.getTime() &&
-    quoteExpiresAt.getTime() >
-      Date.now() + SHIPPING_DISPATCH_SAFETY_BUFFER_MS;
+    isQuoteBookable(
+      quoteExpiresAt,
+      Date.now(),
+      SHIPPING_OFFER_BOOKABILITY_BUFFER_MS,
+    );
   if (!matchesVerifiedQuote) {
     throw new TRPCError({
       code: "BAD_REQUEST",
@@ -570,7 +592,30 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
       destinationState: quote.destinationState,
     },
     validationResult: consumption.validationResult,
+    restoreArtifacts: {
+      quoteKey,
+      quoteValue: rawQuoteString,
+      snapshotKey,
+      snapshotValue: rawSnapshotString,
+      quoteExpiresAt,
+    },
   };
+}
+
+async function restoreConsumedShippingArtifacts(params: {
+  quoteKey: string;
+  quoteValue: string;
+  snapshotKey: string;
+  snapshotValue: string;
+  quoteExpiresAt: Date;
+}): Promise<void> {
+  // Never restore unbookable/expired artifacts — buyer must re-quote.
+  const ttlSeconds = quoteArtifactTtlSeconds(params.quoteExpiresAt);
+  if (ttlSeconds == null || ttlSeconds <= 0) return;
+  await Promise.all([
+    redis.set(params.quoteKey, params.quoteValue, { ex: ttlSeconds }),
+    redis.set(params.snapshotKey, params.snapshotValue, { ex: ttlSeconds }),
+  ]);
 }
 
 async function saveShippingAddressBestEffort(params: {
@@ -584,6 +629,12 @@ async function saveShippingAddressBestEffort(params: {
   phone?: string;
 }): Promise<void> {
   try {
+    const now = new Date();
+    const retentionPurgeAfter = addRetentionDays(
+      now,
+      SHIPPING_ADDRESS_RETENTION_DAYS,
+    );
+
     await params.db.transaction(async (tx) => {
       await tx.execute(sql`set local statement_timeout = '2000ms'`);
       await tx.execute(sql`set local lock_timeout = '1500ms'`);
@@ -601,7 +652,17 @@ async function saveShippingAddressBestEffort(params: {
           ),
         )
         .limit(1);
-      if (existing) return;
+      if (existing) {
+        await tx
+          .update(shippingAddresses)
+          .set({
+            lastUsedAt: now,
+            retentionPurgeAfter,
+            updatedAt: now,
+          })
+          .where(eq(shippingAddresses.id, existing.id));
+        return;
+      }
 
       await tx.insert(shippingAddresses).values({
         userId: params.userId,
@@ -613,6 +674,8 @@ async function saveShippingAddressBestEffort(params: {
         zip: params.zip,
         phone: params.phone ?? null,
         isDefault: false,
+        lastUsedAt: now,
+        retentionPurgeAfter,
       });
     });
   } catch {
@@ -625,7 +688,12 @@ export const orderRouter = createTRPCRouter({
   create: strictVerifiedBuyerProcedure
     .input(createOrderSchema)
     .mutation(async ({ ctx, input }) => {
-      const order = await ctx.db.transaction(async (tx) => {
+      let restoreArtifacts: Awaited<
+        ReturnType<typeof consumeAcceptedOfferShippingArtifacts>
+      >["restoreArtifacts"] | null = null;
+      let order;
+      try {
+      order = await ctx.db.transaction(async (tx) => {
         await enforcePendingOrderLimit(tx, ctx.user.id);
 
         // Lock the listing row to prevent concurrent purchases (SELECT ... FOR UPDATE)
@@ -707,6 +775,8 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
+        await assertSellerPayoutReadyForOrderReservation(tx, listing.sellerId);
+
         const resolvedListingPrice = resolveListingUnitPrice({
           baseUnitPrice: listing.buyNowPrice ?? listing.askPricePerSqFt,
           availableQuantity: listing.totalSqFt,
@@ -744,6 +814,7 @@ export const orderRouter = createTRPCRouter({
             feeBreakdown,
             checkoutTax,
           },
+          restoreArtifacts: consumedRestore,
         } = await consumeAcceptedOfferShippingArtifacts({
           selectedQuoteToken: input.selectedQuoteToken,
           selectedQuoteId: input.selectedQuoteId,
@@ -800,6 +871,7 @@ export const orderRouter = createTRPCRouter({
             return { freightFunding, feeBreakdown, checkoutTax };
           },
         });
+        restoreArtifacts = consumedRestore;
 
         // Create the order within the transaction
         const [newOrder] = await tx
@@ -860,6 +932,19 @@ export const orderRouter = createTRPCRouter({
 
         return newOrder;
       });
+      } catch (error) {
+        if (restoreArtifacts) {
+          await restoreConsumedShippingArtifacts(restoreArtifacts).catch(
+            (restoreError) => {
+              console.error(
+                "Failed to restore shipping quote artifacts after order create failure",
+                restoreError,
+              );
+            },
+          );
+        }
+        throw error;
+      }
 
       await saveShippingAddressBestEffort({
         db: ctx.db,
@@ -889,7 +974,12 @@ export const orderRouter = createTRPCRouter({
   createFromOffer: strictVerifiedBuyerProcedure
     .input(createOrderFromOfferSchema)
     .mutation(async ({ ctx, input }) => {
-      const order = await ctx.db.transaction(async (tx) => {
+      let restoreArtifacts: Awaited<
+        ReturnType<typeof consumeAcceptedOfferShippingArtifacts>
+      >["restoreArtifacts"] | null = null;
+      let order;
+      try {
+      order = await ctx.db.transaction(async (tx) => {
         await enforcePendingOrderLimit(tx, ctx.user.id);
 
         // Lock offer row with FOR UPDATE
@@ -1019,6 +1109,8 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
+        await assertSellerPayoutReadyForOrderReservation(tx, listing.sellerId);
+
         // Price and freight funding are both locked before the quote artifacts
         // are atomically consumed, so a business-rule rejection remains
         // retryable with the same verified quote.
@@ -1045,6 +1137,7 @@ export const orderRouter = createTRPCRouter({
             feeBreakdown,
             checkoutTax,
           },
+          restoreArtifacts: consumedRestore,
         } = await consumeAcceptedOfferShippingArtifacts({
           selectedQuoteToken: input.selectedQuoteToken,
           selectedQuoteId: input.selectedQuoteId,
@@ -1098,6 +1191,7 @@ export const orderRouter = createTRPCRouter({
             return { freightFunding, feeBreakdown, checkoutTax };
           },
         });
+        restoreArtifacts = consumedRestore;
 
         // Create the order with offerId linked
         const [newOrder] = await tx
@@ -1167,6 +1261,19 @@ export const orderRouter = createTRPCRouter({
 
         return newOrder;
       });
+      } catch (error) {
+        if (restoreArtifacts) {
+          await restoreConsumedShippingArtifacts(restoreArtifacts).catch(
+            (restoreError) => {
+              console.error(
+                "Failed to restore shipping quote artifacts after offer order create failure",
+                restoreError,
+              );
+            },
+          );
+        }
+        throw error;
+      }
 
       await saveShippingAddressBestEffort({
         db: ctx.db,

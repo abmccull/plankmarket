@@ -2,25 +2,23 @@
 
 import { trpc } from "@/lib/trpc/client";
 import { ConversationListItem } from "@/components/messaging/conversation-list-item";
-import { Loader2, MessageSquare } from "lucide-react";
+import {
+  QueryErrorState,
+  StatePanel,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
+import { MessageSquare } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 
 export default function MessagesPage() {
   const { user } = useAuthStore();
-  const { data, isLoading } = trpc.message.getMyConversations.useQuery({
-    page: 1,
-    limit: 50,
-  });
+  const { data, isLoading, isError, isFetching, refetch } =
+    trpc.message.getMyConversations.useQuery({
+      page: 1,
+      limit: 50,
+    });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const conversations = data?.conversations || [];
+  const conversations = data?.conversations ?? [];
 
   return (
     <div className="space-y-6">
@@ -31,21 +29,33 @@ export default function MessagesPage() {
         </p>
       </div>
 
-      {conversations.length === 0 ? (
-        <div className="text-center py-12 border rounded-lg bg-muted/20">
-          <MessageSquare className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold">No conversations yet</h3>
-          <p className="text-muted-foreground mt-1">
-            Start a conversation from a listing page by contacting the seller.
-          </p>
-        </div>
+      {isLoading ? (
+        <StatePanelLoading label="Loading your conversations" rows={4} />
+      ) : isError || !data ? (
+        <QueryErrorState
+          title="We couldn't load your messages"
+          description="Your conversations have not been changed. Check your connection and try again."
+          onRetry={() => void refetch()}
+          isRetrying={isFetching}
+          secondaryAction={{ label: "Browse listings", href: "/listings" }}
+        />
+      ) : conversations.length === 0 ? (
+        <StatePanel
+          icon={MessageSquare}
+          title="No conversations yet"
+          description="Questions about a lot, freight, or availability? Open a listing and contact the seller to keep the details in one place."
+          primaryAction={{ label: "Browse listings", href: "/listings" }}
+        />
       ) : (
-        <div className="space-y-2">
+        <nav className="space-y-2" aria-label="Marketplace conversations">
           {conversations.map((conversation) => {
             // Determine the other party (not the current user)
             const isBuyer = conversation.buyerId === user?.id;
-            const otherParty = isBuyer ? conversation.seller : conversation.buyer;
-            const otherPartyName = otherParty?.displayName ?? "Unknown";
+            const otherParty = isBuyer
+              ? conversation.seller
+              : conversation.buyer;
+            const otherPartyName =
+              otherParty?.displayName ?? "Marketplace member";
 
             // Get last message
             const lastMessage = conversation.messages?.[0];
@@ -76,7 +86,7 @@ export default function MessagesPage() {
               />
             );
           })}
-        </div>
+        </nav>
       )}
     </div>
   );

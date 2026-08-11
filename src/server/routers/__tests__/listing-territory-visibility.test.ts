@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
+
 process.env.SKIP_ENV_VALIDATION = "1";
 process.env.DATABASE_URL ??=
   "postgresql://postgres:postgres@localhost:5432/plankmarket_test";

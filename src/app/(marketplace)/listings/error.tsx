@@ -28,7 +28,7 @@ export default function ListingsError({
   return (
     <div className="container mx-auto flex min-h-[60vh] items-center justify-center px-4 py-12">
       <Card className="w-full max-w-lg">
-        <CardHeader>
+        <CardHeader role="alert" aria-live="assertive">
           <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
             <AlertTriangle className="h-5 w-5" aria-hidden="true" />
           </div>
@@ -36,8 +36,9 @@ export default function ListingsError({
             Marketplace temporarily unavailable
           </h1>
           <CardDescription>
-            We could not load current inventory. Your filters are still safe;
-            retry the request or return to the unfiltered marketplace.
+            We could not load current public inventory. Pricing, freshness, and
+            freight evidence were not refreshed. Retry the request or return to
+            the broad marketplace view.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row">

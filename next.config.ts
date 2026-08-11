@@ -75,6 +75,7 @@ const nextConfig: NextConfig = {
               "object-src 'none'",
               "frame-ancestors 'none'",
               `script-src ${scriptSources}`,
+              "script-src-attr 'none'",
               "frame-src https://js.stripe.com https://hooks.stripe.com https://connect-js.stripe.com https://*.stripe.com https://*.stripe.network",
               "img-src 'self' https://utfs.io https://uploadthing.com https://*.ufs.sh https://*.supabase.co https://images.unsplash.com https://*.stripe.com data: blob:",
               "style-src 'self' 'unsafe-inline'",

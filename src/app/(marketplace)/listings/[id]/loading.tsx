@@ -3,7 +3,22 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function ListingDetailLoading() {
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div
+      className="container mx-auto px-4 py-8"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading public listing details"
+    >
+      <div className="mb-6 max-w-2xl space-y-2">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Loading listing
+        </p>
+        <h1 className="text-2xl font-semibold">Checking current seller and freight evidence</h1>
+        <p className="text-sm text-muted-foreground">
+          Public pricing, photos, freshness, and freight readiness are still loading.
+          Delivered cost is never shown until freight details are available.
+        </p>
+      </div>
       <Skeleton className="h-8 w-24 mb-6" />
 
       <div className="grid lg:grid-cols-3 gap-8">

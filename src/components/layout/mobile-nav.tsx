@@ -41,10 +41,67 @@ interface NavItem {
   badge?: string;
 }
 
+const protectedNavPrefixes = [
+  "/admin",
+  "/buyer",
+  "/messages",
+  "/notifications",
+  "/offers",
+  "/preferences",
+  "/seller",
+  "/settings/agent",
+  "/settings/subscription",
+];
+
+function isProtectedNavRoute(pathname: string) {
+  return protectedNavPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+interface ProtectedNavShellProps {
+  title: string;
+  description: string;
+}
+
+function ProtectedNavShell({ title, description }: ProtectedNavShellProps) {
+  return (
+    <nav className="flex h-full flex-col" aria-label="Mobile navigation">
+      <div className="mb-4">
+        <Logo variant="full" size="sm" />
+      </div>
+      <div
+        role="status"
+        aria-live="polite"
+        className="rounded-2xl border border-border/60 bg-gradient-to-br from-background via-background to-muted/30 p-4 shadow-sm"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <LayoutDashboard className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">{title}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {description}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex-1 space-y-2" aria-hidden="true">
+        <div className="h-11 animate-pulse rounded-xl bg-muted/60" />
+        <div className="h-11 animate-pulse rounded-xl bg-muted/50" />
+        <div className="h-11 animate-pulse rounded-xl bg-muted/40" />
+        <div className="h-11 animate-pulse rounded-xl bg-muted/30" />
+      </div>
+    </nav>
+  );
+}
+
 export function MobileNav() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
+  const isProtectedRoute = isProtectedNavRoute(pathname);
 
   const utils = trpc.useUtils();
 
@@ -57,6 +114,24 @@ export function MobileNav() {
     router.push("/");
     router.refresh();
   };
+
+  if (isProtectedRoute && isLoading) {
+    return (
+      <ProtectedNavShell
+        title="Checking access"
+        description="We’re syncing your dashboard session before showing protected navigation."
+      />
+    );
+  }
+
+  if (isProtectedRoute && !user) {
+    return (
+      <ProtectedNavShell
+        title="Secure dashboard"
+        description="Your session is being handed back to sign in so the protected workspace stays accurate."
+      />
+    );
+  }
 
   // Define navigation items based on user role
   const getNavItems = (): NavItem[] => {
@@ -84,7 +159,7 @@ export function MobileNav() {
     const isOnAdminRoute = pathname.startsWith("/admin");
     const isOnSellerRoute = pathname.startsWith("/seller");
     const isOnBuyerRoute = pathname.startsWith("/buyer");
-    const isSeller = user.role === "seller" || isOnSellerRoute;
+    const isSeller = user.role === "seller";
 
     if (isAdminUser && isOnAdminRoute) {
       return [
@@ -102,7 +177,7 @@ export function MobileNav() {
     // Default to seller items on shared routes (/messages, /preferences, etc.)
     if (isAdminUser) {
       const adminPanelItem: NavItem = { title: "Admin Panel", href: "/admin", icon: Shield };
-      if (isSeller || !isOnBuyerRoute) {
+      if (isOnSellerRoute || !isOnBuyerRoute) {
         return [
           adminPanelItem,
           { title: "Dashboard", href: "/seller", icon: LayoutDashboard },

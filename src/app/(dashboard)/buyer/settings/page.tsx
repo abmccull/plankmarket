@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -328,6 +329,34 @@ export default function BuyerSettingsPage() {
               </Button>
             </form>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Security</CardTitle>
+          <CardDescription>
+            Add an authenticator app now if you want a faster step-up path later.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Authenticator status</span>
+            <span>
+              {user?.assurance?.hasVerifiedTotp ? "Configured" : "Not configured"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Current assurance</span>
+            <span className="uppercase">
+              {user?.assurance?.currentLevel ?? "aal1"}
+            </span>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/mfa?intent=manage&next=/buyer/settings">
+              Manage authenticator
+            </Link>
+          </Button>
         </CardContent>
       </Card>
 

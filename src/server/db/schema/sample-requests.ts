@@ -58,6 +58,10 @@ export const sampleRequests = pgTable(
       .$type<Array<Record<string, unknown>>>()
       .default([])
       .notNull(),
+    retentionPurgeAfter: timestamp("retention_purge_after", {
+      withTimezone: true,
+    }),
+    piiPurgedAt: timestamp("pii_purged_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -70,6 +74,9 @@ export const sampleRequests = pgTable(
     index("sample_requests_buyer_id_idx").on(table.buyerId),
     index("sample_requests_seller_id_idx").on(table.sellerId),
     index("sample_requests_status_idx").on(table.status, table.createdAt),
+    index("sample_requests_retention_purge_after_idx").on(
+      table.retentionPurgeAfter,
+    ),
   ],
 );
 

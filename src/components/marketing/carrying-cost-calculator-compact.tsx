@@ -62,10 +62,13 @@ export function CarryingCostCalculatorCompact() {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-sm">Months holding</Label>
+              <Label id="compact-months-label" className="text-sm">
+                Months holding
+              </Label>
               <span className="text-xs font-semibold tabular-nums text-primary">{months}mo</span>
             </div>
             <Slider
+              aria-labelledby="compact-months-label"
               value={[months]}
               onValueChange={([v]) => setMonths(v)}
               min={1}

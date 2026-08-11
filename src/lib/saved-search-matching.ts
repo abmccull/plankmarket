@@ -26,6 +26,42 @@ export interface SavedSearchMatchListing {
   certifications?: readonly string[] | null;
   totalSqFt: number;
   brand?: string | null;
+  sellerVerificationStatus?: string | null;
+  businessAddress?: string | null;
+  phone?: string | null;
+  locationCity?: string | null;
+  locationZip?: string | null;
+  freightClass?: string | null;
+  totalPallets?: number | null;
+  sqFtPerBox?: number | null;
+  boxesPerPallet?: number | null;
+  palletWeight?: number | null;
+  palletLength?: number | null;
+  palletWidth?: number | null;
+  palletHeight?: number | null;
+  fullLotOnly?: boolean | null;
+}
+
+function hasText(value: string | null | undefined): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isPublicFreightQuoteReady(listing: SavedSearchMatchListing): boolean {
+  return Boolean(
+    listing.palletWeight != null &&
+      listing.palletLength != null &&
+      listing.palletWidth != null &&
+      listing.palletHeight != null &&
+      hasText(listing.locationZip) &&
+      hasText(listing.locationCity) &&
+      hasText(listing.locationState) &&
+      hasText(listing.freightClass) &&
+      listing.totalPallets != null &&
+      listing.sqFtPerBox != null &&
+      listing.boxesPerPallet != null &&
+      hasText(listing.businessAddress) &&
+      hasText(listing.phone),
+  );
 }
 
 function includesSelected(
@@ -152,6 +188,24 @@ export function listingMatchesSavedSearch(
   if (
     filters.maxLotSize !== undefined &&
     listing.totalSqFt > filters.maxLotSize
+  ) {
+    return false;
+  }
+
+  if (
+    filters.sellerVerified === true &&
+    listing.sellerVerificationStatus !== "verified"
+  ) {
+    return false;
+  }
+
+  if (filters.freightReady === true && !isPublicFreightQuoteReady(listing)) {
+    return false;
+  }
+
+  if (
+    filters.fullLotOnly !== undefined &&
+    Boolean(listing.fullLotOnly) !== filters.fullLotOnly
   ) {
     return false;
   }

@@ -42,9 +42,16 @@ export function SaveSearchDialog({
 
   const handleSave = async () => {
     try {
+      const persistableFilters = {
+        ...filters,
+        sellerVerified:
+          filters.sellerVerified === true ? (true as const) : undefined,
+        freightReady:
+          filters.freightReady === true ? (true as const) : undefined,
+      };
       await saveSearch.mutateAsync({
         name: name.trim(),
-        filters,
+        filters: persistableFilters,
         alertEnabled: true,
       });
       toast.success("Saved search created");

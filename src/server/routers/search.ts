@@ -1,6 +1,6 @@
 import {
   createTRPCRouter,
-  publicProcedure,
+  publicReadProcedure,
   protectedProcedure,
 } from "../trpc";
 import { savedSearches, listings } from "../db/schema";
@@ -11,6 +11,18 @@ import { listingFilterSchema } from "@/lib/validators/listing";
 import type { SearchFilters } from "@/types";
 import { isPro, FREE_LIMITS } from "@/lib/pro";
 import { publicActiveListingWhere } from "@/server/security/listing-visibility";
+import {
+  buildPublicReadCacheKey,
+  readPublicReadCache,
+  writePublicReadCache,
+} from "@/server/services/public-read-cache";
+
+type FacetCount = { value: string | null; count: number };
+type SearchFacetResponse = {
+  materialType: FacetCount[];
+  condition: FacetCount[];
+  state: FacetCount[];
+};
 
 export const searchRouter = createTRPCRouter({
   // Save a search
@@ -121,7 +133,15 @@ export const searchRouter = createTRPCRouter({
     }),
 
   // Get search facet counts (for filter sidebar)
-  getFacets: publicProcedure.query(async ({ ctx }) => {
+  getFacets: publicReadProcedure.query(async ({ ctx }) => {
+    const anonymousCacheKey = ctx.user
+      ? null
+      : buildPublicReadCacheKey("search-facets", null);
+    const cached = await readPublicReadCache<SearchFacetResponse>(
+      anonymousCacheKey,
+    );
+    if (cached) return cached;
+
     const { db } = ctx;
     const visibleListings = publicActiveListingWhere(new Date(), ctx.user);
 
@@ -154,10 +174,12 @@ export const searchRouter = createTRPCRouter({
         .groupBy(listings.locationState),
     ]);
 
-    return {
+    const response: SearchFacetResponse = {
       materialType: materialCounts,
       condition: conditionCounts,
       state: stateCounts,
     };
+    await writePublicReadCache(anonymousCacheKey, response, 60);
+    return response;
   }),
 });

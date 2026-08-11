@@ -30,6 +30,21 @@ import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { OrderStatus } from "@/types";
 
+function formatPaymentStatusLabel(paymentStatus: string | null): string {
+  switch (paymentStatus) {
+    case "refund_pending":
+      return "Refund Pending";
+    case "partially_refunded":
+      return "Partially Refunded";
+    case "reconciliation_required":
+      return "Needs Reconciliation";
+    case "succeeded":
+      return "Paid";
+    default:
+      return paymentStatus ?? "Unknown";
+  }
+}
+
 interface Order {
   id: string;
   orderNumber: string;
@@ -61,8 +76,14 @@ export default function AdminOrdersPage() {
   const [refundAmountCents, setRefundAmountCents] = useState<string>("");
 
   const forceCancelMutation = trpc.admin.forceCancelOrder.useMutation({
-    onSuccess: () => {
-      toast.success("Order force-cancelled successfully");
+    onSuccess: (data) => {
+      if (data.refundState === "refund_pending") {
+        toast.success("Order cancelled. Refund is pending Stripe confirmation.");
+      } else if (data.refundState === "reconciliation_required") {
+        toast.error("Order cancelled, but the refund needs manual reconciliation.");
+      } else {
+        toast.success("Order force-cancelled successfully");
+      }
       utils.admin.getOrders.invalidate();
       setCancelDialogOpen(false);
       setCancelReason("");
@@ -74,7 +95,17 @@ export default function AdminOrdersPage() {
 
   const refundMutation = trpc.admin.refundOrder.useMutation({
     onSuccess: (data) => {
-      toast.success(`Refund of $${data.amountRefunded.toFixed(2)} processed`);
+      if (data.refundState === "refund_pending") {
+        toast.success(
+          `Refund of $${data.amountRefunded.toFixed(2)} is pending Stripe confirmation`,
+        );
+      } else if (data.refundState === "reconciliation_required") {
+        toast.error(
+          `Refund of $${data.amountRefunded.toFixed(2)} requires manual reconciliation`,
+        );
+      } else {
+        toast.success(`Refund of $${data.amountRefunded.toFixed(2)} processed`);
+      }
       utils.admin.getOrders.invalidate();
       setRefundDialogOpen(false);
       setRefundReason("");
@@ -118,6 +149,15 @@ export default function AdminOrdersPage() {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => <OrderStatusBadge status={row.original.status} />,
+    },
+    {
+      accessorKey: "paymentStatus",
+      header: "Payment",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {formatPaymentStatusLabel(row.original.paymentStatus)}
+        </span>
+      ),
     },
     {
       accessorKey: "createdAt",
@@ -251,7 +291,8 @@ export default function AdminOrdersPage() {
             <AlertDialogTitle>Refund Order</AlertDialogTitle>
             <AlertDialogDescription>
               Issue a refund for order {selectedOrder?.orderNumber}. The refund
-              will be processed through Stripe and the buyer will be notified.
+              will be submitted to Stripe. Buyer and seller confirmation is only
+              sent after Stripe confirms the refund succeeded.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 py-2">

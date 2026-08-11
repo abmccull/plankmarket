@@ -28,7 +28,15 @@
     "0023_order_freight_funding.sql",
     "0024_marketplace_control_plane.sql",
     "0025_inventory_integrations.sql",
-    "0026_tax_readiness.sql"
+    "0026_tax_readiness.sql",
+    "0027_search_and_analytics_perf.sql",
+    "0028_comms_and_ops_query_indexes.sql",
+    "0029_payment_intent_preparation_claim.sql",
+    "0030_stripe_webhook_durable_inbox.sql",
+    "0031_shipment_cancellation_queue.sql",
+    "0032_media_deletion_claims.sql",
+    "0033_security_privacy_and_tenancy.sql",
+    "0034_shipment_bol_number.sql"
   ],
   "forwardMigrations": [
     "0014_auth_data_hardening.sql",
@@ -43,6 +51,14 @@
     "0023_order_freight_funding.sql",
     "0024_marketplace_control_plane.sql",
     "0025_inventory_integrations.sql",
-    "0026_tax_readiness.sql"
+    "0026_tax_readiness.sql",
+    "0027_search_and_analytics_perf.sql",
+    "0028_comms_and_ops_query_indexes.sql",
+    "0029_payment_intent_preparation_claim.sql",
+    "0030_stripe_webhook_durable_inbox.sql",
+    "0031_shipment_cancellation_queue.sql",
+    "0032_media_deletion_claims.sql",
+    "0033_security_privacy_and_tenancy.sql",
+    "0034_shipment_bol_number.sql"
   ]
 }

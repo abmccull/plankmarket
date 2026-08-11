@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
-import { createServerCaller } from "@/lib/trpc/server";
 import { getAllContent } from "@/lib/blog";
+import { listPublicListingSitemapEntries } from "@/server/public/listing-reads";
+
+export const revalidate = 3600;
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.plankmarket.com";
 
@@ -36,10 +38,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic listing pages
   let listingPages: MetadataRoute.Sitemap = [];
   try {
-    const caller = await createServerCaller();
-    const data = await caller.listing.list({ page: 1, limit: 1000 });
-    listingPages = data.items.map((listing) => ({
-      url: `${BASE_URL}/listings/${listing.id}`,
+    const entries = await listPublicListingSitemapEntries();
+    listingPages = entries.map((listing) => ({
+      url: `${BASE_URL}/listings/${listing.slug || listing.id}`,
       lastModified: new Date(listing.updatedAt ?? listing.createdAt),
       changeFrequency: "weekly" as const,
       priority: 0.8,

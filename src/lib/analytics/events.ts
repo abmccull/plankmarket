@@ -6,6 +6,7 @@ import type {
 } from "@/types";
 import { getPostHogServer } from "./posthog-server";
 import type { SearchGapAnalyticsContext } from "@/lib/marketplace/search-gap";
+import { sanitizeAnalyticsProperties } from "./privacy";
 
 // Event property interfaces
 export interface ListingViewedProperties {
@@ -189,7 +190,8 @@ export type PlankMarketEvent =
 export function track<T extends PlankMarketEvent>(
   distinctId: string,
   event: T["event"],
-  properties: T["properties"]
+  properties: T["properties"],
+  consentGranted = false,
 ): void {
   if (typeof window !== "undefined") {
     console.warn(
@@ -197,10 +199,15 @@ export function track<T extends PlankMarketEvent>(
     );
     return;
   }
+  if (!consentGranted) {
+    return;
+  }
 
   getPostHogServer()?.capture({
     distinctId,
     event,
-    properties: properties as unknown as Record<string, unknown>,
+    properties: sanitizeAnalyticsProperties(
+      properties as unknown as Record<string, unknown>,
+    ),
   });
 }

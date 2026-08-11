@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Truck, Calculator } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { Truck } from "lucide-react";
 
 interface FreightEstimateProps {
   originZip: string;
@@ -18,56 +17,29 @@ export function FreightEstimate({
   weightLbs = 1000,
 }: FreightEstimateProps) {
   const [destinationZip, setDestinationZip] = useState("");
-  const [estimate, setEstimate] = useState<{
-    min: number;
-    max: number;
-  } | null>(null);
-  const [isCalculating, setIsCalculating] = useState(false);
-
-  const calculateEstimate = () => {
-    if (!destinationZip || destinationZip.length < 5) {
-      return;
-    }
-
-    setIsCalculating(true);
-
-    // Simple distance estimation based on ZIP code difference
-    // In production, this would use a real freight API
-    const originNum = parseInt(originZip.slice(0, 5));
-    const destNum = parseInt(destinationZip.slice(0, 5));
-    const zipDiff = Math.abs(originNum - destNum);
-
-    // Rough distance factor (1 zip unit ≈ 10 miles)
-    const estimatedMiles = zipDiff * 10;
-
-    // Base rate + distance factor + weight factor
-    const baseRate = 150;
-    const perMileRate = 0.75;
-    const weightFactor = (weightLbs / 1000) * 50;
-
-    const minEstimate = baseRate + estimatedMiles * perMileRate + weightFactor;
-    const maxEstimate = minEstimate * 1.4;
-
-    setTimeout(() => {
-      setEstimate({
-        min: Math.round(minEstimate),
-        max: Math.round(maxEstimate),
-      });
-      setIsCalculating(false);
-    }, 500);
-  };
+  const [preparedDestinationZip, setPreparedDestinationZip] = useState<
+    string | null
+  >(null);
+  const normalizedDestinationZip = destinationZip.trim();
+  const hasValidDestinationZip = /^\d{5}(?:-\d{4})?$/.test(
+    normalizedDestinationZip,
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    calculateEstimate();
+    if (!hasValidDestinationZip) {
+      return;
+    }
+
+    setPreparedDestinationZip(normalizedDestinationZip);
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
           <Truck className="h-5 w-5" />
-          Freight Estimate
+          Freight Quote
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -102,33 +74,33 @@ export function FreightEstimate({
           <Button
             type="submit"
             className="w-full"
-            disabled={
-              !destinationZip || destinationZip.length < 5 || isCalculating
-            }
+            disabled={!hasValidDestinationZip}
           >
-            <Calculator className="mr-2 h-4 w-4" />
-            {isCalculating ? "Calculating..." : "Calculate Estimate"}
+            Review quote steps
           </Button>
         </form>
 
-        {estimate && (
-          <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
-            <div className="text-sm font-medium">Estimated Freight Cost</div>
-            <div className="text-2xl font-bold">
-              {formatCurrency(estimate.min)} - {formatCurrency(estimate.max)}
+        {preparedDestinationZip && (
+          <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
+            <div className="text-sm font-medium">
+              Exact freight quote available at checkout
             </div>
+            <p className="text-sm text-muted-foreground">
+              Use ZIP {preparedDestinationZip} during authenticated checkout to
+              request live Priority1 carrier quotes before payment.
+            </p>
             <p className="text-xs text-muted-foreground">
-              This is a rough estimate only. Actual freight costs may vary based
-              on carrier, delivery timeline, accessibility, and other factors.
-              Contact the seller for an accurate quote.
+              Carrier pricing depends on pallet count, shipment weight,
+              dimensions, accessorials, and delivery timing. This page does not
+              invent a freight rate.
             </p>
           </div>
         )}
 
         {weightLbs && (
           <p className="text-xs text-muted-foreground">
-            Estimate based on approximate weight of {weightLbs.toLocaleString()}{" "}
-            lbs
+            Carrier quotes also use the seller&apos;s pallet data and the
+            approximate shipment weight of {weightLbs.toLocaleString()} lbs.
           </p>
         )}
       </CardContent>

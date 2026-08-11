@@ -53,7 +53,9 @@ export default function ContactPage() {
               Get in Touch
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Reach out to the PlankMarket team with questions, feedback, or partnership inquiries. We typically respond within 24 hours.
+              Reach out to the PlankMarket team with questions, feedback, or
+              partnership inquiries. We will reply as soon as the team can
+              review your request.
             </p>
             <p className="mt-4 text-sm text-muted-foreground">
               <strong>Tip:</strong> For order-related inquiries, please include your order number in the subject line for faster response.
@@ -199,7 +201,7 @@ export default function ContactPage() {
                     <span>Closed</span>
                   </div>
                   <p className="pt-2 text-xs">
-                    We strive to respond to all inquiries within 24 hours. Response times may be longer during weekends and holidays.
+                    Response time depends on request volume and business hours.
                   </p>
                 </div>
               </CardContent>

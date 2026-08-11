@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import {
   ListingEvidence,
+  getListingEvidenceStatusBadge,
   type FreightEstimateStatus,
 } from "@/components/listings/listing-evidence";
 import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
@@ -21,7 +22,13 @@ import { cn } from "@/lib/utils";
 import { Eye, Heart, Package } from "lucide-react";
 import type { PromotionTier } from "@/types";
 
-type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
+type BadgeVariant =
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning";
 
 interface ListingCardProps {
   listing: {
@@ -51,8 +58,6 @@ interface ListingCardProps {
       displayName: string;
       verified: boolean;
       role: string;
-      businessCity?: string | null;
-      businessState: string | null;
     } | null;
   };
   onWatchlistToggle?: (listingId: string) => void;
@@ -81,23 +86,45 @@ const conditionLabels: Record<string, string> = {
   other: "Other",
 };
 
-export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusBadge }: ListingCardProps) {
+export function ListingCard({
+  listing,
+  onWatchlistToggle,
+  isWatchlisted,
+  statusBadge,
+}: ListingCardProps) {
   const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
   const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
+  const evidenceStatusBadge =
+    statusBadge ??
+    getListingEvidenceStatusBadge({
+      totalSqFt: listing.totalSqFt,
+      moq: listing.moq ?? null,
+      moqUnit: listing.moqUnit ?? null,
+      condition: listing.condition,
+      locationCity: listing.locationCity,
+      locationState: listing.locationState,
+      freightEstimateStatus:
+        listing.freightEstimateStatus ?? "seller_setup_required",
+      freshnessStatus: listing.freshnessStatus,
+      lastConfirmedAt: listing.lastConfirmedAt,
+      media: listing.media,
+      seller: listing.seller,
+    });
 
   const isPromoted = listing.isPromoted || !!listing.promotionTier;
   const tier = listing.promotionTier;
+  const listingHref = `/listings/${listing.slug || listing.id}`;
 
   return (
-    <Link href={`/listings/${listing.slug || listing.id}`}>
-      <Card
-        className={cn(
-          "group overflow-hidden card-hover-lift hover:shadow-lg transition-shadow duration-200",
-          tier === "premium" && "border-purple-400 dark:border-purple-600 shadow-purple-100 dark:shadow-purple-950/30 shadow-md",
-          tier === "featured" && "border-amber-400 dark:border-amber-600 shadow-amber-100 dark:shadow-amber-950/30 shadow-md"
-        )}
-      >
-        {/* Promotion Top Border Accent */}
+    <Card
+      className={cn(
+        "group overflow-hidden card-hover-lift transition-shadow duration-200 hover:shadow-lg",
+        tier === "premium" &&
+          "border-purple-400 shadow-md shadow-purple-100 dark:border-purple-600 dark:shadow-purple-950/30",
+        tier === "featured" &&
+          "border-amber-400 shadow-md shadow-amber-100 dark:border-amber-600 dark:shadow-amber-950/30",
+      )}
+    >
         {tier === "premium" && (
           <div className="h-1 bg-gradient-to-r from-purple-500 via-purple-400 to-purple-600" />
         )}
@@ -105,67 +132,78 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
           <div className="h-1 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-600" />
         )}
 
-        {/* Image */}
-        <div className="aspect-[4/3] bg-muted relative overflow-hidden">
-          {listing.media?.[0] ? (
-            <>
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+          <Link
+            href={listingHref}
+            aria-label={`View ${listing.title}`}
+            className="block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          >
+            {listing.media?.[0] ? (
               <Image
                 src={listing.media[0].url}
                 alt={listing.title}
                 fill
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                className="object-cover group-hover:scale-105 transition-transform duration-200"
+                className="object-cover transition-transform duration-200 group-hover:scale-105"
                 loading="lazy"
               />
-              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/20 to-transparent" />
-            </>
-          ) : (
-            <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-muted to-muted/50">
-              <Package className="h-12 w-12 text-muted-foreground/30 mb-2" />
-              <span className="text-xs text-muted-foreground/50">No image</span>
-            </div>
-          )}
-          <div className="absolute top-2 left-2 flex gap-1">
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-muted to-muted/50">
+                <Package className="mb-2 h-12 w-12 text-muted-foreground/30" />
+                <span className="text-xs text-muted-foreground/50">No image</span>
+              </div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/20 to-transparent" />
+          </Link>
+          <div className="pointer-events-none absolute left-2 top-2 flex gap-1">
             <Badge variant="secondary" className="text-xs">
               {materialLabels[listing.materialType] || listing.materialType}
             </Badge>
             {isPromoted && <PromotionBadge tier={tier} />}
           </div>
-          <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+          <div className="pointer-events-none absolute right-2 top-2 flex flex-col items-end gap-1">
             {listing.buyNowPrice && (
-              <Badge className="text-xs bg-secondary text-secondary-foreground">
+              <Badge className="bg-secondary text-xs text-secondary-foreground">
                 Buy now
               </Badge>
             )}
-            {statusBadge && (
-              <Badge variant={statusBadge.variant} className="text-xs">
-                {statusBadge.label}
+            {evidenceStatusBadge && (
+              <Badge variant={evidenceStatusBadge.variant} className="text-xs">
+                {evidenceStatusBadge.label}
               </Badge>
             )}
           </div>
           {onWatchlistToggle && (
             <button
               type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onWatchlistToggle(listing.id);
-              }}
-              className="absolute bottom-2 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-black/40 hover:bg-black/60 transition-colors"
-              aria-label={isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+              onClick={() => onWatchlistToggle(listing.id)}
+              className="absolute bottom-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 transition-colors hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label={
+                isWatchlisted ? "Remove from watchlist" : "Add to watchlist"
+              }
             >
-              <Heart className={cn("h-5 w-5 text-white", isWatchlisted && "fill-red-500 text-red-500")} />
+              <Heart
+                className={cn(
+                  "h-5 w-5 text-white",
+                  isWatchlisted && "fill-red-500 text-red-500",
+                )}
+              />
             </button>
           )}
         </div>
 
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm line-clamp-2 mb-2 group-hover:text-primary transition-colors">
-            {listing.title}
-          </h3>
+          <h2 className="mb-2 line-clamp-2 text-sm font-semibold">
+            <Link
+              href={listingHref}
+              className="transition-colors hover:text-primary focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {listing.title}
+            </Link>
+          </h2>
 
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xl font-mono font-bold text-primary tabular-nums">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="font-mono text-xl font-bold tabular-nums text-primary">
               {formatCurrency(directPurchaseUnitPrice)}
               <span className="text-sm font-normal text-muted-foreground">
                 /sq ft
@@ -176,7 +214,7 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
             </span>
           </div>
 
-          <div className="text-sm text-muted-foreground mb-2 tabular-nums">
+          <div className="mb-2 text-sm text-muted-foreground tabular-nums">
             Direct purchase lot: {formatCurrency(lotValue)}
             {listing.buyNowPrice != null &&
               listing.buyNowPrice !== listing.askPricePerSqFt && (
@@ -185,12 +223,14 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
                 </span>
               )}
             <span className="block text-xs">
-              +{BUYER_MARKETPLACE_FEE_PERCENT}% buyer fee at checkout · Freight
-              quoted separately
+              Known now: unit price and +{BUYER_MARKETPLACE_FEE_PERCENT}% buyer fee
+            </span>
+            <span className="block text-xs">
+              Calculated later: destination freight quote
             </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap mb-3">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="text-sm">
               {conditionLabels[listing.condition] || listing.condition}
             </Badge>
@@ -227,30 +267,22 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
                 <Eye className="h-3 w-3" />
                 {listing.viewsCount}
               </span>
-              {onWatchlistToggle ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onWatchlistToggle(listing.id);
-                  }}
-                  className="flex items-center gap-1 hover:text-red-500 transition-colors"
-                >
-                  <Heart className={cn("h-3 w-3", isWatchlisted && "fill-red-500 text-red-500")} />
-                  {listing.watchlistCount}
-                </button>
-              ) : (
-                <span className="flex items-center gap-1">
-                  <Heart className="h-3 w-3" />
-                  {listing.watchlistCount}
-                </span>
-              )}
+              <span className="flex items-center gap-1">
+                <Heart
+                  className={cn(
+                    "h-3 w-3",
+                    isWatchlisted && "fill-red-500 text-red-500",
+                  )}
+                  aria-hidden="true"
+                />
+                <span className="sr-only">Watchlist saves:</span>
+                {listing.watchlistCount}
+              </span>
             </div>
           </div>
 
           {listing.seller && (
-            <div className="mt-2 pt-2 border-t flex items-center gap-1 text-sm text-muted-foreground">
+            <div className="mt-2 flex items-center gap-1 border-t pt-2 text-sm text-muted-foreground">
               <span>{listing.seller.displayName}</span>
               {listing.seller.verified && (
                 <svg
@@ -268,7 +300,6 @@ export function ListingCard({ listing, onWatchlistToggle, isWatchlisted, statusB
             </div>
           )}
         </CardContent>
-      </Card>
-    </Link>
+    </Card>
   );
 }

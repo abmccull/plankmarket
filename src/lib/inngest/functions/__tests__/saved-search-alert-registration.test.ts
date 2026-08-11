@@ -39,12 +39,24 @@ describe("saved-search alert registration", () => {
       options: expect.objectContaining({ id: "instant-saved-search-alerts" }),
       trigger: { event: "listing/created" },
     });
+    expect(registrations).toContainEqual({
+      options: expect.objectContaining({
+        id: "instant-saved-search-alert-page",
+      }),
+      trigger: { event: "saved-search/instant-page" },
+    });
   });
 
   it("keeps a separate scheduler for daily and weekly digests", () => {
     expect(registrations).toContainEqual({
-      options: expect.objectContaining({ id: "saved-search-digests" }),
+      options: expect.objectContaining({
+        id: "saved-search-digest-scheduler",
+      }),
       trigger: { cron: "0 */4 * * *" },
+    });
+    expect(registrations).toContainEqual({
+      options: expect.objectContaining({ id: "saved-search-digests" }),
+      trigger: { event: "saved-search/digest-page" },
     });
   });
 });

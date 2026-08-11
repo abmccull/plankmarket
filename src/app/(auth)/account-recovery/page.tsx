@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2, LogOut } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AlertTriangle, Loader2, LogOut, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,7 +17,10 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function AccountRecoveryPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const reason = searchParams.get("reason");
+  const isMfaRecovery = reason === "mfa";
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -31,23 +34,47 @@ export default function AccountRecoveryPage() {
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
         <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-          <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+          {isMfaRecovery ? (
+            <ShieldAlert className="h-5 w-5" aria-hidden="true" />
+          ) : (
+            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+          )}
         </div>
-        <CardTitle>Account setup needs attention</CardTitle>
+        <CardTitle>
+          {isMfaRecovery
+            ? "Authenticator recovery needs attention"
+            : "Account setup needs attention"}
+        </CardTitle>
         <CardDescription>
-          Your sign-in is valid, but the marketplace profile was not completed.
-          For security, we did not guess an account role.
+          {isMfaRecovery
+            ? "We cannot bypass MFA in-app. Sign out, then contact support from your account email if you lost the authenticator tied to this account."
+            : "Your sign-in is valid, but the marketplace profile was not completed. For security, we did not guess an account role."}
         </CardDescription>
       </CardHeader>
       <CardContent className="text-center text-sm text-muted-foreground">
-        Sign out and try registration again. If the issue continues, contact{" "}
-        <Link
-          href="mailto:support@plankmarket.com"
-          className="font-medium text-foreground underline underline-offset-4"
-        >
-          support@plankmarket.com
-        </Link>
-        .
+        {isMfaRecovery ? (
+          <>
+            Sign out on this device, then contact{" "}
+            <Link
+              href="mailto:support@plankmarket.com"
+              className="font-medium text-foreground underline underline-offset-4"
+            >
+              support@plankmarket.com
+            </Link>{" "}
+            if you need your access reviewed.
+          </>
+        ) : (
+          <>
+            Sign out and try registration again. If the issue continues, contact{" "}
+            <Link
+              href="mailto:support@plankmarket.com"
+              className="font-medium text-foreground underline underline-offset-4"
+            >
+              support@plankmarket.com
+            </Link>
+            .
+          </>
+        )}
       </CardContent>
       <CardFooter>
         <Button

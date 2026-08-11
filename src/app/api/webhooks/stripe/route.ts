@@ -10,11 +10,10 @@ import {
   disputes,
   notifications,
   reconciliationCases,
-  stripeWebhookEvents,
   promotionCredits,
   agentConfigs,
 } from "@/server/db/schema";
-import { eq, and, sql, or, lt, lte, isNull } from "drizzle-orm";
+import { eq, and, sql, or, lte, isNull } from "drizzle-orm";
 import { env } from "@/env";
 import { inngest } from "@/lib/inngest/client";
 import {
@@ -25,6 +24,7 @@ import { releaseReservedInventory } from "@/server/services/inventory-reservatio
 import { stripe } from "@/lib/stripe";
 import { PRO_MONTHLY_CREDIT } from "@/lib/pro";
 import {
+  reconcileOrderRefundLifecycleFromStripe,
   reconcileOrderRefundFromStripe,
   reverseOrderTransferForDispute,
 } from "@/server/services/refund";
@@ -39,10 +39,7 @@ import {
   SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
   requireShippingBookingSnapshotForOrder,
 } from "@/server/services/shipping-workflow";
-import {
-  mapStripeSubscriptionStatus,
-  STRIPE_WEBHOOK_PROCESSING_LEASE_MS,
-} from "@/server/services/stripe-webhook-policy";
+import { mapStripeSubscriptionStatus } from "@/server/services/stripe-webhook-policy";
 import {
   openReconciliationCase,
   resolveReconciliationCaseByKey,
@@ -52,6 +49,12 @@ import {
   findCommittedTaxTransaction,
   TaxReadinessError,
 } from "@/server/services/stripe-tax";
+import {
+  claimStripeWebhookEvent,
+  completeStripeWebhookEvent,
+  failStripeWebhookEvent,
+  receiveStripeWebhookEvent,
+} from "@/server/services/stripe-webhook-inbox";
 
 function getStripeCustomerId(
   customer: string | Stripe.Customer | Stripe.DeletedCustomer,
@@ -67,6 +70,36 @@ function subscriptionEventIsCurrent(eventCreatedAt: Date) {
 }
 
 const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+export const STRIPE_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
+
+async function readBoundedBody(
+  request: NextRequest,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array();
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
 
 async function notifyAdmins(params: {
   title: string;
@@ -91,116 +124,29 @@ async function notifyAdmins(params: {
   );
 }
 
-type WebhookClaim =
-  | { state: "claimed"; startedAt: Date }
-  | { state: "completed" }
-  | { state: "busy" };
-
-async function claimWebhookEvent(event: Stripe.Event): Promise<WebhookClaim> {
-  const startedAt = new Date();
-  const inserted = await db
-    .insert(stripeWebhookEvents)
-    .values({
-      id: event.id,
-      eventType: event.type,
-      status: "processing",
-      attemptCount: 1,
-      processingStartedAt: startedAt,
-    })
-    .onConflictDoNothing()
-    .returning({ id: stripeWebhookEvents.id });
-
-  if (inserted.length > 0) return { state: "claimed", startedAt };
-
-  const staleBefore = new Date(
-    startedAt.getTime() - STRIPE_WEBHOOK_PROCESSING_LEASE_MS,
-  );
-  const reclaimed = await db
-    .update(stripeWebhookEvents)
-    .set({
-      eventType: event.type,
-      status: "processing",
-      attemptCount: sql`${stripeWebhookEvents.attemptCount} + 1`,
-      processingStartedAt: startedAt,
-      completedAt: null,
-      lastError: null,
-    })
-    .where(
-      and(
-        eq(stripeWebhookEvents.id, event.id),
-        or(
-          eq(stripeWebhookEvents.status, "failed"),
-          and(
-            eq(stripeWebhookEvents.status, "processing"),
-            or(
-              isNull(stripeWebhookEvents.processingStartedAt),
-              lt(stripeWebhookEvents.processingStartedAt, staleBefore),
-            ),
-          ),
-        ),
-      ),
-    )
-    .returning({ id: stripeWebhookEvents.id });
-
-  if (reclaimed.length > 0) return { state: "claimed", startedAt };
-
-  const existing = await db.query.stripeWebhookEvents.findFirst({
-    where: eq(stripeWebhookEvents.id, event.id),
-    columns: { status: true },
-  });
-  return existing?.status === "completed"
-    ? { state: "completed" }
-    : { state: "busy" };
-}
-
-async function completeWebhookEvent(eventId: string, startedAt: Date) {
-  const completed = await db
-    .update(stripeWebhookEvents)
-    .set({
-      status: "completed",
-      completedAt: new Date(),
-      processingStartedAt: null,
-      lastError: null,
-    })
-    .where(
-      and(
-        eq(stripeWebhookEvents.id, eventId),
-        eq(stripeWebhookEvents.status, "processing"),
-        eq(stripeWebhookEvents.processingStartedAt, startedAt),
-      ),
-    )
-    .returning({ id: stripeWebhookEvents.id });
-
-  if (completed.length === 0) {
-    throw new Error("Stripe webhook processing lease was lost");
-  }
-}
-
-async function failWebhookEvent(
-  eventId: string,
-  startedAt: Date,
-  error: unknown,
-) {
-  await db
-    .update(stripeWebhookEvents)
-    .set({
-      status: "failed",
-      processingStartedAt: null,
-      completedAt: null,
-      lastError: error instanceof Error ? error.name : "UnknownError",
-    })
-    .where(
-      and(
-        eq(stripeWebhookEvents.id, eventId),
-        eq(stripeWebhookEvents.status, "processing"),
-        eq(stripeWebhookEvents.processingStartedAt, startedAt),
-      ),
-    );
-}
-
 export async function POST(req: NextRequest) {
-  const body = await req.text();
   const signature = req.headers.get("stripe-signature");
+  const declaredLength = Number(req.headers.get("content-length"));
+  const contentType =
+    req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() ??
+    null;
+
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > STRIPE_WEBHOOK_MAX_BODY_BYTES
+  ) {
+    return NextResponse.json(
+      { error: "Payload too large" },
+      { status: 413 },
+    );
+  }
+
+  if (contentType !== "application/json") {
+    return NextResponse.json(
+      { error: "Expected an application/json request" },
+      { status: 415 },
+    );
+  }
 
   if (!signature) {
     return NextResponse.json(
@@ -209,10 +155,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const rawBody = await readBoundedBody(req, STRIPE_WEBHOOK_MAX_BODY_BYTES);
+  if (!rawBody) {
+    return NextResponse.json(
+      { error: "Payload too large" },
+      { status: 413 },
+    );
+  }
+
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(
+      Buffer.from(rawBody),
+      signature,
+      webhookSecret,
+    );
   } catch {
     console.error("Webhook signature verification failed");
     return NextResponse.json(
@@ -222,16 +180,42 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const claim = await claimWebhookEvent(event);
-    if (claim.state === "completed") {
+    const received = await receiveStripeWebhookEvent(event);
+    if (received.completed) {
       return NextResponse.json({ received: true, duplicate: true });
     }
-    if (claim.state === "busy") {
-      return NextResponse.json(
-        { error: "Webhook event is already processing" },
-        { status: 503, headers: { "Retry-After": "5" } },
-      );
+    await inngest.send({
+      id: `stripe-webhook:${event.id}`,
+      name: "stripe/webhook-received",
+      data: { eventId: event.id, eventType: event.type },
+    });
+    return NextResponse.json({ received: true, queued: true }, { status: 202 });
+  } catch (error) {
+    console.error("Stripe webhook inbox write failed", {
+      eventId: event.id,
+      eventType: event.type,
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
+    return NextResponse.json(
+      { error: "Webhook could not be queued" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function processStripeWebhookEvent(eventId: string) {
+  try {
+    const claim = await claimStripeWebhookEvent(eventId);
+    if (claim.state === "completed") {
+      return { processed: false, duplicate: true } as const;
     }
+    if (claim.state === "busy") {
+      return { processed: false, busy: true } as const;
+    }
+    if (claim.state === "missing") {
+      throw new Error(`Stripe webhook inbox event ${eventId} was not found`);
+    }
+    const event = claim.event;
     const claimStartedAt = claim.startedAt;
 
     try {
@@ -605,14 +589,6 @@ export async function POST(req: NextRequest) {
                 return "ignored" as const;
               }
 
-              await tx
-                .update(orders)
-                .set({
-                  paymentStatus: "refund_pending",
-                  escrowStatus: "refunded",
-                  updatedAt: new Date(),
-                })
-                .where(eq(orders.id, orderId));
               return "refund" as const;
             });
 
@@ -635,17 +611,20 @@ export async function POST(req: NextRequest) {
                 },
               );
 
-              const reconciliation = await reconcileOrderRefundFromStripe({
-                db,
-                orderId,
-                refundedAmountCents: paymentIntent.amount_received,
-                stripeRefundId: refund.id,
-                reason: bookingFailureMessage
-                  ? "The selected freight quote could no longer be safely booked; place a new order with a fresh quote."
-                  : "Payment completed after the order was closed and was refunded automatically.",
-              });
+              const reconciliation =
+                await reconcileOrderRefundLifecycleFromStripe({
+                  db,
+                  refund,
+                  reason: bookingFailureMessage
+                    ? "The selected freight quote could no longer be safely booked; place a new order with a fresh quote."
+                    : "Payment completed after the order was closed and was refunded automatically.",
+                });
 
-              if (reconciliation.updated && bookingFailureMessage) {
+              if (
+                reconciliation.state === "succeeded" &&
+                reconciliation.updated &&
+                bookingFailureMessage
+              ) {
                 await notifyAdmins({
                   title: "Captured Payment Auto-Refunded",
                   message: `${bookingFailureMessage} Order ${order.orderNumber}; PaymentIntent ${paymentIntent.id}.`,
@@ -805,6 +784,17 @@ export async function POST(req: NextRequest) {
             });
           }
         }
+        break;
+      }
+
+      case "refund.updated":
+      case "refund.failed": {
+        const refund = event.data.object as Stripe.Refund;
+        await reconcileOrderRefundLifecycleFromStripe({
+          db,
+          refund,
+          reason: "Stripe refund lifecycle webhook reconciliation",
+        });
         break;
       }
 
@@ -1069,10 +1059,14 @@ export async function POST(req: NextRequest) {
               .select({
                 id: orders.id,
                 orderNumber: orders.orderNumber,
+                totalPrice: orders.totalPrice,
+                refundedAmount: orders.refundedAmount,
+                paymentStatus: orders.paymentStatus,
                 stripeTransferId: orders.stripeTransferId,
                 transferReversedAmount: orders.transferReversedAmount,
                 transferFailedAt: orders.transferFailedAt,
                 transferError: orders.transferError,
+                notes: orders.notes,
               })
               .from(orders)
               .where(eq(orders.stripePaymentIntentId, paymentIntentId))
@@ -1137,15 +1131,40 @@ export async function POST(req: NextRequest) {
                 : dispute.status === "lost"
                   ? "refunded"
                   : "disputed";
+            const restoredPaymentStatus =
+              dispute.status === "won"
+                ? (() => {
+                    const totalAmountCents = Math.round(
+                      Number(order.totalPrice) * 100,
+                    );
+                    const refundedAmountCents = Math.round(
+                      Number(order.refundedAmount ?? 0) * 100,
+                    );
+                    if (refundedAmountCents <= 0) return "succeeded";
+                    if (refundedAmountCents >= totalAmountCents) return "refunded";
+                    return "partially_refunded";
+                  })()
+                : "reconciliation_required";
+            const chargebackAuditNote = `[Stripe chargeback ${dispute.status}: ${dispute.id}; amount $${(
+              dispute.amount / 100
+            ).toFixed(2)}; refunds ${
+              dispute.status === "won"
+                ? "re-enabled per recorded refund ledger"
+                : "blocked until financial reconciliation"
+            }]`;
             await tx
               .update(orders)
               .set({
+                paymentStatus: restoredPaymentStatus,
                 escrowStatus: restoredEscrowStatus,
                 transferFailedAt: requiresTransferReconciliation
                   ? now
                   : order.transferFailedAt,
                 transferError:
                   reconciliationMessage ?? order.transferError,
+                notes: order.notes
+                  ? `${order.notes}\n${chargebackAuditNote}`
+                  : chargebackAuditNote,
                 updatedAt: now,
               })
               .where(eq(orders.id, order.id));
@@ -1284,13 +1303,68 @@ export async function POST(req: NextRequest) {
           });
 
           if (seller) {
-            await db
-              .update(users)
-              .set({
-                stripeOnboardingComplete: false,
-                updatedAt: new Date(),
-              })
-              .where(eq(users.id, seller.id));
+            await db.transaction(async (tx) => {
+              await tx
+                .update(users)
+                .set({
+                  stripeOnboardingComplete: false,
+                  updatedAt: new Date(),
+                })
+                .where(eq(users.id, seller.id));
+
+              const candidateOrders = await tx
+                .select({
+                  id: orders.id,
+                  escrowStatus: orders.escrowStatus,
+                })
+                .from(orders)
+                .where(
+                  and(
+                    eq(orders.sellerId, seller.id),
+                    eq(orders.status, "pending"),
+                    sql`${orders.inventoryReleasedAt} IS NULL`,
+                    sql`coalesce(${orders.paymentStatus}, 'pending') NOT IN ('succeeded', 'processing', 'refund_pending', 'partially_refunded', 'refunded', 'paid')`,
+                  ),
+                )
+                .for("update");
+
+              for (const candidateOrder of candidateOrders) {
+                const [cancelledOrder] = await tx
+                  .update(orders)
+                  .set({
+                    status: "cancelled",
+                    paymentStatus: "failed",
+                    cancelledAt: new Date(),
+                    escrowStatus:
+                      candidateOrder.escrowStatus === "held"
+                        ? "refunded"
+                        : candidateOrder.escrowStatus,
+                    notes: sql`concat_ws(E'\n', nullif(${orders.notes}, ''), ${"[Order cancelled after seller Stripe account was deauthorized]"} )`,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(orders.id, candidateOrder.id),
+                      eq(orders.status, "pending"),
+                      sql`${orders.inventoryReleasedAt} IS NULL`,
+                      sql`coalesce(${orders.paymentStatus}, 'pending') NOT IN ('succeeded', 'processing', 'refund_pending', 'partially_refunded', 'refunded', 'paid')`,
+                    ),
+                  )
+                  .returning({ id: orders.id });
+                if (cancelledOrder) {
+                  const releaseResult = await releaseReservedInventory({
+                    db: tx,
+                    orderId: cancelledOrder.id,
+                    reason: "account.application.deauthorized",
+                  });
+                  if (!releaseResult.released) {
+                    throw new Error(
+                      `Inventory release failed after deauthorization for order ${cancelledOrder.id}: ${releaseResult.reason}`,
+                    );
+                  }
+                }
+              }
+            });
 
             await db.insert(notifications).values({
               userId: seller.id,
@@ -1321,26 +1395,32 @@ export async function POST(req: NextRequest) {
         } else {
           const orderId = paymentIntent.metadata.orderId;
           if (orderId) {
-            const order = await db.query.orders.findFirst({
-              where: eq(orders.id, orderId),
-              columns: {
-                status: true,
-                paymentStatus: true,
-                stripePaymentIntentId: true,
-                inventoryReleasedAt: true,
-              },
-            });
-            if (
-              order &&
-              canApplyPaymentIntentCanceled({
-                orderStatus: order.status,
-                paymentStatus: order.paymentStatus,
-                storedPaymentIntentId: order.stripePaymentIntentId,
-                eventPaymentIntentId: paymentIntent.id,
-                inventoryReleasedAt: order.inventoryReleasedAt,
-              })
-            ) {
-              const [cancelledOrder] = await db
+            await db.transaction(async (tx) => {
+              const [order] = await tx
+                .select({
+                  id: orders.id,
+                  status: orders.status,
+                  paymentStatus: orders.paymentStatus,
+                  stripePaymentIntentId: orders.stripePaymentIntentId,
+                  inventoryReleasedAt: orders.inventoryReleasedAt,
+                })
+                .from(orders)
+                .where(eq(orders.id, orderId))
+                .for("update");
+              if (
+                !order ||
+                !canApplyPaymentIntentCanceled({
+                  orderStatus: order.status,
+                  paymentStatus: order.paymentStatus,
+                  storedPaymentIntentId: order.stripePaymentIntentId,
+                  eventPaymentIntentId: paymentIntent.id,
+                  inventoryReleasedAt: order.inventoryReleasedAt,
+                })
+              ) {
+                return;
+              }
+
+              const [cancelledOrder] = await tx
                 .update(orders)
                 .set({
                   paymentStatus: "failed",
@@ -1360,14 +1440,19 @@ export async function POST(req: NextRequest) {
                 )
                 .returning({ id: orders.id });
 
-              if (cancelledOrder) {
-                await releaseReservedInventory({
-                  db,
-                  orderId,
-                  reason: "payment_intent.canceled",
-                });
+              if (!cancelledOrder) return;
+
+              const releaseResult = await releaseReservedInventory({
+                db: tx,
+                orderId,
+                reason: "payment_intent.canceled",
+              });
+              if (!releaseResult.released) {
+                throw new Error(
+                  `Inventory release failed after payment cancellation for order ${orderId}: ${releaseResult.reason}`,
+                );
               }
-            }
+            });
           }
         }
         break;
@@ -1656,7 +1741,7 @@ export async function POST(req: NextRequest) {
         break;
     }
     } catch (processingError) {
-      await failWebhookEvent(event.id, claimStartedAt, processingError).catch(
+      await failStripeWebhookEvent(event.id, claimStartedAt, processingError).catch(
         () => {},
       );
       console.error("Webhook processing error", {
@@ -1667,23 +1752,16 @@ export async function POST(req: NextRequest) {
             ? processingError.name
             : "UnknownError",
       });
-      return NextResponse.json(
-        { error: "Webhook handler failed" },
-        { status: 500 }
-      );
+      throw processingError;
     }
 
-    await completeWebhookEvent(event.id, claimStartedAt);
-    return NextResponse.json({ received: true });
+    await completeStripeWebhookEvent(event.id, claimStartedAt);
+    return { processed: true } as const;
   } catch (error) {
     console.error("Webhook handler error", {
-      eventId: event.id,
-      eventType: event.type,
+      eventId,
       error: error instanceof Error ? error.name : "UnknownError",
     });
-    return NextResponse.json(
-      { error: "Webhook handler failed" },
-      { status: 500 }
-    );
+    throw error;
   }
 }

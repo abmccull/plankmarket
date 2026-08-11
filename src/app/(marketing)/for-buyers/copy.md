@@ -1,237 +1,349 @@
-# PlankMarket — For Buyers Landing Page Copy
+# PlankMarket - For Buyers Landing Page Copy
+
+> Internal working copy only.
+> Do not publish testimonials, market-scale claims, geography claims, savings
+> claims, or review-SLA claims from this file until each statement is verified
+> against current live evidence.
 
 ---
 
 ## Section 1: Hero
 
 **Badge**
+
 B2B Flooring Marketplace
 
 **H1**
-Stop Calling Around. Source Premium Flooring in One Place.
+
+Stop Calling Around. Source Surplus Flooring in One Place.
 
 **Subheadline**
-PlankMarket connects flooring contractors, retailers, and builders directly to verified manufacturers and distributors selling overstock, closeout, and discontinued inventory — at 30–60% below standard wholesale prices.
+
+PlankMarket helps flooring contractors, retailers, and builders compare surplus
+inventory with visible seller verification, listing evidence, checkout pricing,
+and integrated freight.
 
 **Primary CTA**
+
 Browse Available Inventory
 
 **Secondary CTA**
+
 Create a Free Buyer Account
 
 **Trust Signals**
-- Shield icon — Every seller is business-verified
-- Layers icon — 6 flooring categories, all 50 US states
-- Lock icon — Stripe-processed payments with tracked shipping
+
+- Every seller is business-verified before listing
+- Six flooring categories in the current product scope
+- Stripe-processed payments with tracked shipping
 
 ---
 
 ## Section 2: Problem Agitation
 
 **Section Title**
+
 You already know how this goes.
 
 **Pain Point 1**
+
 Title: The phone-around game wastes your week.
-Description: You need 4,000 sq ft of engineered oak for a mid-rise project. So you spend two days calling distributors, leaving voicemails, and chasing quotes — only to find out the lot you wanted sold yesterday. There's no central place to see what's actually available and what it costs.
+
+Description: You need a specific lot, so you call distributors, chase
+voicemails, and often learn too late that the inventory already moved.
 
 **Pain Point 2**
-Title: "Great deal" turns into a quality nightmare.
-Description: You bought a pallet of closeout LVP from a contact's contact. It arrived short by 300 sq ft, the dye lots didn't match, and there were no photos or specs to reference in the dispute. When you buy outside a structured marketplace, you have no recourse.
+
+Title: Off-platform deals leave gaps.
+
+Description: When product details, photos, freight planning, and payment live
+in separate channels, it is harder to confirm what you are actually buying.
 
 **Pain Point 3**
-Title: Pricing is a black box.
-Description: Call five distributors for the same product and you'll get five different prices — none of them posted publicly. There's no baseline, no transparency, and no way to know if you're getting a fair deal or being taken advantage of because you asked first.
+
+Title: Pricing is hard to compare.
+
+Description: Calling around rarely gives you one clear record of lot details,
+final pricing, and freight impact before you commit.
 
 **Pain Point 4**
-Title: Good lots are gone before you hear about them.
-Description: Surplus flooring moves fast. The best overstock — mill-direct hardwood, discontinued premium LVP, name-brand engineered clearouts — gets picked up by buyers who are already plugged into the right networks. If you're not in that network, you're always a step behind.
+
+Title: Good lots move quickly.
+
+Description: Surplus flooring does not stay available forever. Without alerts
+and a structured workflow, buyers often hear about the right lot too late.
 
 ---
 
 ## Section 3: Solution Introduction
 
 **Transition**
-There's a better way to source. PlankMarket puts the entire surplus flooring market in one place, with transparent pricing, verified sellers, and everything you need to buy with confidence.
+
+PlankMarket puts the listing evidence, offer flow, payment trail, and freight
+workflow in one place.
 
 **Value Proposition 1**
-Title: One marketplace for all surplus flooring inventory.
-Description: Stop calling distributors one by one. Browse hundreds of lots — hardwood, engineered, laminate, LVP, bamboo, tile — from verified manufacturers and distributors across all 50 states. Filter by material, species, square footage, condition, price, and location.
-Supporting detail: Set saved search alerts and get notified the moment a matching lot is listed. The best inventory goes fast — alerts give you a real head start.
+
+Title: Compare relevant surplus lots without rebuilding your call list.
+
+Description: Browse surplus lots across supported US markets with seller
+verification shown on each listing. Filter by material, species, square
+footage, condition, price, and location.
+
+Supporting detail: Saved searches help buyers monitor matching inventory as it
+is published.
 
 **Value Proposition 2**
-Title: Every listing is fully documented. No surprises.
-Description: PlankMarket requires detailed specs on every listing: material type, species, dimensions, grade, finish, condition, pallet count, and up to 20 high-resolution photos. You see exactly what you're buying before you commit.
-Supporting detail: 44 flooring-specific data fields per listing — more detail than any general marketplace or broker call will ever give you.
+
+Title: Review the lot before you commit.
+
+Description: Listings capture structured specifications, pallet details,
+condition notes, and photos so buyers can evaluate the opportunity with more
+context.
+
+Supporting detail: Publishable counts or quality comparisons must be verified
+from current product and live inventory evidence before use.
 
 **Value Proposition 3**
-Title: Verified sellers. Stripe payments. Tracked orders.
-Description: Every seller on PlankMarket undergoes business verification — EIN verification, document review, and admin approval — before listing a single lot. Payments are processed through Stripe, and PlankMarket initiates the seller transfer only after carrier pickup is confirmed and the configured release window has passed.
-Supporting detail: If something goes wrong, our dispute resolution team steps in. Buyers have 48 hours post-delivery to report damage or shortage, with photo documentation.
+
+Title: Keep payment and freight attached to the order.
+
+Description: Sellers complete business verification before listing. Stripe
+processes payment, and freight is quoted at checkout before payment.
+
+Supporting detail: Buyers can report shortages or damage through the order
+record with supporting evidence.
 
 ---
 
 ## Section 4: How It Works
 
 **Section Title**
+
 Four steps from search to delivery.
 
 **Step 1**
+
 Number: 1
-Title: Create your free buyer account.
-Description: Register with your business information. Business verification keeps the marketplace professional — only verified businesses can buy and sell. Approval typically takes 1–3 business days.
+
+Title: Create your buyer account.
+
+Description: Buyers can browse first and complete verification before checkout.
 
 **Step 2**
+
 Number: 2
-Title: Browse or search for the inventory you need.
-Description: Use advanced filters to narrow by material, species, condition, lot size, price per sq ft, and seller location. Save searches and set alerts so you never miss a matching lot.
+
+Title: Compare the lot.
+
+Description: Review specifications, photos, and saved-search matches before
+starting the transaction.
 
 **Step 3**
+
 Number: 3
-Title: Make an offer or buy at the listed price.
-Description: Found the right lot? Buy now at the listed price or use the built-in offer tool to negotiate directly with the seller. All communication stays on-platform — no sharing contact information until your order is placed.
+
+Title: Buy or make an offer.
+
+Description: Buyers can transact at the listed price or negotiate through the
+platform when the listing allows it.
 
 **Step 4**
+
 Number: 4
-Title: Pay securely and track your freight shipment.
-Description: Check out via Stripe. Once the order ships by LTL freight, you get a tracking number and can follow delivery through your buyer dashboard. Seller payment is scheduled only after carrier pickup is confirmed and the review window has passed.
+
+Title: Review freight and track the order.
+
+Description: Freight quotes are generated at checkout, and shipment milestones
+stay attached to the order record.
 
 ---
 
 ## Section 5: Features Deep Dive
 
 **Section Title**
-Built for buyers who move fast and buy smart.
+
+Built for buyers who need a cleaner transaction trail.
 
 **Feature 1**
-Icon: Search
-Title: Advanced Search and Filtering
-Description: Filter listings across 20+ dimensions — material type, wood species, plank width, finish, condition, sq ft range, price per sq ft, seller state, and more. Find exactly what you need without scrolling through irrelevant inventory.
+
+Title: Search and filtering
+
+Description: Narrow listings by material, condition, quantity, price, and
+location.
 
 **Feature 2**
-Icon: Bell
-Title: Saved Search Alerts
-Description: Set up alerts for specific products and get an email the moment a matching lot is listed. If you're looking for 3,000+ sq ft of white oak engineered in Grade A condition, you'll know the second it hits the marketplace.
+
+Title: Saved search alerts
+
+Description: Track matching inventory without repeating the same manual search.
 
 **Feature 3**
-Icon: FileText
-Title: Full Listing Specs — 44 Data Fields
-Description: Every listing includes material type, species, manufacturer, dimensions, plank width, wear layer, grade, condition, reason for surplus, pallet count, and up to 20 photos. You have everything you need to make a confident purchasing decision without a phone call.
+
+Title: Structured listing evidence
+
+Description: Review product details, condition notes, pallet information, and
+photos in one listing.
 
 **Feature 4**
-Icon: MessageSquare
-Title: Built-In Offer and Negotiation
-Description: Don't want to pay the asking price? Submit an offer. The seller can accept, counter, or decline. All negotiation happens on-platform with a full audit trail — no side deals, no ambiguity.
+
+Title: Offer workflow
+
+Description: Keep negotiation attached to the listing instead of splitting it
+across calls and texts.
 
 **Feature 5**
-Icon: Truck
-Title: Integrated LTL Freight with Real-Time Tracking
-Description: Freight quotes are generated at checkout based on your delivery address, pallet weight, and dimensions. Select a carrier rate, pay once, and track your shipment through delivery — all inside PlankMarket.
+
+Title: Integrated freight quoting
+
+Description: Generate freight quotes at checkout and keep the selected quote
+with the order.
 
 **Feature 6**
-Icon: Shield
-Title: Stripe Payment and Dispute Reporting
-Description: Stripe processes buyer payments, and PlankMarket initiates the seller transfer after carrier pickup. Buyers have 48 hours post-delivery to report damage or shortages through the platform with photo evidence for support review.
+
+Title: Payment and issue reporting
+
+Description: Stripe processes payment, and buyers can report damage or
+shortages through the platform record.
 
 ---
 
 ## Section 6: Social Proof / Trust
 
+Status: blocked until real customer permission, attribution approval, and
+source-of-truth evidence exist.
+
 **Section Title**
-Buyers who found a better way to source.
+
+Replace with approved customer proof only.
 
 **Testimonial 1**
-Quote: "I used to spend half my Monday morning calling distributors to check availability. Now I open PlankMarket, filter for what I need, and have a quote submitted before lunch. Found a 6,200 sq ft lot of prefinished white oak last month — well below what I would have paid through my usual channels."
-Name: Marcus T.
-Role: Purchasing Manager
-Company type: Regional flooring contractor, Southeast US
+
+Quote: [REMOVE BEFORE PUBLISHING - placeholder testimonial, not customer-approved]
+
+Name: [pending real customer approval]
+
+Role: [pending]
+
+Company type: [pending]
 
 **Testimonial 2**
-Quote: "The listing detail is what sold me. Every lot has photos, specs, pallet dimensions, and a clear condition description. I know exactly what's arriving before I pay for it. Haven't had a single surprise shipment since I switched."
-Name: Diane R.
-Role: Owner
-Company type: Flooring retail store, Midwest
+
+Quote: [REMOVE BEFORE PUBLISHING - placeholder testimonial, not customer-approved]
+
+Name: [pending real customer approval]
+
+Role: [pending]
+
+Company type: [pending]
 
 **Testimonial 3**
-Quote: "We build 80–100 units a year and flooring is a major cost line. PlankMarket has become a consistent sourcing channel for us — especially for engineered hardwood and LVP. The verified sellers give our procurement team confidence, and the freight integration saves a ton of back-and-forth."
-Name: James W.
-Role: VP of Procurement
-Company type: Residential home builder, Mid-Atlantic region
+
+Quote: [REMOVE BEFORE PUBLISHING - placeholder testimonial, not customer-approved]
+
+Name: [pending real customer approval]
+
+Role: [pending]
+
+Company type: [pending]
 
 **Stats Bar**
-- Stat 1: 30–60% — Typical savings below standard wholesale prices
-- Stat 2: Up to 20 photos — Required on every listing for full visual documentation
-- Stat 3: 44 data fields — Flooring-specific specs captured on every listing
-- Stat 4: All 50 states — Nationwide inventory from verified US sellers
+
+- [verify any savings claim with live market evidence before publishing]
+- [verify any listing-count or inventory-scale claim before publishing]
+- [verify any supported geographic coverage claim before publishing]
+- [verify any response-time or review-SLA claim before publishing]
 
 ---
 
 ## Section 7: Pricing Transparency
 
 **Section Title**
+
 One fee. No surprises.
 
 **Headline**
-Clear buyer totals. No surprises.
+
+Clear buyer totals before payment.
 
 **Description**
-You pay a 5% buyer fee on inventory purchases. Freight is quoted separately before payment. The displayed freight charge may include carrier charges plus PlankMarket shipping service margin. There are no required membership fees, no listing access fees, and no charges to browse. Optional Pro is available for unlimited saved searches, AI monitoring, and advanced automation.
+
+Buyers pay a 5% fee on the inventory subtotal. Freight is quoted separately
+before payment, and the displayed freight charge may include carrier charges
+plus PlankMarket shipping service margin. Browsing is free, and Pro is
+optional.
 
 **Fee Example**
+
 - Listed lot price: $8,000
 - Buyer fee (5%): $400
 - Freight quote: $600
-- You pay: $9,000 total
-- Seller fees are handled separately from the buyer charge
-
-**Comparison to Alternatives**
-Brokered liquidation channels: Slower communication, less direct lot evidence, and less clarity about the final transaction economics.
-Calling distributors directly: No central visibility, inconsistent pricing, and no shared shipping record or platform dispute workflow on side deals.
-General marketplaces (eBay, Craigslist): Unverified sellers, no flooring-specific specs, no freight integration, no dispute resolution for commercial freight.
-
-**No Hidden Fees Messaging**
-No required subscription. No listing access fees. No renewal charges. You pay 5% only when you complete a purchase.
+- Buyer total: $9,000
 
 ---
 
 ## Section 8: FAQ
 
 **Q1**
+
 Question: Who can buy on PlankMarket?
-Answer: PlankMarket is a B2B marketplace for flooring professionals. Buyers can create an account and browse immediately. Verification and approval are required before checkout. Your business name, contact information, and EIN are reviewed by our team, typically within 1–3 business days.
+
+Answer: PlankMarket is a B2B marketplace for flooring professionals. Buyers can
+create an account and browse immediately. Verification and approval are
+required before checkout.
 
 **Q2**
+
 Question: What types of flooring are available?
-Answer: PlankMarket lists overstock, closeout, discontinued, and surplus inventory across six categories: hardwood, engineered wood, laminate, vinyl/LVP, bamboo, and tile. Inventory includes new overstock, discontinued lines, factory seconds, remnants, customer returns, and slightly damaged lots clearly marked and described.
+
+Answer: The product currently supports six flooring categories: hardwood,
+engineered wood, laminate, vinyl/LVP, bamboo, and tile.
 
 **Q3**
+
 Question: Can I negotiate on price?
-Answer: Yes. Every listing supports direct offers. Submit your offer, and the seller can accept, counter, or decline — all within a 48-hour response window. Buyers can browse, message, and negotiate before verification, but verification approval is required to complete payment and place an order.
+
+Answer: Yes. Listings can support direct offers when the seller enables that
+workflow.
 
 **Q4**
+
 Question: How does shipping work?
-Answer: PlankMarket uses integrated LTL freight. When you check out, you enter your delivery address and we generate freight quotes from our carrier network. You select a rate, and the freight cost is added to your order. The freight quote already includes carrier charges plus marketplace shipping margin, so there is no additional buyer fee on freight. The seller ships via LTL, and you can track the shipment in real time through your buyer dashboard.
+
+Answer: Checkout uses integrated LTL freight quoting. Buyers enter the delivery
+address, review available rates, and select a quote before payment.
 
 **Q5**
+
 Question: What happens if my order arrives damaged or short?
-Answer: Note any visible damage on the delivery receipt (BOL) at the time of delivery. Then open a dispute in your buyer dashboard within 48 hours with photo evidence. Our support team will mediate the claim. The transaction record keeps payment, freight, and delivery evidence attached for review.
+
+Answer: Visible damage should be noted on the delivery receipt, and the issue
+should be reported through the order with supporting evidence.
 
 **Q6**
-Question: Is my payment information secure?
-Answer: Yes. All payments are processed through Stripe, which is PCI-compliant and used by millions of businesses worldwide. PlankMarket never stores your payment card information. Seller transfer is scheduled only after confirmed carrier pickup and the review window.
+
+Question: Is payment information secure?
+
+Answer: Stripe processes payment details. PlankMarket does not store payment
+card information.
 
 ---
 
 ## Section 9: Final CTA
 
 **Headline**
-The best lots sell in days. Start sourcing smarter today.
+
+Start sourcing with a cleaner record.
 
 **Subheadline**
-Create your free buyer account and access hundreds of verified surplus flooring lots — with transparent pricing, full specs, and integrated freight.
+
+Create your free buyer account and access verified surplus flooring lots with
+transparent pricing, full specs, and integrated freight.
 
 **CTA Button**
+
 Create Your Free Buyer Account
 
 **Supporting line**
+
 No required subscription. Browse free. Pay 5% on inventory only when you buy.

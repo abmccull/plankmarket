@@ -165,7 +165,7 @@ Or better yet: **no shipping discount.** Keep the shipping margin intact and mak
 | Bulk operations | **$0** (already built) | High for multi-listing sellers |
 | Promotion credits | **$25/month** (fixed, drives transactions) | Medium |
 | Faster payouts | **~$0** (Stripe instant payouts cost ~1%) | High perceived value |
-| Priority verification | **$0** | Medium |
+| Verification SLA promise removed | **$0** | Avoid unsupported claims |
 | Pro badge | **$0** | Low-medium (social proof) |
 | Unlimited listings | **$0** | High for active sellers |
 
@@ -200,7 +200,7 @@ Or better yet: **no shipping discount.** Keep the shipping margin intact and mak
 | **Bulk operations** | CSV import, bulk price update, bulk relist | $0 |
 | **$25 monthly promotion credit** | 1 free Spotlight boost/month | $25/month (but drives transactions we earn 5% on) |
 | **Faster payouts** | Next business day vs 5 days | ~$5/month (Stripe instant payout fees) |
-| **Priority verification** | 24-hour turnaround | $0 |
+| **Verification queue** | Standard review workflow; no Pro SLA promise | $0 |
 | **Pro badge** | Social proof on listings and offers | $0 |
 | **Unlimited saved searches** | Monitor as many specs as you want | $0 |
 | **Value dashboard** | See what your agent did, time saved, deals facilitated | $0 |
@@ -497,7 +497,7 @@ Start at $29/month. Evaluate at milestones:
 | **Account** | | | |
 | $15 monthly promotion credit | 1 discounted boost/month | $15/mo | Visibility |
 | Next-day payouts | Paid morning after delivery confirmed | $0 | Cash flow |
-| Priority verification | 24-hour turnaround | $0 | Speed |
+| Verification queue | Standard review workflow; no Pro SLA promise | $0 | Accuracy |
 | Pro badge | Trust signal on listings and offers | $0 | Credibility |
 | Value dashboard | What your agent did, time saved | $0 | ROI visibility |
 | MCP server access | Connect Claude Code, Codex, etc. | $0 | Power users |

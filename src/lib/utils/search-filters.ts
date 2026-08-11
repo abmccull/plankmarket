@@ -197,6 +197,19 @@ export function getFilterBadges(
     });
   }
 
+  if (filters.sellerVerified === true) {
+    badges.push({ key: "sellerVerified", label: "Verified sellers" });
+  }
+  if (filters.freightReady === true) {
+    badges.push({ key: "freightReady", label: "Freight quote ready" });
+  }
+  if (filters.fullLotOnly !== undefined) {
+    badges.push({
+      key: "fullLotOnly",
+      label: filters.fullLotOnly ? "Full lot only" : "Split lots allowed",
+    });
+  }
+
   return badges;
 }
 
@@ -246,6 +259,12 @@ export function filtersToSearchParams(filters: SearchFilters): string {
   if (filters.maxDistance !== undefined)
     params.set("maxDistance", String(filters.maxDistance));
   if (filters.buyerZip) params.set("buyerZip", filters.buyerZip);
+  if (filters.sellerVerified === true)
+    params.set("sellerVerified", "true");
+  if (filters.freightReady === true)
+    params.set("freightReady", "true");
+  if (filters.fullLotOnly !== undefined)
+    params.set("fullLotOnly", String(filters.fullLotOnly));
   if (filters.sort && filters.sort !== "date_newest")
     params.set("sort", filters.sort);
 
@@ -273,6 +292,16 @@ function parseOptionalNumber(value: string | null): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parseOptionalBoolean(value: string | null): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
+function parsePositiveBoolean(value: string | null): true | undefined {
+  return value === "true" ? true : undefined;
+}
+
 /**
  * Convert the current listings URL params into a SearchFilters object that can
  * be saved and restored later.
@@ -298,6 +327,9 @@ export function searchParamsToFilters(searchParams: URLSearchParams): SearchFilt
     maxLotSize: parseOptionalNumber(searchParams.get("maxLotSize")),
     maxDistance: parseOptionalNumber(searchParams.get("maxDistance")),
     buyerZip: searchParams.get("buyerZip") || undefined,
+    sellerVerified: parsePositiveBoolean(searchParams.get("sellerVerified")),
+    freightReady: parsePositiveBoolean(searchParams.get("freightReady")),
+    fullLotOnly: parseOptionalBoolean(searchParams.get("fullLotOnly")),
     sort: sort ? (sort as SearchFilters["sort"]) : undefined,
   };
 }

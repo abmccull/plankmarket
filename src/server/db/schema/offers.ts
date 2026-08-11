@@ -6,6 +6,7 @@ import {
   index,
   pgEnum,
   integer,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { money } from "../custom-types";
 import { users } from "./users";
@@ -70,12 +71,22 @@ export const offers = pgTable(
       .notNull(),
   },
   (table) => [
+    uniqueIndex("offers_id_buyer_seller_listing_idx").on(
+      table.id,
+      table.buyerId,
+      table.sellerId,
+      table.listingId,
+    ),
     index("offers_listing_id_idx").on(table.listingId),
     index("offers_buyer_id_idx").on(table.buyerId),
     index("offers_seller_id_idx").on(table.sellerId),
     index("offers_status_idx").on(table.status),
     index("offers_created_at_idx").on(table.createdAt),
     index("offers_expires_at_idx").on(table.expiresAt),
+    index("offers_seller_created_idx").on(
+      table.sellerId,
+      table.createdAt.desc(),
+    ),
   ]
 );
 

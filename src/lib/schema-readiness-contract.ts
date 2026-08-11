@@ -1,12 +1,22 @@
-export const MARKETPLACE_SCHEMA_VERSION = "0026";
+import releaseContract from "@/lib/release-contract.json";
+
+export const MARKETPLACE_SCHEMA_VERSION = releaseContract.schemaVersion;
 
 export const marketplaceSchemaContract = {
+  extensions: ["pg_trgm"],
   columns: [
     ["users", "verification_submission_id"],
+    ["users", "ein_last_4"],
+    ["users", "verification_data_purge_after"],
+    ["users", "verification_evidence_purged_at"],
     ["users", "stripe_subscription_event_created_at"],
     ["media", "uploader_id"],
+    ["media", "deletion_claim_token"],
+    ["media", "deletion_claimed_at"],
     ["orders", "stripe_transfer_reversal_id"],
     ["orders", "transfer_reversed_amount"],
+    ["orders", "payment_intent_claim_token"],
+    ["orders", "payment_intent_claimed_at"],
     ["orders", "shipping_booking_snapshot"],
     ["orders", "freight_funding_mode"],
     ["orders", "buyer_freight_charge"],
@@ -32,15 +42,24 @@ export const marketplaceSchemaContract = {
     ["orders", "tax_reversal_evidence"],
     ["shipments", "is_dry_run"],
     ["shipments", "dispatch_attempted_at"],
+    ["shipments", "bol_number"],
+    ["shipments", "cancellation_requested_at"],
+    ["shipments", "cancellation_claim_token"],
+    ["shipments", "cancellation_claimed_at"],
     ["stripe_webhook_events", "status"],
     ["stripe_webhook_events", "attempt_count"],
     ["stripe_webhook_events", "processing_started_at"],
     ["stripe_webhook_events", "completed_at"],
     ["stripe_webhook_events", "last_error"],
+    ["stripe_webhook_events", "received_at"],
+    ["stripe_webhook_events", "event_created_at"],
+    ["stripe_webhook_events", "payload"],
     ["promotion_credits", "stripe_invoice_id"],
     ["verification_drafts", "user_id"],
     ["verification_drafts", "current_step"],
     ["verification_drafts", "verification_doc_url"],
+    ["verification_drafts", "expires_at"],
+    ["verification_drafts", "purge_after"],
     ["listings", "last_confirmed_at"],
     ["listings", "confirmation_due_at"],
     ["listings", "full_lot_only"],
@@ -53,12 +72,20 @@ export const marketplaceSchemaContract = {
     ["listings", "tax_code_status"],
     ["listings", "tax_code_verified_at"],
     ["listings", "tax_code_verified_by"],
+    ["listings", "search_document"],
+    ["listings", "published_at"],
     ["user_preferences", "partial_quantity_markup_percent"],
     ["user_preferences", "automatic_markdown_enabled"],
     ["user_preferences", "allow_sample_requests"],
     ["user_preferences", "selling_territory_mode"],
     ["user_preferences", "freight_payment_mode"],
     ["user_preferences", "tax_registered_states"],
+    ["user_preferences", "analytics_tracking_enabled"],
+    ["user_preferences", "analytics_consent_updated_at"],
+    ["sample_requests", "retention_purge_after"],
+    ["sample_requests", "pii_purged_at"],
+    ["shipping_addresses", "last_used_at"],
+    ["shipping_addresses", "retention_purge_after"],
     ["disputes", "reason_code"],
     ["disputes", "source"],
     ["disputes", "reporting_deadline_at"],
@@ -80,6 +107,7 @@ export const marketplaceSchemaContract = {
   sensitiveTables: [
     "verification_drafts",
     "sample_requests",
+    "shipping_addresses",
     "dispute_evidence",
     "reconciliation_cases",
     "reconciliation_case_events",
@@ -95,8 +123,18 @@ export const marketplaceSchemaContract = {
   ],
   indexes: [
     "media_uploadthing_key_unique_idx",
+    "buyer_requests_id_buyer_idx",
     "promotion_credits_stripe_invoice_id_unique_idx",
     "sample_requests_listing_buyer_open_idx",
+    "users_verification_data_purge_after_idx",
+    "verification_drafts_purge_after_idx",
+    "sample_requests_retention_purge_after_idx",
+    "shipping_addresses_retention_purge_after_idx",
+    "listings_id_seller_idx",
+    "offers_id_buyer_seller_listing_idx",
+    "inventory_sources_id_seller_idx",
+    "inventory_source_items_id_source_seller_idx",
+    "inventory_ingest_batches_id_source_seller_idx",
     "dispute_evidence_dispute_id_idx",
     "reconciliation_cases_status_severity_idx",
     "reconciliation_case_events_case_created_idx",
@@ -113,15 +151,64 @@ export const marketplaceSchemaContract = {
     "inventory_source_items_source_listing_uidx",
     "inventory_ingest_batches_source_idempotency_uidx",
     "listings_tax_code_status_idx",
+    "listings_search_document_trgm_idx",
+    "listings_public_browse_due_created_idx",
+    "listings_published_at_idx",
+    "listings_certifications_gin_idx",
+    "listings_seller_status_created_idx",
+    "listings_seller_views_idx",
+    "saved_searches_due_alerts_idx",
     "orders_stripe_tax_calculation_id_unique_idx",
     "orders_stripe_tax_transaction_id_unique_idx",
+    "orders_seller_payment_confirmed_idx",
+    "orders_seller_refunded_at_idx",
+    "offers_seller_created_idx",
+    "reviews_reviewee_direction_created_idx",
+    "conversations_buyer_last_message_idx",
+    "conversations_seller_last_message_idx",
+    "messages_conversation_created_idx",
+    "notifications_user_created_desc_idx",
+    "notifications_user_unread_created_idx",
+    "buyer_requests_status_created_idx",
+    "buyer_requests_material_types_gin_idx",
+    "buyer_request_responses_seller_created_idx",
+    "followups_seller_status_due_idx",
+    "followups_pending_due_id_idx",
+    "shipments_status_updated_id_idx",
+    "shipments_cancellation_requested_idx",
+    "stripe_webhook_events_pending_received_idx",
+    "media_pending_deletion_claim_idx",
   ],
   constraints: [
     "users_verification_status_check",
     "users_verification_state_consistent_check",
+    "conversations_listing_seller_lineage_fk",
+    "sample_requests_listing_seller_lineage_fk",
+    "offers_listing_seller_lineage_fk",
+    "orders_listing_seller_lineage_fk",
+    "orders_offer_lineage_fk",
+    "buyer_request_responses_listing_seller_lineage_fk",
+    "inventory_source_items_source_seller_lineage_fk",
+    "inventory_source_items_listing_seller_lineage_fk",
+    "inventory_ingest_batches_source_seller_lineage_fk",
+    "inventory_adjustments_listing_seller_lineage_fk",
+    "inventory_adjustments_source_seller_lineage_fk",
+    "inventory_adjustments_source_item_requires_source_check",
+    "inventory_adjustments_ingest_batch_requires_source_check",
+    "inventory_adjustments_source_item_lineage_fk",
+    "inventory_adjustments_ingest_batch_lineage_fk",
+    "inventory_reconciliations_source_seller_lineage_fk",
+    "inventory_reconciliations_source_item_lineage_fk",
+    "inventory_reconciliations_ingest_batch_lineage_fk",
+    "inventory_reconciliations_listing_seller_lineage_fk",
+    "media_one_parent_max_check",
+    "media_listing_owner_lineage_fk",
+    "media_buyer_request_owner_lineage_fk",
     "media_uploader_required_check",
     "stripe_webhook_events_status_check",
     "stripe_webhook_events_attempt_count_check",
+    "shipments_cancellation_claim_consistency_check",
+    "media_deletion_claim_consistency_check",
     "verification_drafts_current_step_check",
     "orders_freight_funding_mode_check",
     "orders_freight_funding_amounts_nonnegative_check",
@@ -131,6 +218,7 @@ export const marketplaceSchemaContract = {
     "reconciliation_cases_amount_nonnegative_check",
     "reconciliation_cases_attempt_count_nonnegative_check",
     "orders_payment_status_check",
+    "orders_payment_intent_claim_consistency_check",
     "orders_payment_hold_status_check",
     "listings_total_sq_ft_nonnegative_check",
     "inventory_sources_stale_after_check",
@@ -164,14 +252,26 @@ export const marketplaceSchemaContract = {
     "orders_00_set_original_seller_payout",
     "orders_enforce_financial_snapshot",
     "orders_prevent_commercial_snapshot_update",
+    "users_set_verification_retention_defaults",
+    "verification_drafts_set_retention_defaults",
+    "sample_requests_set_retention_defaults",
+    "shipping_addresses_set_retention_defaults",
     "audit_events_prevent_update_delete",
     "inventory_adjustments_append_only",
     "orders_prevent_tax_evidence_mutation",
+    "listings_set_published_at",
+    "dispute_evidence_block_deleting_media",
   ],
   functions: [
     "enforce_order_financial_snapshot()",
+    "set_user_verification_retention_defaults()",
+    "set_verification_draft_retention_defaults()",
+    "set_sample_request_retention_defaults()",
+    "set_shipping_address_retention_defaults()",
     "prevent_inventory_adjustment_mutation()",
     "prevent_order_tax_evidence_mutation()",
+    "ensure_listing_published_at()",
+    "prevent_evidence_attachment_to_deleting_media()",
   ],
 } as const;
 
@@ -200,7 +300,18 @@ function twoColumnValues(
  * migration surface than CI checked before deployment.
  */
 export const MARKETPLACE_SCHEMA_READINESS_SQL = `
-with required_columns(table_name, column_name) as (
+with required_extensions(extension_name) as (
+  values
+    ${oneColumnValues(marketplaceSchemaContract.extensions)}
+),
+missing_extensions as (
+  select required.extension_name
+  from required_extensions required
+  left join pg_extension
+    on pg_extension.extname = required.extension_name
+  where pg_extension.oid is null
+),
+required_columns(table_name, column_name) as (
   values
     ${twoColumnValues(marketplaceSchemaContract.columns)}
 ),
@@ -274,6 +385,8 @@ missing_functions as (
   where to_regprocedure('public.' || function_identity) is null
 ),
 missing_artifacts(artifact) as (
+  select 'extension:' || extension_name from missing_extensions
+  union all
   select 'column:' || table_name || '.' || column_name from missing_columns
   union all
   select 'table_or_rls:' || table_name from missing_or_unsecured_tables

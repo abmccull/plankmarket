@@ -9,7 +9,51 @@ import { createClient } from "@/lib/supabase/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "@/lib/redis/client";
 import { checkViolationStatus } from "@/server/services/content-moderation";
-import { resolveRole } from "@/lib/supabase/roles";
+import { type AppRole, resolveRole } from "@/lib/supabase/roles";
+import {
+  getProcedureAssuranceRequirement,
+  MFA_REQUIRED_MESSAGE,
+  RECENT_AUTH_REQUIRED_MESSAGE,
+  summarizeAuthAssurance,
+  type AuthAssuranceState,
+} from "@/lib/auth/auth-assurance";
+
+const userProfileColumns = {
+  id: true,
+  authId: true,
+  email: true,
+  name: true,
+  phone: true,
+  role: true,
+  businessName: true,
+  businessAddress: true,
+  businessCity: true,
+  businessState: true,
+  businessZip: true,
+  avatarUrl: true,
+  stripeAccountId: true,
+  stripeOnboardingComplete: true,
+  verified: true,
+  active: true,
+  verificationStatus: true,
+  verificationRequestedAt: true,
+  verificationNotes: true,
+  businessWebsite: true,
+  proStatus: true,
+  stripeCustomerId: true,
+  proExpiresAt: true,
+  zipCode: true,
+  createdAt: true,
+  updatedAt: true,
+  // Excluded for security:
+  // einTaxId, aiVerificationScore, aiVerificationNotes,
+  // verificationDocUrl, lat, lng
+} as const;
+
+type ServerSupabaseClient = Awaited<ReturnType<typeof createClient>>;
+type AuthUser = Awaited<
+  ReturnType<ServerSupabaseClient["auth"]["getUser"]>
+>["data"]["user"];
 
 function parseZip(value: unknown): string {
   if (typeof value !== "string") return "00000";
@@ -26,156 +70,181 @@ function parseNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
-  const supabase = await createClient();
+function getClientIpFromHeaders(headers: Headers): string {
+  return (
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
+function hasPotentialSupabaseSession(headers: Headers): boolean {
+  const cookieHeader = headers.get("cookie") ?? "";
+  return (
+    cookieHeader.includes("sb-") ||
+    cookieHeader.includes("supabase-auth-token") ||
+    cookieHeader.includes("supabase.auth.token")
+  );
+}
+
+async function findDbUserByAuthId(authId: string) {
+  return db.query.users.findFirst({
+    where: eq(users.authId, authId),
+    columns: userProfileColumns,
+  });
+}
+
+async function getOrProvisionDbUser(authUser: AuthUser) {
+  if (!authUser) {
+    return null;
+  }
+
+  let result = await findDbUserByAuthId(authUser.id);
+
+  if (!result) {
+    const role = resolveRole(authUser);
+    if (!role) {
+      // Never turn a partially provisioned or externally-created auth
+      // identity into a buyer by default. Registration writes app_metadata
+      // with the service-role client before the profile is created.
+      console.error("Refusing to auto-provision profile without a trusted role", {
+        authUserId: authUser.id,
+      });
+    } else {
+      const name = parseText(
+        authUser.user_metadata?.name,
+        parseText(authUser.email?.split("@")[0], "PlankMarket User")
+      ).slice(0, 255);
+      const businessName = parseText(
+        authUser.user_metadata?.business_name,
+        "",
+      ).slice(0, 255);
+      const phone = parseText(authUser.user_metadata?.phone, "").slice(0, 20);
+      const zipCode = parseZip(
+        authUser.user_metadata?.zip_code ?? authUser.user_metadata?.zipCode
+      );
+
+      try {
+        await db
+          .insert(users)
+          .values({
+            authId: authUser.id,
+            email:
+              authUser.email ??
+              `${authUser.id}@placeholder.plankmarket.local`,
+            name,
+            role,
+            businessName: businessName || null,
+            phone,
+            businessAddress: "Pending verification",
+            businessCity: "NA",
+            businessState: "NA",
+            businessZip: zipCode,
+            verificationDocUrl: "",
+            verificationRequestedAt: new Date(0),
+            verificationNotes: "",
+            businessWebsite: "",
+            einTaxId: "",
+            verificationStatus: "unverified",
+            verified: false,
+            active: true,
+            zipCode,
+            lat: parseNumber(authUser.user_metadata?.lat, 0),
+            lng: parseNumber(authUser.user_metadata?.lng, 0),
+          })
+          .onConflictDoNothing({ target: users.authId });
+      } catch (error) {
+        console.error("Failed to auto-provision missing user profile", {
+          authUserId: authUser.id,
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+
+      result = await findDbUserByAuthId(authUser.id);
+    }
+  }
+
+  return result ?? null;
+}
+
+async function resolveRequestViewer(
+  headers: Headers,
+  options?: {
+    allowAnonymousShortcut?: boolean;
+    supabase?: ServerSupabaseClient;
+  },
+) {
+  const clientIp = getClientIpFromHeaders(headers);
+
+  if (options?.allowAnonymousShortcut && !hasPotentialSupabaseSession(headers)) {
+    return {
+      authUser: null,
+      user: null,
+      clientIp,
+    };
+  }
+
+  const supabase = options?.supabase ?? (await createClient());
   const {
     data: { user: authUser },
   } = await supabase.auth.getUser();
 
-  let dbUser = null;
-  if (authUser) {
-    let result = await db.query.users.findFirst({
-      where: eq(users.authId, authUser.id),
-      columns: {
-        id: true,
-        authId: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        businessName: true,
-        businessAddress: true,
-        businessCity: true,
-        businessState: true,
-        businessZip: true,
-        avatarUrl: true,
-        stripeAccountId: true,
-        stripeOnboardingComplete: true,
-        verified: true,
-        active: true,
-        verificationStatus: true,
-        verificationRequestedAt: true,
-        verificationNotes: true,
-        businessWebsite: true,
-        proStatus: true,
-        stripeCustomerId: true,
-        proExpiresAt: true,
-        zipCode: true,
-        createdAt: true,
-        updatedAt: true,
-        // Excluded for security:
-        // einTaxId, aiVerificationScore, aiVerificationNotes,
-        // verificationDocUrl, lat, lng
-      },
-    });
+  return {
+    authUser,
+    user: await getOrProvisionDbUser(authUser),
+    clientIp,
+  };
+}
 
-    if (!result) {
-      const role = resolveRole(authUser);
-      if (!role) {
-        // Never turn a partially provisioned or externally-created auth
-        // identity into a buyer by default. Registration writes app_metadata
-        // with the service-role client before the profile is created.
-        console.error("Refusing to auto-provision profile without a trusted role", {
-          authUserId: authUser.id,
-        });
-      } else {
-        const name = parseText(
-          authUser.user_metadata?.name,
-          parseText(authUser.email?.split("@")[0], "PlankMarket User")
-        ).slice(0, 255);
-        const businessName = parseText(
-          authUser.user_metadata?.business_name,
-          "",
-        ).slice(0, 255);
-        const phone = parseText(authUser.user_metadata?.phone, "").slice(0, 20);
-        const zipCode = parseZip(
-          authUser.user_metadata?.zip_code ?? authUser.user_metadata?.zipCode
-        );
+async function loadAuthAssurance(
+  supabase: ServerSupabaseClient,
+): Promise<AuthAssuranceState> {
+  const { data, error } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
-        try {
-          await db
-            .insert(users)
-            .values({
-              authId: authUser.id,
-              email:
-                authUser.email ??
-                `${authUser.id}@placeholder.plankmarket.local`,
-              name,
-              role,
-              businessName: businessName || null,
-              phone,
-              businessAddress: "Pending verification",
-              businessCity: "NA",
-              businessState: "NA",
-              businessZip: zipCode,
-              verificationDocUrl: "",
-              verificationRequestedAt: new Date(0),
-              verificationNotes: "",
-              businessWebsite: "",
-              einTaxId: "",
-              verificationStatus: "unverified",
-              verified: false,
-              active: true,
-              zipCode,
-              lat: parseNumber(authUser.user_metadata?.lat, 0),
-              lng: parseNumber(authUser.user_metadata?.lng, 0),
-            })
-            .onConflictDoNothing({ target: users.authId });
-        } catch (error) {
-          console.error("Failed to auto-provision missing user profile", {
-            authUserId: authUser.id,
-            error: error instanceof Error ? error.name : "UnknownError",
-          });
-        }
-
-        result = await db.query.users.findFirst({
-          where: eq(users.authId, authUser.id),
-          columns: {
-            id: true,
-            authId: true,
-            email: true,
-            name: true,
-            phone: true,
-            role: true,
-            businessName: true,
-            businessAddress: true,
-            businessCity: true,
-            businessState: true,
-            businessZip: true,
-            avatarUrl: true,
-            stripeAccountId: true,
-            stripeOnboardingComplete: true,
-            verified: true,
-            active: true,
-            verificationStatus: true,
-            verificationRequestedAt: true,
-            verificationNotes: true,
-            businessWebsite: true,
-            proStatus: true,
-            stripeCustomerId: true,
-            proExpiresAt: true,
-            zipCode: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        });
-      }
-    }
-    dbUser = result ?? null;
+  if (error) {
+    throw error;
   }
 
-  // Extract client IP for anonymous rate limiting and view dedup
-  const clientIp =
-    opts.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    opts.req.headers.get("x-real-ip") ??
-    "unknown";
+  return summarizeAuthAssurance({
+    currentLevel: data.currentLevel,
+    nextLevel: data.nextLevel,
+    currentAuthenticationMethods: data.currentAuthenticationMethods,
+  });
+}
+
+export async function resolveRequestViewerFromHeaders(
+  headers: Headers,
+  options?: { allowAnonymousShortcut?: boolean },
+) {
+  return resolveRequestViewer(headers, options);
+}
+
+export async function createTRPCContext(opts: FetchCreateContextFnOptions) {
+  const supabase = await createClient();
+  const { authUser, user, clientIp } = await resolveRequestViewer(
+    opts.req.headers,
+    { supabase },
+  );
+  let authAssurancePromise: Promise<AuthAssuranceState> | null = null;
 
   return {
     db,
     authUser,
-    user: dbUser,
+    user,
     supabase,
     clientIp,
+    getAuthAssurance: () => {
+      if (!authUser) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You must be logged in",
+        });
+      }
+
+      authAssurancePromise ??= loadAuthAssurance(supabase);
+      return authAssurancePromise;
+    },
   };
 }
 
@@ -203,6 +272,18 @@ function getStrictRateLimit(): Ratelimit {
   return strictRateLimit;
 }
 
+// Public catalog reads permit normal browsing and crawlers while bounding
+// scraper amplification against uncached or personalized query paths.
+let publicReadRateLimit: Ratelimit | undefined;
+function getPublicReadRateLimit(): Ratelimit {
+  publicReadRateLimit ??= new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(180, "60 s"),
+    prefix: "rl:public-read",
+  });
+  return publicReadRateLimit;
+}
+
 const t = initTRPC.context<Context>().create({
   transformer: superjson,
   errorFormatter({ shape, error }) {
@@ -222,6 +303,30 @@ export const createTRPCRouter = t.router;
 
 // Public procedure - no auth required
 export const publicProcedure = t.procedure;
+
+export const publicReadProcedure = t.procedure.use(
+  t.middleware(async ({ ctx, next }) => {
+    try {
+      const { success } = await getPublicReadRateLimit().limit(
+        `ip:${ctx.clientIp}`,
+      );
+      if (!success) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many catalog requests. Please try again shortly.",
+        });
+      }
+    } catch (error) {
+      if (error instanceof TRPCError) throw error;
+      // Public reads remain available during a limiter outage. Provider-backed
+      // and transactional procedures use strict fail-closed limiters instead.
+      console.error("[rate-limit] public read limiter unavailable", {
+        error: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+    return next();
+  }),
+);
 
 // Public procedure with strict rate limiting (for registration and other sensitive unauthenticated endpoints)
 export const rateLimitedPublicProcedure = t.procedure.use(
@@ -320,6 +425,56 @@ const enforceStrictRateLimit = t.middleware(async ({ ctx, next }) => {
   return next();
 });
 
+const enforceAuthAssurance = t.middleware(async ({ ctx, next, path }) => {
+  if (!ctx.authUser || !ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be logged in",
+    });
+  }
+
+  const requirements = getProcedureAssuranceRequirement({
+    path,
+    role: ctx.user.role as AppRole | null,
+  });
+
+  if (!requirements.requiresAal2) {
+    return next();
+  }
+
+  let assurance: AuthAssuranceState;
+  try {
+    assurance = await ctx.getAuthAssurance();
+  } catch (error) {
+    console.error("[auth] failed to validate session assurance", {
+      path,
+      authUserId: ctx.authUser.id,
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message:
+        "We could not validate your security session. Please try again.",
+    });
+  }
+
+  if (assurance.currentLevel !== "aal2") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: MFA_REQUIRED_MESSAGE,
+    });
+  }
+
+  if (requirements.requiresRecentAuth && !assurance.recentVerificationSatisfied) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: RECENT_AUTH_REQUIRED_MESSAGE,
+    });
+  }
+
+  return next();
+});
+
 export const protectedProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit);
 export const strictProtectedProcedure = t.procedure
   .use(enforceAuth)
@@ -382,6 +537,7 @@ export const sellerProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit
 export const strictSellerProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceStrictRateLimit)
+  .use(enforceAuthAssurance)
   .use(enforceSeller);
 
 // Seller procedure that allows pending verification (for draft listings)
@@ -503,7 +659,11 @@ const enforceAdmin = t.middleware(({ ctx, next }) => {
   });
 });
 
-export const adminProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceAdmin);
+export const adminProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceRateLimit)
+  .use(enforceAuthAssurance)
+  .use(enforceAdmin);
 
 // Strict rate limited procedure for sensitive operations (e.g., payment creation)
 export const strictRateLimitedProcedure = t.procedure.use(enforceAuth).use(enforceStrictRateLimit);

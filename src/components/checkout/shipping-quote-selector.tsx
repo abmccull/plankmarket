@@ -1,10 +1,18 @@
 "use client";
 
+import { useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, Truck, AlertCircle } from "lucide-react";
+
+/**
+ * Server already returns effective quoteExpiresAt (min of provider residual and
+ * Redis artifact life, with the dispatch buffer applied). Client only needs a
+ * tiny skew so clock drift does not thrash selection.
+ */
+const CLIENT_EXPIRY_SKEW_MS = 15_000;
 
 export interface SelectedShippingQuote {
   quoteId: number;
@@ -26,20 +34,32 @@ interface ShippingQuoteSelectorProps {
   listingId: string;
   destinationZip: string;
   quantitySqFt: number;
+  liftgateDelivery: boolean;
+  residentialDelivery: boolean;
+  appointmentDelivery: boolean;
   selectedQuote: SelectedShippingQuote | null;
   onSelectQuote: (quote: SelectedShippingQuote) => void;
+  /** Optional clear when selected quote becomes unbookable. */
+  onClearQuote?: () => void;
 }
 export default function ShippingQuoteSelector({
   listingId,
   destinationZip,
   quantitySqFt,
+  liftgateDelivery,
+  residentialDelivery,
+  appointmentDelivery,
   selectedQuote,
   onSelectQuote,
+  onClearQuote,
 }: ShippingQuoteSelectorProps) {
   const queryInput = {
     listingId,
     destinationZip,
     quantitySqFt,
+    liftgateDelivery,
+    residentialDelivery,
+    appointmentDelivery,
   };
 
   const {
@@ -50,7 +70,110 @@ export default function ShippingQuoteSelector({
     refetch,
   } = trpc.shipping.getQuotes.useQuery(queryInput, {
     enabled: destinationZip.length >= 5,
+    // Refresh near effective expiry (already buffer-adjusted by the server).
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || data.length === 0) return false;
+      const now = Date.now();
+      let earliestMs = Number.POSITIVE_INFINITY;
+      for (const quote of data) {
+        const expires = new Date(quote.quoteExpiresAt).getTime();
+        if (Number.isFinite(expires) && expires < earliestMs) {
+          earliestMs = expires;
+        }
+      }
+      if (!Number.isFinite(earliestMs)) return 60_000;
+      const msUntilExpiry = earliestMs - now - CLIENT_EXPIRY_SKEW_MS;
+      if (msUntilExpiry <= 0) return 15_000;
+      return Math.min(60_000, Math.max(15_000, msUntilExpiry));
+    },
+    staleTime: 30_000,
   });
+
+  const selectedStillBookable = useMemo(() => {
+    if (!selectedQuote) return true;
+    const expires = new Date(selectedQuote.quoteExpiresAt).getTime();
+    return (
+      Number.isFinite(expires) && expires > Date.now() + CLIENT_EXPIRY_SKEW_MS
+    );
+  }, [selectedQuote]);
+
+  // Clear when selection is already past effective expiry.
+  useEffect(() => {
+    if (!selectedQuote || selectedStillBookable) return;
+    onClearQuote?.();
+  }, [selectedQuote, selectedStillBookable, onClearQuote]);
+
+  // Clock-driven clear even if refetch is delayed/failed.
+  useEffect(() => {
+    if (!selectedQuote) return;
+    const expires = new Date(selectedQuote.quoteExpiresAt).getTime();
+    if (!Number.isFinite(expires)) return;
+    const msUntilClear = expires - Date.now() - CLIENT_EXPIRY_SKEW_MS;
+    if (msUntilClear <= 0) {
+      onClearQuote?.();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      onClearQuote?.();
+    }, msUntilClear);
+    return () => window.clearTimeout(timer);
+  }, [selectedQuote, onClearQuote]);
+
+  // Clear selection when destination/qty changes (new query key) so Continue
+  // cannot stay enabled with a token from the previous address.
+  const queryKey = [
+    listingId,
+    destinationZip,
+    quantitySqFt,
+    liftgateDelivery,
+    residentialDelivery,
+    appointmentDelivery,
+  ].join("|");
+  useEffect(() => {
+    onClearQuote?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional key-change clear only
+  }, [queryKey]);
+
+  // On remint (new quoteTokens), rebind selection by provider quoteId + price
+  // rather than wiping the buyer's choice mid-checkout.
+  useEffect(() => {
+    if (!selectedQuote || quotes === undefined) return;
+
+    // Empty rate list after refresh — clear stale selection so Continue disables.
+    if (quotes.length === 0) {
+      onClearQuote?.();
+      return;
+    }
+
+    const exactToken = quotes.find(
+      (quote) => quote.quoteToken === selectedQuote.quoteToken,
+    );
+    if (exactToken) return;
+
+    const rebound = quotes.find(
+      (quote) =>
+        quote.quoteId === selectedQuote.quoteId &&
+        Math.abs(quote.shippingPrice - selectedQuote.shippingPrice) <= 0.01 &&
+        quote.carrierScac === selectedQuote.carrierScac,
+    );
+    if (rebound) {
+      onSelectQuote(rebound);
+      return;
+    }
+
+    // Same carrier option gone after refresh — clear so buyer re-picks.
+    onClearQuote?.();
+  }, [quotes, selectedQuote, onSelectQuote, onClearQuote]);
+
+  const bookableQuotes = useMemo(() => {
+    if (!quotes) return quotes;
+    const cutoff = Date.now() + CLIENT_EXPIRY_SKEW_MS;
+    return quotes.filter((quote) => {
+      const expires = new Date(quote.quoteExpiresAt).getTime();
+      return Number.isFinite(expires) && expires > cutoff;
+    });
+  }, [quotes]);
 
   if (destinationZip.length < 5) {
     return null;
@@ -103,7 +226,7 @@ export default function ShippingQuoteSelector({
     );
   }
 
-  if (!quotes || quotes.length === 0) {
+  if (!bookableQuotes || bookableQuotes.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -118,6 +241,15 @@ export default function ShippingQuoteSelector({
             <p className="text-sm text-muted-foreground text-center">
               No shipping quotes available for this destination
             </p>
+            {quotes && quotes.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => refetch()}
+                aria-label="Refresh shipping quotes"
+              >
+                Refresh rates
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -146,8 +278,15 @@ export default function ShippingQuoteSelector({
       </CardHeader>
       <CardContent>
         <div className="space-y-3" role="radiogroup" aria-label="Shipping options">
-          {quotes.map((quote) => {
-            const isSelected = selectedQuote?.quoteId === quote.quoteId;
+          {bookableQuotes.map((quote) => {
+            const isSelected =
+              selectedQuote?.quoteToken === quote.quoteToken ||
+              (!!selectedQuote &&
+                selectedQuote.quoteToken !== quote.quoteToken &&
+                selectedQuote.quoteId === quote.quoteId &&
+                Math.abs(selectedQuote.shippingPrice - quote.shippingPrice) <=
+                  0.01 &&
+                selectedQuote.carrierScac === quote.carrierScac);
             const deliveryDate = formatDate(quote.estimatedDelivery);
             const hasSellerCredit = quote.sellerFreightContribution > 0;
 

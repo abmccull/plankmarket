@@ -281,6 +281,48 @@ function getFilledFields(
 
 export const preferencesRouter = createTRPCRouter({
   /**
+   * Persist optional analytics consent without running the role-specific
+   * preference form or recalculating profile completion from a partial payload.
+   * This is intentionally valid for buyers, sellers, and admins.
+   */
+  setAnalyticsConsent: protectedProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const now = new Date();
+      const preferenceRole = ctx.user.role === "seller" ? "seller" : "buyer";
+      const [result] = await ctx.db
+        .insert(userPreferences)
+        .values({
+          userId: ctx.user.id,
+          role: preferenceRole,
+          analyticsTrackingEnabled: input.enabled,
+          analyticsConsentUpdatedAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: userPreferences.userId,
+          set: {
+            analyticsTrackingEnabled: input.enabled,
+            analyticsConsentUpdatedAt: now,
+            updatedAt: now,
+          },
+        })
+        .returning({
+          analyticsTrackingEnabled: userPreferences.analyticsTrackingEnabled,
+          analyticsConsentUpdatedAt: userPreferences.analyticsConsentUpdatedAt,
+        });
+
+      if (!result) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to save analytics preference",
+        });
+      }
+
+      return result;
+    }),
+
+  /**
    * Upsert the current user's preferences. Role is validated against the user's
    * actual profile role — input role must match. Uses onConflictDoUpdate on userId.
    */
@@ -346,6 +388,8 @@ export const preferencesRouter = createTRPCRouter({
           userId: ctx.user.id,
           role,
           ...roleFields,
+          analyticsConsentUpdatedAt:
+            input.analyticsTrackingEnabled === undefined ? undefined : now,
           profileComplete,
           completedAt: profileComplete ? now : null,
           updatedAt: now,
@@ -355,6 +399,8 @@ export const preferencesRouter = createTRPCRouter({
           target: userPreferences.userId,
           set: {
             ...roleFields,
+            analyticsConsentUpdatedAt:
+              input.analyticsTrackingEnabled === undefined ? undefined : now,
             profileComplete,
             completedAt: profileComplete ? now : null,
             updatedAt: now,

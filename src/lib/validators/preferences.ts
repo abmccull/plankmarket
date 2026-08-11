@@ -189,10 +189,16 @@ export const sellerCommercialDefaultsSchema = z
 export const upsertPreferencesSchema = z
   .discriminatedUnion("role", [
     z
-      .object({ role: z.literal("buyer") })
+      .object({
+        role: z.literal("buyer"),
+        analyticsTrackingEnabled: z.boolean().nullable().optional(),
+      })
       .merge(buyerPreferencesSchema),
     z
-      .object({ role: z.literal("seller") })
+      .object({
+        role: z.literal("seller"),
+        analyticsTrackingEnabled: z.boolean().nullable().optional(),
+      })
       .merge(sellerPreferencesSchema),
   ])
   .superRefine((data, ctx) => {

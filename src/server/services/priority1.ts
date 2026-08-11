@@ -1,4 +1,8 @@
 import { env } from "@/env";
+import {
+  parseAllowedHostList,
+  validateAllowlistedHttpsUrl,
+} from "./allowlisted-https-url";
 import { z } from "zod";
 
 // Base configuration
@@ -32,6 +36,22 @@ function getApiKey(): string {
 
 function getDryRunStatusOverride(): string | undefined {
   return process.env.PRIORITY1_DRY_RUN_STATUS;
+}
+
+export function getAllowedPriority1DocumentHosts(): string[] {
+  return parseAllowedHostList(env.PRIORITY1_DOCUMENT_ALLOWED_HOSTS);
+}
+
+export function validatePriority1DocumentUrl(rawUrl: string): {
+  ok: boolean;
+  reason?: string;
+  parsedUrl?: URL;
+  normalizedUrl?: string;
+} {
+  return validateAllowlistedHttpsUrl(rawUrl, {
+    allowedHosts: getAllowedPriority1DocumentHosts(),
+    resourceLabel: "Priority1 document URL",
+  });
 }
 
 function sumDigits(value: string): number {
@@ -269,11 +289,16 @@ export interface RateQuoteItem {
   nmfcSubCode?: string | null;
 }
 
+export interface AccessorialService {
+  code: string;
+}
+
 export interface RatesRequest {
   originZipCode: string;
   destinationZipCode: string;
   pickupDate: string; // ISO 8601 format: "2026-02-13T00:00:00"
   items: RateQuoteItem[];
+  accessorialServices?: AccessorialService[];
 }
 
 export interface P1Address {
@@ -360,7 +385,7 @@ export interface CancelRequest {
 }
 
 export interface DocumentsRequest {
-  shipmentImageTypeId: "BillOfLading" | "DeliveryReceipt";
+  shipmentImageTypeId: "BillOfLading" | "DeliveryReceipt" | "PalletLabel";
   imageFormatTypeId: "PDF" | "JPG";
   proNumber?: string;
   bolNumber?: string;
@@ -480,6 +505,25 @@ export class Priority1ApiError extends Error {
   }
 }
 
+/**
+ * Live dispatch returned a bookable shipment id, but document URL / payload
+ * validation failed after the non-retryable POST. Callers should cancel when
+ * possible and open manual review — never silently leave a stranded book.
+ */
+export class Priority1PostBookValidationError extends Priority1ApiError {
+  constructor(
+    message: string,
+    public readonly priority1ShipmentId: number,
+  ) {
+    super(message, 502);
+    this.name = "Priority1PostBookValidationError";
+  }
+
+  override get retryable(): boolean {
+    return false;
+  }
+}
+
 const freightClassSchema = z.enum([
   "50",
   "55",
@@ -529,9 +573,55 @@ const providerDateSchema = nonEmptyStringSchema.refine(
   },
   "Invalid or implausible provider date",
 );
-const httpUrlSchema = nonEmptyStringSchema.url().refine(
-  (value) => value.startsWith("https://") || value.startsWith("http://"),
-  "Expected an HTTP(S) URL",
+/** Strict document URL — used when the caller needs a verified fetch target. */
+const priority1DocumentUrlSchema = nonEmptyStringSchema.transform(
+  (value, ctx) => {
+    const result = validatePriority1DocumentUrl(value);
+    if (!result.ok || !result.normalizedUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.reason ?? "Invalid Priority1 document URL",
+      });
+      return z.NEVER;
+    }
+    return result.normalizedUrl;
+  },
+);
+
+/**
+ * Soft document URL for dispatch payloads: drop non-allowlisted / invalid
+ * optional label/BOL hosts to null instead of failing the entire booked
+ * shipment parse (null docs soft-pass; identity still succeeds).
+ * Empty/whitespace strings soft-null (common Priority1 optional blanks).
+ * Logs the drop so ops can distinguish permanent host allowlist failures
+ * from provider-missing docs.
+ */
+const softPriority1DocumentUrlSchema = z.preprocess(
+  (value) => {
+    if (value == null) return null;
+    if (typeof value === "string" && value.trim() === "") return null;
+    return value;
+  },
+  z
+    .union([nonEmptyStringSchema, z.null()])
+    .transform((value) => {
+      if (value == null) return null;
+      const result = validatePriority1DocumentUrl(value);
+      if (!result.ok || !result.normalizedUrl) {
+        console.warn("[Priority1] soft-dropped document URL after live book", {
+          reason: result.reason ?? "invalid document URL",
+          host: (() => {
+            try {
+              return new URL(value).host;
+            } catch {
+              return null;
+            }
+          })(),
+        });
+        return null;
+      }
+      return result.normalizedUrl;
+    }),
 );
 
 const priority1MessageSchema = z.object({
@@ -613,18 +703,10 @@ const dispatchResponseSchema = z.object({
     .array(shipmentIdentifierSchema)
     .nullish()
     .transform((identifiers) => identifiers ?? []),
-  capacityProviderBolUrl: httpUrlSchema
-    .nullish()
-    .transform((value) => value ?? null),
-  capacityProviderPalletLabelUrl: httpUrlSchema
-    .nullish()
-    .transform((value) => value ?? null),
-  capacityProviderPalletLabelExtendedUrl: httpUrlSchema
-    .nullish()
-    .transform((value) => value ?? null),
-  capacityProviderPalletLabelsUrl: httpUrlSchema
-    .nullish()
-    .transform((value) => value ?? null),
+  capacityProviderBolUrl: softPriority1DocumentUrlSchema,
+  capacityProviderPalletLabelUrl: softPriority1DocumentUrlSchema,
+  capacityProviderPalletLabelExtendedUrl: softPriority1DocumentUrlSchema,
+  capacityProviderPalletLabelsUrl: softPriority1DocumentUrlSchema,
   pickupNote: z
     .string()
     .nullable()
@@ -639,7 +721,8 @@ const dispatchResponseSchema = z.object({
     .nullish()
     .transform((messages) => messages ?? []),
   shipmentInsurance: nonNegativeNumberSchema.optional(),
-  totalCost: nonNegativeNumberSchema,
+  // Optional: Priority1 often omits totalCost on dispatch (appears on status).
+  totalCost: nonNegativeNumberSchema.optional(),
 });
 
 const trackingStatusSchema = z.object({
@@ -691,7 +774,7 @@ const statusResponseSchema = z.object({
 });
 
 const documentsResponseSchema = z.object({
-  imageUrl: httpUrlSchema
+  imageUrl: priority1DocumentUrlSchema
     .nullable()
     .optional()
     .transform((value) => value ?? null),
@@ -915,11 +998,26 @@ async function dispatch(request: DispatchRequest): Promise<DispatchResponse> {
     };
   }
   const endpoint = "/v2/ltl/shipments/dispatch";
-  return parseProviderResponse(
-    endpoint,
-    dispatchResponseSchema,
-    await priority1Fetch(endpoint, request, { safeToRetry: false }),
-  );
+  const payload = await priority1Fetch(endpoint, request, { safeToRetry: false });
+
+  // Identity-first: if the carrier already booked but document URLs fail
+  // allowlist/schema, surface the shipment id so callers can cancel/review.
+  const identity = z
+    .object({ id: z.number().int().positive() })
+    .safeParse(payload);
+  try {
+    return parseProviderResponse(endpoint, dispatchResponseSchema, payload);
+  } catch (error) {
+    if (identity.success) {
+      const detail =
+        error instanceof Error ? error.message : "document validation failed";
+      throw new Priority1PostBookValidationError(
+        detail,
+        identity.data.id,
+      );
+    }
+    throw error;
+  }
 }
 
 /**
@@ -1009,7 +1107,13 @@ async function cancel(request: CancelRequest): Promise<void> {
   const response = await priority1Fetch(endpoint, request, {
     safeToRetry: false,
   });
-  if (response === undefined) return;
+  // Empty 2xx bodies are not success — require cancellationSuccess:true.
+  if (response === undefined) {
+    throw invalidProviderResponse(
+      endpoint,
+      "empty cancellation response (cancellationSuccess required)",
+    );
+  }
 
   const parsed = parseProviderResponse(endpoint, cancelResponseSchema, response);
   if (parsed.id !== undefined && parsed.id !== request.id) {

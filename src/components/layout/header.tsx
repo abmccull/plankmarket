@@ -42,7 +42,7 @@ import { formatRelativeTime, truncate } from "@/lib/utils";
 import { getNotificationHref } from "@/lib/utils/notification-href";
 
 export function Header() {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuthStore();
   const router = useRouter();
   const { isPro } = useProStatus();
   const sellHref =
@@ -188,7 +188,24 @@ export function Header() {
             </Link>
           </Button>
 
-          {isAuthenticated && user ? (
+          {isLoading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              aria-label="Checking account session"
+              className="flex items-center gap-2"
+            >
+              <span className="sr-only">Checking account session</span>
+              <span
+                aria-hidden="true"
+                className="h-9 w-9 animate-pulse rounded-full bg-muted"
+              />
+              <span
+                aria-hidden="true"
+                className="hidden h-9 w-24 animate-pulse rounded-lg bg-muted sm:block"
+              />
+            </div>
+          ) : isAuthenticated && user ? (
             <>
               {user.role === "buyer" && (
                 <Button

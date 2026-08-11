@@ -1,14 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/env";
+import { MFA_REQUIRED_MESSAGE } from "@/lib/auth/auth-assurance";
 import { resolveRole } from "@/lib/supabase/roles";
 import {
+  isHighAssuranceRoute,
   isPathWithin,
   isProtectedAppPath,
 } from "@/lib/supabase/middleware-paths";
 
 const AUTH_PATHS = ["/login", "/register"] as const;
 const ACCOUNT_RECOVERY_PATH = "/account-recovery";
+const MFA_PATH = "/mfa";
 
 function redirectWithSession(destination: URL, sessionResponse: NextResponse) {
   const response = NextResponse.redirect(destination);
@@ -20,6 +23,10 @@ function redirectWithSession(destination: URL, sessionResponse: NextResponse) {
     if (value) response.headers.set(header, value);
   }
   return response;
+}
+
+function getReturnPath(request: NextRequest) {
+  return `${request.nextUrl.pathname}${request.nextUrl.search}`;
 }
 
 export async function updateSession(request: NextRequest) {
@@ -68,6 +75,10 @@ export async function updateSession(request: NextRequest) {
 
   const isProtected = isProtectedAppPath(pathname);
   const isAuthPage = AUTH_PATHS.some((path) => isPathWithin(pathname, path));
+  const isMfaPage = isPathWithin(pathname, MFA_PATH);
+  const isMfaRecovery =
+    pathname === ACCOUNT_RECOVERY_PATH &&
+    request.nextUrl.searchParams.get("reason") === "mfa";
   const role = resolveRole(user);
 
   if (!user && pathname === ACCOUNT_RECOVERY_PATH) {
@@ -83,7 +94,7 @@ export async function updateSession(request: NextRequest) {
     user &&
     !role &&
     pathname !== ACCOUNT_RECOVERY_PATH &&
-    (isProtected || isAuthPage)
+    (isProtected || isAuthPage || isMfaPage)
   ) {
     return redirectWithSession(
       new URL(ACCOUNT_RECOVERY_PATH, request.url),
@@ -91,7 +102,7 @@ export async function updateSession(request: NextRequest) {
     );
   }
 
-  if (user && role && pathname === ACCOUNT_RECOVERY_PATH) {
+  if (user && role && pathname === ACCOUNT_RECOVERY_PATH && !isMfaRecovery) {
     const dashboardPaths: Record<typeof role, string> = {
       buyer: "/buyer",
       seller: "/seller",
@@ -104,10 +115,39 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Redirect unauthenticated users from protected routes
-  if (isProtected && !user) {
+  if ((isProtected || isMfaPage) && !user) {
     const url = new URL("/login", request.url);
-    url.searchParams.set("redirect", `${pathname}${request.nextUrl.search}`);
+    url.searchParams.set("redirect", getReturnPath(request));
     return redirectWithSession(url, supabaseResponse);
+  }
+
+  if (user && isHighAssuranceRoute(pathname)) {
+    const {
+      data: assurance,
+      error: assuranceError,
+    } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+    if (assuranceError) {
+      console.error("[auth] failed to validate authenticator assurance", {
+        pathname,
+        authUserId: user.id,
+        error: assuranceError.name,
+      });
+      return redirectWithSession(
+        new URL(
+          `${MFA_PATH}?message=${encodeURIComponent(MFA_REQUIRED_MESSAGE)}&next=${encodeURIComponent(getReturnPath(request))}`,
+          request.url,
+        ),
+        supabaseResponse,
+      );
+    }
+
+    if (assurance.currentLevel !== "aal2") {
+      const destination = new URL(MFA_PATH, request.url);
+      destination.searchParams.set("next", getReturnPath(request));
+      destination.searchParams.set("message", MFA_REQUIRED_MESSAGE);
+      return redirectWithSession(destination, supabaseResponse);
+    }
   }
 
   // Redirect non-admin authenticated users away from admin routes

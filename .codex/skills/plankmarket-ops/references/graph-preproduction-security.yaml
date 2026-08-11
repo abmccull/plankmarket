@@ -1,0 +1,256 @@
+schema_version: 1
+graph_id: "plankmarket-preproduction-security"
+target:
+  kind: "repository-deployment-provider-snapshot"
+  locator: "${PLANKMARKET_REPO_ROOT}"
+  fingerprint: "git:${GIT_HEAD};tree:${DIRTY_TREE_SHA256};deploy:${DEPLOYMENT_ID};providers:${PROVIDER_STATE_SHA256}"
+authority: "read_only"
+max_parallel_workers: 4
+defaults:
+  max_retries: 1
+  max_iterations: 2
+human_gate:
+  required: false
+  approved: false
+anchors:
+  - id: "migration-ledger"
+    type: "drizzle-ledger"
+    locator: "drizzle/"
+    required: true
+  - id: "executed-security-tests"
+    type: "test-output"
+    locator: "${SECURITY_TEST_OUTPUT_LOCATOR}"
+    required: true
+  - id: "database-provider-state"
+    type: "read-only-provider-snapshot"
+    locator: "${DATABASE_PROVIDER_STATE_LOCATOR}"
+    required: true
+  - id: "deployment-state"
+    type: "read-only-deployment-snapshot"
+    locator: "${DEPLOYMENT_STATE_LOCATOR}"
+    required: true
+mutation_gates:
+  - id: database-state-mutation
+    action: database_state_mutation
+    scope: "${DATABASE_MUTATION_SCOPE}"
+    target: "${DATABASE_MUTATION_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+  - id: security-control-mutation
+    action: security_control_mutation
+    scope: "${SECURITY_CONTROL_SCOPE}"
+    target: "${SECURITY_CONTROL_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+  - id: deployment-configuration-mutation
+    action: deployment_configuration_mutation
+    scope: "${DEPLOYMENT_MUTATION_SCOPE}"
+    target: "${DEPLOYMENT_MUTATION_TARGET}"
+    required: true
+    approved: false
+    approved_by: null
+    approved_at: null
+metadata:
+  runtime_binding:
+    git_head: "${GIT_HEAD}"
+    dirty_tree_sha256: "${DIRTY_TREE_SHA256}"
+    deployment_id: "${DEPLOYMENT_ID}"
+    database_project_id: "${DATABASE_PROJECT_ID}"
+    provider_project_ids: "${PROVIDER_PROJECT_IDS}"
+    provider_state_sha256: "${PROVIDER_STATE_SHA256}"
+    observed_at: "${OBSERVED_AT_ISO8601}"
+    security_test_output_locator: "${SECURITY_TEST_OUTPUT_LOCATOR}"
+    database_provider_state_locator: "${DATABASE_PROVIDER_STATE_LOCATOR}"
+    deployment_state_locator: "${DEPLOYMENT_STATE_LOCATOR}"
+  source_of_truth: "drizzle/ plus its ledger, executed checks, and read-only provider state"
+nodes:
+  - id: "bind-target"
+    objective: >-
+      Resolve and verify the exact Git root, branch, HEAD, dirty-tree hash, deployment ID, database
+      project ID, provider project/account IDs, snapshot hash, and observation time. Halt on any
+      unresolved placeholder, target mismatch, stale snapshot, or secret-bearing fingerprint.
+    depends_on: []
+    authority: "read_only"
+    resources:
+      reads: ["git", "deployment metadata", "database/provider account metadata"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/00-target.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 6
+    failure_policy:
+      on_failure: "halt"
+  - id: "audit-migration-ledger"
+    objective: >-
+      Audit drizzle SQL, meta journal, baseline strategy, migration baseline, numbering, checksums,
+      dependency order, and schema drift. Execute only local read-only migration checks. Do not run
+      db:push, db:migrate, remote SQL, seed, or repair commands.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["drizzle/", "drizzle/meta/_journal.json", "drizzle/migration-baseline.json", "drizzle.config.ts", "migration check output"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/10-migration-ledger.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 4
+    failure_policy:
+      on_failure: "continue"
+  - id: "audit-tenancy-and-privacy"
+    objective: >-
+      Trace authentication, authorization, tenant ownership, public-data exposure, privacy retention,
+      evidence-file access, upload/document URLs, identity masking, and migration 0033 policy intent.
+      Bind each finding to executable tests or exact source and distinguish missing remote policy proof.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["drizzle/0033_security_privacy_and_tenancy.sql", "src/server/security/", "src/lib/privacy-retention.ts", "security test output"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/20-tenancy-privacy.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 3
+    failure_policy:
+      on_failure: "continue"
+  - id: "audit-provider-state"
+    objective: >-
+      Read back the bound database and deployment provider state: applied migration ledger or schema
+      fingerprint, access policies, configured environments, webhook endpoints, schedules, queues,
+      storage boundaries, and deployment identity. Use metadata/read-only queries only and call absent
+      or inaccessible provider evidence unverified, never passed.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["${DATABASE_PROVIDER_STATE_LOCATOR}", "${DEPLOYMENT_STATE_LOCATOR}", "read-only provider configuration"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/30-provider-state.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 3
+    failure_policy:
+      on_failure: "continue"
+  - id: "execute-local-security-gates"
+    objective: >-
+      Run the target-appropriate local read-only checks, prioritizing npm run db:check, targeted
+      tenancy/security/auth/webhook/idempotency tests, typecheck, lint, and build when proportional.
+      Record exact commands, exit codes, output hashes, skipped checks, and environment limitations.
+    depends_on: ["bind-target"]
+    authority: "read_only"
+    resources:
+      reads: ["package.json", "test files", "build configuration", "local command output"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 2
+    output:
+      path: "${RUN_DIR}/40-local-security-gates.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 3
+    failure_policy:
+      on_failure: "continue"
+  - id: "reduce-security-evidence"
+    objective: >-
+      Deterministically validate and deduplicate findings, retain conflicts and rejection reasons,
+      and emit expected/completed/partial/failed/blocked/malformed/retried counts. Separate source,
+      local-test, migration-ledger, deployment, and provider evidence; never infer remote application
+      from local SQL or a green build.
+    depends_on: ["audit-migration-ledger", "audit-tenancy-and-privacy", "audit-provider-state", "execute-local-security-gates"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/10-migration-ledger.json", "${RUN_DIR}/20-tenancy-privacy.json", "${RUN_DIR}/30-provider-state.json", "${RUN_DIR}/40-local-security-gates.json"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/50-reduced-security-evidence.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 4
+    failure_policy:
+      on_failure: "halt"
+  - id: "fresh-risk-verifier"
+    objective: >-
+      In fresh context, independently challenge critical auth, tenancy, privacy, migration, webhook,
+      deployment, and provider-state claims. Reopen the highest-risk evidence, test for stale or wrong
+      project binding, and downgrade any claim lacking executed or provider-backed proof.
+    depends_on: ["reduce-security-evidence"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/00-target.json", "${RUN_DIR}/50-reduced-security-evidence.json", "highest-risk source and provider anchors"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 1
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/60-fresh-verification.json"
+      format: "json"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "halt"
+  - id: "integrate-security-verdict"
+    objective: >-
+      Act as the sole integrator. Produce the preproduction verdict, coverage ledger, verified
+      defects, risks, evidence gaps, manual gates, and exact human-gated remediation proposals.
+      Do not execute SQL, alter providers, deploy, or change application state.
+    depends_on: ["fresh-risk-verifier"]
+    authority: "read_only"
+    resources:
+      reads: ["${RUN_DIR}/50-reduced-security-evidence.json", "${RUN_DIR}/60-fresh-verification.json"]
+      writes: []
+      locks: []
+    retry:
+      max_retries: 0
+    loop:
+      max_iterations: 1
+    output:
+      path: "${RUN_DIR}/70-security-verdict.yaml"
+      format: "yaml"
+    evidence_policy:
+      required: true
+      min_items: 2
+    failure_policy:
+      on_failure: "halt"

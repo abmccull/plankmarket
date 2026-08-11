@@ -90,19 +90,20 @@ function createListing(
     moq: 200,
     moqUnit: "sqft" as const,
     freightEstimateStatus: "quote_request_ready" as const,
+    freshnessStatus: "fresh" as const,
+    lastConfirmedAt: "2026-07-29T00:00:00.000Z",
     locationCity: "Portland",
     locationState: "OR",
     viewsCount: 42,
     watchlistCount: 7,
     createdAt: "2025-06-15T00:00:00.000Z",
+    media: [{ url: "https://example.com/lot.jpg" }],
     seller: {
       id: "seller-456",
       displayName: "Verified Seller",
       verified: true,
       createdAt: "2024-01-01T00:00:00.000Z",
       stripeOnboardingComplete: true,
-      businessCity: "Portland",
-      businessState: "OR",
       role: "seller",
     },
     ...overrides,
@@ -187,6 +188,8 @@ describe("ListingDetailClient", () => {
     expect(screen.getByText(/Direct purchase lot:/)).toHaveTextContent(
       "Direct purchase lot: $2,500.00"
     );
+    expect(screen.getByText("Known now")).toBeInTheDocument();
+    expect(screen.getByText("Calculated later")).toBeInTheDocument();
   });
 
   it("shows Buy Now button when buyNowPrice is set", () => {
@@ -197,9 +200,7 @@ describe("ListingDetailClient", () => {
 
     render(<ListingDetailClient listing={listing} />);
 
-    expect(
-      screen.getByRole("button", { name: /Buy Now/ })
-    ).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Buy Now/i })).toHaveLength(2);
     expect(screen.getByText(/Buy Now - \$3\.00\/sq ft/)).toBeInTheDocument();
     expect(screen.getByText("$3.00/sq ft")).toBeInTheDocument();
     expect(screen.getByText(/Direct purchase lot:/)).toHaveTextContent(
@@ -257,7 +258,7 @@ describe("ListingDetailClient", () => {
     render(<ListingDetailClient listing={listing} />);
 
     expect(
-      screen.getByRole("button", { name: "Edit Listing" })
+      screen.getByRole("link", { name: "Edit Listing" })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "View as Buyer" })
@@ -265,7 +266,7 @@ describe("ListingDetailClient", () => {
 
     // Owner should NOT see Buy Now or Contact Seller
     expect(
-      screen.queryByRole("button", { name: /Buy Now/ })
+      screen.queryByRole("link", { name: /Buy Now/ })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Contact the seller/ })
@@ -280,8 +281,6 @@ describe("ListingDetailClient", () => {
         verified: true,
         createdAt: "2024-01-01T00:00:00.000Z",
         stripeOnboardingComplete: true,
-        businessCity: "Portland",
-        businessState: "OR",
         role: "seller",
       },
     });
@@ -294,6 +293,53 @@ describe("ListingDetailClient", () => {
     expect(screen.getByText("VS")).toBeInTheDocument();
     // "New to Plank Market" is shown when no reputation data
     expect(screen.getByText("New to Plank Market")).toBeInTheDocument();
+  });
+
+  it("keeps the primary purchase action available in the mobile action bar", () => {
+    const listing = createListing({
+      buyNowPrice: 3.0,
+      allowOffers: true,
+    });
+
+    render(<ListingDetailClient listing={listing} />);
+
+    const actionBar = screen.getByTestId("mobile-listing-action-bar");
+    expect(actionBar).toHaveClass("lg:hidden");
+    expect(
+      screen.getByRole("link", { name: "Buy now at $3.00/sq ft" }),
+    ).toHaveAttribute("href", "/listings/listing-123/checkout");
+  });
+
+  it("renders blocked and warning evidence states from existing listing data", () => {
+    render(
+      <ListingDetailClient
+        listing={createListing({
+          freightEstimateStatus: "seller_setup_required",
+          freshnessStatus: "overdue",
+          lastConfirmedAt: "2026-06-01T00:00:00.000Z",
+          media: [],
+          seller: {
+            id: "seller-456",
+            displayName: "Verified Seller",
+            verified: false,
+            createdAt: "2024-01-01T00:00:00.000Z",
+            stripeOnboardingComplete: true,
+            role: "seller",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Inventory reconfirmation is overdue"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Freight quote setup is incomplete"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Seller verification is missing"),
+    ).toBeInTheDocument();
   });
 
   it("shows location with city and state", () => {

@@ -21,6 +21,7 @@ const priority1GetRatesMock = vi.fn();
 const redisGetMock = vi.fn();
 const redisGetdelMock = vi.fn();
 const redisEvalMock = vi.fn();
+const stripeAccountsRetrieveMock = vi.fn();
 
 vi.mock("@upstash/ratelimit", () => ({
   Ratelimit: class {
@@ -49,6 +50,14 @@ vi.mock("@/server/services/content-moderation", () => ({
 vi.mock("@/server/services/priority1", () => ({
   priority1: {
     getRates: priority1GetRatesMock,
+  },
+}));
+
+vi.mock("@/lib/stripe", () => ({
+  stripe: {
+    accounts: {
+      retrieve: stripeAccountsRetrieveMock,
+    },
   },
 }));
 
@@ -116,6 +125,23 @@ function createPendingOrderCountSelect() {
   return {
     from: () => ({
       where: vi.fn().mockResolvedValue([{ count: 0 }]),
+    }),
+  };
+}
+
+function createSellerReadinessSelect(overrides: Record<string, unknown> = {}) {
+  return {
+    from: () => ({
+      where: () => ({
+        for: vi.fn().mockResolvedValue([
+          {
+            id: SELLER_ID,
+            stripeAccountId: "acct_seller_ready",
+            stripeOnboardingComplete: true,
+            ...overrides,
+          },
+        ]),
+      }),
     }),
   };
 }
@@ -212,6 +238,11 @@ function createShippingArtifacts(params: {
 describe("listing freshness enforcement on buyer write paths", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stripeAccountsRetrieveMock.mockResolvedValue({
+      charges_enabled: true,
+      payouts_enabled: true,
+      capabilities: { transfers: "active" },
+    });
   });
 
   it("rejects shipping quotes for overdue listings before calling Priority1", async () => {
@@ -521,7 +552,8 @@ describe("listing freshness enforcement on buyer write paths", () => {
               ]),
             }),
           }),
-        })),
+        }))
+        .mockImplementationOnce(() => createSellerReadinessSelect()),
       insert: vi.fn().mockImplementation((table) => {
         if (table === undefined) {
           throw new Error("Unexpected insert target");
@@ -577,7 +609,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
     );
     expect(redisGetMock).toHaveBeenNthCalledWith(
       2,
-      "shipping-booking-snapshot:123",
+      "shipping-booking-snapshot:token:quote-token-3",
     );
     expect(redisEvalMock).toHaveBeenCalledTimes(1);
     expect(redisGetdelMock).not.toHaveBeenCalled();
@@ -624,7 +656,8 @@ describe("listing freshness enforcement on buyer write paths", () => {
               ]),
             }),
           }),
-        })),
+        }))
+        .mockImplementationOnce(() => createSellerReadinessSelect()),
       insert: vi.fn(),
     };
     const db = {
@@ -703,7 +736,8 @@ describe("listing freshness enforcement on buyer write paths", () => {
               ]),
             }),
           }),
-        })),
+        }))
+        .mockImplementationOnce(() => createSellerReadinessSelect()),
       insert: vi.fn(),
     };
     const db = {
@@ -782,7 +816,8 @@ describe("listing freshness enforcement on buyer write paths", () => {
               ]),
             }),
           }),
-        })),
+        }))
+        .mockImplementationOnce(() => createSellerReadinessSelect()),
       insert: vi.fn(),
     };
     const db = {

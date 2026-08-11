@@ -104,6 +104,7 @@ describe("sampleRequestRouter", () => {
       deliveredAt: null,
       lastActionReason: "Please pull the current wear layer.",
       auditLog: [],
+      piiPurgedAt: null,
       createdAt: new Date("2026-07-30T12:00:00.000Z"),
       updatedAt: new Date("2026-07-30T12:00:00.000Z"),
       listing: {
@@ -234,6 +235,7 @@ describe("sampleRequestRouter", () => {
       deliveredAt: null,
       lastActionReason: "Please send a sample.",
       auditLog: [],
+      piiPurgedAt: null,
       createdAt: new Date("2026-07-30T12:00:00.000Z"),
       updatedAt: new Date("2026-07-30T12:00:00.000Z"),
     };
@@ -323,6 +325,7 @@ describe("sampleRequestRouter", () => {
               deliveredAt: null,
               lastActionReason: null,
               auditLog: [],
+              piiPurgedAt: null,
               createdAt: new Date("2026-07-30T12:00:00.000Z"),
               updatedAt: new Date("2026-07-30T12:00:00.000Z"),
               listing: {
@@ -355,6 +358,7 @@ describe("sampleRequestRouter", () => {
               deliveredAt: null,
               lastActionReason: null,
               auditLog: [],
+              piiPurgedAt: null,
               createdAt: new Date("2026-07-30T12:00:00.000Z"),
               updatedAt: new Date("2026-07-30T13:00:00.000Z"),
               listing: {
@@ -413,6 +417,7 @@ describe("sampleRequestRouter", () => {
       deliveredAt: new Date("2026-07-30T17:00:00.000Z"),
       lastActionReason: "Buyer confirmed delivery",
       auditLog: [],
+      piiPurgedAt: null,
       createdAt: new Date("2026-07-30T12:00:00.000Z"),
       updatedAt: new Date("2026-07-30T17:00:00.000Z"),
       listing: {

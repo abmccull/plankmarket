@@ -447,8 +447,31 @@ export const listingFormUpdateSchema = listingFormSchemaBase
   .partial()
   .superRefine(applySellingRuleCrossFieldValidation);
 
+export const MAX_PUBLIC_FILTER_VALUES = 25;
+export const MAX_PUBLIC_FILTER_TEXT_LENGTH = 100;
+export const MAX_PUBLIC_FILTER_NUMBER = 1_000_000_000;
+export const MAX_PUBLIC_DISTANCE_MILES = 5_000;
+export const MIN_PUBLIC_SEARCH_QUERY_LENGTH = 3;
+export const MAX_PUBLIC_LISTING_RESULT_WINDOW = 5_000;
+
+const publicFilterTextSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_PUBLIC_FILTER_TEXT_LENGTH);
+const publicFilterNumberSchema = z
+  .number()
+  .finite()
+  .nonnegative()
+  .max(MAX_PUBLIC_FILTER_NUMBER);
+
 export const listingFilterSchema = z.object({
-  query: z.string().trim().min(1).max(200).optional(),
+  query: z
+    .string()
+    .trim()
+    .min(MIN_PUBLIC_SEARCH_QUERY_LENGTH)
+    .max(200)
+    .optional(),
   materialType: z
     .array(
       z.enum([
@@ -461,9 +484,16 @@ export const listingFilterSchema = z.object({
         "other",
       ]),
     )
+    .max(MAX_PUBLIC_FILTER_VALUES)
     .optional(),
-  species: z.array(z.string()).optional(),
-  colorFamily: z.array(z.string()).optional(),
+  species: z
+    .array(publicFilterTextSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
+  colorFamily: z
+    .array(publicFilterTextSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
   finishType: z
     .array(
       z.enum([
@@ -480,12 +510,22 @@ export const listingFilterSchema = z.object({
         "other",
       ]),
     )
+    .max(MAX_PUBLIC_FILTER_VALUES)
     .optional(),
-  width: z.array(z.number()).optional(),
-  thickness: z.array(z.number()).optional(),
-  wearLayer: z.array(z.number()).optional(),
-  priceMin: z.number().optional(),
-  priceMax: z.number().optional(),
+  width: z
+    .array(publicFilterNumberSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
+  thickness: z
+    .array(publicFilterNumberSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
+  wearLayer: z
+    .array(publicFilterNumberSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
+  priceMin: publicFilterNumberSchema.optional(),
+  priceMax: publicFilterNumberSchema.optional(),
   condition: z
     .array(
       z.enum([
@@ -499,13 +539,31 @@ export const listingFilterSchema = z.object({
         "other",
       ]),
     )
+    .max(MAX_PUBLIC_FILTER_VALUES)
     .optional(),
-  state: z.array(z.string()).optional(),
-  certifications: z.array(z.string()).optional(),
-  minLotSize: z.number().optional(),
-  maxLotSize: z.number().optional(),
-  maxDistance: z.number().optional(),
+  state: z
+    .array(publicFilterTextSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
+  certifications: z
+    .array(publicFilterTextSchema)
+    .max(MAX_PUBLIC_FILTER_VALUES)
+    .optional(),
+  minLotSize: publicFilterNumberSchema.optional(),
+  maxLotSize: publicFilterNumberSchema.optional(),
+  maxDistance: z
+    .number()
+    .finite()
+    .positive()
+    .max(MAX_PUBLIC_DISTANCE_MILES)
+    .optional(),
   buyerZip: z.string().length(5).regex(/^\d{5}$/).optional(),
+  // These are familiar opt-in confidence filters, not a request to surface
+  // sellers or listings that lack evidence. Treat false as invalid at the API
+  // boundary so a hidden negative constraint cannot be saved accidentally.
+  sellerVerified: z.literal(true).optional(),
+  freightReady: z.literal(true).optional(),
+  fullLotOnly: z.boolean().optional(),
   sort: z
     .enum([
       "price_asc",
@@ -520,6 +578,15 @@ export const listingFilterSchema = z.object({
     .default("date_newest"),
   page: z.number().int().positive().max(1_000).default(1),
   limit: z.number().int().positive().max(250).default(24),
+}).superRefine((input, ctx) => {
+  const resultWindowEnd = input.page * input.limit;
+  if (resultWindowEnd > MAX_PUBLIC_LISTING_RESULT_WINDOW) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["page"],
+      message: `Catalog browsing is limited to the first ${MAX_PUBLIC_LISTING_RESULT_WINDOW.toLocaleString()} matching listings. Refine the filters to continue.`,
+    });
+  }
 });
 
 const csvListingRowSchemaBase = z.object({

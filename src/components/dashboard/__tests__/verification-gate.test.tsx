@@ -24,6 +24,50 @@ describe("VerificationGate", () => {
     vi.clearAllMocks();
   });
 
+  it("shows an auth hydration status instead of blank content while loading", () => {
+    mockUseAuthStore.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: true,
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
+    });
+
+    render(
+      <VerificationGate>
+        <div>Dashboard Content</div>
+      </VerificationGate>,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /checking your dashboard access/i,
+    );
+    expect(screen.queryByText("Dashboard Content")).not.toBeInTheDocument();
+  });
+
+  it("shows a redirect handoff state when no dashboard user is available", () => {
+    mockUseAuthStore.mockReturnValue({
+      user: null,
+      isAuthenticated: false,
+      isLoading: false,
+      setUser: vi.fn(),
+      setLoading: vi.fn(),
+      logout: vi.fn(),
+    });
+
+    render(
+      <VerificationGate>
+        <div>Dashboard Content</div>
+      </VerificationGate>,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /redirecting to secure sign in/i,
+    );
+    expect(screen.queryByText("Dashboard Content")).not.toBeInTheDocument();
+  });
+
   it("renders children for verified users", () => {
     mockUseAuthStore.mockReturnValue({
       user: {

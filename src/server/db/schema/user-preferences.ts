@@ -77,6 +77,10 @@ export const userPreferences = pgTable(
     taxRegisteredStates: jsonb("tax_registered_states")
       .$type<string[]>()
       .default([]),
+    analyticsTrackingEnabled: boolean("analytics_tracking_enabled"),
+    analyticsConsentUpdatedAt: timestamp("analytics_consent_updated_at", {
+      withTimezone: true,
+    }),
 
     // === META ===
     profileComplete: boolean("profile_complete").default(false).notNull(),

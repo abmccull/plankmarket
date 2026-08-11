@@ -11,8 +11,17 @@ import {
 } from "@/server/db/schema";
 import {
   Priority1ApiError,
+  Priority1PostBookValidationError,
+  type DispatchResponse,
   priority1,
 } from "@/server/services/priority1";
+import {
+  fetchPriority1BillOfLadingUrl,
+  fetchPriority1PalletLabelUrl,
+  resolveDispatchBolUrl,
+  resolveDispatchLabelUrl,
+  shipmentDocumentIdentifiersFrom,
+} from "@/server/services/shipment-documents";
 import {
   Priority1ShipmentMatchError,
   selectPriority1Shipment,
@@ -35,6 +44,26 @@ import {
 } from "@/lib/email/send";
 
 const DISPATCH_LOCK_SECONDS = 120;
+
+type DispatchConflict =
+  | {
+      kind: "order_ineligible";
+      reason: string;
+    }
+  | {
+      kind: "shipment_changed";
+      reason: string;
+      shipmentStatus: string;
+      priority1ShipmentId: string | null;
+    };
+
+type DispatchClaim = ReturnType<typeof buildDispatchRequestForOrder> & {
+  shipmentId: string;
+  dryRun: boolean;
+  carrierName: string;
+  carrierScac: string | null;
+  carrierRate: number;
+};
 
 async function sendPaidOrderNotifications(orderId: string) {
   const order = await db.query.orders.findFirst({
@@ -158,6 +187,19 @@ async function reconcilePendingShipment(params: {
       "BILL_OF_LADING",
     );
 
+    // Fetch BOL + labels outside the DB transaction (network I/O).
+    const identifiers = shipmentDocumentIdentifiersFrom({
+      proNumber,
+      bolNumber,
+      trackingNumber: order.trackingNumber,
+    });
+    const [bolFetch, labelFetch] = await Promise.all([
+      fetchPriority1BillOfLadingUrl(identifiers),
+      fetchPriority1PalletLabelUrl(identifiers),
+    ]);
+    const bolUrlBackfill = bolFetch.url;
+    const labelUrlBackfill = labelFetch.url;
+
     await db.transaction(async (tx) => {
       const [lockedOrder] = await tx
         .select()
@@ -215,11 +257,18 @@ async function reconcilePendingShipment(params: {
       const reconciledStatus =
         mapped.mappedStatus === "pending" ? "dispatched" : mapped.mappedStatus;
 
+      const bolUrl = lockedShipment.bolUrl ?? bolUrlBackfill;
+      const labelUrl = lockedShipment.labelUrl ?? labelUrlBackfill;
+      const missingDocs: string[] = [];
+      if (!bolUrl) missingDocs.push("BOL");
+      if (!labelUrl) missingDocs.push("pallet labels");
+
       await tx
         .update(shipments)
         .set({
           priority1ShipmentId: String(providerShipment.id),
           proNumber,
+          bolNumber,
           carrierName:
             providerShipment.carrierName || lockedShipment.carrierName,
           carrierScac:
@@ -232,7 +281,12 @@ async function reconcilePendingShipment(params: {
             mapped.trackingEvents,
           ),
           deliveredAt: mapped.deliveredAt ?? lockedShipment.deliveredAt,
-          lastError: null,
+          bolUrl,
+          labelUrl,
+          lastError:
+            missingDocs.length === 0
+              ? null
+              : `Priority1 shipment reconciled; missing ${missingDocs.join(" and ")}`,
           updatedAt: new Date(),
         })
         .where(eq(shipments.id, shipmentId));
@@ -273,6 +327,344 @@ async function loadDispatchOrder(orderId: string) {
       buyer: true,
     },
   });
+}
+
+async function claimShipmentDispatch(params: {
+  orderId: string;
+  shipmentId: string;
+  buyer: NonNullable<Awaited<ReturnType<typeof loadDispatchOrder>>>["buyer"];
+}) {
+  return db.transaction(async (tx): Promise<DispatchClaim> => {
+    const [lockedOrder] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.id, params.orderId))
+      .for("update");
+    const [lockedShipment] = await tx
+      .select()
+      .from(shipments)
+      .where(eq(shipments.id, params.shipmentId))
+      .for("update");
+    const [openDispute] = await tx
+      .select({ id: disputes.id })
+      .from(disputes)
+      .where(
+        and(
+          eq(disputes.orderId, params.orderId),
+          inArray(disputes.status, ["open", "under_review"]),
+        ),
+      )
+      .limit(1);
+    if (!lockedOrder || !lockedShipment) {
+      throw new ShippingBookingReviewError(
+        "MANUAL_REVIEW_REQUIRED: order or shipment disappeared before dispatch claim",
+      );
+    }
+    const ineligibility = getOrderDispatchIneligibilityReason({
+      paymentStatus: lockedOrder.paymentStatus,
+      escrowStatus: lockedOrder.escrowStatus,
+      orderStatus: lockedOrder.status,
+      inventoryReleasedAt: lockedOrder.inventoryReleasedAt,
+      hasOpenDispute: Boolean(openDispute),
+    });
+    if (ineligibility) {
+      throw new ShippingBookingReviewError(
+        `MANUAL_REVIEW_REQUIRED: ${ineligibility}; no dispatch was sent`,
+      );
+    }
+    const snapshot = requireShippingBookingSnapshotForOrder({
+      snapshot: lockedOrder.shippingBookingSnapshot,
+      order: lockedOrder,
+    });
+    if (
+      lockedShipment.status !== "pending" ||
+      lockedShipment.dispatchAttemptedAt ||
+      lockedShipment.cancellationRequestedAt
+    ) {
+      throw new ShippingBookingReviewError(
+        "MANUAL_REVIEW_REQUIRED: shipment state changed before Priority1 booking; no dispatch was sent",
+      );
+    }
+
+    const dispatchBuild = buildDispatchRequestForOrder({
+      order: lockedOrder,
+      buyer: params.buyer,
+      snapshot,
+    });
+
+    await tx
+      .update(shipments)
+      .set({
+        dispatchAttemptedAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(shipments.id, lockedShipment.id));
+
+    return {
+      shipmentId: lockedShipment.id,
+      dryRun: priority1.isDryRun(),
+      carrierName: snapshot.carrierName,
+      carrierScac: snapshot.carrierScac,
+      carrierRate: snapshot.carrierRate,
+      ...dispatchBuild,
+    };
+  });
+}
+
+async function finalizeDispatchedShipment(params: {
+  orderId: string;
+  shipmentId: string;
+  dispatch: DispatchResponse;
+  claim: DispatchClaim;
+}): Promise<
+  | DispatchConflict
+  | {
+      dispatched: true;
+      shipmentId: string;
+      priority1Id: number;
+      proNumber: string | undefined;
+      bolNumber: string | undefined;
+      bolUrl: string | null;
+      labelUrl: string | null;
+      actualCarrierCost: number | undefined;
+      costMismatch: boolean;
+    }
+> {
+  return db.transaction(async (tx) => {
+    const [lockedOrder] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.id, params.orderId))
+      .for("update");
+    const [lockedShipment] = await tx
+      .select()
+      .from(shipments)
+      .where(eq(shipments.id, params.shipmentId))
+      .for("update");
+    const [openDispute] = await tx
+      .select({ id: disputes.id })
+      .from(disputes)
+      .where(
+        and(
+          eq(disputes.orderId, params.orderId),
+          inArray(disputes.status, ["open", "under_review"]),
+        ),
+      )
+      .limit(1);
+    if (!lockedOrder || !lockedShipment) {
+      throw new ShippingBookingReviewError(
+        "MANUAL_REVIEW_REQUIRED: order or shipment disappeared before provider finalization",
+      );
+    }
+
+    const ineligibility = getOrderDispatchIneligibilityReason({
+      paymentStatus: lockedOrder.paymentStatus,
+      escrowStatus: lockedOrder.escrowStatus,
+      orderStatus: lockedOrder.status,
+      inventoryReleasedAt: lockedOrder.inventoryReleasedAt,
+      hasOpenDispute: Boolean(openDispute),
+    });
+    if (ineligibility) {
+      return {
+        kind: "order_ineligible",
+        reason: ineligibility,
+      } satisfies DispatchConflict;
+    }
+    if (
+      lockedShipment.status !== "pending" ||
+      !lockedShipment.dispatchAttemptedAt ||
+      lockedShipment.priority1ShipmentId ||
+      lockedShipment.cancellationRequestedAt
+    ) {
+      return {
+        kind: "shipment_changed",
+        reason: "shipment claim changed before provider finalization",
+        shipmentStatus: lockedShipment.status,
+        priority1ShipmentId: lockedShipment.priority1ShipmentId,
+      } satisfies DispatchConflict;
+    }
+
+    const proNumber = getShipmentIdentifier(
+      params.dispatch.shipmentIdentifiers,
+      "PRO",
+    );
+    const bolNumber = getShipmentIdentifier(
+      params.dispatch.shipmentIdentifiers,
+      "BILL_OF_LADING",
+    );
+    const costMismatch =
+      params.dispatch.totalCost !== undefined &&
+      Math.abs(params.dispatch.totalCost - params.claim.carrierRate) > 0.01;
+
+    const bolUrl = resolveDispatchBolUrl(params.dispatch);
+    const labelUrl = resolveDispatchLabelUrl(params.dispatch);
+    const lastErrorParts: string[] = [];
+    if (costMismatch) {
+      lastErrorParts.push(
+        `Priority1 dispatch cost ${params.dispatch.totalCost} differs from quoted carrier rate ${params.claim.carrierRate}`,
+      );
+    }
+    const docsMissing = !bolUrl || !labelUrl;
+    if (docsMissing) {
+      const missing = [
+        !bolUrl ? "BOL" : null,
+        !labelUrl ? "pallet labels" : null,
+      ]
+        .filter(Boolean)
+        .join(" and ");
+      lastErrorParts.push(
+        `Priority1 dispatch missing ${missing}; document backfill pending`,
+      );
+    }
+
+    await tx
+      .update(shipments)
+      .set({
+        priority1ShipmentId: String(params.dispatch.id),
+        proNumber,
+        bolNumber,
+        carrierName: params.claim.carrierName,
+        carrierScac: params.claim.carrierScac,
+        isDryRun: params.claim.dryRun,
+        bolUrl,
+        labelUrl,
+        status: "dispatched",
+        dispatchedAt: new Date(),
+        pickupDate: params.claim.pickupDate,
+        lastError: lastErrorParts.length > 0 ? lastErrorParts.join("; ") : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(shipments.id, lockedShipment.id));
+
+    await tx
+      .update(orders)
+      .set({
+        trackingNumber: proNumber || bolNumber,
+        carrier: params.claim.carrierName,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, params.orderId));
+
+    return {
+      dispatched: true,
+      shipmentId: lockedShipment.id,
+      priority1Id: params.dispatch.id,
+      proNumber,
+      bolNumber,
+      bolUrl,
+      labelUrl,
+      actualCarrierCost: params.dispatch.totalCost,
+      costMismatch,
+    };
+  });
+}
+
+async function cancelBookedPriority1Shipment(params: {
+  orderId: string;
+  orderNumber: string;
+  shipmentId: string;
+  priority1ShipmentId: string;
+  dryRun: boolean;
+  carrierName: string;
+  carrierScac: string | null;
+  conflict: DispatchConflict;
+}) {
+  const shipmentIdNumber = Number(params.priority1ShipmentId);
+  if (!Number.isInteger(shipmentIdNumber) || shipmentIdNumber <= 0) {
+    throw new ShippingBookingReviewError(
+      `MANUAL_REVIEW_REQUIRED: ${params.conflict.reason}; the new Priority1 shipment ID is invalid`,
+    );
+  }
+
+  let providerCancelled = params.dryRun;
+  if (!params.dryRun) {
+    try {
+      await priority1.cancel({ id: shipmentIdNumber });
+      providerCancelled = true;
+    } catch (cancelError) {
+      try {
+        const response = await priority1.getStatus({
+          identifierType: "CUSTOMER_REFERENCE",
+          identifierValue: params.orderNumber,
+        });
+        const providerShipment = selectPriority1Shipment(
+          response,
+          params.priority1ShipmentId,
+        );
+        if (providerShipment) {
+          const mapped = mapPriority1ShipmentStatus("dispatched", providerShipment);
+          providerCancelled = mapped.mappedStatus === "cancelled";
+        }
+      } catch {
+        throw new ShippingBookingReviewError(
+          `MANUAL_REVIEW_REQUIRED: ${params.conflict.reason}; provider cancellation of shipment ${params.priority1ShipmentId} could not be confirmed after ${cancelError instanceof Error ? cancelError.message : "an unknown error"}`,
+        );
+      }
+
+      if (!providerCancelled) {
+        throw new ShippingBookingReviewError(
+          `MANUAL_REVIEW_REQUIRED: ${params.conflict.reason}; provider shipment ${params.priority1ShipmentId} may still be active`,
+        );
+      }
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    const [lockedOrder] = await tx
+      .select()
+      .from(orders)
+      .where(eq(orders.id, params.orderId))
+      .for("update");
+    const [lockedShipment] = await tx
+      .select()
+      .from(shipments)
+      .where(eq(shipments.id, params.shipmentId))
+      .for("update");
+
+    if (!lockedOrder || !lockedShipment) {
+      throw new ShippingBookingReviewError(
+        "MANUAL_REVIEW_REQUIRED: order or shipment disappeared while cancelling the provider booking",
+      );
+    }
+    if (
+      lockedShipment.priority1ShipmentId &&
+      lockedShipment.priority1ShipmentId !== params.priority1ShipmentId
+    ) {
+      throw new ShippingBookingReviewError(
+        `MANUAL_REVIEW_REQUIRED: provider booking ${params.priority1ShipmentId} was cancelled, but shipment ${lockedShipment.id} already references ${lockedShipment.priority1ShipmentId}`,
+      );
+    }
+    if (
+      lockedShipment.status !== "pending" &&
+      lockedShipment.status !== "cancelled"
+    ) {
+      throw new ShippingBookingReviewError(
+        `MANUAL_REVIEW_REQUIRED: provider booking ${params.priority1ShipmentId} was cancelled, but local shipment status is ${lockedShipment.status}`,
+      );
+    }
+
+    await tx
+      .update(shipments)
+      .set({
+        priority1ShipmentId: params.priority1ShipmentId,
+        carrierName: params.carrierName,
+        carrierScac: params.carrierScac,
+        isDryRun: params.dryRun,
+        status: "cancelled",
+        lastError: `Priority1 booking cancelled: ${params.conflict.reason}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(shipments.id, lockedShipment.id));
+  });
+
+  return {
+    dispatched: false,
+    cancelled: true,
+    shipmentId: params.shipmentId,
+    priority1Id: Number(params.priority1ShipmentId),
+    reason: `Priority1 booking was cancelled after local state changed: ${params.conflict.reason}`,
+  };
 }
 
 export async function dispatchShipmentForOrder(orderId: string) {
@@ -369,193 +761,256 @@ export async function dispatchShipmentForOrder(orderId: string) {
       );
     }
     if (priorDispatchAttempt && !dryRun) {
+      await openReconciliationCase(db, {
+        caseKey: `shipment-dispatch-unreconciled:${order.id}`,
+        type: "shipment_ambiguity",
+        source: "priority1",
+        severity: "critical",
+        title: "Paid order stuck after prior dispatch attempt",
+        summary:
+          "A previous Priority1 dispatch attempt could not be reconciled; automatic rebook is refused to avoid double-booking. Manual review required.",
+        orderId: order.id,
+        externalReference: order.orderNumber,
+        details: {
+          shipmentId: shipment.id,
+          priority1ShipmentId: shipment.priority1ShipmentId,
+          dispatchAttemptedAt: shipment.dispatchAttemptedAt,
+        },
+      }).catch((caseError) => {
+        console.error("Failed to open unreconciled dispatch recon case", {
+          orderId,
+          caseError,
+        });
+      });
       throw new ShippingBookingReviewError(
         "MANUAL_REVIEW_REQUIRED: a previous Priority1 dispatch attempt could not be reconciled; refusing a duplicate booking",
       );
     }
 
-    // Phase 1 commits an ambiguity marker before any provider call. If the
-    // provider succeeds but the later DB transaction fails, retries reconcile
-    // by customer reference instead of creating a duplicate shipment.
-    await db.transaction(async (tx) => {
-      const [lockedOrder] = await tx
-        .select()
-        .from(orders)
-        .where(eq(orders.id, orderId))
-        .for("update");
-      const [lockedShipment] = await tx
-        .select()
-        .from(shipments)
-        .where(eq(shipments.id, shipment!.id))
-        .for("update");
-      const [openDispute] = await tx
-        .select({ id: disputes.id })
-        .from(disputes)
-        .where(
-          and(
-            eq(disputes.orderId, orderId),
-            inArray(disputes.status, ["open", "under_review"]),
-          ),
-        )
-        .limit(1);
-      if (!lockedOrder || !lockedShipment) {
-        throw new ShippingBookingReviewError(
-          "MANUAL_REVIEW_REQUIRED: order or shipment disappeared before dispatch claim",
-        );
-      }
-      const ineligibility = getOrderDispatchIneligibilityReason({
-        paymentStatus: lockedOrder.paymentStatus,
-        escrowStatus: lockedOrder.escrowStatus,
-        orderStatus: lockedOrder.status,
-        inventoryReleasedAt: lockedOrder.inventoryReleasedAt,
-        hasOpenDispute: Boolean(openDispute),
-      });
-      if (ineligibility) {
-        throw new ShippingBookingReviewError(
-          `MANUAL_REVIEW_REQUIRED: ${ineligibility}; no dispatch was sent`,
-        );
-      }
-      requireShippingBookingSnapshotForOrder({
-        snapshot: lockedOrder.shippingBookingSnapshot,
-        order: lockedOrder,
-      });
-      if (
-        lockedShipment.status !== "pending" ||
-        lockedShipment.dispatchAttemptedAt
-      ) {
-        throw new ShippingBookingReviewError(
-          "MANUAL_REVIEW_REQUIRED: shipment state changed before Priority1 booking; no dispatch was sent",
-        );
-      }
-
-      await tx
-        .update(shipments)
-        .set({
-          dispatchAttemptedAt: new Date(),
-          lastError: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(shipments.id, lockedShipment.id));
+    const dispatchClaim = await claimShipmentDispatch({
+      orderId,
+      shipmentId: shipment.id,
+      buyer: order.buyer,
     });
 
-    // Phase 2 holds the same order row lock used by cancellation/refund across
-    // the live provider call. Either booking wins and cancellation observes the
-    // provider ID, or cancellation wins and this recheck aborts before booking.
-    return await db.transaction(async (tx) => {
-      const [lockedOrder] = await tx
-        .select()
-        .from(orders)
-        .where(eq(orders.id, orderId))
-        .for("update");
-      const [lockedShipment] = await tx
-        .select()
-        .from(shipments)
-        .where(eq(shipments.id, shipment!.id))
-        .for("update");
-      const [openDispute] = await tx
-        .select({ id: disputes.id })
-        .from(disputes)
-        .where(
-          and(
-            eq(disputes.orderId, orderId),
-            inArray(disputes.status, ["open", "under_review"]),
-          ),
-        )
-        .limit(1);
-      if (!lockedOrder || !lockedShipment) {
-        throw new ShippingBookingReviewError(
-          "MANUAL_REVIEW_REQUIRED: order or shipment disappeared before provider booking",
+    let dispatchResult: DispatchResponse;
+    try {
+      dispatchResult = await priority1.dispatch(dispatchClaim.request);
+    } catch (dispatchError) {
+      // Post-book validation failed after carrier accepted the booking.
+      // Cancel + persist, open recon, and refund the still-paid order.
+      if (dispatchError instanceof Priority1PostBookValidationError) {
+        shipment.priority1ShipmentId = String(
+          dispatchError.priority1ShipmentId,
         );
-      }
-      const ineligibility = getOrderDispatchIneligibilityReason({
-        paymentStatus: lockedOrder.paymentStatus,
-        escrowStatus: lockedOrder.escrowStatus,
-        orderStatus: lockedOrder.status,
-        inventoryReleasedAt: lockedOrder.inventoryReleasedAt,
-        hasOpenDispute: Boolean(openDispute),
-      });
-      if (ineligibility) {
-        throw new ShippingBookingReviewError(
-          `MANUAL_REVIEW_REQUIRED: ${ineligibility}; no dispatch was sent`,
-        );
-      }
-      if (
-        lockedShipment.status !== "pending" ||
-        !lockedShipment.dispatchAttemptedAt ||
-        lockedShipment.priority1ShipmentId
-      ) {
-        throw new ShippingBookingReviewError(
-          "MANUAL_REVIEW_REQUIRED: shipment claim changed before provider booking",
-        );
-      }
+        const cancelResult = await cancelBookedPriority1Shipment({
+          orderId,
+          orderNumber: order.orderNumber,
+          shipmentId: dispatchClaim.shipmentId,
+          priority1ShipmentId: String(dispatchError.priority1ShipmentId),
+          dryRun: dispatchClaim.dryRun,
+          carrierName: dispatchClaim.carrierName,
+          carrierScac: dispatchClaim.carrierScac,
+          conflict: {
+            kind: "shipment_changed",
+            reason: `post-book validation failed after Priority1 booking: ${dispatchError.message}`,
+            shipmentStatus: "pending",
+            priority1ShipmentId: String(dispatchError.priority1ShipmentId),
+          },
+        });
 
-      const snapshot = requireShippingBookingSnapshotForOrder({
-        snapshot: lockedOrder.shippingBookingSnapshot,
-        order: lockedOrder,
-      });
-      const { pickupDate, request } = buildDispatchRequestForOrder({
-        order: lockedOrder,
-        buyer: order.buyer,
-        snapshot,
-      });
-      const dispatchResult = await priority1.dispatch(request);
-      if (!Number.isInteger(dispatchResult.id) || dispatchResult.id <= 0) {
-        throw new Error(
-          "Priority1 dispatch response did not include a shipment ID",
-        );
+        await openReconciliationCase(db, {
+          caseKey: `shipment-post-book-cancel:${order.id}`,
+          type: "shipment_ambiguity",
+          source: "priority1",
+          severity: "high",
+          title: "Post-book validation cancelled freight booking",
+          summary: cancelResult.reason,
+          orderId: order.id,
+          externalReference: String(dispatchError.priority1ShipmentId),
+          details: {
+            shipmentId: dispatchClaim.shipmentId,
+            priority1ShipmentId: dispatchError.priority1ShipmentId,
+            orderNumber: order.orderNumber,
+            validationError: dispatchError.message,
+          },
+        }).catch((caseError) => {
+          console.error("Failed to open post-book cancel reconciliation case", {
+            orderId,
+            caseError,
+          });
+        });
+
+        try {
+          const refund = await processOrderRefund({
+            db,
+            orderId,
+            reason: `Freight booking cancelled after post-book validation failure: ${dispatchError.message}`,
+            adminAlert: {
+              title: "Paid Order Refunded After Post-Book Validation Failure",
+              message: `Order ${order.orderNumber}: Priority1 shipment ${dispatchError.priority1ShipmentId} was cancelled after validation failed (${dispatchError.message}).`,
+            },
+          });
+          return {
+            ...cancelResult,
+            refunded: true,
+            refundId: refund.refundId,
+          };
+        } catch (refundError) {
+          throw new ShippingBookingReviewError(
+            `MANUAL_REVIEW_REQUIRED: freight booking cancelled after post-book validation, but automatic refund failed: ${
+              refundError instanceof Error
+                ? refundError.message
+                : "unknown refund error"
+            }`,
+          );
+        }
       }
+      throw dispatchError;
+    }
 
-      const proNumber = getShipmentIdentifier(
-        dispatchResult.shipmentIdentifiers,
-        "PRO",
-      );
-      const bolNumber = getShipmentIdentifier(
-        dispatchResult.shipmentIdentifiers,
-        "BILL_OF_LADING",
-      );
-      const costMismatch =
-        dispatchResult.totalCost !== undefined &&
-        Math.abs(dispatchResult.totalCost - snapshot.carrierRate) > 0.01;
+    if (!Number.isInteger(dispatchResult.id) || dispatchResult.id <= 0) {
+      throw new Error("Priority1 dispatch response did not include a shipment ID");
+    }
+    shipment.priority1ShipmentId = String(dispatchResult.id);
+    shipment.isDryRun = dispatchClaim.dryRun;
 
-      await tx
+    const finalized = await finalizeDispatchedShipment({
+      orderId,
+      shipmentId: dispatchClaim.shipmentId,
+      dispatch: dispatchResult,
+      claim: dispatchClaim,
+    });
+    if ("kind" in finalized) {
+      return await cancelBookedPriority1Shipment({
+        orderId,
+        orderNumber: order.orderNumber,
+        shipmentId: dispatchClaim.shipmentId,
+        priority1ShipmentId: String(dispatchResult.id),
+        dryRun: dispatchClaim.dryRun,
+        carrierName: dispatchClaim.carrierName,
+        carrierScac: dispatchClaim.carrierScac,
+        conflict: finalized,
+      });
+    }
+
+    // Immediate BOL + label backfill only when finalize left docs missing.
+    const needsBolBackfill = !finalized.bolUrl;
+    const needsLabelBackfill = !finalized.labelUrl;
+    if (needsBolBackfill || needsLabelBackfill) {
+      await openReconciliationCase(db, {
+        caseKey: `shipment-docs-pending:${order.id}`,
+        type: "shipment_ambiguity",
+        source: "priority1",
+        severity: "medium",
+        title: "Dispatch completed without full freight documents",
+        summary:
+          "Priority1 booking is live but BOL and/or pallet labels are missing; automatic backfill will retry via tracking.",
+        orderId: order.id,
+        externalReference: String(dispatchResult.id),
+        details: {
+          shipmentId: finalized.shipmentId,
+          hasBol: Boolean(finalized.bolUrl),
+          hasLabel: Boolean(finalized.labelUrl),
+        },
+      }).catch(() => undefined);
+    }
+    if (!finalized.proNumber && !finalized.bolNumber) {
+      await db
         .update(shipments)
         .set({
-          priority1ShipmentId: String(dispatchResult.id),
-          proNumber,
-          carrierName: snapshot.carrierName,
-          carrierScac: snapshot.carrierScac,
-          isDryRun: dryRun,
-          bolUrl: dispatchResult.capacityProviderBolUrl,
-          labelUrl: dispatchResult.capacityProviderPalletLabelUrl,
-          status: "dispatched",
-          dispatchedAt: new Date(),
-          pickupDate,
-          lastError: costMismatch
-            ? `Priority1 dispatch cost ${dispatchResult.totalCost} differs from quoted carrier rate ${snapshot.carrierRate}`
-            : null,
+          lastError:
+            (finalized.costMismatch
+              ? `Priority1 dispatch cost mismatch; `
+              : "") +
+            "Priority1 dispatch missing PRO/BOL identifiers; document recovery blocked until status provides them",
           updatedAt: new Date(),
         })
-        .where(eq(shipments.id, lockedShipment.id));
-
-      await tx
-        .update(orders)
+        .where(eq(shipments.id, finalized.shipmentId));
+      await openReconciliationCase(db, {
+        caseKey: `shipment-docs-missing-ids:${order.id}`,
+        type: "shipment_ambiguity",
+        source: "priority1",
+        severity: "medium",
+        title: "Dispatch missing PRO/BOL identifiers",
+        summary:
+          "Priority1 booking succeeded without PRO/BOL identifiers; document recovery is blocked until status provides them.",
+        orderId: order.id,
+        externalReference: String(dispatchResult.id),
+        details: { shipmentId: finalized.shipmentId },
+      }).catch(() => undefined);
+    } else if (needsBolBackfill || needsLabelBackfill) {
+      const identifiers = shipmentDocumentIdentifiersFrom({
+        proNumber: finalized.proNumber,
+        bolNumber: finalized.bolNumber,
+      });
+      const [bolFetch, labelFetch] = await Promise.all([
+        needsBolBackfill
+          ? fetchPriority1BillOfLadingUrl(identifiers)
+          : Promise.resolve({ url: finalized.bolUrl, error: null, permanent: false }),
+        needsLabelBackfill
+          ? fetchPriority1PalletLabelUrl(identifiers)
+          : Promise.resolve({
+              url: finalized.labelUrl,
+              error: null,
+              permanent: false,
+            }),
+      ]);
+      const lastErrorParts: string[] = [];
+      if (finalized.costMismatch) {
+        lastErrorParts.push(
+          `Priority1 dispatch cost ${finalized.actualCarrierCost} differs from quoted carrier rate`,
+        );
+      }
+      if (needsBolBackfill && !bolFetch.url) {
+        lastErrorParts.push(
+          bolFetch.error
+            ? `BOL backfill failed: ${bolFetch.error}`
+            : "BOL document not yet available from Priority1",
+        );
+      }
+      if (needsLabelBackfill && !labelFetch.url) {
+        lastErrorParts.push(
+          labelFetch.error
+            ? `Pallet label backfill failed: ${labelFetch.error}`
+            : "Pallet labels not yet available from Priority1",
+        );
+      }
+      await db
+        .update(shipments)
         .set({
-          trackingNumber: proNumber || bolNumber,
-          carrier: snapshot.carrierName,
+          ...(bolFetch.url && needsBolBackfill ? { bolUrl: bolFetch.url } : {}),
+          ...(labelFetch.url && needsLabelBackfill
+            ? { labelUrl: labelFetch.url }
+            : {}),
+          lastError: lastErrorParts.length > 0 ? lastErrorParts.join("; ") : null,
           updatedAt: new Date(),
         })
-        .where(eq(orders.id, orderId));
+        .where(eq(shipments.id, finalized.shipmentId));
 
-      return {
-        dispatched: true,
-        shipmentId: lockedShipment.id,
-        priority1Id: dispatchResult.id,
-        proNumber,
-        bolNumber,
-        actualCarrierCost: dispatchResult.totalCost,
-        costMismatch,
-      };
-    });
+      if (
+        (needsBolBackfill && bolFetch.permanent) ||
+        (needsLabelBackfill && labelFetch.permanent)
+      ) {
+        await openReconciliationCase(db, {
+          caseKey: `shipment-docs-permanent:${order.id}`,
+          type: "shipment_ambiguity",
+          source: "priority1",
+          severity: "high",
+          title: "Permanent freight document recovery failure",
+          summary: lastErrorParts.join("; "),
+          orderId: order.id,
+          externalReference: String(dispatchResult.id),
+          details: {
+            shipmentId: finalized.shipmentId,
+            bolPermanent: bolFetch.permanent,
+            labelPermanent: labelFetch.permanent,
+          },
+        }).catch(() => undefined);
+      }
+    }
+
+    return finalized;
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown dispatch error";

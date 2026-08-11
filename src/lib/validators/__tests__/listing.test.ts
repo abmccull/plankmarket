@@ -131,15 +131,44 @@ describe("step3Schema", () => {
 describe("listingFilterSchema public bounds", () => {
   it("trims and caps free-text search", () => {
     expect(listingFilterSchema.parse({ query: "  oak  " }).query).toBe("oak");
+    expect(listingFilterSchema.safeParse({ query: "a" }).success).toBe(false);
+    expect(listingFilterSchema.safeParse({ query: "ab" }).success).toBe(false);
+    expect(listingFilterSchema.safeParse({ query: "abc" }).success).toBe(true);
     expect(
       listingFilterSchema.safeParse({ query: "x".repeat(201) }).success,
     ).toBe(false);
   });
 
   it("caps page offsets while preserving the catalog page-size limit", () => {
-    expect(listingFilterSchema.safeParse({ page: 1_000 }).success).toBe(true);
-    expect(listingFilterSchema.safeParse({ page: 1_001 }).success).toBe(false);
-    expect(listingFilterSchema.safeParse({ limit: 250 }).success).toBe(true);
+    expect(listingFilterSchema.safeParse({ page: 208 }).success).toBe(true);
+    expect(listingFilterSchema.safeParse({ page: 209 }).success).toBe(false);
+    expect(listingFilterSchema.safeParse({ page: 20, limit: 250 }).success).toBe(true);
+    expect(listingFilterSchema.safeParse({ page: 21, limit: 250 }).success).toBe(false);
+    expect(
+      listingFilterSchema.safeParse({
+        species: Array.from({ length: 26 }, (_, index) => `species-${index}`),
+      }).success,
+    ).toBe(false);
+    expect(listingFilterSchema.safeParse({ maxDistance: 5_001 }).success).toBe(
+      false,
+    );
+    expect(listingFilterSchema.safeParse({ priceMin: -1 }).success).toBe(false);
+  });
+
+  it("accepts only positive confidence filters while preserving lot format", () => {
+    expect(
+      listingFilterSchema.safeParse({
+        sellerVerified: true,
+        freightReady: true,
+        fullLotOnly: false,
+      }).success,
+    ).toBe(true);
+    expect(listingFilterSchema.safeParse({ sellerVerified: false }).success).toBe(
+      false,
+    );
+    expect(listingFilterSchema.safeParse({ freightReady: false }).success).toBe(
+      false,
+    );
   });
 });
 

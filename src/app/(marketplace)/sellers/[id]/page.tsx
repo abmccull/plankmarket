@@ -11,7 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { StarRating } from "@/components/shared/star-rating";
 import { ReviewCard } from "@/components/shared/review-card";
-import { CheckCircle2, MapPin, Calendar } from "lucide-react";
+import { CheckCircle2, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ProBadge } from "@/components/pro-badge";
 import { formatDate } from "@/lib/utils";
@@ -78,14 +78,6 @@ function SellerProfileContent({ sellerId }: { sellerId: string }) {
                 )}
               </div>
               <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                {(profile?.businessCity || profile?.businessState) && (
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {profile.businessCity && profile.businessState
-                      ? `${profile.businessCity}, ${profile.businessState}`
-                      : profile.businessState ?? profile.businessCity}
-                  </div>
-                )}
                 {profile?.createdAt && (
                   <div className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />

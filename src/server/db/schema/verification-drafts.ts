@@ -1,5 +1,6 @@
 import {
   check,
+  index,
   integer,
   pgTable,
   text,
@@ -31,6 +32,8 @@ export const verificationDrafts = pgTable(
     businessCity: varchar("business_city", { length: 100 }),
     businessState: varchar("business_state", { length: 2 }),
     businessZip: varchar("business_zip", { length: 10 }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    purgeAfter: timestamp("purge_after", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -39,6 +42,7 @@ export const verificationDrafts = pgTable(
       .notNull(),
   },
   (table) => [
+    index("verification_drafts_purge_after_idx").on(table.purgeAfter),
     check(
       "verification_drafts_current_step_check",
       sql`${table.currentStep} between 1 and 3`,

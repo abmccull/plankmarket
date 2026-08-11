@@ -1,6 +1,12 @@
 import type Stripe from "stripe";
 import { eq, sql } from "drizzle-orm";
-import { notifications, orders, shipments, users } from "@/server/db/schema";
+import {
+  disputes,
+  notifications,
+  orders,
+  shipments,
+  users,
+} from "@/server/db/schema";
 import { stripe } from "@/lib/stripe";
 import type { Database } from "@/server/db";
 import { releaseReservedInventory } from "./inventory-reservation";
@@ -34,7 +40,14 @@ interface RefundResult {
   refundId: string;
   amountRefunded: number;
   transferReversalId?: string;
+  state: OrderRefundState;
+  providerStatus: string | null;
 }
+
+export type OrderRefundState =
+  | "succeeded"
+  | "refund_pending"
+  | "reconciliation_required";
 
 export const SELLER_FUNDED_FREIGHT_PARTIAL_RECOVERY_REASON =
   "Manual allocation is required for a partial recovery on an order with seller-funded freight. Keep the order in manual review until the recovery is explicitly allocated across merchandise, buyer fees, buyer-paid freight, and seller-funded freight.";
@@ -76,6 +89,45 @@ interface LockedRefundOrder {
   taxLiability: typeof orders.$inferSelect.taxLiability;
   taxReversalStatus: typeof orders.$inferSelect.taxReversalStatus;
   notes: string | null;
+}
+
+interface LockedStripeDispute {
+  id: string;
+  status: typeof disputes.$inferSelect.status;
+  source: typeof disputes.$inferSelect.source;
+}
+
+function normalizeStripeRefundStatus(
+  status: string | null | undefined,
+): string | null {
+  return typeof status === "string" && status.length > 0 ? status : null;
+}
+
+function mapRefundStateFromStripeStatus(
+  status: string | null | undefined,
+): OrderRefundState {
+  const normalizedStatus = normalizeStripeRefundStatus(status);
+  if (normalizedStatus === "succeeded") return "succeeded";
+  if (normalizedStatus === "pending") return "refund_pending";
+  return "reconciliation_required";
+}
+
+function formatRefundAttemptSummary(params: {
+  state: Exclude<OrderRefundState, "succeeded">;
+  stripeRefundId: string;
+  refundAmountCents: number;
+  providerStatus: string | null;
+  reason?: string;
+}): string {
+  const statusLabel =
+    params.state === "refund_pending"
+      ? "Refund pending at Stripe"
+      : "Refund requires reconciliation";
+  return `[${statusLabel}: ${params.stripeRefundId}; amount $${(
+    params.refundAmountCents / 100
+  ).toFixed(2)}; provider status ${params.providerStatus ?? "unknown"}${
+    params.reason ? `; ${params.reason}` : ""
+  }]`;
 }
 
 export function shouldReleaseInventoryOnRefund(params: {
@@ -695,6 +747,67 @@ async function lockRefundOrder(
   };
 }
 
+async function lockStripeDisputeForOrder(
+  tx: Parameters<Parameters<Database["transaction"]>[0]>[0],
+  orderId: string,
+): Promise<LockedStripeDispute | null> {
+  const [dispute] = await tx
+    .select({
+      id: disputes.id,
+      status: disputes.status,
+      source: disputes.source,
+    })
+    .from(disputes)
+    .where(eq(disputes.orderId, orderId))
+    .for("update");
+
+  if (!dispute || dispute.source !== "stripe") {
+    return null;
+  }
+
+  return dispute;
+}
+
+function getRefundBlockReason(
+  dispute: LockedStripeDispute | null,
+): string | null {
+  if (!dispute) return null;
+  if (dispute.status === "resolved_seller") return null;
+  if (dispute.status === "resolved_buyer") {
+    return "Manual refunds are blocked because Stripe already closed the chargeback against the platform.";
+  }
+  if (dispute.status === "closed") {
+    return "Manual refunds are blocked until the closed Stripe dispute is reconciled.";
+  }
+  return "Manual refunds are blocked while a Stripe dispute is still open.";
+}
+
+async function persistRefundAttemptState(params: {
+  tx: Parameters<Parameters<Database["transaction"]>[0]>[0];
+  order: LockedRefundOrder;
+  stripeRefundId: string;
+  refundAmountCents: number;
+  providerStatus: string | null;
+  state: Exclude<OrderRefundState, "succeeded">;
+  reason?: string;
+}): Promise<void> {
+  await params.tx
+    .update(orders)
+    .set({
+      paymentStatus: params.state,
+      stripeRefundId: params.stripeRefundId,
+      notes: sql`concat_ws(E'\n', nullif(${orders.notes}, ''), ${formatRefundAttemptSummary({
+        state: params.state,
+        stripeRefundId: params.stripeRefundId,
+        refundAmountCents: params.refundAmountCents,
+        providerStatus: params.providerStatus,
+        reason: params.reason,
+      })})`,
+      updatedAt: new Date(),
+    })
+    .where(eq(orders.id, params.order.id));
+}
+
 async function persistRefundState(params: {
   tx: Parameters<Parameters<Database["transaction"]>[0]>[0];
   order: LockedRefundOrder;
@@ -820,6 +933,11 @@ export async function processOrderRefund({
   try {
     const result = await db.transaction(async (tx) => {
     const order = await lockRefundOrder(tx, orderId);
+    const blockingDispute = await lockStripeDisputeForOrder(tx, orderId);
+    const refundBlockReason = getRefundBlockReason(blockingDispute);
+    if (refundBlockReason) {
+      throw new Error(refundBlockReason);
+    }
 
     if (!order.stripePaymentIntentId) {
       throw new Error(`Order ${orderId} has no payment intent — cannot refund`);
@@ -873,14 +991,6 @@ export async function processOrderRefund({
         "Partial refunds are not supported before seller payout. Issue a full cancellation/refund instead.",
       );
     }
-    if (
-      isFullRefund &&
-      order.status !== "delivered" &&
-      order.status !== "refunded"
-    ) {
-      await cancelPriority1ShipmentForOrder(order.id, tx);
-    }
-
     const refund = await stripe.refunds.create(
       {
         payment_intent: order.stripePaymentIntentId,
@@ -896,6 +1006,35 @@ export async function processOrderRefund({
         idempotencyKey: `order-refund:${order.id}:${cumulativeRefundCents}`,
       },
     );
+
+    const providerStatus = normalizeStripeRefundStatus(refund.status);
+    const state = mapRefundStateFromStripeStatus(providerStatus);
+    if (state !== "succeeded") {
+      await persistRefundAttemptState({
+        tx,
+        order,
+        stripeRefundId: refund.id,
+        refundAmountCents,
+        providerStatus,
+        state,
+        reason,
+      });
+
+      return {
+        refundId: refund.id,
+        amountRefunded: refundAmountCents / 100,
+        state,
+        providerStatus,
+      };
+    }
+
+    if (
+      isFullRefund &&
+      order.status !== "delivered" &&
+      order.status !== "refunded"
+    ) {
+      await cancelPriority1ShipmentForOrder(order.id, tx);
+    }
 
     const reversal = await reverseSeparateTransfer({
       order,
@@ -981,17 +1120,46 @@ export async function processOrderRefund({
       refundId: refund.id,
       amountRefunded: refundAmountCents / 100,
       transferReversalId: reversal.reversalId,
+      state,
+      providerStatus,
     };
     });
-    await resolveReconciliationCaseByKey(db, {
-      caseKey: `refund-failure:${orderId}`,
-      resolution:
-        "Stripe accepted the refund and all local refund allocation state was persisted.",
-      details: {
-        refundId: result.refundId,
-        amountRefunded: result.amountRefunded,
-      },
-    });
+    if (result.state === "succeeded") {
+      await resolveReconciliationCaseByKey(db, {
+        caseKey: `refund-failure:${orderId}`,
+        resolution:
+          "Stripe accepted the refund and all local refund allocation state was persisted.",
+        details: {
+          refundId: result.refundId,
+          amountRefunded: result.amountRefunded,
+        },
+      });
+      await resolveReconciliationCaseByKey(db, {
+        caseKey: `refund-reconciliation:${orderId}`,
+        resolution:
+          "Stripe reported the refund as succeeded and local refund state was fully reconciled.",
+        details: {
+          refundId: result.refundId,
+          providerStatus: result.providerStatus,
+        },
+      });
+    } else if (result.state === "reconciliation_required") {
+      await openReconciliationCase(db, {
+        caseKey: `refund-reconciliation:${orderId}`,
+        type: "refund_failure",
+        source: "stripe",
+        severity: "critical",
+        title: "Stripe refund requires operator reconciliation",
+        summary:
+          "Stripe did not return a succeeded refund state, so buyer confirmation and downstream money movement remain blocked pending review.",
+        orderId,
+        externalReference: result.refundId,
+        amountCents: Math.round(result.amountRefunded * 100),
+        details: {
+          providerStatus: result.providerStatus,
+        },
+      });
+    }
     return result;
   } catch (error) {
     if (error instanceof ShipmentCancellationError) {
@@ -1016,6 +1184,201 @@ export async function processOrderRefund({
     });
     throw error;
   }
+}
+
+async function resolveOrderIdForStripeRefund(
+  db: Database,
+  refund: Pick<Stripe.Refund, "id" | "metadata" | "payment_intent">,
+): Promise<{
+  orderId: string | null;
+  metadataOrderId: string | null;
+  paymentIntentId: string | null;
+  mismatchSummary?: string;
+}> {
+  const metadataOrderId =
+    typeof refund.metadata?.orderId === "string" && refund.metadata.orderId.length > 0
+      ? refund.metadata.orderId
+      : null;
+  const paymentIntentId =
+    typeof refund.payment_intent === "string"
+      ? refund.payment_intent
+      : refund.payment_intent?.id ?? null;
+
+  if (metadataOrderId) {
+    const order = await db.query.orders.findFirst({
+      where: eq(orders.id, metadataOrderId),
+      columns: {
+        id: true,
+        stripePaymentIntentId: true,
+      },
+    });
+    if (!order) {
+      return {
+        orderId: null,
+        metadataOrderId,
+        paymentIntentId,
+        mismatchSummary:
+          "Stripe refund metadata references an order that no longer exists locally.",
+      };
+    }
+    if (
+      !paymentIntentId ||
+      !order.stripePaymentIntentId ||
+      order.stripePaymentIntentId !== paymentIntentId
+    ) {
+      return {
+        orderId: null,
+        metadataOrderId,
+        paymentIntentId,
+        mismatchSummary:
+          "Stripe refund metadata.orderId does not match the order tied to this refund payment intent.",
+      };
+    }
+    return {
+      orderId: order.id,
+      metadataOrderId,
+      paymentIntentId,
+    };
+  }
+
+  if (!paymentIntentId) {
+    return {
+      orderId: null,
+      metadataOrderId,
+      paymentIntentId: null,
+    };
+  }
+
+  const order = await db.query.orders.findFirst({
+    where: eq(orders.stripePaymentIntentId, paymentIntentId),
+    columns: { id: true },
+  });
+
+  return {
+    orderId: order?.id ?? null,
+    metadataOrderId,
+    paymentIntentId,
+  };
+}
+
+async function readAuthoritativeRefundedAmountCents(
+  refund: Pick<Stripe.Refund, "amount" | "charge" | "metadata">,
+): Promise<number> {
+  const charge =
+    typeof refund.charge === "string"
+      ? await stripe.charges.retrieve(refund.charge)
+      : refund.charge;
+  if (charge && Number.isFinite(charge.amount_refunded)) {
+    return charge.amount_refunded;
+  }
+
+  const metadataCumulativeRefundCents = Number.parseInt(
+    String(refund.metadata?.cumulativeRefundCents ?? ""),
+    10,
+  );
+  if (Number.isFinite(metadataCumulativeRefundCents)) {
+    return metadataCumulativeRefundCents;
+  }
+
+  return refund.amount;
+}
+
+export async function reconcileOrderRefundLifecycleFromStripe(params: {
+  db: Database;
+  refund: Stripe.Refund;
+  reason?: string;
+}): Promise<{
+  orderId: string | null;
+  state: OrderRefundState | "ignored";
+  updated: boolean;
+}> {
+  const resolvedRefundOrder = await resolveOrderIdForStripeRefund(
+    params.db,
+    params.refund,
+  );
+  const orderId = resolvedRefundOrder.orderId;
+  if (!orderId) {
+    await openReconciliationCase(params.db, {
+      caseKey: resolvedRefundOrder.mismatchSummary
+        ? `refund-mismatch:${params.refund.id}`
+        : `refund-unmatched:${params.refund.id}`,
+      type: "payment_mismatch",
+      source: "stripe",
+      severity: "critical",
+      title: resolvedRefundOrder.mismatchSummary
+        ? "Stripe refund metadata does not match the stored payment intent"
+        : "Stripe refund is not mapped to a local order",
+      summary:
+        resolvedRefundOrder.mismatchSummary ??
+        "Stripe reported a refund lifecycle update that could not be matched to an order by metadata or payment intent.",
+      externalReference: params.refund.id,
+      amountCents: params.refund.amount,
+      details: {
+        metadataOrderId: resolvedRefundOrder.metadataOrderId,
+        paymentIntentId: resolvedRefundOrder.paymentIntentId,
+        providerStatus: normalizeStripeRefundStatus(params.refund.status),
+      },
+    });
+    return { orderId: null, state: "ignored", updated: false };
+  }
+
+  const providerStatus = normalizeStripeRefundStatus(params.refund.status);
+  const state = mapRefundStateFromStripeStatus(providerStatus);
+  if (state === "succeeded") {
+    const refundedAmountCents = await readAuthoritativeRefundedAmountCents(
+      params.refund,
+    );
+    const reconciliation = await reconcileOrderRefundFromStripe({
+      db: params.db,
+      orderId,
+      refundedAmountCents,
+      stripeRefundId: params.refund.id,
+      reason: params.reason,
+    });
+    return { orderId, state, updated: reconciliation.updated };
+  }
+
+  const updated = await params.db.transaction(async (tx) => {
+    const order = await lockRefundOrder(tx, orderId);
+    if (
+      order.paymentStatus === "refunded" ||
+      order.paymentStatus === "partially_refunded" ||
+      order.paymentStatus === "reconciliation_required"
+    ) {
+      return false;
+    }
+
+    await persistRefundAttemptState({
+      tx,
+      order,
+      stripeRefundId: params.refund.id,
+      refundAmountCents: params.refund.amount,
+      providerStatus,
+      state,
+      reason: params.reason,
+    });
+    return true;
+  });
+
+  if (state === "reconciliation_required") {
+    await openReconciliationCase(params.db, {
+      caseKey: `refund-reconciliation:${orderId}`,
+      type: "refund_failure",
+      source: "stripe",
+      severity: "critical",
+      title: "Stripe refund requires operator reconciliation",
+      summary:
+        "Stripe reported a non-succeeded refund state, so buyer confirmation and downstream refund effects remain blocked pending review.",
+      orderId,
+      externalReference: params.refund.id,
+      amountCents: params.refund.amount,
+      details: {
+        providerStatus,
+      },
+    });
+  }
+
+  return { orderId, state, updated };
 }
 
 /** Reconcile refunds initiated outside the application (for example Dashboard). */

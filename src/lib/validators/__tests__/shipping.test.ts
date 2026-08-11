@@ -17,6 +17,18 @@ describe("getShippingQuotesSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts optional delivery accessorial flags", () => {
+    const result = getShippingQuotesSchema.safeParse({
+      listingId: VALID_UUID,
+      destinationZip: "90210",
+      quantitySqFt: 100,
+      liftgateDelivery: true,
+      residentialDelivery: true,
+      appointmentDelivery: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("rejects non-UUID listingId", () => {
     const result = getShippingQuotesSchema.safeParse({
       listingId: "not-a-uuid",

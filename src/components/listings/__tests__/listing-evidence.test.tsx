@@ -20,14 +20,18 @@ describe("ListingEvidence", () => {
   it("renders decision evidence from listing data", () => {
     render(<ListingEvidence listing={listing} />);
 
+    expect(screen.getByText("Known now")).toBeInTheDocument();
+    expect(screen.getByText("Calculated later")).toBeInTheDocument();
     expect(screen.getByText("12,500 sq ft")).toBeInTheDocument();
     expect(screen.getByText("2 pallets")).toBeInTheDocument();
     expect(screen.getByText("New overstock")).toBeInTheDocument();
     expect(screen.getByText("Denver, CO")).toBeInTheDocument();
     expect(screen.getByText("Verified business")).toBeInTheDocument();
-    expect(screen.getByText("Confirmed Jul 29")).toBeInTheDocument();
+    expect(screen.getAllByText("Confirmed Jul 29").length).toBeGreaterThan(0);
     expect(screen.getByText("3 listing photos")).toBeInTheDocument();
-    expect(screen.getByText("Ready to request at checkout")).toBeInTheDocument();
+    expect(
+      screen.getByText("Calculated after destination details are entered at checkout"),
+    ).toBeInTheDocument();
   });
 
   it("shows missing evidence instead of making a positive claim", () => {
@@ -44,11 +48,13 @@ describe("ListingEvidence", () => {
       />,
     );
 
+    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Warning").length).toBeGreaterThan(0);
     expect(screen.getByText("Not verified")).toBeInTheDocument();
     expect(screen.getByText("Seller confirmation pending")).toBeInTheDocument();
-    expect(screen.getByText("No listing photos")).toBeInTheDocument();
+    expect(screen.getAllByText("No listing photos").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("Seller freight setup incomplete"),
+      screen.getByText("Blocked until seller freight setup is complete"),
     ).toBeInTheDocument();
   });
 });

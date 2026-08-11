@@ -29,7 +29,7 @@ export function FeaturedCarousel() {
           <div>
             <h2 className="text-2xl font-bold">Featured Inventory</h2>
             <p className="text-muted-foreground mt-1">
-              Premium listings from verified sellers
+              Promoted lots with seller verification shown on every card
             </p>
           </div>
           <Link href="/listings">

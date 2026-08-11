@@ -48,13 +48,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <PostHogAnalyticsProvider>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>{children}</AuthProvider>
-          <Toaster position="top-center" richColors closeButton />
-        </QueryClientProvider>
-      </trpc.Provider>
-    </PostHogAnalyticsProvider>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <PostHogAnalyticsProvider>{children}</PostHogAnalyticsProvider>
+        </AuthProvider>
+        <Toaster position="top-center" richColors closeButton />
+      </QueryClientProvider>
+    </trpc.Provider>
   );
 }

@@ -35,7 +35,7 @@ const mockOffer = {
     verificationStatus: "verified",
     verified: true,
     identityRevealed: false,
-    displayName: "Verified Buyer in TX",
+    displayName: "Verified Buyer",
   },
   seller: {
     id: "seller-1",
@@ -46,7 +46,7 @@ const mockOffer = {
     verificationStatus: "verified",
     verified: true,
     identityRevealed: false,
-    displayName: "Verified Seller in FL",
+    displayName: "Verified Seller",
   },
 } satisfies OfferListItem;
 
@@ -61,7 +61,7 @@ describe("OfferCard", () => {
     );
 
     expect(screen.getByText("Oak Hardwood Flooring")).toBeInTheDocument();
-    expect(screen.getByText(/Verified Buyer in TX/)).toBeInTheDocument();
+    expect(screen.getByText(/Verified Buyer/)).toBeInTheDocument();
     expect(screen.getByText(/\$5\.50\/sq ft/)).toBeInTheDocument();
     expect(screen.getByText(/1,000 sq ft/)).toBeInTheDocument();
   });
@@ -116,7 +116,7 @@ describe("OfferCard", () => {
       />
     );
 
-    expect(screen.getByText(/Buyer:.*Verified Buyer in TX/)).toBeInTheDocument();
+    expect(screen.getByText(/Buyer:.*Verified Buyer/)).toBeInTheDocument();
   });
 
   it("shows the server-approved seller display name to the buyer", () => {
@@ -128,7 +128,7 @@ describe("OfferCard", () => {
       />
     );
 
-    expect(screen.getByText(/Seller:.*Verified Seller in FL/)).toBeInTheDocument();
+    expect(screen.getByText(/Seller:.*Verified Seller/)).toBeInTheDocument();
   });
 
   it("displays round number", () => {

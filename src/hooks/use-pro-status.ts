@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { isPro } from "@/lib/pro";
 import { trpc } from "@/lib/trpc/client";
 
 interface ProStatusResult {
@@ -25,14 +26,8 @@ export function useProStatus(): ProStatusResult {
   const proStatus = data?.proStatus ?? "free";
   const proExpiresAt = data?.proExpiresAt ? new Date(data.proExpiresAt) : null;
 
-  const isPro =
-    proStatus === "active" ||
-    proStatus === "trialing" ||
-    proStatus === "past_due" ||
-    (proStatus === "cancelled" && proExpiresAt !== null && proExpiresAt > new Date());
-
   return {
-    isPro,
+    isPro: isPro({ proStatus, proExpiresAt }),
     proStatus,
     proExpiresAt,
     availableCredit: data?.availableCredit ?? 0,

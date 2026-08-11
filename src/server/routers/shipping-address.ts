@@ -3,6 +3,10 @@ import {
   createShippingAddressSchema,
   updateShippingAddressSchema,
 } from "@/lib/validators/shipping-address";
+import {
+  addRetentionDays,
+  SHIPPING_ADDRESS_RETENTION_DAYS,
+} from "@/lib/privacy-retention";
 import { shippingAddresses } from "../db/schema";
 import { eq, and } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -19,11 +23,13 @@ export const shippingAddressRouter = createTRPCRouter({
   create: protectedProcedure
     .input(createShippingAddressSchema)
     .mutation(async ({ ctx, input }) => {
+      const now = new Date();
+
       // If setting as default, clear other defaults first
       if (input.isDefault) {
         await ctx.db
           .update(shippingAddresses)
-          .set({ isDefault: false, updatedAt: new Date() })
+          .set({ isDefault: false, updatedAt: now })
           .where(
             and(
               eq(shippingAddresses.userId, ctx.user.id),
@@ -38,6 +44,11 @@ export const shippingAddressRouter = createTRPCRouter({
           userId: ctx.user.id,
           ...input,
           isDefault: input.isDefault ?? false,
+          lastUsedAt: now,
+          retentionPurgeAfter: addRetentionDays(
+            now,
+            SHIPPING_ADDRESS_RETENTION_DAYS,
+          ),
         })
         .returning();
 
@@ -47,6 +58,7 @@ export const shippingAddressRouter = createTRPCRouter({
   update: protectedProcedure
     .input(updateShippingAddressSchema)
     .mutation(async ({ ctx, input }) => {
+      const now = new Date();
       const existing = await ctx.db.query.shippingAddresses.findFirst({
         where: and(
           eq(shippingAddresses.id, input.id),
@@ -62,7 +74,7 @@ export const shippingAddressRouter = createTRPCRouter({
       if (input.isDefault) {
         await ctx.db
           .update(shippingAddresses)
-          .set({ isDefault: false, updatedAt: new Date() })
+          .set({ isDefault: false, updatedAt: now })
           .where(
             and(
               eq(shippingAddresses.userId, ctx.user.id),
@@ -74,7 +86,15 @@ export const shippingAddressRouter = createTRPCRouter({
       const { id, ...updateFields } = input;
       const [updated] = await ctx.db
         .update(shippingAddresses)
-        .set({ ...updateFields, updatedAt: new Date() })
+        .set({
+          ...updateFields,
+          lastUsedAt: now,
+          retentionPurgeAfter: addRetentionDays(
+            now,
+            SHIPPING_ADDRESS_RETENTION_DAYS,
+          ),
+          updatedAt: now,
+        })
         .where(eq(shippingAddresses.id, id))
         .returning();
 
@@ -105,6 +125,7 @@ export const shippingAddressRouter = createTRPCRouter({
   setDefault: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      const now = new Date();
       const existing = await ctx.db.query.shippingAddresses.findFirst({
         where: and(
           eq(shippingAddresses.id, input.id),
@@ -119,7 +140,7 @@ export const shippingAddressRouter = createTRPCRouter({
       // Clear all defaults, then set this one
       await ctx.db
         .update(shippingAddresses)
-        .set({ isDefault: false, updatedAt: new Date() })
+        .set({ isDefault: false, updatedAt: now })
         .where(
           and(
             eq(shippingAddresses.userId, ctx.user.id),
@@ -129,7 +150,15 @@ export const shippingAddressRouter = createTRPCRouter({
 
       const [updated] = await ctx.db
         .update(shippingAddresses)
-        .set({ isDefault: true, updatedAt: new Date() })
+        .set({
+          isDefault: true,
+          lastUsedAt: now,
+          retentionPurgeAfter: addRetentionDays(
+            now,
+            SHIPPING_ADDRESS_RETENTION_DAYS,
+          ),
+          updatedAt: now,
+        })
         .where(eq(shippingAddresses.id, input.id))
         .returning();
 

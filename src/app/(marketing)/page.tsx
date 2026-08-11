@@ -22,11 +22,12 @@ import {
   Calculator,
 } from "lucide-react";
 import { CarryingCostCalculatorCompact } from "@/components/marketing/carrying-cost-calculator-compact";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export const metadata: Metadata = {
   title: "PlankMarket — B2B Closeout Flooring Marketplace",
   description:
-    "Your closeout flooring is losing value right now. PlankMarket is the fastest path from surplus inventory to verified buyer. Move overstock, discontinued, and closeout flooring nationwide.",
+    "A purpose-built B2B marketplace for overstock, discontinued, and closeout flooring with verified transaction actions, transparent fees, seller-territory visibility, and integrated freight quotes.",
 };
 
 export const revalidate = 3600;
@@ -93,9 +94,8 @@ export default function HomePage() {
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
               Every week surplus flooring sits in a warehouse, carrying costs
               eat into your margin and the product moves closer to obsolete.
-              PlankMarket is the fastest path from excess inventory to verified
-              buyer — and the best way for contractors and retailers to source
-              closeout flooring before the good lots are gone.
+              PlankMarket gives sellers and buyers a purpose-built workflow for
+              listing, evaluating, negotiating, and shipping closeout flooring.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/register?role=seller">
@@ -115,11 +115,11 @@ export default function HomePage() {
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
                 <Shield className="h-4 w-4" aria-hidden="true" />
-                <span>Verified Professionals Only</span>
+                <span>Verification for Protected Actions</span>
               </div>
               <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
                 <TrendingDown className="h-4 w-4" aria-hidden="true" />
-                <span>Closeout Pricing From Verified Sellers</span>
+                <span>Seller Verification Shown on Every Lot</span>
               </div>
               <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
                 <Truck className="h-4 w-4" aria-hidden="true" />
@@ -273,7 +273,7 @@ export default function HomePage() {
               The Marketplace
             </Badge>
             <h2 className="font-display text-3xl sm:text-4xl">
-              One platform. Verified buyers and sellers.{" "}
+              One platform. Verification before protected actions.{" "}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
                 Surplus moves fast.
               </span>
@@ -291,12 +291,12 @@ export default function HomePage() {
               <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
                 <Users className="h-7 w-7 text-primary" aria-hidden="true" />
               </div>
-              <h3 className="font-display text-xl">Verified Network</h3>
+              <h3 className="font-display text-xl">Visible Verification</h3>
               <p className="text-muted-foreground text-base leading-relaxed">
-                Every buyer and seller on PlankMarket undergoes business
-                verification. EIN verification, document review, admin
-                approval. You are dealing with real flooring professionals,
-                not tire-kickers or flippers.
+                Seller verification status appears on every lot. Business
+                verification is required before checkout and other protected
+                transaction actions, and its status stays visible in the
+                workflow.
               </p>
             </div>
             <div className="flex flex-col gap-4">
@@ -305,10 +305,9 @@ export default function HomePage() {
               </div>
               <h3 className="font-display text-xl">Speed to Close</h3>
               <p className="text-muted-foreground text-base leading-relaxed">
-                Sellers list in minutes with guided forms and AI-assisted
-                descriptions. Buyers set saved search alerts and get notified
-                the moment a matching lot is listed. Offers, negotiation, and
-                checkout happen on-platform.
+                Sellers use guided forms and AI-assisted descriptions. Buyers
+                can save searches, while offers, negotiation, and checkout stay
+                attached to the marketplace record.
               </p>
             </div>
             <div className="flex flex-col gap-4">
@@ -322,9 +321,11 @@ export default function HomePage() {
                 Transparent Fees
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed">
-                5% buyer fee on inventory. 5% seller fee on inventory. Seller
-                processing applies to inventory only. No listing fees, no
-                required subscriptions, no hidden charges. Freight is quoted
+                {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on inventory.
+                {" "}
+                {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on inventory.
+                Seller processing applies to inventory only. No listing fees,
+                no required subscriptions, no hidden charges. Freight is quoted
                 separately before payment and the displayed freight charge may
                 include carrier charges plus PlankMarket shipping service
                 margin.
@@ -351,7 +352,7 @@ export default function HomePage() {
               How It Works
             </Badge>
             <h2 className="font-display text-3xl sm:text-4xl">
-              From listing to payout in four steps.
+              From listing to seller transfer in four steps.
             </h2>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">
@@ -359,7 +360,12 @@ export default function HomePage() {
               { step: "1", title: "List", description: "Seller uploads specs, photos, and sets a price." },
               { step: "2", title: "Offer or Buy", description: "Buyer purchases at listed price or negotiates an offer." },
               { step: "3", title: "Ship", description: "Seller coordinates freight pickup through the platform." },
-              { step: "4", title: "Get Paid", description: "Seller transfer starts after carrier pickup." },
+              {
+                step: "4",
+                title: "Track Transfer",
+                description:
+                  "Seller transfer starts after confirmed pickup, the configured delay, and transaction checks.",
+              },
             ].map((item) => (
               <div key={item.step} className="text-center">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center mx-auto mb-3 font-bold text-lg">
@@ -498,16 +504,16 @@ export default function HomePage() {
               <div className="text-sm opacity-80">Material Categories</div>
             </div>
             <div>
-              <div className="font-display text-2xl">Nationwide</div>
-              <div className="text-sm opacity-80">US Coverage</div>
+              <div className="font-display text-2xl">US-Focused</div>
+              <div className="text-sm opacity-80">State territory controls</div>
             </div>
             <div>
               <div className="font-display text-2xl">Clear Fees</div>
               <div className="text-sm opacity-80">Shown separately by role</div>
             </div>
             <div>
-              <div className="font-display text-2xl">3-5 Days</div>
-              <div className="text-sm opacity-80">Seller Payouts</div>
+              <div className="font-display text-2xl">Milestone-Based</div>
+              <div className="text-sm opacity-80">Seller transfers</div>
             </div>
           </div>
         </div>
@@ -543,9 +549,9 @@ export default function HomePage() {
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed mb-4">
                 Source surplus hardwood, engineered, LVP, laminate, bamboo,
-                and tile at closeout pricing from verified sellers.
-                Full specs and photos on every lot. Buyer fees and freight are
-                shown before payment.
+                and tile at closeout pricing with seller verification shown on
+                every lot. Full specs and photos support comparison, while
+                buyer fees and freight are shown before payment.
               </p>
               <span className="inline-flex items-center text-sm font-semibold text-primary group-hover:gap-2 transition-all">
                 See buyer benefits
@@ -570,9 +576,9 @@ export default function HomePage() {
               </h3>
               <p className="text-muted-foreground text-base leading-relaxed mb-4">
                 Liquidate overstock and closeout inventory to verified
-                buyers nationwide. 5% seller fee plus inventory-only
-                processing on completed sales. Projected seller transfer shown
-                before you accept.
+                buyers in supported markets. {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus
+                inventory-only processing on completed sales. Projected seller
+                transfer shown before you accept.
               </p>
               <span className="inline-flex items-center text-sm font-semibold text-secondary group-hover:gap-2 transition-all">
                 See seller benefits
@@ -613,7 +619,7 @@ export default function HomePage() {
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto text-lg leading-relaxed">
                 Sellers: list your surplus and get it in front of verified
-                buyers nationwide. Buyers: stop missing deals.
+                buyers in supported markets. Buyers: stop missing deals.
                 Set alerts for the products you need and source at
                 closeout prices.
               </p>

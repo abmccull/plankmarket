@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   openReconciliationCase,
+  openReconciliationCaseInTransaction,
   resolveReconciliationCaseByKey,
 } from "@/server/services/reconciliation-cases";
 
@@ -53,6 +54,45 @@ describe("reconciliation case persistence", () => {
       }),
     );
     expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("persists with a caller-owned transaction without nesting", async () => {
+    const eventValues = vi.fn().mockResolvedValue(undefined);
+    const caseRecord = {
+      id: CASE_ID,
+      caseKey: "shipment-cancel-terminal:order-1",
+      status: "open",
+    };
+    const tx = {
+      insert: vi
+        .fn()
+        .mockImplementationOnce(() => ({
+          values: vi.fn(() => ({
+            onConflictDoNothing: vi.fn(() => ({
+              returning: vi.fn().mockResolvedValue([caseRecord]),
+            })),
+          })),
+        }))
+        .mockImplementationOnce(() => ({ values: eventValues })),
+      update: vi.fn(),
+    };
+
+    const result = await openReconciliationCaseInTransaction(tx as never, {
+      caseKey: "shipment-cancel-terminal:order-1",
+      type: "shipment_ambiguity",
+      source: "priority1",
+      severity: "high",
+      title: "Freight cancellation terminal state",
+      summary: "Manual reconciliation is required.",
+    });
+
+    expect(result).toEqual(caseRecord);
+    expect(eventValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caseId: CASE_ID,
+        eventType: "opened",
+      }),
+    );
   });
 
   it("updates the existing stable key instead of opening a duplicate", async () => {

@@ -40,6 +40,11 @@ interface SidebarItem {
   badge?: string;
 }
 
+interface SidebarShellStateProps {
+  title: string;
+  description: string;
+}
+
 const sellerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
   { title: "My Listings", href: "/seller/listings", icon: List },
@@ -77,27 +82,81 @@ const buyerItems: SidebarItem[] = [
   { title: "Settings", href: "/buyer/settings", icon: Settings },
 ];
 
+function SidebarShellState({ title, description }: SidebarShellStateProps) {
+  return (
+    <aside className="hidden min-h-[calc(100vh-4rem)] w-64 flex-col border-r bg-sidebar lg:flex">
+      <div className="flex flex-1 flex-col gap-4 p-4">
+        <div className="rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 p-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-secondary/20 text-primary">
+              <LayoutDashboard className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+              <p className="text-xs text-muted-foreground">{description}</p>
+            </div>
+          </div>
+        </div>
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-xl border border-sidebar-border/70 bg-sidebar-accent/30 p-4"
+        >
+          <p className="text-sm font-medium text-sidebar-foreground">
+            Protected navigation is loading.
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            We’ll show your dashboard tools as soon as your account context is confirmed.
+          </p>
+        </div>
+        <div className="space-y-2" aria-hidden="true">
+          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/45" />
+          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/35" />
+          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/35" />
+          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/25" />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuthStore();
+  const { user, isLoading } = useAuthStore();
 
-  // Determine sidebar variant from user role, with pathname as fallback.
-  // Shared routes like /preferences, /messages, /offers don't contain a role
-  // prefix, so we rely on the user's actual role to keep the correct sidebar.
-  const isAdminUser = user?.role === "admin";
-  const isOnSellerRoute = pathname.startsWith("/seller");
-  const isOnBuyerRoute = pathname.startsWith("/buyer");
-  const isSeller = user?.role === "seller" || isOnSellerRoute;
-  // Admin on shared routes (/messages, /preferences, /offers) defaults to seller items
-  // unless they were explicitly on a buyer route
-  const items = isSeller || (isAdminUser && !isOnBuyerRoute) ? sellerItems : buyerItems;
-
-  // Get unread message count
+  // Keep hook order stable while client auth hydrates. The request stays
+  // disabled until a real dashboard user exists.
   const { data: unreadData } = trpc.message.getUnreadCount.useQuery(undefined, {
     enabled: !!user,
     retry: false,
-    refetchInterval: user ? 30000 : false, // Refetch every 30 seconds
+    refetchInterval: user ? 30000 : false,
   });
+
+  if (isLoading) {
+    return (
+      <SidebarShellState
+        title="Checking access"
+        description="Syncing your dashboard session"
+      />
+    );
+  }
+
+  if (!user) {
+    return (
+      <SidebarShellState
+        title="Secure dashboard"
+        description="Returning to sign in"
+      />
+    );
+  }
+
+  // Shared routes like /preferences, /messages, and /offers stay aligned to the
+  // authenticated role. Admins can still inspect buyer or seller contexts.
+  const isAdminUser = user.role === "admin";
+  const isOnSellerRoute = pathname.startsWith("/seller");
+  const isOnBuyerRoute = pathname.startsWith("/buyer");
+  const isSellerContext = isAdminUser ? isOnSellerRoute || !isOnBuyerRoute : user.role === "seller";
+  const items = isSellerContext ? sellerItems : buyerItems;
 
   const unreadCount = unreadData?.count || 0;
 
@@ -111,7 +170,11 @@ export function Sidebar() {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground">
-                {isAdminUser ? "Admin Dashboard" : isSeller ? "Seller Dashboard" : "Buyer Dashboard"}
+                {isAdminUser
+                  ? "Admin Dashboard"
+                  : isSellerContext
+                    ? "Seller Dashboard"
+                    : "Buyer Dashboard"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {user?.businessName || user?.name}

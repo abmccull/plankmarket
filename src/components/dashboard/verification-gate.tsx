@@ -13,6 +13,57 @@ interface VerificationGateProps {
   children: React.ReactNode;
 }
 
+interface DashboardAccessStateProps {
+  title: string;
+  description: string;
+}
+
+function DashboardAccessState({
+  title,
+  description,
+}: DashboardAccessStateProps) {
+  return (
+    <div className="mx-auto flex min-h-[400px] max-w-3xl flex-col justify-center">
+      <Card
+        role="status"
+        aria-live="polite"
+        className="border-border/60 bg-gradient-to-br from-background via-background to-muted/30 shadow-sm"
+      >
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-start gap-4 rounded-xl border border-border/60 bg-muted/40 p-4">
+            <div
+              aria-hidden="true"
+              className="h-11 w-11 animate-pulse rounded-full bg-primary/10"
+            />
+            <div className="flex-1 space-y-3">
+              <div
+                aria-hidden="true"
+                className="h-3 w-40 animate-pulse rounded-full bg-muted-foreground/20"
+              />
+              <div
+                aria-hidden="true"
+                className="h-3 w-full animate-pulse rounded-full bg-muted-foreground/15"
+              />
+              <div
+                aria-hidden="true"
+                className="h-3 w-5/6 animate-pulse rounded-full bg-muted-foreground/15"
+              />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2" aria-hidden="true">
+            <div className="h-24 animate-pulse rounded-xl border border-dashed border-border/60 bg-muted/30" />
+            <div className="h-24 animate-pulse rounded-xl border border-dashed border-border/60 bg-muted/30" />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function VerificationGate({ children }: VerificationGateProps) {
   const { user, isLoading, setUser } = useAuthStore();
 
@@ -37,8 +88,22 @@ export function VerificationGate({ children }: VerificationGateProps) {
     setUser(sessionData.user);
   }, [sessionData, user, setUser]);
 
-  if (isLoading || !user) {
-    return null;
+  if (isLoading) {
+    return (
+      <DashboardAccessState
+        title="Checking your dashboard access"
+        description="We’re syncing your session, role, and verification status before loading protected tools."
+      />
+    );
+  }
+
+  if (!user) {
+    return (
+      <DashboardAccessState
+        title="Redirecting to secure sign in"
+        description="Your dashboard session is not available here, so we’re handing you back to the protected sign-in flow."
+      />
+    );
   }
 
   if (user.role === "admin" || user.verificationStatus === "verified") {

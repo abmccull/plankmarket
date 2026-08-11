@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -233,12 +232,13 @@ export function CarryingCostCalculator() {
           {/* Months slider */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Months holding</Label>
+              <Label id="calc-months-label">Months holding</Label>
               <span className="text-sm font-semibold tabular-nums text-primary">
                 {inputs.months} {inputs.months === 1 ? "month" : "months"}
               </span>
             </div>
             <Slider
+              aria-labelledby="calc-months-label"
               value={[inputs.months]}
               onValueChange={([v]) => update("months", v)}
               min={1}
@@ -253,7 +253,7 @@ export function CarryingCostCalculator() {
           </div>
 
           <div className="space-y-1.5">
-            <Label>Inventory type</Label>
+            <Label htmlFor="calc-inventory-type">Inventory type</Label>
             <Select
               value={inputs.inventoryType}
               onValueChange={(val) => {
@@ -264,7 +264,7 @@ export function CarryingCostCalculator() {
                 }
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger id="calc-inventory-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -284,6 +284,8 @@ export function CarryingCostCalculator() {
             {inputs.inventoryType === "custom" && (
               <div className="relative mt-2">
                 <Input
+                  id="calc-custom-depreciation"
+                  aria-label="Custom monthly depreciation rate"
                   type="text"
                   inputMode="decimal"
                   placeholder="e.g. 3"
@@ -569,7 +571,8 @@ export function CarryingCostCalculator() {
                   </Button>
                 </Link>
                 <p className="text-xs text-muted-foreground text-center mt-2">
-                  Free to list. 2% fee only when you sell.
+                  Free to list. A 5% seller marketplace fee plus disclosed
+                  inventory payment processing applies when you sell.
                 </p>
               </div>
             </CardContent>

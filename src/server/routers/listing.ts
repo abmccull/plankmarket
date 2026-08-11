@@ -1,12 +1,13 @@
 import {
   createTRPCRouter,
-  publicProcedure,
+  publicReadProcedure,
   sellerProcedure,
 } from "../trpc";
 import {
   listingFormSchema,
   listingFormUpdateSchema,
   listingFilterSchema,
+  MAX_PUBLIC_LISTING_RESULT_WINDOW,
   csvListingRowSchema,
   listingSellingRulesSchema,
 } from "@/lib/validators/listing";
@@ -15,6 +16,7 @@ import {
   media,
   notifications,
   orders,
+  users,
   userPreferences,
 } from "../db/schema";
 import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, isNull } from "drizzle-orm";
@@ -36,10 +38,16 @@ import {
 import { toSellerPurchaseConfig } from "@/lib/seller-purchase-config";
 import {
   publicListingColumns,
+  publicListingCardColumns,
   publicMediaColumns,
   publicSellerColumns,
   toPublicListing,
+  toPublicListingCard,
 } from "@/server/security/public-data";
+import {
+  getListingBoundingBoxConditions,
+  getListingDistanceMilesSql,
+} from "@/server/db/expressions/listing-geo";
 import {
   assertListingVisibleToViewer,
   publicActiveListingWhere,
@@ -51,6 +59,22 @@ import {
   getDirectPurchaseUnitPriceSql,
 } from "@/server/db/expressions/listing-pricing";
 import { appendAuditEvent } from "@/server/services/audit-ledger";
+import {
+  buildPublicReadCacheKey,
+  readPublicReadCache,
+  writePublicReadCache,
+} from "@/server/services/public-read-cache";
+
+type PublicListingDto = ReturnType<typeof toPublicListingCard>;
+type PublicListingBrowseResponse = {
+  items: Array<PublicListingDto & { isPromoted: boolean }>;
+  total: number;
+  totalIsExact: boolean;
+  page: number;
+  limit: number;
+  totalPages: number;
+  hasMore: boolean;
+};
 
 const LISTING_SELLING_RULE_FIELD_KEYS = [
   "fullLotOnly",
@@ -214,6 +238,7 @@ export const listingRouter = createTRPCRouter({
           ...markdownFields,
           sellerId: ctx.user.id,
           status: "active",
+          publishedAt: now,
           originalTotalSqFt: listingData.totalSqFt,
           originalAskPricePerSqFt: listingData.askPricePerSqFt,
           pricingRulesVersion: PRICING_RULES_VERSION,
@@ -520,6 +545,7 @@ export const listingRouter = createTRPCRouter({
             .update(listings)
             .set({
               status: "active",
+              publishedAt: confirmedAt,
               updatedAt: confirmedAt,
               ...deriveListingTrustFields(
                 {
@@ -925,7 +951,7 @@ export const listingRouter = createTRPCRouter({
     }),
 
   // Get a single listing by ID (public)
-  getById: publicProcedure
+  getById: publicReadProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const listing = await ctx.db.query.listings.findFirst({
@@ -958,14 +984,11 @@ export const listingRouter = createTRPCRouter({
           const viewerIdentifier = ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
           const viewKey = `listing-view:${input.id}:${viewerIdentifier}`;
 
-          // Check if this viewer has already viewed this listing recently
-          const alreadyViewed = await redis.get(viewKey);
-
-          if (!alreadyViewed) {
-            // Mark as viewed with 1 hour TTL
-            await redis.set(viewKey, "1", { ex: 3600 });
-
-            // Increment the view count in the database
+          const reserved = await redis.set(viewKey, "1", {
+            nx: true,
+            ex: 3600,
+          });
+          if (reserved) {
             await ctx.db
               .update(listings)
               .set({ viewsCount: sql`${listings.viewsCount} + 1` })
@@ -981,7 +1004,7 @@ export const listingRouter = createTRPCRouter({
     }),
 
   // Get a single listing by slug (public)
-  getBySlug: publicProcedure
+  getBySlug: publicReadProcedure
     .input(z.object({ slug: z.string() }))
     .query(async ({ ctx, input }) => {
       const listing = await ctx.db.query.listings.findFirst({
@@ -1014,14 +1037,11 @@ export const listingRouter = createTRPCRouter({
           const viewerIdentifier = ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
           const viewKey = `listing-view:${listing.id}:${viewerIdentifier}`;
 
-          // Check if this viewer has already viewed this listing recently
-          const alreadyViewed = await redis.get(viewKey);
-
-          if (!alreadyViewed) {
-            // Mark as viewed with 1 hour TTL
-            await redis.set(viewKey, "1", { ex: 3600 });
-
-            // Increment the view count in the database
+          const reserved = await redis.set(viewKey, "1", {
+            nx: true,
+            ex: 3600,
+          });
+          if (reserved) {
             await ctx.db
               .update(listings)
               .set({ viewsCount: sql`${listings.viewsCount} + 1` })
@@ -1036,7 +1056,7 @@ export const listingRouter = createTRPCRouter({
       return toPublicListing(listing);
     }),
 
-  getPurchaseConfig: publicProcedure
+  getPurchaseConfig: publicReadProcedure
     .input(z.object({ listingId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const listing = await ctx.db.query.listings.findFirst({
@@ -1074,9 +1094,17 @@ export const listingRouter = createTRPCRouter({
     }),
 
   // Search and filter listings (public)
-  list: publicProcedure
+  list: publicReadProcedure
     .input(listingFilterSchema)
     .query(async ({ ctx, input }) => {
+      const anonymousCacheKey = ctx.user
+        ? null
+        : buildPublicReadCacheKey("listing-list", input);
+      const cached = await readPublicReadCache<PublicListingBrowseResponse>(
+        anonymousCacheKey,
+      );
+      if (cached) return cached;
+
       const publicNow = new Date();
       const conditions = [publicActiveListingWhere(publicNow, ctx.user)];
       const directPurchaseUnitPrice = getDirectPurchaseUnitPriceSql();
@@ -1089,12 +1117,7 @@ export const listingRouter = createTRPCRouter({
           .replace(/%/g, "\\%")
           .replace(/_/g, "\\_");
         conditions.push(
-          or(
-            ilike(listings.title, `%${escapedQuery}%`),
-            ilike(listings.description, `%${escapedQuery}%`),
-            ilike(listings.brand, `%${escapedQuery}%`),
-            ilike(listings.species, `%${escapedQuery}%`)
-          )!
+          ilike(listings.searchDocument, `%${escapedQuery}%`),
         );
       }
 
@@ -1175,6 +1198,46 @@ export const listingRouter = createTRPCRouter({
         conditions.push(lte(listings.totalSqFt, input.maxLotSize));
       }
 
+      // Familiar marketplace confidence filters, backed by the same fields
+      // used to construct the public listing evidence DTO.
+      if (input.sellerVerified !== undefined) {
+        conditions.push(sql<boolean>`(
+          exists (
+            select 1
+            from ${users}
+            where ${users.id} = ${listings.sellerId}
+              and ${users.verificationStatus} = 'verified'
+          )
+        ) = ${input.sellerVerified}`);
+      }
+
+      if (input.freightReady !== undefined) {
+        conditions.push(sql<boolean>`(
+          ${listings.palletWeight} is not null
+          and ${listings.palletLength} is not null
+          and ${listings.palletWidth} is not null
+          and ${listings.palletHeight} is not null
+          and nullif(btrim(${listings.locationZip}), '') is not null
+          and nullif(btrim(${listings.locationCity}), '') is not null
+          and ${listings.locationState} is not null
+          and nullif(btrim(${listings.freightClass}), '') is not null
+          and ${listings.totalPallets} is not null
+          and ${listings.sqFtPerBox} is not null
+          and ${listings.boxesPerPallet} is not null
+          and exists (
+            select 1
+            from ${users}
+            where ${users.id} = ${listings.sellerId}
+              and nullif(btrim(${users.businessAddress}), '') is not null
+              and nullif(btrim(${users.phone}), '') is not null
+          )
+        ) = ${input.freightReady}`);
+      }
+
+      if (input.fullLotOnly !== undefined) {
+        conditions.push(eq(listings.fullLotOnly, input.fullLotOnly));
+      }
+
       // Distance filter (Haversine)
       let buyerLat: number | undefined;
       let buyerLng: number | undefined;
@@ -1184,12 +1247,13 @@ export const listingRouter = createTRPCRouter({
           buyerLat = zipInfo.latitude;
           buyerLng = zipInfo.longitude;
           conditions.push(
-            sql`(
-              3959 * acos(
-                cos(radians(${buyerLat})) * cos(radians(${listings.locationLat})) * cos(radians(${listings.locationLng}) - radians(${buyerLng}))
-                + sin(radians(${buyerLat})) * sin(radians(${listings.locationLat}))
-              )
-            ) <= ${input.maxDistance}`
+            ...getListingBoundingBoxConditions(
+              { latitude: buyerLat, longitude: buyerLng },
+              input.maxDistance,
+            ),
+          );
+          conditions.push(
+            sql`(${getListingDistanceMilesSql(buyerLat, buyerLng)}) <= ${input.maxDistance}`
           );
         }
       }
@@ -1231,12 +1295,7 @@ export const listingRouter = createTRPCRouter({
           break;
         case "proximity":
           if (buyerLat !== undefined && buyerLng !== undefined) {
-            userSort = asc(
-              sql`3959 * acos(
-                cos(radians(${buyerLat})) * cos(radians(${listings.locationLat})) * cos(radians(${listings.locationLng}) - radians(${buyerLng}))
-                + sin(radians(${buyerLat})) * sin(radians(${listings.locationLat}))
-              )`
-            );
+            userSort = asc(getListingDistanceMilesSql(buyerLat, buyerLng));
           } else {
             userSort = desc(listings.createdAt);
           }
@@ -1264,10 +1323,17 @@ export const listingRouter = createTRPCRouter({
         },
       };
 
+      const boundedCountSource = ctx.db
+        .select({ id: listings.id })
+        .from(listings)
+        .where(where)
+        .limit(MAX_PUBLIC_LISTING_RESULT_WINDOW + 1)
+        .as("bounded_public_listing_count");
+
       const [items, countResult] = await Promise.all([
         ctx.db.query.listings.findMany({
           where,
-          columns: publicListingColumns,
+          columns: publicListingCardColumns,
           with: withClause,
           orderBy: orderByClause,
           limit: input.limit,
@@ -1275,29 +1341,36 @@ export const listingRouter = createTRPCRouter({
         }),
         ctx.db
           .select({ count: sql<number>`count(*)::int` })
-          .from(listings)
-          .where(where),
+          .from(boundedCountSource),
       ]);
 
       const promotionNow = new Date();
       const interleaved = items.map((item) => ({
-        ...toPublicListing(item),
+        ...toPublicListingCard(item),
         isPromoted:
           item.promotionTier != null &&
           item.promotionExpiresAt != null &&
           item.promotionExpiresAt > promotionNow,
       }));
 
-      const total = countResult[0]?.count ?? 0;
+      const boundedCount = countResult[0]?.count ?? 0;
+      const totalIsExact = boundedCount <= MAX_PUBLIC_LISTING_RESULT_WINDOW;
+      const total = Math.min(
+        boundedCount,
+        MAX_PUBLIC_LISTING_RESULT_WINDOW,
+      );
 
-      return {
+      const response: PublicListingBrowseResponse = {
         items: interleaved,
         total,
+        totalIsExact,
         page: input.page,
         limit: input.limit,
         totalPages: Math.ceil(total / input.limit),
         hasMore: offset + interleaved.length < total,
       };
+      await writePublicReadCache(anonymousCacheKey, response, 20);
+      return response;
     }),
 
   // Get seller's own listings
@@ -1369,13 +1442,21 @@ export const listingRouter = createTRPCRouter({
   }),
 
   // Get trending/popular listings (public)
-  getTrending: publicProcedure
+  getTrending: publicReadProcedure
     .input(z.object({ limit: z.number().int().positive().max(12).default(6) }).optional())
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? 6;
+      const anonymousCacheKey = ctx.user
+        ? null
+        : buildPublicReadCacheKey("listing-trending", { limit });
+      const cached = await readPublicReadCache<PublicListingDto[]>(
+        anonymousCacheKey,
+      );
+      if (cached) return cached;
+
       const items = await ctx.db.query.listings.findMany({
         where: publicActiveListingWhere(new Date(), ctx.user),
-        columns: publicListingColumns,
+        columns: publicListingCardColumns,
         with: {
           media: {
             columns: publicMediaColumns,
@@ -1389,6 +1470,8 @@ export const listingRouter = createTRPCRouter({
         orderBy: desc(listings.viewsCount),
         limit,
       });
-      return items.map(toPublicListing);
+      const response = items.map(toPublicListingCard);
+      await writePublicReadCache(anonymousCacheKey, response, 30);
+      return response;
     }),
 });

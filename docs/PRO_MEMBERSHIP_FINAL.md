@@ -116,7 +116,7 @@ This intelligence is expensive to replicate and impossible to get elsewhere. It 
 | Feature | What You Get | Our Cost |
 |---|---|---|
 | **$15 monthly promotion credit** | Applies toward any listing promotion. Gets you started with Spotlight boosts. | $15/mo |
-| **Priority verification** | 24-hour turnaround vs standard queue | $0 |
+| **Verification queue** | Standard review workflow; no Pro SLA promise | $0 |
 | **Pro badge** | Trust signal on your listings and offers. Pro sellers get more buyer trust. Pro buyers get faster seller responses. | $0 |
 | **Value dashboard** | See exactly what your agent did: offers handled, deals facilitated, time saved, ROI in plain dollars. | $0 |
 | **MCP server access** | Connect your own Claude Code, Codex, or other AI tools directly to PlankMarket. Power users who want BYOK pay their own API costs. | $0 |

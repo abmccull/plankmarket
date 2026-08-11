@@ -5,6 +5,8 @@ import { db } from "@/server/db";
 import { listings, media, orders, users } from "@/server/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { isTrustedUploadThingFileUrl } from "@/server/security/uploadthing";
+import { inspectEvidenceUpload } from "@/server/security/evidence-files";
+import { deleteUploadThingFile } from "@/server/services/uploadthing-files";
 import { z } from "zod";
 
 const f = createUploadthing();
@@ -108,8 +110,9 @@ async function persistTrustedUpload(params: {
     type: string;
   };
   listingId?: string;
+  mimeTypeOverride?: string;
 }) {
-  const { userId, file, listingId } = params;
+  const { userId, file, listingId, mimeTypeOverride } = params;
   if (!isTrustedUploadThingFileUrl(file.url, file.key)) {
     throw new UploadThingError({
       code: "UPLOAD_FAILED",
@@ -155,7 +158,7 @@ async function persistTrustedUpload(params: {
       key: file.key,
       fileName: file.name,
       fileSize: file.size,
-      mimeType: file.type,
+      mimeType: mimeTypeOverride ?? file.type,
       sortOrder: 0,
     })
     .onConflictDoNothing({
@@ -203,6 +206,52 @@ async function persistTrustedUpload(params: {
   return record;
 }
 
+async function validateUploadThingCallbackFile(params: {
+  file: {
+    key: string;
+    type: string;
+    url: string;
+  };
+  allowPdf: boolean;
+}): Promise<string> {
+  try {
+    const { mimeType } = await inspectEvidenceUpload({
+      fileKey: params.file.key,
+      fileUrl: params.file.url,
+      claimedMimeType: params.file.type,
+    });
+    if (!params.allowPdf && mimeType === "application/pdf") {
+      throw new Error("Uploads must be supported raster images");
+    }
+    return mimeType;
+  } catch (error) {
+    await deleteUploadThingFile(params.file.key).catch(() => undefined);
+    throw new UploadThingError({
+      code: "BAD_REQUEST",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Upload content could not be validated",
+    });
+  }
+}
+
+export async function validateListingOrBuyerUploadThingFile(file: {
+  key: string;
+  type: string;
+  url: string;
+}) {
+  return validateUploadThingCallbackFile({ file, allowPdf: false });
+}
+
+export async function validateDisputeUploadThingFile(file: {
+  key: string;
+  type: string;
+  url: string;
+}) {
+  return validateUploadThingCallbackFile({ file, allowPdf: true });
+}
+
 /**
  * UploadThing file router for PlankMarket
  * Handles image uploads for listing photos
@@ -235,10 +284,12 @@ export const ourFileRouter = {
       return { ...account, listingId: input.listingId };
     })
     .onUploadComplete(async ({ metadata, file }) => {
+      const mimeType = await validateListingOrBuyerUploadThingFile(file);
       const record = await persistTrustedUpload({
         userId: metadata.userId,
         file,
         listingId: metadata.listingId,
+        mimeTypeOverride: mimeType,
       });
       return {
         id: record.id,
@@ -257,9 +308,11 @@ export const ourFileRouter = {
       return requireUploadAccount("buyer");
     })
     .onUploadComplete(async ({ metadata, file }) => {
+      const mimeType = await validateListingOrBuyerUploadThingFile(file);
       const record = await persistTrustedUpload({
         userId: metadata.userId,
         file,
+        mimeTypeOverride: mimeType,
       });
       return {
         id: record.id,
@@ -301,9 +354,11 @@ export const ourFileRouter = {
       return { ...account, orderId: order.id };
     })
     .onUploadComplete(async ({ metadata, file }) => {
+      const mimeType = await validateDisputeUploadThingFile(file);
       const record = await persistTrustedUpload({
         userId: metadata.userId,
         file,
+        mimeTypeOverride: mimeType,
       });
       return {
         id: record.id,

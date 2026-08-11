@@ -16,6 +16,7 @@ process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ??= "pk_test_123";
 const mocks = vi.hoisted(() => ({
   processOrderRefund: vi.fn(),
   openReconciliationCase: vi.fn(),
+  resolveReconciliationCaseByKey: vi.fn(),
   inngestSend: vi.fn(),
 }));
 
@@ -38,6 +39,7 @@ vi.mock("@/server/services/refund", () => ({
 }));
 vi.mock("@/server/services/reconciliation-cases", () => ({
   openReconciliationCase: mocks.openReconciliationCase,
+  resolveReconciliationCaseByKey: mocks.resolveReconciliationCaseByKey,
 }));
 vi.mock("@/lib/inngest/client", () => ({
   inngest: { send: mocks.inngestSend },
@@ -71,9 +73,27 @@ function callerContext(
 ) {
   const role = params.role ?? "buyer";
   const id = params.id ?? BUYER_ID;
+  const dbWithDefaults =
+    db && typeof db === "object"
+      ? {
+          ...db,
+          query: {
+            reconciliationCases: {
+              findFirst: vi.fn().mockResolvedValue(null),
+            },
+            ...((db as { query?: Record<string, unknown> }).query ?? {}),
+          },
+        }
+      : db;
   return {
-    db,
+    db: dbWithDefaults,
     authUser: { id: `auth-${id}` },
+    getAuthAssurance: async () => ({
+      currentLevel: "aal2" as const,
+      nextLevel: "aal2" as const,
+      lastFactorVerificationAt: NOW.toISOString(),
+      recentVerificationSatisfied: true,
+    }),
     user: {
       id,
       role,
@@ -296,6 +316,207 @@ describe("buyer claim policy", () => {
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(db.transaction).not.toHaveBeenCalled();
   });
+
+  it("hides carrier document URLs from buyers before delivery", async () => {
+    const db = {
+      query: {
+        orders: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: ORDER_ID,
+            buyerId: BUYER_ID,
+            sellerId: SELLER_ID,
+            status: "shipped",
+            paymentStatus: "succeeded",
+            deliveredAt: null,
+            shipment: {
+              deliveredAt: null,
+              bolUrl: "https://files.example.test/bol.pdf",
+              deliveryReceiptUrl: "https://files.example.test/dr.pdf",
+            },
+            dispute: null,
+          }),
+        },
+      },
+    };
+    const caller = createCaller(callerContext(db));
+
+    await expect(
+      caller.dispute.getOrderClaimState({ orderId: ORDER_ID }),
+    ).resolves.toMatchObject({
+      carrierDocuments: {
+        bolUrl: null,
+        deliveryReceiptUrl: null,
+      },
+    });
+  });
+
+  it("preserves carrier document access for sellers on the same shipment state", async () => {
+    const db = {
+      query: {
+        orders: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: ORDER_ID,
+            buyerId: BUYER_ID,
+            sellerId: SELLER_ID,
+            status: "shipped",
+            paymentStatus: "succeeded",
+            deliveredAt: null,
+            shipment: {
+              deliveredAt: null,
+              bolUrl: "https://files.example.test/bol.pdf",
+              deliveryReceiptUrl: "https://files.example.test/dr.pdf",
+            },
+            dispute: null,
+          }),
+        },
+      },
+    };
+    const caller = createCaller(
+      callerContext(db, { id: SELLER_ID, role: "seller" }),
+    );
+
+    await expect(
+      caller.dispute.getOrderClaimState({ orderId: ORDER_ID }),
+    ).resolves.toMatchObject({
+      carrierDocuments: {
+        bolUrl: "https://files.example.test/bol.pdf",
+        deliveryReceiptUrl: "https://files.example.test/dr.pdf",
+      },
+    });
+  });
+
+  it("does not expose raw evidence URLs in claim-state responses", async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: ORDER_ID,
+      buyerId: BUYER_ID,
+      sellerId: SELLER_ID,
+      status: "delivered",
+      paymentStatus: "succeeded",
+      deliveredAt: NOW,
+      shipment: {
+        deliveredAt: NOW,
+        bolUrl: null,
+        deliveryReceiptUrl: null,
+      },
+      dispute: {
+        id: DISPUTE_ID,
+        evidence: [
+          {
+            id: "evidence-1",
+            evidenceType: "photo",
+            media: {
+              id: MEDIA_ID,
+              fileName: "claim-photo.jpg",
+              mimeType: "image/jpeg",
+            },
+          },
+        ],
+      },
+    });
+    const db = {
+      query: {
+        orders: {
+          findFirst,
+        },
+      },
+    };
+    const caller = createCaller(callerContext(db));
+
+    const result = await caller.dispute.getOrderClaimState({ orderId: ORDER_ID });
+
+    expect(result.existingDispute?.evidence[0]?.media).toEqual({
+      id: MEDIA_ID,
+      fileName: "claim-photo.jpg",
+      mimeType: "image/jpeg",
+    });
+    expect(result.existingDispute?.evidence[0]?.media).not.toHaveProperty("url");
+    expect(result.existingDispute?.evidence[0]?.media).not.toHaveProperty("key");
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        with: expect.objectContaining({
+          dispute: expect.objectContaining({
+            with: expect.objectContaining({
+              evidence: expect.objectContaining({
+                with: expect.objectContaining({
+                  media: expect.objectContaining({
+                    columns: expect.not.objectContaining({
+                      url: true,
+                      key: true,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("does not expose raw evidence URLs in dispute detail responses", async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: DISPUTE_ID,
+      order: {
+        buyerId: BUYER_ID,
+        sellerId: SELLER_ID,
+      },
+      initiator: null,
+      resolver: null,
+      messages: [],
+      evidence: [
+        {
+          id: "evidence-1",
+          evidenceType: "photo",
+          media: {
+            id: MEDIA_ID,
+            fileName: "claim-photo.jpg",
+            mimeType: "image/jpeg",
+            fileSize: 1024,
+          },
+          uploader: {
+            id: BUYER_ID,
+            name: "buyer user",
+            role: "buyer",
+          },
+        },
+      ],
+    });
+    const db = {
+      query: {
+        disputes: {
+          findFirst,
+        },
+      },
+    };
+    const caller = createCaller(callerContext(db));
+
+    const result = await caller.dispute.getDispute({ disputeId: DISPUTE_ID });
+
+    expect(result.evidence[0]?.media).toEqual({
+      id: MEDIA_ID,
+      fileName: "claim-photo.jpg",
+      mimeType: "image/jpeg",
+      fileSize: 1024,
+    });
+    expect(result.evidence[0]?.media).not.toHaveProperty("url");
+    expect(result.evidence[0]?.media).not.toHaveProperty("key");
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        with: expect.objectContaining({
+          evidence: expect.objectContaining({
+            with: expect.objectContaining({
+              media: expect.objectContaining({
+                columns: expect.not.objectContaining({
+                  url: true,
+                  key: true,
+                }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
 });
 
 describe("claim resolution money safety", () => {
@@ -304,7 +525,10 @@ describe("claim resolution money safety", () => {
     mocks.processOrderRefund.mockResolvedValue({
       refundId: "re_test",
       amountRefunded: 80,
+      state: "succeeded",
+      providerStatus: "succeeded",
     });
+    mocks.resolveReconciliationCaseByKey.mockResolvedValue(null);
   });
 
   function existingPartialRefundDispute() {
@@ -325,13 +549,33 @@ describe("claim resolution money safety", () => {
     };
   }
 
+  function savedPartialSettlementIntent() {
+    return {
+      details: {
+        baselineRefundedAmountCents: 2000,
+        intendedRefundAmountCents: 3000,
+        targetRefundedAmountCents: 5000,
+        outcome: "resolved_buyer",
+        resolution:
+          "Buyer and seller agreed to a final $30.00 settlement for the shortage.",
+        confirmPartialSettlement: true,
+      },
+    };
+  }
+
   it("defaults buyer-favor resolution to the full remaining balance", async () => {
     const select = vi
       .fn()
       .mockReturnValueOnce({
         from: () => ({
           where: () => ({
-            for: vi.fn().mockResolvedValue([{ id: ORDER_ID }]),
+            for: vi.fn().mockResolvedValue([
+              {
+                id: ORDER_ID,
+                paymentStatus: "refunded",
+                refundedAmount: 100,
+              },
+            ]),
           }),
         }),
       })
@@ -362,6 +606,9 @@ describe("claim resolution money safety", () => {
           findFirst: vi
             .fn()
             .mockResolvedValue(existingPartialRefundDispute()),
+        },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(null),
         },
       },
       transaction: vi.fn(
@@ -396,6 +643,9 @@ describe("claim resolution money safety", () => {
           findFirst: vi
             .fn()
             .mockResolvedValue(existingPartialRefundDispute()),
+        },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(null),
         },
       },
       transaction: vi.fn(),
@@ -432,6 +682,9 @@ describe("claim resolution money safety", () => {
             .fn()
             .mockResolvedValue(existingPartialRefundDispute()),
         },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
       },
       transaction: vi.fn(),
     };
@@ -458,5 +711,251 @@ describe("claim resolution money safety", () => {
       }),
     );
     expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("leaves the claim open when Stripe has not yet confirmed the refund", async () => {
+    mocks.processOrderRefund.mockResolvedValueOnce({
+      refundId: "re_pending",
+      amountRefunded: 80,
+      state: "refund_pending",
+      providerStatus: "pending",
+    });
+    mocks.openReconciliationCase.mockResolvedValueOnce({ id: "case-2" });
+    const db = {
+      query: {
+        disputes: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue(existingPartialRefundDispute()),
+        },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+      },
+      transaction: vi.fn(),
+    };
+    const caller = createCaller(
+      callerContext(db, { id: ADMIN_ID, role: "admin" }),
+    );
+
+    await expect(
+      caller.dispute.resolve({
+        disputeId: DISPUTE_ID,
+        outcome: "resolved_buyer",
+        resolution:
+          "Buyer evidence confirms the shortage; refund the remaining balance.",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining("not yet confirmed"),
+    });
+    expect(mocks.openReconciliationCase).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        caseKey: `dispute-refund:${DISPUTE_ID}`,
+        details: expect.objectContaining({
+          baselineRefundedAmountCents: 2000,
+          intendedRefundAmountCents: 8000,
+          targetRefundedAmountCents: 10000,
+          refundState: "refund_pending",
+          providerStatus: "pending",
+        }),
+      }),
+    );
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("blocks a retry while the saved refund intent is still pending at Stripe", async () => {
+    const original = existingPartialRefundDispute();
+    const db = {
+      query: {
+        disputes: {
+          findFirst: vi.fn().mockResolvedValue({
+            ...original,
+            order: {
+              ...original.order,
+              paymentStatus: "refund_pending",
+            },
+          }),
+        },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(savedPartialSettlementIntent()),
+        },
+      },
+      transaction: vi.fn(),
+    };
+    const caller = createCaller(
+      callerContext(db, { id: ADMIN_ID, role: "admin" }),
+    );
+
+    await expect(
+      caller.dispute.resolve({
+        disputeId: DISPUTE_ID,
+        outcome: "resolved_buyer",
+        resolution:
+          "Buyer and seller agreed to a final $30.00 settlement for the shortage.",
+        refundAmountCents: 3000,
+        confirmPartialSettlement: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining("not yet confirmed"),
+    });
+
+    expect(mocks.processOrderRefund).not.toHaveBeenCalled();
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it("closes a saved partial-settlement retry after authoritative refunded totals catch up", async () => {
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: () => ({
+          where: () => ({
+            for: vi.fn().mockResolvedValue([
+              {
+                id: ORDER_ID,
+                paymentStatus: "partially_refunded",
+                refundedAmount: 50,
+              },
+            ]),
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        from: () => ({
+          where: () => ({
+            for: vi.fn().mockResolvedValue([{ status: "under_review" }]),
+          }),
+        }),
+      });
+    const update = vi.fn(() => ({
+      set: vi.fn(() => ({
+        where: vi.fn(() => ({
+          returning: vi.fn().mockResolvedValue([
+            {
+              id: DISPUTE_ID,
+              status: "resolved_buyer",
+              resolvedRefundAmountCents: 3000,
+            },
+          ]),
+        })),
+      })),
+    }));
+    const original = existingPartialRefundDispute();
+    const tx = { select, update };
+    const db = {
+      query: {
+        disputes: {
+          findFirst: vi.fn().mockResolvedValue({
+            ...original,
+            order: {
+              ...original.order,
+              paymentStatus: "partially_refunded",
+              refundedAmount: 50,
+            },
+          }),
+        },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(savedPartialSettlementIntent()),
+        },
+      },
+      transaction: vi.fn(
+        async (callback: (value: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    };
+    const caller = createCaller(
+      callerContext(db, { id: ADMIN_ID, role: "admin" }),
+    );
+
+    const result = await caller.dispute.resolve({
+      disputeId: DISPUTE_ID,
+      outcome: "resolved_buyer",
+      resolution:
+        "Buyer and seller agreed to a final $30.00 settlement for the shortage.",
+      refundAmountCents: 3000,
+      confirmPartialSettlement: true,
+    });
+
+    expect(mocks.processOrderRefund).not.toHaveBeenCalled();
+    expect(mocks.resolveReconciliationCaseByKey).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        caseKey: `dispute-refund:${DISPUTE_ID}`,
+        details: expect.objectContaining({
+          resolvedRefundAmountCents: 3000,
+        }),
+      }),
+    );
+    expect(result.dispute).toMatchObject({
+      status: "resolved_buyer",
+      resolvedRefundAmountCents: 3000,
+    });
+  });
+
+  it("keeps the claim open when the locked order refund total drifts before final close", async () => {
+    const select = vi.fn().mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          for: vi.fn().mockResolvedValue([
+            {
+              id: ORDER_ID,
+              paymentStatus: "partially_refunded",
+              refundedAmount: 30,
+            },
+          ]),
+        }),
+      }),
+    });
+    const tx = {
+      select,
+      update: vi.fn(),
+    };
+    const db = {
+      query: {
+        disputes: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue(existingPartialRefundDispute()),
+        },
+        reconciliationCases: {
+          findFirst: vi.fn().mockResolvedValue(null),
+        },
+      },
+      transaction: vi.fn(
+        async (callback: (value: typeof tx) => Promise<unknown>) =>
+          callback(tx),
+      ),
+    };
+    const caller = createCaller(
+      callerContext(db, { id: ADMIN_ID, role: "admin" }),
+    );
+
+    await expect(
+      caller.dispute.resolve({
+        disputeId: DISPUTE_ID,
+        outcome: "resolved_buyer",
+        resolution:
+          "Buyer evidence confirms the shortage; refund the remaining balance.",
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: expect.stringContaining(
+        "changed before the claim could be closed",
+      ),
+    });
+
+    expect(mocks.openReconciliationCase).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        caseKey: `dispute-refund:${DISPUTE_ID}`,
+        details: expect.objectContaining({
+          observedPaymentStatus: "partially_refunded",
+          observedRefundedAmountCents: 3000,
+          targetRefundedAmountCents: 10000,
+        }),
+      }),
+    );
   });
 });

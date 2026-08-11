@@ -7,6 +7,7 @@ import remarkRehype from "remark-rehype";
 import rehypeStringify from "rehype-stringify";
 import rehypeSlug from "rehype-slug";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
 const CONTENT_DIR = path.join(process.cwd(), "content/blog");
 const POSTS_DIR = path.join(CONTENT_DIR, "posts");
@@ -69,7 +70,10 @@ function loadAllFromDir(dir: string): BlogPost[] {
 export function getAllPosts(): BlogPostMeta[] {
   const posts = loadAllFromDir(POSTS_DIR);
   return posts
-    .map(({ content: _, ...meta }) => meta)
+    .map(({ content, ...meta }) => {
+      void content;
+      return meta;
+    })
     .sort(
       (a, b) =>
         new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime()
@@ -79,7 +83,10 @@ export function getAllPosts(): BlogPostMeta[] {
 export function getPillarPages(): BlogPostMeta[] {
   const pillars = loadAllFromDir(PILLARS_DIR);
   return pillars
-    .map(({ content: _, ...meta }) => meta)
+    .map(({ content, ...meta }) => {
+      void content;
+      return meta;
+    })
     .sort(
       (a, b) =>
         new Date(a.publishDate).getTime() - new Date(b.publishDate).getTime()
@@ -173,14 +180,30 @@ export function getRelatedPosts(
 
 const processor = unified()
   .use(remarkParse)
-  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(remarkRehype)
   .use(rehypeSlug)
   .use(rehypeAutolinkHeadings, { behavior: "wrap" })
-  .use(rehypeStringify, { allowDangerousHtml: true });
+  .use(rehypeSanitize, {
+    ...defaultSchema,
+    attributes: {
+      ...defaultSchema.attributes,
+      h1: [...(defaultSchema.attributes?.h1 ?? []), "id"],
+      h2: [...(defaultSchema.attributes?.h2 ?? []), "id"],
+      h3: [...(defaultSchema.attributes?.h3 ?? []), "id"],
+      h4: [...(defaultSchema.attributes?.h4 ?? []), "id"],
+      h5: [...(defaultSchema.attributes?.h5 ?? []), "id"],
+      h6: [...(defaultSchema.attributes?.h6 ?? []), "id"],
+    },
+  })
+  .use(rehypeStringify);
 
 export async function renderMarkdown(content: string): Promise<string> {
   const result = await processor.process(content);
   return String(result);
+}
+
+export function serializeJsonLd(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 export function extractHeadings(

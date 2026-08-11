@@ -20,6 +20,20 @@ const listing = {
   certifications: ["fsc", "carb2"],
   totalSqFt: 5_000,
   brand: "Acme",
+  sellerVerificationStatus: "verified",
+  businessAddress: "123 Market St",
+  phone: "5551234567",
+  locationCity: "Denver",
+  locationZip: "80202",
+  freightClass: "70",
+  totalPallets: 10,
+  sqFtPerBox: 20,
+  boxesPerPallet: 25,
+  palletWeight: 1800,
+  palletLength: 48,
+  palletWidth: 40,
+  palletHeight: 60,
+  fullLotOnly: true,
 };
 
 describe("listingMatchesSavedSearch", () => {
@@ -76,6 +90,38 @@ describe("listingMatchesSavedSearch", () => {
         buyerZip: "10001",
         maxDistance: 25,
       }),
+    ).toBe(false);
+  });
+
+  it("matches seller verification, freight readiness, and lot-mode booleans exactly", () => {
+    expect(
+      listingMatchesSavedSearch(listing, {
+        sellerVerified: true,
+        freightReady: true,
+        fullLotOnly: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      listingMatchesSavedSearch(listing, {
+        sellerVerified: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      listingMatchesSavedSearch(
+        {
+          ...listing,
+          sellerVerificationStatus: "pending",
+          businessAddress: null,
+          fullLotOnly: false,
+        },
+        {
+          sellerVerified: true,
+          freightReady: true,
+          fullLotOnly: false,
+        },
+      ),
     ).toBe(false);
   });
 });

@@ -6,21 +6,21 @@ const CTA_CONFIG = {
   Sellers: {
     heading: "Ready to move surplus inventory?",
     description:
-      "List your closeout flooring on PlankMarket and reach verified buyers across the country.",
+      "List your closeout flooring on PlankMarket and reach verified buyers in supported markets.",
     href: "/for-sellers",
     label: "Start Selling",
   },
   Buyers: {
     heading: "Find closeout flooring deals",
     description:
-      "Browse verified closeout lots from distributors and manufacturers. New inventory added daily.",
+      "Browse current closeout lots with visible seller verification and save searches for future matches.",
     href: "/listings",
     label: "Browse Listings",
   },
   Both: {
     heading: "Join the B2B flooring marketplace",
     description:
-      "PlankMarket connects flooring professionals to move surplus inventory faster, with transparent pricing and verified transactions.",
+      "PlankMarket connects flooring professionals through transparent pricing, business verification, and tracked transactions.",
     href: "/register",
     label: "Get Started Free",
   },

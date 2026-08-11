@@ -62,7 +62,7 @@ const SELLER_FAQS = [
   {
     question: "When do payouts happen?",
     answer:
-      "After the carrier pickup is confirmed and the configured delay passes, PlankMarket initiates the seller transfer through Stripe Connect. Funds are typically available in your bank within 3-5 business days after the transfer begins. Buyers have a 48-hour post-delivery window to report damage or shortages. Your seller dashboard shows real-time payout status and history.",
+      "After carrier pickup is confirmed and the configured delay passes, PlankMarket initiates the seller transfer through Stripe Connect. Bank availability depends on Stripe and the connected account's payout schedule. Buyers have a 48-hour post-delivery window to report damage or shortages. The seller dashboard shows transfer status and history.",
   },
 ];
 

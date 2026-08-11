@@ -19,15 +19,16 @@ import {
   TrendingUp,
   HelpCircle,
 } from "lucide-react";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export const metadata: Metadata = {
   title: "Pricing & Fees - Transparent B2B Marketplace Costs",
   description:
-    "PlankMarket shows a 5% buyer fee and 5% seller fee separately, plus seller processing on inventory only and an optional Pro subscription for advanced tools.",
+    `PlankMarket shows a ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} and ${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} separately, plus seller processing on inventory only and an optional Pro subscription for advanced tools.`,
   openGraph: {
     title: "PlankMarket Pricing & Fees",
     description:
-      "Clear marketplace pricing: 5% buyer fee, 5% seller fee, seller processing on inventory only, plus optional Pro for advanced tools.",
+      `Clear marketplace pricing: ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel}, ${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel}, seller processing on inventory only, plus optional Pro for advanced tools.`,
   },
 };
 
@@ -76,11 +77,11 @@ export default function PricingPage() {
                 <ul className="space-y-3">
                   {[
                     "Free to browse and register",
-                    "5% buyer fee on inventory purchases",
+                    `${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on inventory purchases`,
                     "Selected freight quote shown before payment",
                     "Displayed freight charge may include carrier charges plus PlankMarket shipping service margin",
                     "Up to 3 saved searches on Free",
-                    "Optional Pro for unlimited saved searches and AI monitoring",
+                    "Optional Pro for unlimited saved searches and saved-search monitoring",
                     "Direct messaging with sellers",
                     "Order tracking and support",
                   ].map((item) => (
@@ -108,19 +109,19 @@ export default function PricingPage() {
                   For Sellers
                 </Badge>
                 <CardTitle className="font-display text-3xl">Projected seller transfer</CardTitle>
-                <CardDescription>5% platform fee plus inventory-only Stripe processing on completed sales</CardDescription>
+                <CardDescription>{PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus inventory-only Stripe processing on completed sales</CardDescription>
               </CardHeader>
               <Separator />
               <CardContent className="pt-6">
                 <ul className="space-y-3">
                   {[
                     "Free plan includes up to 10 active listings",
-                    "5% seller fee on inventory sold",
-                    "2.9% + $0.30 Stripe fee on inventory subtotal only",
+                    `${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on inventory sold`,
+                    `${PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel} Stripe fee on inventory subtotal only`,
                     "Projected seller transfer shown before accepting the order",
                     "Built-in messaging and order management",
-                    "Access to nationwide buyer network",
-                    "Optional Pro for unlimited listings, bulk upload, CRM, and market intelligence",
+                    "Access to verified buyers in supported markets",
+                    "Optional Pro for unlimited listings, bulk upload, seller CRM, and market intelligence",
                     "Customer support for you and buyers",
                     "Seller dashboard and analytics",
                     "Seller transfer begins after confirmed pickup and the configured delay",
@@ -158,9 +159,10 @@ export default function PricingPage() {
                   PlankMarket Pro
                 </CardTitle>
                 <CardDescription className="max-w-2xl mx-auto">
-                  Power users can upgrade to Pro for unlimited listings, unlimited
-                  saved searches, AI agent workflows, bulk CSV import, buyer CRM,
-                  market intelligence, and monthly promotion credit.
+                  Power users can upgrade to Pro for unlimited listings,
+                  unlimited saved searches, saved-search monitoring and seller
+                  repricing tools, bulk CSV import, seller CRM, market
+                  intelligence, and monthly promotion credit.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-center pb-8">
@@ -195,7 +197,7 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Buyer Charge</h3>
                       <p className="text-sm text-muted-foreground">
-                        Buyers pay a 5% marketplace fee on the inventory subtotal
+                        Buyers pay a {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on the inventory subtotal
                         only. Freight is quoted separately before payment, and
                         the displayed freight charge may include carrier charges
                         plus PlankMarket shipping service margin.
@@ -210,8 +212,8 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Seller Deductions</h3>
                       <p className="text-sm text-muted-foreground">
-                        Sellers pay a 5% marketplace fee plus Stripe processing
-                        of 2.9% + $0.30 on the inventory subtotal only.
+                        Sellers pay a {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus Stripe processing
+                        of {PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel} on the inventory subtotal only.
                       </p>
                     </div>
                   </div>
@@ -225,8 +227,8 @@ export default function PricingPage() {
                       <p className="text-sm text-muted-foreground">
                         After carrier pickup is confirmed, PlankMarket initiates
                         the seller transfer through Stripe Connect after the
-                        configured delay. Funds are typically available in your
-                        bank within 3-5 business days after the transfer begins.
+                        configured delay. Bank availability then depends on
+                        Stripe and the connected account&apos;s payout schedule.
                       </p>
                     </div>
                   </div>
@@ -255,33 +257,33 @@ export default function PricingPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center py-2">
                     <span className="text-sm font-medium">Inventory subtotal</span>
-                    <span className="text-sm font-semibold">$10,000.00</span>
+                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.inventorySubtotal}</span>
                   </div>
                   <div className="flex justify-between items-center py-2">
                     <span className="text-sm">Quoted freight</span>
-                    <span className="text-sm">$600.00</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.quotedFreight}</span>
                   </div>
                   <Separator />
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Buyer fee (5%)</span>
-                    <span className="text-sm">$500.00</span>
+                    <span className="text-sm">Buyer fee ({PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeePercent}%)</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerFee}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 bg-secondary/10 px-3 rounded-md">
                     <span className="text-sm font-semibold">Buyer total</span>
-                    <span className="text-sm font-semibold">$11,100.00</span>
+                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerTotal}</span>
                   </div>
                   <Separator className="my-4" />
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Seller fee (5%)</span>
-                    <span className="text-sm">$500.00</span>
+                    <span className="text-sm">Seller fee ({PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeePercent}%)</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.sellerFee}</span>
                   </div>
                   <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Seller Stripe fee (2.9% + $0.30)</span>
-                    <span className="text-sm">$290.30</span>
+                    <span className="text-sm">Seller Stripe fee ({PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel})</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.sellerStripeFee}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
                     <span className="text-sm font-semibold">Projected seller transfer</span>
-                    <span className="text-sm font-semibold">$9,209.70</span>
+                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.projectedSellerTransfer}</span>
                   </div>
                   <Separator className="my-4" />
                   <div className="flex justify-between items-start py-2">
@@ -369,7 +371,7 @@ export default function PricingPage() {
               {
                 question: "Are there plans for premium features?",
                 answer:
-                  "Yes. PlankMarket Pro is already available for power users who want unlimited listings or saved searches, AI agent workflows, CRM tools, bulk upload, and market intelligence. The core marketplace remains usable without a required subscription.",
+                  "Yes. PlankMarket Pro is already available for power users who want unlimited listings or saved searches, saved-search monitoring and seller repricing tools, seller CRM, bulk upload, and market intelligence. The core marketplace remains usable without a required subscription.",
               },
               {
                 question: "How does tax reporting work?",
