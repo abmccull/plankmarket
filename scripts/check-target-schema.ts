@@ -20,6 +20,10 @@ const fileFlagIndex = args.findIndex((arg) => arg === "--file");
 const requestedFile =
   fileFlagIndex >= 0 ? args[fileFlagIndex + 1] : undefined;
 
+const allowSkip =
+  args.includes("--allow-skip") ||
+  process.env.SKIP_DATABASE_SCHEMA_CHECK === "true";
+
 if (fileFlagIndex >= 0 && !requestedFile) {
   console.error("Missing value for --file");
   process.exit(1);
@@ -79,13 +83,59 @@ async function main(): Promise<void> {
       console.error(
         `Target database is not ready for marketplace schema ${MARKETPLACE_SCHEMA_VERSION} (${sourceLabel}).`,
       );
-      for (const artifact of result?.missingArtifacts ?? []) {
-        console.error(`- ${artifact}`);
-      }
       console.error(
-        "Deployment stopped before build. Do not auto-run db:migrate while the historical baseline is unresolved. Apply the reviewed forward migrations manually using drizzle/BASELINE_STRATEGY.md.",
+        `Missing ${result?.missingArtifactCount ?? 0} required schema artifacts.`,
       );
-      process.exitCode = 1;
+
+      if (allowSkip) {
+        console.warn("");
+        console.warn("⚠️  SCHEMA CHECK BYPASSED VIA --allow-skip FLAG");
+        console.warn("");
+        console.warn(
+          "The target database does not have the required schema, but deployment",
+        );
+        console.warn(
+          "is proceeding because SKIP_DATABASE_SCHEMA_CHECK=true or --allow-skip was set.",
+        );
+        console.warn("");
+        console.warn("ACTION REQUIRED BEFORE APPLICATION START:");
+        console.warn(
+          "1. Review drizzle/BASELINE_STRATEGY.md for safe migration procedures",
+        );
+        console.warn(
+          "2. Apply reviewed forward migrations manually to the target database",
+        );
+        console.warn(
+          "3. Verify schema readiness before promoting to production traffic",
+        );
+        console.warn("");
+        console.warn(
+          "The application WILL FAIL at runtime until migrations are applied.",
+        );
+        console.warn("");
+        process.exitCode = 0;
+      } else {
+        for (const artifact of result?.missingArtifacts ?? []) {
+          console.error(`- ${artifact}`);
+        }
+        console.error("");
+        console.error(
+          "Deployment stopped before build. Do not auto-run db:migrate while the historical baseline is unresolved.",
+        );
+        console.error(
+          "Apply the reviewed forward migrations manually using drizzle/BASELINE_STRATEGY.md.",
+        );
+        console.error("");
+        console.error(
+          "To bypass this check (NOT RECOMMENDED for production with live traffic):",
+        );
+        console.error(
+          "  - Set SKIP_DATABASE_SCHEMA_CHECK=true in the environment, or",
+        );
+        console.error("  - Pass --allow-skip to this script");
+        console.error("");
+        process.exitCode = 1;
+      }
     } else {
       console.log(
         `Target database schema ${MARKETPLACE_SCHEMA_VERSION} passed its read-only readiness contract (${sourceLabel}).`,
