@@ -6,11 +6,15 @@ export const revalidate = 3600;
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.plankmarket.com";
 
+const MATERIAL_TYPES = ["hardwood", "engineered", "laminate", "vinyl_lvp", "bamboo", "tile"] as const;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Static marketing pages
   const staticPages: MetadataRoute.Sitemap = [
     { url: `${BASE_URL}`, lastModified: new Date(), changeFrequency: "daily", priority: 1.0 },
     { url: `${BASE_URL}/listings`, lastModified: new Date(), changeFrequency: "hourly", priority: 0.9 },
+    { url: `${BASE_URL}/for-sellers`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
+    { url: `${BASE_URL}/for-buyers`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
     { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.7 },
     { url: `${BASE_URL}/about`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
     { url: `${BASE_URL}/how-it-works`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.3 },
@@ -22,6 +26,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/privacy`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.1 },
   ];
 
+  // Flooring hub pages (material type category pages)
+  const flooringHubPages: MetadataRoute.Sitemap = MATERIAL_TYPES.map((materialType) => ({
+    url: `${BASE_URL}/flooring/${materialType}`,
+    lastModified: new Date(),
+    changeFrequency: "daily" as const,
+    priority: 0.8,
+  }));
+
   // Blog pages
   let blogPages: MetadataRoute.Sitemap = [];
   try {
@@ -31,8 +43,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly" as const,
       priority: post.type === "pillar" ? 0.7 : 0.6,
     }));
-  } catch {
-    // Blog content loading should not fail the sitemap
+  } catch (error) {
+    console.error("[sitemap] Failed to load blog content:", error);
   }
 
   // Dynamic listing pages
@@ -45,9 +57,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly" as const,
       priority: 0.8,
     }));
-  } catch {
-    // Sitemap generation should not fail the build
+    console.log(`[sitemap] Successfully loaded ${listingPages.length} listing entries`);
+  } catch (error) {
+    console.error("[sitemap] Failed to load listing entries:", error);
   }
 
-  return [...staticPages, ...blogPages, ...listingPages];
+  return [...staticPages, ...flooringHubPages, ...blogPages, ...listingPages];
 }
