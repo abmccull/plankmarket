@@ -22,7 +22,6 @@ import { randomUUID } from "crypto";
 import { stripe } from "@/lib/stripe";
 import {
   ShippingBookingReviewError,
-  SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
   SHIPPING_PAYMENT_BOOKABILITY_BUFFER_MS,
   requireShippingBookingSnapshotForOrder,
 } from "@/server/services/shipping-workflow";
