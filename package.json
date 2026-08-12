@@ -161,7 +161,7 @@
     "gcp-metadata": "8.1.2",
     "dompurify": "3.4.13",
     "effect": "3.21.4",
-    "js-yaml": "5.2.3",
+    "js-yaml": "3.15.1",
     "picomatch": "4.0.5",
     "postcss": "8.5.26",
     "sharp": "0.35.3",
