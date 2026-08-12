@@ -97,50 +97,78 @@ const schema = z.object({
   DATABASE_URL: z.string().refine(looksLikeHostedDatabaseUrl, {
     message: "must be a non-local postgres connection string",
   }),
-  DATABASE_MIGRATION_URL: z.string().refine(looksLikeHostedDatabaseUrl, {
-    message: "must be a non-local postgres connection string",
-  }),
-  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(4),
+  DATABASE_MIGRATION_URL: z
+    .string()
+    .refine(looksLikeHostedDatabaseUrl, {
+      message: "must be a non-local postgres connection string",
+    })
+    .optional(),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(10).optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(32),
   STRIPE_SECRET_KEY:
     requestedMode === "production"
       ? z.string().startsWith("sk_live_").min(20)
       : z.string().startsWith("sk_test_").min(20),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith("whsec_").min(16),
-  STRIPE_TAX_MODE: z.enum([
-    "platform_liable",
-    "connected_account_liable",
-  ]),
-  STRIPE_TAX_POLICY_VERSION: z.coerce.number().int().positive(),
-  STRIPE_TAX_LEGAL_DECISION_ACKNOWLEDGED: z.literal("true"),
-  STRIPE_TAX_LEGAL_DECISION_REFERENCE: z.string().min(1),
-  STRIPE_TAX_SHIPPING_TAX_CODE: z.string().regex(/^txcd_\d+$/),
-  STRIPE_TAX_BUYER_FEE_TREATMENT: z.enum(["excluded", "taxable"]),
-  STRIPE_TAX_BUYER_FEE_TAX_CODE: z.string().regex(/^txcd_\d+$/).optional(),
+  STRIPE_TAX_MODE: z
+    .enum([
+      "disabled",
+      "platform_liable",
+      "connected_account_liable",
+    ])
+    .default("disabled"),
+  STRIPE_TAX_POLICY_VERSION: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1),
+  STRIPE_TAX_LEGAL_DECISION_ACKNOWLEDGED: z
+    .enum(["true", "false"])
+    .default("false"),
+  STRIPE_TAX_LEGAL_DECISION_REFERENCE: z.string().min(1).optional(),
+  STRIPE_TAX_SHIPPING_TAX_CODE: z
+    .string()
+    .regex(/^txcd_\d+$/)
+    .optional(),
+  STRIPE_TAX_BUYER_FEE_TREATMENT: z
+    .enum(["undecided", "excluded", "taxable"])
+    .default("undecided"),
+  STRIPE_TAX_BUYER_FEE_TAX_CODE: z
+    .string()
+    .regex(/^txcd_\d+$/)
+    .optional(),
   UPLOADTHING_TOKEN: z.string().min(16),
-  RESEND_API_KEY: z.string().startsWith("re_").min(10),
-  RESEND_WEBHOOK_SECRET: z.string().startsWith("whsec_").min(16),
-  EMAIL_FROM: z.string().email().or(
-    z.string().regex(/.+<[^>]+@[^>]+>/, "must contain a valid sender email"),
-  ),
+  RESEND_API_KEY: z.string().startsWith("re_").min(10).optional(),
+  RESEND_WEBHOOK_SECRET: z
+    .string()
+    .startsWith("whsec_")
+    .min(16)
+    .optional(),
+  EMAIL_FROM: z
+    .string()
+    .email()
+    .or(
+      z
+        .string()
+        .regex(/.+<[^>]+@[^>]+>/, "must contain a valid sender email"),
+    )
+    .default("PlankMarket <noreply@plankmarket.com>"),
   UPSTASH_REDIS_REST_URL: z.string().url(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(16),
-  INNGEST_EVENT_KEY: z.string().min(16),
-  INNGEST_SIGNING_KEY: z.string().min(16),
-  ANTHROPIC_API_KEY: z.string().min(16),
-  ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS:
-    requestedMode === "production"
-      ? z.literal("false").default("false")
-      : z.enum(["true", "false"]).default("false"),
-  VERIFICATION_WEBHOOK_SECRET: z.string().min(32),
-  VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1),
-  PRIORITY1_API_KEY: z.string().min(16),
-  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: z.string().min(1),
-  PRIORITY1_DRY_RUN:
-    requestedMode === "production"
-      ? z.literal("false")
-      : z.literal("true"),
-  CRON_SECRET: z.string().min(32),
+  INNGEST_EVENT_KEY: z.string().min(16).optional(),
+  INNGEST_SIGNING_KEY: z.string().min(16).optional(),
+  ANTHROPIC_API_KEY: z.string().min(16).optional(),
+  ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
+    .enum(["true", "false"])
+    .default("false"),
+  VERIFICATION_WEBHOOK_SECRET: z.string().min(32).optional(),
+  VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1).optional(),
+  PRIORITY1_API_KEY: z.string().min(16).optional(),
+  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: z.string().min(1).optional(),
+  PRIORITY1_DRY_RUN: z
+    .enum(["true", "false"])
+    .default(requestedMode === "production" ? "false" : "true"),
+  CRON_SECRET: z.string().min(32).optional(),
   NODE_ENV: z.enum(["production", "preview", "staging"]).optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(32),
@@ -148,101 +176,144 @@ const schema = z.object({
     requestedMode === "production"
       ? z.string().startsWith("pk_live_").min(20)
       : z.string().startsWith("pk_test_").min(20),
-  NEXT_PUBLIC_APP_URL: z.string().url().refine((value) => {
-    try {
-      return new URL(value).protocol === "https:";
-    } catch {
-      return false;
-    }
-  }, "must use https in a deployable environment"),
+  NEXT_PUBLIC_APP_URL: z.string().url().refine(
+    (value) => {
+      try {
+        return new URL(value).protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    "must use https in a deployable environment",
+  ),
 });
 
 try {
   const { sourceLabel, env } = loadEnvSource();
   const parsed = schema.safeParse(env);
 
-  const issues = [];
+  const missingKeys = [];
+  const invalidValues = [];
+  const conditionalIssues = [];
+
   if (!parsed.success) {
-    issues.push(
-      ...parsed.error.issues.map(
-        (issue) => `${issue.path.join(".")}: ${issue.message}`,
-      ),
-    );
+    for (const issue of parsed.error.issues) {
+      const key = issue.path.join(".");
+      const value = env[key];
+
+      if (value === undefined || value === "") {
+        missingKeys.push(`${key}: ${issue.message}`);
+      } else {
+        invalidValues.push(`${key}: ${issue.message} (received: "${value}")`);
+      }
+    }
   }
 
   for (const key of Object.keys(schema.shape)) {
     const value = env[key];
     if (typeof value === "string" && isPlaceholder(value)) {
-      issues.push(`${key}: contains a placeholder or local-only value`);
+      invalidValues.push(`${key}: contains a placeholder or local-only value`);
     }
   }
 
-  const hostList = env.VERIFICATION_DOC_ALLOWED_HOSTS?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (
-    !hostList?.length ||
-    hostList.some((host) => /example\.com/i.test(host))
-  ) {
-    issues.push(
-      "VERIFICATION_DOC_ALLOWED_HOSTS: must list real production-safe hosts",
-    );
+  // Use parsed data with defaults applied for conditional checks
+  const validatedEnv = parsed.success ? parsed.data : env;
+
+  if (validatedEnv.VERIFICATION_DOC_ALLOWED_HOSTS) {
+    const hostList = validatedEnv.VERIFICATION_DOC_ALLOWED_HOSTS.split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (
+      !hostList.length ||
+      hostList.some((host) => /example\.com/i.test(host))
+    ) {
+      conditionalIssues.push(
+        "VERIFICATION_DOC_ALLOWED_HOSTS: must list real production-safe hosts",
+      );
+    }
   }
 
-  const priority1HostList = env.PRIORITY1_DOCUMENT_ALLOWED_HOSTS?.split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (
-    !priority1HostList?.length ||
-    priority1HostList.some((host) => /example\.com/i.test(host))
-  ) {
-    issues.push(
-      "PRIORITY1_DOCUMENT_ALLOWED_HOSTS: must list real production-safe hosts",
-    );
+  if (validatedEnv.PRIORITY1_DOCUMENT_ALLOWED_HOSTS) {
+    const priority1HostList =
+      validatedEnv.PRIORITY1_DOCUMENT_ALLOWED_HOSTS.split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+    if (
+      !priority1HostList.length ||
+      priority1HostList.some((host) => /example\.com/i.test(host))
+    ) {
+      conditionalIssues.push(
+        "PRIORITY1_DOCUMENT_ALLOWED_HOSTS: must list real production-safe hosts",
+      );
+    }
   }
 
   if (
-    env.STRIPE_TAX_BUYER_FEE_TREATMENT === "taxable" &&
-    !env.STRIPE_TAX_BUYER_FEE_TAX_CODE
+    validatedEnv.STRIPE_TAX_BUYER_FEE_TREATMENT === "taxable" &&
+    !validatedEnv.STRIPE_TAX_BUYER_FEE_TAX_CODE
   ) {
-    issues.push(
+    conditionalIssues.push(
       "STRIPE_TAX_BUYER_FEE_TAX_CODE: required when the buyer fee is taxable",
     );
   }
 
-  if (env.STRIPE_TAX_MODE === "connected_account_liable") {
-    issues.push(
+  if (validatedEnv.STRIPE_TAX_MODE === "connected_account_liable") {
+    conditionalIssues.push(
       "STRIPE_TAX_MODE: connected_account_liable is calculation-ready only; production checkout remains blocked until connected-account transaction and reversal certification is implemented",
     );
   }
 
   if (
     requestedMode === "production" &&
-    env.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS !== "false"
+    validatedEnv.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS !== "false"
   ) {
-    issues.push(
+    conditionalIssues.push(
       "ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: must remain false in production until privacy/legal approval explicitly changes the policy",
     );
   }
 
   if (
-    env.DATABASE_URL &&
-    env.DATABASE_MIGRATION_URL &&
-    normalizeDatabaseUrl(env.DATABASE_URL) ===
-      normalizeDatabaseUrl(env.DATABASE_MIGRATION_URL)
+    validatedEnv.DATABASE_URL &&
+    validatedEnv.DATABASE_MIGRATION_URL &&
+    normalizeDatabaseUrl(validatedEnv.DATABASE_URL) ===
+      normalizeDatabaseUrl(validatedEnv.DATABASE_MIGRATION_URL)
   ) {
-    issues.push(
+    conditionalIssues.push(
       "DATABASE_MIGRATION_URL: must be a direct database connection distinct from the pooled runtime DATABASE_URL",
     );
   }
 
-  if (issues.length > 0) {
+  const hasIssues =
+    missingKeys.length > 0 ||
+    invalidValues.length > 0 ||
+    conditionalIssues.length > 0;
+
+  if (hasIssues) {
     console.error(
       `${requestedMode} env preflight failed (${sourceLabel}):`,
     );
-    for (const issue of issues) {
-      console.error(`- ${issue}`);
+
+    if (missingKeys.length > 0) {
+      console.error("\nMissing required variables:");
+      for (const issue of missingKeys) {
+        console.error(`  - ${issue}`);
+      }
     }
+
+    if (invalidValues.length > 0) {
+      console.error("\nInvalid variable values:");
+      for (const issue of invalidValues) {
+        console.error(`  - ${issue}`);
+      }
+    }
+
+    if (conditionalIssues.length > 0) {
+      console.error("\nConditional validation failures:");
+      for (const issue of conditionalIssues) {
+        console.error(`  - ${issue}`);
+      }
+    }
+
     process.exit(1);
   }
 
