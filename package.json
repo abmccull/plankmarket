@@ -156,6 +156,7 @@
     "@grpc/grpc-js": "1.14.4",
     "@opentelemetry/auto-instrumentations-node": "0.78.0",
     "brace-expansion@^2.0.2": "2.1.4",
+    "brace-expansion@^1.0.0": "1.1.18",
     "esbuild": "0.28.1",
     "gaxios": "7.3.0",
     "gcp-metadata": "8.1.2",
@@ -165,10 +166,11 @@
     "picomatch": "4.0.5",
     "postcss": "8.5.26",
     "sharp": "0.35.3",
+    "undici": "7.29.0",
     "ws": "8.21.0",
     "yaml": "2.9.0",
     "minimatch@^3.1.2": {
-      "brace-expansion": "1.1.17"
+      "brace-expansion": "1.1.18"
     },
     "@grpc/proto-loader": {
       "protobufjs": "7.6.5"
