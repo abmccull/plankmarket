@@ -234,7 +234,6 @@ jobs:
               --archive=tgz \
               --yes \
               --token="$VERCEL_TOKEN" \
-              --build-env="SKIP_ENV_VALIDATION=true" \
               --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
               --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA"
           )
