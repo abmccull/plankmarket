@@ -16,6 +16,16 @@ const isBuildPhase =
   process.env.VERCEL === "1" &&
   !process.env.VERCEL_URL;
 
+// Debug logging to understand the build environment
+if (process.env.NODE_ENV === "production") {
+  console.log("[env.ts] Build phase detection:", {
+    isBuildPhase,
+    VERCEL: process.env.VERCEL,
+    VERCEL_URL: process.env.VERCEL_URL ? "set" : "unset",
+    NODE_ENV: process.env.NODE_ENV,
+  });
+}
+
 const productionRequired = (schema: z.ZodString) =>
   isProduction ? schema : schema.optional();
 
