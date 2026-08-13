@@ -9,9 +9,10 @@ const isLiveProduction =
  * Detect if we're in a build/static-analysis phase vs runtime.
  * During build, Next.js collects page data and imports modules, but most
  * runtime-only secrets (email, AI, webhooks, cron) aren't needed.
+ * 
+ * VERCEL=1 is set during Vercel builds. VERCEL_URL is only set after deployment.
  */
 const isBuildPhase =
-  process.env.CI === "true" &&
   process.env.VERCEL === "1" &&
   !process.env.VERCEL_URL;
 
