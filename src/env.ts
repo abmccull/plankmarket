@@ -4,37 +4,8 @@ import { z } from "zod";
 const isProduction = process.env.NODE_ENV === "production";
 const isLiveProduction =
   isProduction && process.env.VERCEL_ENV !== "preview";
-
-/**
- * Detect if we're in a build/static-analysis phase vs runtime.
- * During build, Next.js collects page data and imports modules, but most
- * runtime-only secrets (email, AI, webhooks, cron) aren't needed.
- * 
- * VERCEL=1 is set during Vercel builds. VERCEL_URL is only set after deployment.
- */
-const isBuildPhase =
-  process.env.VERCEL === "1" &&
-  !process.env.VERCEL_URL;
-
-// Debug logging to understand the build environment
-if (process.env.NODE_ENV === "production") {
-  console.log("[env.ts] Build phase detection:", {
-    isBuildPhase,
-    VERCEL: process.env.VERCEL,
-    VERCEL_URL: process.env.VERCEL_URL ? "set" : "unset",
-    NODE_ENV: process.env.NODE_ENV,
-  });
-}
-
 const productionRequired = (schema: z.ZodString) =>
   isProduction ? schema : schema.optional();
-
-/**
- * Require in production runtime, but optional during build/page-data-collection.
- * Use for secrets only needed when handling requests (not during static analysis).
- */
-const runtimeRequired = (schema: z.ZodString) =>
-  isProduction && !isBuildPhase ? schema : schema.optional();
 
 export const env = createEnv({
   server: {
@@ -68,29 +39,29 @@ export const env = createEnv({
       .regex(/^txcd_\d+$/)
       .optional(),
     UPLOADTHING_TOKEN: z.string().min(1),
-    RESEND_API_KEY: runtimeRequired(z.string().startsWith("re_")),
-    RESEND_WEBHOOK_SECRET: runtimeRequired(
+    RESEND_API_KEY: productionRequired(z.string().startsWith("re_")),
+    RESEND_WEBHOOK_SECRET: productionRequired(
       z.string().startsWith("whsec_"),
     ),
     EMAIL_FROM: z.string().min(1).default("PlankMarket <noreply@plankmarket.com>"),
     UPSTASH_REDIS_REST_URL: z.string().url(),
     UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
-    INNGEST_EVENT_KEY: runtimeRequired(z.string().min(16)),
+    INNGEST_EVENT_KEY: productionRequired(z.string().min(16)),
     INNGEST_SIGNING_KEY: isProduction
       ? z.string().min(1)
       : z.string().min(1).optional(),
-    ANTHROPIC_API_KEY: runtimeRequired(z.string().min(16)),
+    ANTHROPIC_API_KEY: productionRequired(z.string().min(16)),
     ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
       .enum(["true", "false"])
       .default("false"),
-    VERIFICATION_WEBHOOK_SECRET: runtimeRequired(z.string().min(32)),
-    VERIFICATION_DOC_ALLOWED_HOSTS: runtimeRequired(z.string().min(1)),
-    PRIORITY1_API_KEY: runtimeRequired(z.string().min(1)),
-    PRIORITY1_DOCUMENT_ALLOWED_HOSTS: runtimeRequired(z.string().min(1)),
+    VERIFICATION_WEBHOOK_SECRET: productionRequired(z.string().min(32)),
+    VERIFICATION_DOC_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
+    PRIORITY1_API_KEY: productionRequired(z.string().min(1)),
+    PRIORITY1_DOCUMENT_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
     PRIORITY1_DRY_RUN: isLiveProduction
       ? z.literal("false").default("false")
       : z.enum(["true", "false"]).default("false"),
-    CRON_SECRET: runtimeRequired(z.string().min(32)),
+    CRON_SECRET: productionRequired(z.string().min(32)),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
