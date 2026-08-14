@@ -34,6 +34,7 @@ import {
   quoteArtifactTtlSeconds,
   resolveFreightAccessorialCodes,
   resolveListingFreightFunding,
+  requireShippingStateMatchesZip,
   resolveUsStateForZip,
   selectTopShippingQuotes,
   shippingBookingSnapshotSchema,
@@ -81,6 +82,9 @@ export const shippingRouter = createTRPCRouter({
               phone: true,
               businessName: true,
               businessAddress: true,
+              businessCity: true,
+              businessState: true,
+              businessZip: true,
             },
           },
         },
@@ -176,6 +180,18 @@ export const shippingRouter = createTRPCRouter({
         });
         originZip = normalizeUsZip(locationZip);
         destinationZip = normalizeUsZip(input.destinationZip);
+        requireShippingStateMatchesZip({
+          shippingState: locationState,
+          shippingZip: originZip,
+        });
+        if (listing.seller.businessZip) {
+          const sellerOriginZip = normalizeUsZip(listing.seller.businessZip);
+          if (sellerOriginZip !== originZip) {
+            throw new Error(
+              "The seller legal address ZIP does not match this listing's warehouse ZIP. Update the listing pickup location before checkout.",
+            );
+          }
+        }
       } catch (error) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",

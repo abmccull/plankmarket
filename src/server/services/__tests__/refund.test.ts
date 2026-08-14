@@ -518,7 +518,7 @@ describe("direct partial refund transfer recovery", () => {
       }),
     );
 
-    expect(providerMocks.createRefund).toHaveBeenCalledTimes(1);
+    expect(providerMocks.createRefund).not.toHaveBeenCalled();
     expect(providerMocks.createReversal).toHaveBeenCalledTimes(1);
     expect(updateSets).toHaveLength(0);
     expect(insertedValues).toHaveLength(0);
@@ -589,7 +589,7 @@ describe("direct partial refund transfer recovery", () => {
       }),
     );
 
-    expect(providerMocks.createReversal).not.toHaveBeenCalled();
+    expect(providerMocks.createReversal).toHaveBeenCalledTimes(1);
     expect(insertedValues).toHaveLength(0);
     expect(updateSets[0]).toEqual(
       expect.objectContaining({
@@ -635,7 +635,7 @@ describe("direct partial refund transfer recovery", () => {
         }),
       );
 
-      expect(providerMocks.createReversal).not.toHaveBeenCalled();
+      expect(providerMocks.createReversal).toHaveBeenCalledTimes(1);
       expect(updateSets[0]).toEqual(
         expect.objectContaining({
           paymentStatus: "reconciliation_required",
@@ -1085,10 +1085,8 @@ describe("seller-funded freight allocation policy", () => {
     expect(providerMocks.createReversal).not.toHaveBeenCalled();
     expect(updateSets[0]).toEqual(
       expect.objectContaining({
-        paymentStatus: "partially_refunded",
         escrowStatus: "disputed",
-        sellerPayout: 48.75,
-        refundedAmount: 25,
+        refundedAmount: 0,
         transferReversedAmount: 0,
       }),
     );

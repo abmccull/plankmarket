@@ -978,18 +978,50 @@ export async function processOrderRefund({
     // Resolve and validate a provider-committed transfer while the order row is
     // still locked. A payout transaction can roll back after Stripe creates the
     // transfer, leaving no local transfer ID even though seller funds moved.
-    const partialRefundTransfer = !isFullRefund
-      ? await resolveSeparateTransfer(order, expectedSourceChargeId)
-      : undefined;
+    let resolvedTransfer =
+      !isFullRefund ||
+      order.stripeTransferId ||
+      order.escrowStatus === "released"
+        ? await resolveSeparateTransfer(order, expectedSourceChargeId)
+        : undefined;
     if (
       !isFullRefund &&
       !canIssuePartialOrderRefund({
-        stripeTransferId: partialRefundTransfer?.id ?? order.stripeTransferId,
+        stripeTransferId: resolvedTransfer?.id ?? order.stripeTransferId,
       })
     ) {
       throw new Error(
         "Partial refunds are not supported before seller payout. Issue a full cancellation/refund instead.",
       );
+    }
+    let reversal: {
+      transferId?: string;
+      reversalId?: string;
+      reversedAmountCents: number;
+      transferAmountCents?: number;
+    } = {
+      transferId: resolvedTransfer?.id ?? order.stripeTransferId ?? undefined,
+      reversalId: order.stripeTransferReversalId ?? undefined,
+      reversedAmountCents: Math.round(
+        Number(order.transferReversedAmount) * 100,
+      ),
+      transferAmountCents: resolvedTransfer
+        ? resolvedTransfer.amount
+        : undefined,
+    };
+    const shouldReverseBeforeRefund = Boolean(
+      resolvedTransfer?.id ||
+        order.stripeTransferId ||
+        order.escrowStatus === "released",
+    );
+    if (shouldReverseBeforeRefund) {
+      reversal = await reverseSeparateTransfer({
+        order,
+        fullAmountCents,
+        cumulativeRecoveryCents: cumulativeRefundCents,
+        resolvedTransfer,
+        expectedSourceChargeId,
+      });
     }
     const refund = await stripe.refunds.create(
       {
@@ -1036,13 +1068,15 @@ export async function processOrderRefund({
       await cancelPriority1ShipmentForOrder(order.id, tx);
     }
 
-    const reversal = await reverseSeparateTransfer({
-      order,
-      fullAmountCents,
-      cumulativeRecoveryCents: cumulativeRefundCents,
-      resolvedTransfer: partialRefundTransfer,
-      expectedSourceChargeId,
-    });
+    if (!shouldReverseBeforeRefund) {
+      reversal = await reverseSeparateTransfer({
+        order,
+        fullAmountCents,
+        cumulativeRecoveryCents: cumulativeRefundCents,
+        resolvedTransfer,
+        expectedSourceChargeId,
+      });
+    }
     const allocationAuditNote =
       Number(order.sellerFreightContribution) > 0 &&
       reversal.transferAmountCents !== undefined
@@ -1510,8 +1544,10 @@ export async function reconcileOrderRefundFromStripe({
     await persistRefundState({
       tx,
       order,
-      cumulativeRefundCents: targetRefundedCents,
-      refundDeltaCents,
+      cumulativeRefundCents: transferReversalFailed
+        ? alreadyRefundedCents
+        : targetRefundedCents,
+      refundDeltaCents: transferReversalFailed ? 0 : refundDeltaCents,
       stripeRefundId: stripeRefundId ?? `external-${targetRefundedCents}`,
       reason,
       transferId: reversal.transferId,

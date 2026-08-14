@@ -124,7 +124,7 @@ export default function PricingPage() {
                     "Optional Pro for unlimited listings, bulk upload, seller CRM, and market intelligence",
                     "Customer support for you and buyers",
                     "Seller dashboard and analytics",
-                    "Seller transfer begins after confirmed pickup and the configured delay",
+                    PUBLIC_COMMERCIAL_COPY.sellerTransferTiming,
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm">
                       <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
@@ -225,10 +225,11 @@ export default function PricingPage() {
                     <div>
                       <h3 className="font-semibold mb-1">Freight and Seller Transfer</h3>
                       <p className="text-sm text-muted-foreground">
-                        After carrier pickup is confirmed, PlankMarket initiates
-                        the seller transfer through Stripe Connect after the
-                        configured delay. Bank availability then depends on
-                        Stripe and the connected account&apos;s payout schedule.
+                        {PUBLIC_COMMERCIAL_COPY.paymentHoldModel}{" "}
+                        {PUBLIC_COMMERCIAL_COPY.sellerTransferWithhold} Bank
+                        availability then depends on Stripe and the connected
+                        account&apos;s payout schedule.{" "}
+                        {PUBLIC_COMMERCIAL_COPY.notRegulatedEscrow}
                       </p>
                     </div>
                   </div>
@@ -340,7 +341,12 @@ export default function PricingPage() {
                 </Badge>
                 <CardTitle className="font-display text-2xl">Volume Sellers</CardTitle>
                 <CardDescription>
-                  High-volume sellers with large inventories or frequent transactions may be eligible for reduced seller-fee rates. Contact our partnerships team to discuss custom pricing.
+                  High-volume sellers with large inventories or frequent
+                  transactions can contact partnerships for onboarding and
+                  inventory workflow help. Published seller fees stay at{" "}
+                  {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus{" "}
+                  {PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel} processing.
+                  There is no reduced-rate path in the current fee schedule.
                 </CardDescription>
               </CardHeader>
               <CardContent className="text-center">
@@ -366,7 +372,7 @@ export default function PricingPage() {
               {
                 question: "What happens in case of a dispute or return?",
                 answer:
-                  "Stripe processes the buyer payment, and PlankMarket initiates the seller transfer after carrier pickup and the configured delay. Buyers can report damage, shortages, or quality issues through the platform within 48 hours of delivery with photo evidence. Freight damage must be noted on the delivery receipt at time of delivery. Our support team reviews the order, provider records, and submitted evidence. Buyer and seller marketplace fees are refunded on full refunds; partial refunds receive proportional adjustments.",
+                  `${PUBLIC_COMMERCIAL_COPY.paymentHoldModel} ${PUBLIC_COMMERCIAL_COPY.sellerTransferWithhold} Buyers can report damage, shortages, or quality issues through the platform within 48 hours of delivery with photo evidence. Freight damage must be noted on the delivery receipt at time of delivery. Our support team reviews the order, provider records, and submitted evidence. Buyer and seller marketplace fees are refunded on full refunds; partial refunds receive proportional adjustments.`,
               },
               {
                 question: "Are there plans for premium features?",

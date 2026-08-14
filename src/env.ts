@@ -57,7 +57,17 @@ export const env = createEnv({
     VERIFICATION_WEBHOOK_SECRET: productionRequired(z.string().min(32)),
     VERIFICATION_DOC_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
     PRIORITY1_API_KEY: productionRequired(z.string().min(1)),
-    PRIORITY1_DOCUMENT_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
+    PRIORITY1_DOCUMENT_ALLOWED_HOSTS: productionRequired(
+      z
+        .string()
+        .min(1)
+        .refine(
+          (value) =>
+            !/example\.com/i.test(value) &&
+            value.split(",").some((host) => host.trim().length > 0),
+          "PRIORITY1_DOCUMENT_ALLOWED_HOSTS must list real document hosts, not example.com",
+        ),
+    ),
     PRIORITY1_DRY_RUN: isLiveProduction
       ? z.literal("false").default("false")
       : z.enum(["true", "false"]).default("false"),

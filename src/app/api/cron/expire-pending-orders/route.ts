@@ -10,7 +10,6 @@ import {
   canApplyPaymentIntentProcessing,
   isStripePaymentIntentCancelable,
 } from "@/server/services/order-transitions";
-import { reconcileOrderRefundLifecycleFromStripe } from "@/server/services/refund";
 import { redis } from "@/lib/redis/client";
 
 const ORDER_EXPIRY_MINUTES = 45;
@@ -102,56 +101,9 @@ export async function GET(req: NextRequest) {
             throw new Error("Captured PaymentIntent amount does not match order");
           }
 
-          const shouldRefund = await db.transaction(async (tx) => {
-            const [lockedOrder] = await tx
-              .select({
-                status: orders.status,
-                paymentStatus: orders.paymentStatus,
-                stripePaymentIntentId: orders.stripePaymentIntentId,
-              })
-              .from(orders)
-              .where(eq(orders.id, order.id))
-              .for("update");
-            if (
-              !lockedOrder ||
-              lockedOrder.stripePaymentIntentId !== paymentIntent.id ||
-              lockedOrder.paymentStatus === "refunded" ||
-              lockedOrder.paymentStatus === "partially_refunded"
-            ) {
-              return false;
-            }
-            if (
-              lockedOrder.paymentStatus === "succeeded" &&
-              ["confirmed", "processing", "shipped", "delivered"].includes(
-                lockedOrder.status,
-              )
-            ) {
-              return false;
-            }
-
-            return true;
-          });
-          if (shouldRefund) {
-            const refund = await stripe.refunds.create(
-              {
-                payment_intent: paymentIntent.id,
-                amount: paymentIntent.amount_received,
-                metadata: {
-                  orderId: order.id,
-                  reason: "captured_after_payment_window_expired",
-                },
-              },
-              {
-                idempotencyKey: `late-order-payment-refund:${paymentIntent.id}`,
-              },
-            );
-            await reconcileOrderRefundLifecycleFromStripe({
-              db,
-              refund,
-              reason:
-                "Payment was captured after the checkout and freight quote window expired",
-            });
-          }
+          // A live captured charge is not late-window inventory. Refunding it
+          // here races webhook/tax apply and can book freight against a
+          // charge that no longer exists. Leave apply to payment_intent.succeeded.
           continue;
         }
 

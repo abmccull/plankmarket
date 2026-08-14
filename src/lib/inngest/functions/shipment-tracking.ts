@@ -8,6 +8,7 @@ import {
   lte,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
 import { inngest } from "../client";
 import { PLANKMARKET_EVENTS } from "../events";
@@ -58,15 +59,11 @@ function buildTrackingCursorWhere(input: {
         "in_transit",
         "out_for_delivery",
         "exception",
+        "delivered",
       ]),
-      // Keep delivered rows pollable until receipt AND freight docs are filled.
       and(
-        eq(shipments.status, "delivered"),
-        or(
-          isNull(shipments.deliveryReceiptUrl),
-          isNull(shipments.bolUrl),
-          isNull(shipments.labelUrl),
-        ),
+        eq(shipments.status, "pending"),
+        sql`${shipments.dispatchAttemptedAt} is not null`,
       ),
     ),
     // Never overwrite rows mid-cancellation.

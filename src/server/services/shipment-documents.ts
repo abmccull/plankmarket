@@ -48,7 +48,7 @@ function classifyDocumentFetchError(error: unknown): DocumentFetchResult {
     // Do not treat bare gateway 502 as permanent — that is often transient.
     // Permanent = allowlist / URL validation style failures only.
     const permanent =
-      /invalid|not allowed|allowlist|malformed|credentials|must use HTTPS|default HTTPS port|host/i.test(
+      /not allowed|allowlist|credentials|must use HTTPS|default HTTPS port|host is not allowed|not an allowed host/i.test(
         error.message,
       );
     return {

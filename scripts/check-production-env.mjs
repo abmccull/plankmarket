@@ -264,6 +264,19 @@ try {
   }
 
   if (
+    env.STRIPE_TAX_MODE === "platform_liable" &&
+    (env.STRIPE_TAX_LEGAL_DECISION_ACKNOWLEDGED !== "true" ||
+      !env.STRIPE_TAX_LEGAL_DECISION_REFERENCE ||
+      !env.STRIPE_TAX_SHIPPING_TAX_CODE ||
+      !env.STRIPE_TAX_BUYER_FEE_TREATMENT ||
+      env.STRIPE_TAX_BUYER_FEE_TREATMENT === "undecided")
+  ) {
+    issues.push(
+      "STRIPE_TAX_MODE=platform_liable requires legal acknowledgement, a decision reference, a shipping tax code, and a decided buyer-fee treatment",
+    );
+  }
+
+  if (
     requestedMode === "production" &&
     validatedEnv.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS !== "false"
   ) {

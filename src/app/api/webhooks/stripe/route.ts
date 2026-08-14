@@ -22,6 +22,7 @@ import {
 } from "@/lib/inngest/events";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 import { stripe } from "@/lib/stripe";
+import { isStripeChargeRefunded } from "@/server/services/stripe-charge-state";
 import { PRO_MONTHLY_CREDIT } from "@/lib/pro";
 import {
   reconcileOrderRefundLifecycleFromStripe,
@@ -317,12 +318,20 @@ export async function processStripeWebhookEvent(eventId: string) {
               break;
             }
 
+            const livePaymentIntent = await stripe.paymentIntents.retrieve(
+              paymentIntent.id,
+              { expand: ["latest_charge"] },
+            );
+            if (isStripeChargeRefunded(livePaymentIntent.latest_charge)) {
+              break;
+            }
+
             const expectedAmountCents = Math.round(
               Number(order.totalPrice) * 100,
             );
             if (
-              paymentIntent.amount_received !== expectedAmountCents ||
-              paymentIntent.currency.toLowerCase() !== "usd"
+              livePaymentIntent.amount_received !== expectedAmountCents ||
+              livePaymentIntent.currency.toLowerCase() !== "usd"
             ) {
               const mismatchMessage = `PaymentIntent ${paymentIntent.id} captured ${paymentIntent.amount_received} ${paymentIntent.currency}, expected ${expectedAmountCents} usd. Shipment dispatch is blocked pending reconciliation.`;
               const [markedForReconciliation] = await db
@@ -1059,6 +1068,8 @@ export async function processStripeWebhookEvent(eventId: string) {
               .select({
                 id: orders.id,
                 orderNumber: orders.orderNumber,
+                status: orders.status,
+                shippedAt: orders.shippedAt,
                 totalPrice: orders.totalPrice,
                 refundedAmount: orders.refundedAmount,
                 paymentStatus: orders.paymentStatus,
@@ -1126,7 +1137,7 @@ export async function processStripeWebhookEvent(eventId: string) {
             const restoredEscrowStatus =
               dispute.status === "won"
                 ? requiresTransferReconciliation
-                  ? "disputed"
+                  ? "held"
                   : "released"
                 : dispute.status === "lost"
                   ? "refunded"
@@ -1225,6 +1236,28 @@ export async function processStripeWebhookEvent(eventId: string) {
                 ),
               },
             });
+            if (
+              closedState.order.shippedAt &&
+              ["shipped", "delivered"].includes(closedState.order.status)
+            ) {
+              try {
+                await inngest.send({
+                  id: `chargeback-win-payout-${dispute.id}`,
+                  name: "order/picked-up",
+                  data: {
+                    orderId: closedState.order.id,
+                    pickedUpAt: closedState.order.shippedAt.toISOString(),
+                    pickupConfirmed: true,
+                    source: "priority1",
+                  },
+                });
+              } catch (error) {
+                console.error("Failed to requeue payout after chargeback win", {
+                  orderId: closedState.order.id,
+                  error,
+                });
+              }
+            }
           }
 
           if (closedState.reconciliationMessage) {

@@ -8,6 +8,8 @@ import {
   getSellerFreightFundingIneligibilityReason,
   getOrderDispatchIneligibilityReason,
   getNextBusinessDay,
+  freightSnapshotMatchesListing,
+  getShipmentIdentifier,
   getShippingBookingSnapshotKeyByToken,
   isQuoteBookable,
   mapPriority1ShipmentStatus,
@@ -304,6 +306,57 @@ describe("shipping-workflow", () => {
     const beforeHoliday = new Date("2026-07-02T17:00:00Z");
     const pickupDate = getNextBusinessDay(beforeHoliday);
     expect(formatPickupDate(pickupDate)).toBe("2026-07-06");
+  });
+
+  it("prefers the primary non-null shipment identifier", () => {
+    expect(
+      getShipmentIdentifier(
+        [
+          { type: "PRO", value: null, primaryForType: false },
+          { type: "PRO", value: "REAL-PRO", primaryForType: true },
+          { type: "PRO", value: "OTHER-PRO", primaryForType: false },
+        ],
+        "PRO",
+      ),
+    ).toBe("REAL-PRO");
+    expect(
+      getShipmentIdentifier(
+        [{ type: "BILL_OF_LADING", value: null, primaryForType: true }],
+        "BILL_OF_LADING",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("rejects freight snapshot drift against the current listing", () => {
+    const current = snapshot();
+    expect(
+      freightSnapshotMatchesListing({
+        snapshot: current,
+        listing: {
+          locationZip: "84101",
+          freightClass: "125",
+          palletWeight: 1400,
+          palletLength: 48,
+          palletWidth: 40,
+          palletHeight: 52,
+        },
+        palletsNeeded: 3,
+      }),
+    ).toBe(true);
+    expect(
+      freightSnapshotMatchesListing({
+        snapshot: current,
+        listing: {
+          locationZip: "84101",
+          freightClass: "70",
+          palletWeight: 1400,
+          palletLength: 48,
+          palletWidth: 40,
+          palletHeight: 52,
+        },
+        palletsNeeded: 3,
+      }),
+    ).toBe(false);
   });
 
   it("only emits NMFC fields when item and subcode are paired", () => {

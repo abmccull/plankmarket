@@ -82,6 +82,28 @@ describe("findStripeTransferForOrder", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("returns undefined when the legacy scan is incomplete and unmatched", async () => {
+    const filler = Array.from({ length: 100 }, (_, index) =>
+      transfer(`tr_other_${index}`, "another-order"),
+    );
+    const { stripe } = stripeWithTransferPages([
+      { data: [], has_more: false },
+      ...Array.from({ length: 10 }, () => ({
+        data: filler,
+        has_more: true,
+      })),
+    ]);
+
+    await expect(
+      findStripeTransferForOrder({
+        stripe,
+        orderId: "order-1",
+        orderCreatedAt,
+        destination: "acct_seller",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("fails closed when multiple transfers claim the same order", async () => {
     const { stripe } = stripeWithTransferPages([
       {

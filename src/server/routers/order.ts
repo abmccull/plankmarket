@@ -34,6 +34,8 @@ import {
   getShippingQuoteTokenKey,
   getSellerFreightFundingIneligibilityReason,
   freightFundingMatchesQuotedTerms,
+  freightSnapshotMatchesListing,
+  computePalletsNeeded,
   isQuoteBookable,
   quoteArtifactTtlSeconds,
   SHIPPING_OFFER_BOOKABILITY_BUFFER_MS,
@@ -389,6 +391,17 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
   listingId: string;
   quantitySqFt: number;
   destinationZip: string;
+  listingFreight: {
+    locationZip: string | null;
+    freightClass: string | null;
+    palletWeight: number | null;
+    palletLength: number | null;
+    palletWidth: number | null;
+    palletHeight: number | null;
+    sqFtPerBox: number | null;
+    boxesPerPallet: number | null;
+    totalPallets: number | null;
+  };
   validateBeforeConsume: (quote: {
     fullFreightCharge: number;
     freightFundingMode: FreightFundingMode;
@@ -547,6 +560,35 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
       code: "BAD_REQUEST",
       message:
         "Shipping booking details do not match the selected quote. Please request shipping options again.",
+    });
+  }
+
+  let palletsNeeded: number;
+  try {
+    palletsNeeded = computePalletsNeeded({
+      quantitySqFt: params.quantitySqFt,
+      sqFtPerBox: params.listingFreight.sqFtPerBox,
+      boxesPerPallet: params.listingFreight.boxesPerPallet,
+      totalPallets: params.listingFreight.totalPallets,
+    });
+  } catch {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        "Listing freight information changed. Please request shipping options again.",
+    });
+  }
+  if (
+    !freightSnapshotMatchesListing({
+      snapshot: bookingSnapshot,
+      listing: params.listingFreight,
+      palletsNeeded,
+    })
+  ) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message:
+        "Listing freight dimensions or origin changed. Please request shipping options again.",
     });
   }
 
@@ -822,6 +864,17 @@ export const orderRouter = createTRPCRouter({
           listingId: listing.id,
           quantitySqFt: input.quantitySqFt,
           destinationZip: input.shippingZip,
+          listingFreight: {
+            locationZip: listing.locationZip,
+            freightClass: listing.freightClass,
+            palletWeight: listing.palletWeight,
+            palletLength: listing.palletLength,
+            palletWidth: listing.palletWidth,
+            palletHeight: listing.palletHeight,
+            sqFtPerBox: listing.sqFtPerBox,
+            boxesPerPallet: listing.boxesPerPallet,
+            totalPallets: listing.totalPallets,
+          },
           validateBeforeConsume: async (quotedFreightFunding) => {
             const {
               freightFunding,
@@ -1145,6 +1198,17 @@ export const orderRouter = createTRPCRouter({
           listingId: offer.listingId,
           quantitySqFt: offer.quantitySqFt,
           destinationZip: input.shippingZip,
+          listingFreight: {
+            locationZip: listing.locationZip,
+            freightClass: listing.freightClass,
+            palletWeight: listing.palletWeight,
+            palletLength: listing.palletLength,
+            palletWidth: listing.palletWidth,
+            palletHeight: listing.palletHeight,
+            sqFtPerBox: listing.sqFtPerBox,
+            boxesPerPallet: listing.boxesPerPallet,
+            totalPallets: listing.totalPallets,
+          },
           validateBeforeConsume: async (quotedFreightFunding) => {
             const {
               freightFunding,

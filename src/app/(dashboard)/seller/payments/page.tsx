@@ -20,10 +20,7 @@ import {
   ConnectAccountManagement,
   ConnectNotificationBanner,
 } from "@stripe/react-connect-js";
-import {
-  PAYMENT_PROCESSING_RATE,
-  SELLER_MARKETPLACE_FEE_PERCENT,
-} from "@/lib/fees";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export default function SellerPaymentsPage() {
   const {
@@ -70,10 +67,14 @@ export default function SellerPaymentsPage() {
               Connect Stripe Account
             </CardTitle>
             <CardDescription>
-              We use Stripe to securely process payments and send you payouts.
-              Sellers pay a {SELLER_MARKETPLACE_FEE_PERCENT}% marketplace fee on
-              inventory subtotal plus {(PAYMENT_PROCESSING_RATE * 100).toFixed(1)}
-              % payment processing on inventory subtotal only. Each order shows
+              Stripe processes the buyer&apos;s platform charge at checkout.
+              After live pickup and the configured delay, PlankMarket initiates
+              a separate Connect transfer if payment, shipment, refund, and
+              dispute checks still pass.{" "}
+              {PUBLIC_COMMERCIAL_COPY.sellerTransferWithhold} Sellers pay a{" "}
+              {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on inventory
+              subtotal plus {PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel}{" "}
+              payment processing on inventory subtotal only. Each order shows
               the buyer shipping charge, any seller shipping contribution, and
               the resulting net payout.
             </CardDescription>
@@ -102,7 +103,7 @@ export default function SellerPaymentsPage() {
         <div>
           <h1 className="text-3xl font-bold">Payments</h1>
           <p className="text-muted-foreground mt-1">
-            Complete your account setup to start receiving payments
+            Complete your account setup so later Connect transfers can reach your bank
           </p>
         </div>
 
@@ -111,7 +112,8 @@ export default function SellerPaymentsPage() {
             <CardTitle>Complete Account Setup</CardTitle>
             <CardDescription>
               Fill in your business details, verify your identity, and connect a
-              bank account to start receiving payouts.
+              bank account so PlankMarket can send the later Connect transfer
+              after pickup and transaction-state checks.
             </CardDescription>
           </CardHeader>
           <CardContent>

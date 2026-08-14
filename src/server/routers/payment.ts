@@ -26,6 +26,8 @@ import {
   requireShippingBookingSnapshotForOrder,
 } from "@/server/services/shipping-workflow";
 import { cancelUncapturedOrderPayment } from "@/server/services/payment-intent-cancellation";
+import { canApplyPaymentIntentSucceeded } from "@/server/services/order-transitions";
+import { isStripeChargeRefunded } from "@/server/services/stripe-charge-state";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 import { inngest } from "@/lib/inngest/client";
 import { buildCheckoutStartedEvent } from "@/lib/inngest/events";
@@ -317,11 +319,13 @@ export const paymentRouter = createTRPCRouter({
         "processing",
       ]);
 
-      let result: {
-        clientSecret: string;
-        paymentIntentId: string;
-        checkoutEvent: typeof preparation.checkoutEvent;
-      };
+      let result:
+        | {
+            clientSecret: string;
+            paymentIntentId: string;
+            checkoutEvent: typeof preparation.checkoutEvent;
+          }
+        | undefined;
       try {
         const sellerAccount = await stripe.accounts.retrieve(
           order.sellerStripeAccountId!,
@@ -383,24 +387,65 @@ export const paymentRouter = createTRPCRouter({
           });
         }
         if (paymentIntent.status === "succeeded") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Payment has already been completed for this order",
-          });
-        }
-        if (!reusableStatuses.has(paymentIntent.status)) {
+          const livePaymentIntent = await stripe.paymentIntents.retrieve(
+            paymentIntent.id,
+            { expand: ["latest_charge"] },
+          );
+          if (isStripeChargeRefunded(livePaymentIntent.latest_charge)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "This payment was refunded and cannot be reused.",
+            });
+          }
+          if (
+            canApplyPaymentIntentSucceeded({
+              orderStatus: order.status,
+              paymentStatus: order.paymentStatus,
+              storedPaymentIntentId: order.stripePaymentIntentId,
+              eventPaymentIntentId: paymentIntent.id,
+              inventoryReleasedAt: order.inventoryReleasedAt,
+            })
+          ) {
+            await ctx.db
+              .update(orders)
+              .set({
+                paymentStatus: "succeeded",
+                status: "confirmed",
+                confirmedAt: new Date(),
+                paymentIntentClaimToken: null,
+                paymentIntentClaimedAt: null,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(orders.id, order.id),
+                  eq(orders.status, "pending"),
+                  eq(orders.stripePaymentIntentId, paymentIntent.id),
+                  isNull(orders.inventoryReleasedAt),
+                ),
+              );
+          }
+          result = {
+            clientSecret: paymentIntent.client_secret ?? "",
+            paymentIntentId: paymentIntent.id,
+            checkoutEvent: preparation.checkoutEvent,
+          };
+        } else if (!reusableStatuses.has(paymentIntent.status)) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: `Payment intent cannot be reused in "${paymentIntent.status}" status`,
           });
         }
-        if (!paymentIntent.client_secret) {
+        if (!result && !paymentIntent.client_secret) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Payment intent has no client secret",
           });
         }
 
+        if (result) {
+          // Already captured and applied locally.
+        } else {
         const [finalized] = await ctx.db
           .update(orders)
           .set({
@@ -497,7 +542,7 @@ export const paymentRouter = createTRPCRouter({
           });
           if (finalizationLoss === "already_finalized") {
             result = {
-              clientSecret: paymentIntent.client_secret,
+              clientSecret: paymentIntent.client_secret ?? "",
               paymentIntentId: paymentIntent.id,
               checkoutEvent: preparation.checkoutEvent,
             };
@@ -543,10 +588,11 @@ export const paymentRouter = createTRPCRouter({
           }
         } else {
           result = {
-            clientSecret: paymentIntent.client_secret,
+            clientSecret: paymentIntent.client_secret ?? "",
             paymentIntentId: paymentIntent.id,
             checkoutEvent: preparation.checkoutEvent,
           };
+        }
         }
       } catch (error) {
         await ctx.db
@@ -569,6 +615,13 @@ export const paymentRouter = createTRPCRouter({
             });
           });
         throw error;
+      }
+
+      if (!result) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Payment intent preparation did not produce a client secret.",
+        });
       }
 
       try {

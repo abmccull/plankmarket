@@ -13,6 +13,12 @@ describe("public commercial copy", () => {
     expect(PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel).toBe("5% buyer fee");
     expect(PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel).toBe("5% seller fee");
     expect(PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel).toBe("2.9% + $0.30");
+    expect(PUBLIC_COMMERCIAL_COPY.notRegulatedEscrow).toMatch(
+      /not a regulated escrow service/i,
+    );
+    expect(PUBLIC_COMMERCIAL_COPY.sellerTransferWithhold).toMatch(
+      /withheld/i,
+    );
   });
 
   it("keeps the public pricing example aligned with the fee calculator", () => {

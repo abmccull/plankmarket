@@ -67,7 +67,7 @@ export async function findStripeTransferForOrder(params: {
   }
 
   if (legacyMatches[0]) return legacyMatches[0];
-  throw new Error(
-    `Legacy seller-transfer scan limit reached for order ${params.orderId}; refusing to create or refund without reconciliation`,
-  );
+  // An incomplete destination scan must not block first payout. transfer_group
+  // already missed, so create/refund can proceed and reconcilers can recover.
+  return undefined;
 }

@@ -1273,6 +1273,7 @@ export const disputeRouter = createTRPCRouter({
             paymentStatus: orders.paymentStatus,
             escrowStatus: orders.escrowStatus,
             selectedQuoteId: orders.selectedQuoteId,
+            shippedAt: orders.shippedAt,
             shipmentQuoteId: shipments.quoteId,
             priority1ShipmentId: shipments.priority1ShipmentId,
             shipmentStatus: shipments.status,
@@ -1297,6 +1298,7 @@ export const disputeRouter = createTRPCRouter({
               shipmentStatus: state.shipmentStatus,
               shipmentIsDryRun: state.shipmentIsDryRun,
               shipmentTrackingEvents: state.trackingEvents,
+              orderShippedAt: state.shippedAt,
             }),
         );
         if (payoutEligible && state) {
@@ -1307,7 +1309,7 @@ export const disputeRouter = createTRPCRouter({
               data: {
                 orderId: state.orderId,
                 pickedUpAt: (
-                  state.pickupDate ??
+                  state.shippedAt ??
                   dispute.order.shippedAt ??
                   resolvedAt
                 ).toISOString(),

@@ -138,14 +138,21 @@ export default function TermsOfServicePage() {
       content: (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            When a buyer completes a purchase, Stripe processes the payment.
-            After carrier pickup is confirmed and the configured release delay
-            passes, PlankMarket initiates a transfer to the seller&apos;s
-            connected Stripe account. Bank availability depends on Stripe and
-            the connected account&apos;s payout schedule.
+            When a buyer completes a purchase, Stripe processes a platform
+            charge. After live carrier pickup is confirmed and the configured
+            release delay passes, PlankMarket initiates a separate transfer to
+            the seller&apos;s connected Stripe account if payment, shipment,
+            refund, and dispute checks still pass. The transfer is withheld when
+            live pickup evidence is missing, the shipment is a dry-run, the
+            charge is refunded or disputed, or a marketplace dispute is open.
+            Bank availability depends on Stripe and the connected
+            account&apos;s payout schedule.
           </p>
           <p className="text-sm text-muted-foreground">
-            PlankMarket uses Stripe payment processing followed by a seller Connect transfer. By using the platform, you acknowledge that PlankMarket is not acting as a trustee, fiduciary, or regulated funds custodian.
+            PlankMarket uses Stripe payment processing followed by a seller
+            Connect transfer. By using the platform, you acknowledge that
+            PlankMarket is not a regulated escrow service and is not acting as a
+            trustee, fiduciary, or regulated funds custodian.
           </p>
         </div>
       ),
@@ -218,8 +225,10 @@ export default function TermsOfServicePage() {
           <p className="text-sm text-muted-foreground">
             Claims submitted after the 48-hour reporting window are accepted
             only through an explicit administrative exception with a documented
-            reason. Seller-transfer timing is governed separately by the
-            confirmed pickup milestone and configured release delay.
+            reason. Seller-transfer timing is governed separately by confirmed
+            live pickup, the configured release delay, and the withhold
+            conditions in Payment Hold and Release. The 48-hour inspection
+            window does not by itself release or delay the seller transfer.
           </p>
         </div>
       ),

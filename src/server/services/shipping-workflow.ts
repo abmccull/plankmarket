@@ -206,6 +206,51 @@ export interface FreightFundingTerms {
   sellerFreightContribution: number;
 }
 
+export function freightSnapshotMatchesListing(params: {
+  snapshot: {
+    originLocation?: { address?: { postalCode?: string | null } | null } | null;
+    lineItems?: Array<{
+      freightClass?: string | null;
+      totalWeight?: number | null;
+      length?: number | null;
+      width?: number | null;
+      height?: number | null;
+      units?: number | null;
+    }> | null;
+  };
+  listing: {
+    locationZip?: string | null;
+    freightClass?: string | null;
+    palletWeight?: number | null;
+    palletLength?: number | null;
+    palletWidth?: number | null;
+    palletHeight?: number | null;
+  };
+  palletsNeeded: number;
+}): boolean {
+  const item = params.snapshot.lineItems?.[0];
+  if (!item) return false;
+  const snapshotZip = params.snapshot.originLocation?.address?.postalCode;
+  if (!snapshotZip || !params.listing.locationZip) return false;
+  try {
+    if (normalizeUsZip(snapshotZip) !== normalizeUsZip(params.listing.locationZip)) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  const sameNumber = (left: number | null | undefined, right: number | null | undefined) =>
+    Number(left) === Number(right);
+  return (
+    String(item.freightClass ?? "") === String(params.listing.freightClass ?? "") &&
+    item.units === params.palletsNeeded &&
+    sameNumber(item.totalWeight, Number(params.listing.palletWeight) * params.palletsNeeded) &&
+    sameNumber(item.length, params.listing.palletLength) &&
+    sameNumber(item.width, params.listing.palletWidth) &&
+    sameNumber(item.height, params.listing.palletHeight)
+  );
+}
+
 export function freightFundingMatchesQuotedTerms(params: {
   applied: FreightFundingDecision;
   quoted: FreightFundingTerms;
@@ -979,5 +1024,13 @@ export function getShipmentIdentifier(
   identifiers: ShipmentIdentifier[] | null | undefined,
   type: ShipmentIdentifier["type"],
 ): string | undefined {
-  return identifiers?.find((identifier) => identifier.type === type)?.value ?? undefined;
+  const matches = (identifiers ?? []).filter((identifier) => {
+    if (identifier.type !== type) return false;
+    return typeof identifier.value === "string" && identifier.value.trim().length > 0;
+  });
+  return (
+    matches.find((identifier) => identifier.primaryForType)?.value ??
+    matches[0]?.value ??
+    undefined
+  );
 }

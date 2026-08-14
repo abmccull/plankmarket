@@ -1,175 +1,55 @@
-# PlankMarket Pro Tier — Remaining UI Gaps
+# Audit-driven production fixes
 
-**Date:** March 9, 2026
-**Status:** Ready to Execute
-**Scope:** 6 must-have + 5 nice-to-have UI pieces
+**Date:** 2026-08-13  
+**Sources:** `commercial-truth-audit`, `money-path-audit`, `shipping-path-audit`, `ship-gate`  
+**Constraint:** Code/copy/CI only. No live deploy, remote SQL, or carrier booking.
 
----
+## Wave A — Commercial truth (copy)
 
-## Batch A: Limit Warnings & Feature Gates (Must-Have)
+- [x] Pricing: withhold conditions; remove unpublished volume fee discount
+- [x] FAQ: payment hold + not escrow; withhold conditions; split 48h inspection
+- [x] Terms: not a regulated escrow service; withhold conditions
+- [x] Seller payments: platform charge + later Connect transfer; 2.9% + $0.30
 
-### A.1 — Listing limit warning on creation page
-**File:** `src/app/(dashboard)/seller/listings/new/page.tsx`
-**Issue:** Free users can start the 6-step wizard, fill everything out, then get a raw tRPC error on submit when they hit 10 active listings.
-**Fix:** Query active listing count on page load. Show a banner at the top:
-- "You have 8/10 active listings on the free plan" (amber warning)
-- "You've reached the 10-listing limit. Upgrade to Pro for unlimited." (red block + CTA)
-- Use existing `useProStatus` hook + a count query from `listing.getMyStats` or similar
-- When at limit, disable the form submit button
-- [ ] Add listing count query
-- [ ] Show limit banner with count
-- [ ] Disable submit at limit with upgrade CTA
+## Wave B — Shared payout evidence
 
-### A.2 — Saved search limit warning
-**File:** `src/components/saved-searches/edit-saved-search-dialog.tsx` (or the parent list page)
-**Issue:** Free users can save 3 searches, then get a raw error on the 4th.
-**Fix:** On the saved searches page, show current count vs limit:
-- "3/3 saved searches used — Upgrade to Pro for unlimited"
-- Disable "Save Search" button when at limit
-- Use `useProStatus` + count from the search list query
-- [ ] Show count/limit indicator on saved search list page
-- [ ] Disable save button at limit with upgrade CTA
+- [x] Accept pickup proof on `exception` (and keep dry-run fail-closed)
+- [x] Seller-favor dispute: pass `orderShippedAt`; use actual pickup not scheduled window
 
-### A.3 — Bulk upload page Pro gate
-**File:** `src/app/(dashboard)/seller/listings/bulk-upload/page.tsx`
-**Issue:** Page is freely accessible but bulk upload is a Pro feature.
-**Fix:** Wrap page content in `<ProGate feature="Bulk CSV Import">`. Free users see the upgrade prompt. This is a one-line wrapper.
-- [ ] Import ProGate and wrap page content
+## Wave C — Money path
 
-### A.4 — Followups page Pro gate
-**File:** `src/app/(dashboard)/seller/followups/page.tsx`
-**Issue:** CRM followups are Pro-only at the backend but the page is accessible.
-**Fix:** Wrap in `<ProGate feature="Buyer CRM">`. Same pattern as agent pages.
-- [ ] Import ProGate and wrap page content
+- [x] Expire cron: do not refund a live succeeded PI during webhook/tax lag; apply or skip
+- [x] `payment_intent.succeeded`: retrieve latest_charge; refuse confirm if refunded
+- [x] `createPaymentIntent`: apply already-succeeded PI locally
+- [x] Dispute won: restore `held` and requeue payout when transfer missing/reversed
+- [x] First-payout: do not refuse create after a completed empty transfer_group scan
+- [x] Refunds: reverse Connect transfer before refunding a released order; do not persist refundedAmount if reversal fails
 
-### A.5 — Sidebar navigation for Agent & Subscription
-**File:** `src/components/layout/sidebar.tsx`
-**Issue:** Agent settings and subscription management are only reachable by direct URL. No sidebar links.
-**Fix:** Add to seller sidebar items:
-- Under existing items, add a "Pro" section divider:
-  - "AI Agent" → `/settings/agent` (with sparkle/bot icon)
-  - "Subscription" → `/settings/subscription` (with credit-card icon)
-- Conditionally show "AI Agent" with a Pro badge or lock icon for free users
-- [ ] Add AI Agent link to seller sidebar
-- [ ] Add Subscription link to seller sidebar
-- [ ] Show Pro badge/lock indicator on agent link
+## Wave D — Shipping path
 
-### A.6 — Promotion credit in boost modal
-**File:** `src/components/promotions/boost-modal.tsx`
-**Issue:** Pro users have promotion credits but the boost purchase flow doesn't show or apply them.
-**Fix:** In the payment step of the boost modal:
-- Query available credit via `useProStatus` hook (already returns `availableCredit`)
-- Show credit balance: "You have $12.50 in promotion credits"
-- Show price breakdown: "$79.00 - $12.50 credit = $66.50 due"
-- Backend already handles credit deduction in `promotion.purchase` — just need to display it
-- If credits fully cover the price, show "Covered by credits — no payment needed"
-- [ ] Add credit balance display to payment step
-- [ ] Show price breakdown with credit applied
-- [ ] Update confirmation text when fully covered by credits
+- [x] Origin ZIP/state match; fail closed if seller legal ZIP != warehouse ZIP
+- [x] Consume: reject physical freight drift vs snapshot
+- [x] Prefer primary/non-null shipment identifiers
+- [x] Empty getDocuments URL is not a permanent failure
+- [x] Reject example.com document hosts in env
+- [x] Tracking: include claimed pending and keep delivered in the poller
+- [x] Dispatch: claimed+404 is retryable, not a silent unpaid stick
 
----
+## Wave E — Ship-gate repo evidence
 
-## Batch B: CRM UI (Nice-to-Have, High Value)
+- [x] Align production env tax preflight with disabled tax policy
+- [x] Record last-good deployment before promote
+- [x] Backup/restore operator runbook
+- [x] Document least-privilege DB role
 
-### B.1 — Buyer Tags & Notes UI
-**Context:** The CRM router (`src/server/routers/crm.ts`) has full CRUD for tags and notes per buyer, but no frontend exists.
-**Where:** Add inline CRM tools on buyer-facing surfaces — offer detail pages, conversation/message threads, and order detail pages.
-**Implementation:**
-- Create `src/components/crm/buyer-tags.tsx` — tag pills with add/remove, auto-complete from seller's existing tags
-- Create `src/components/crm/buyer-notes.tsx` — collapsible notes panel with add/edit/delete
-- Embed these components in:
-  - `src/app/(dashboard)/seller/offers/[offerId]/page.tsx` (or similar offer detail)
-  - `src/app/(dashboard)/seller/messages/[conversationId]/page.tsx` (or message thread)
-  - `src/app/(dashboard)/seller/orders/[id]/page.tsx`
-- Gate with `useProStatus` — show teaser + upgrade CTA for free users
-- [x] Create BuyerTags component
-- [x] Create BuyerNotes component
-- [x] Embed in offer detail page
-- [x] Embed in message thread page
-- [x] Embed in order detail page
+## Review
 
-### B.2 — CRM Leads Dashboard
-**Context:** The CRM router has `exportLeadsCsv` which aggregates buyer data. Build a dedicated CRM page.
-**File:** New page at `src/app/(dashboard)/seller/crm/page.tsx`
-**Implementation:**
-- Table of all buyers the seller has interacted with (from offers, orders, messages)
-- Columns: Buyer name, tags, note count, last interaction, total orders, total revenue
-- Filters: by tag, by interaction type
-- "Export CSV" button calling `crm.exportLeadsCsv`
-- Inline tag/note editing per row
-- Add "Buyer CRM" link to seller sidebar
-- Wrap in ProGate
-- [x] Create CRM leads page (hub/dashboard approach)
-- [x] Add buyer interaction table (quick links + how-it-works)
-- [x] Add tag/note inline editing (via embedded CRM components)
-- [x] Add CSV export button
-- [x] Add sidebar link
-- [x] Gate with ProGate
+Implemented confirmed code/copy fixes from all four audits. Typecheck passed. Targeted vitest suites passed (refund, listing freshness, payout eligibility, shipping workflow, commercial copy, stripe transfer/charge, documents, tracking, dispatch, stripe webhook).
 
----
+Still operator/live: GitHub environment protection, production PITR drill, Vercel promote of current HEAD, live Stripe/Priority1 certification, real inventory. Warehouse street is still the seller legal address when ZIPs match; a dedicated listing street field was not added this pass.
 
-## Batch C: Market Intelligence (Nice-to-Have)
+## Out of scope this pass
 
-### C.1 — Market Intelligence Page
-**Context:** Listed as a Pro feature on the pricing page but no page exists. The seller analytics page already has comprehensive data (revenue, inventory, offers, reviews). Market intelligence = category-level insights beyond the seller's own data.
-**File:** New page at `src/app/(dashboard)/seller/market/page.tsx`
-**Implementation — MVP for beta:**
-- **Price benchmarks:** Average $/sqft for the seller's material types vs their pricing
-- **Demand signals:** How many saved searches/requests exist for their material types
-- **Supply overview:** How many active listings exist in their categories
-- **Trending:** Material types with most new listings or most saved searches in last 30 days
-- Data source: Aggregate queries across listings, saved searches, buyer requests tables
-- New tRPC router or extend analytics router with market-level queries
-- Add "Market Intel" link to seller sidebar (Pro badge)
-- Wrap in ProGate
-- [ ] Create market intelligence tRPC procedures
-- [ ] Create market intelligence page
-- [ ] Add price benchmark section
-- [ ] Add demand signals section
-- [ ] Add supply overview section
-- [ ] Add sidebar link
-
----
-
-## Batch D: Profile & Polish (Nice-to-Have)
-
-### D.1 — Pro badge on seller profiles
-**File:** `src/app/(marketplace)/sellers/[id]/page.tsx`
-**Issue:** Public profiles don't indicate Pro status.
-**Fix:** Query seller's proStatus in `auth.getPublicProfile` (add `proStatus` column). Display `<ProBadge />` next to seller name if Pro.
-- [ ] Add proStatus to getPublicProfile query
-- [ ] Display ProBadge on seller profile header
-
-### D.2 — Pro upsell on seller dashboard
-**File:** `src/app/(dashboard)/seller/page.tsx`
-**Issue:** Main seller hub has no Pro awareness. Good place for subtle upsell.
-**Fix:** For free users, add a compact banner below the KPI stats:
-- "Unlock AI Agent, Market Intelligence, and unlimited listings with Pro — $29/mo"
-- Dismiss-able (store in localStorage)
-- Don't show for Pro users
-- [ ] Add dismissible Pro upsell banner for free users
-
----
-
-## Execution Plan
-
-**Phase 1 (Parallel — 2 agents):**
-- Agent A (Frontend): Batch A — all 6 must-have gates and warnings
-- Agent B (Frontend): Batch B — CRM tags/notes components + leads page
-
-**Phase 2 (Parallel — 2 agents):**
-- Agent C (Full-stack): Batch C — Market intelligence (backend queries + frontend page)
-- Agent D (Frontend): Batch D — Profile badge + dashboard upsell
-
-**Phase 3:** Build verification
-
----
-
-## Review Checklist
-- [ ] All must-have gates implemented
-- [ ] Sidebar navigation complete
-- [ ] Promotion credits visible in purchase flow
-- [ ] CRM UI functional
-- [ ] Market intelligence page live
-- [ ] Build passes
-- [ ] No new lint errors
+- Live Vercel promote, GitHub environment protection, production PITR drill
+- Changing Stripe tax mode
+- Replacing Priority1 with shipper-direct rates

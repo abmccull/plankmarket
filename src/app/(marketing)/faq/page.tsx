@@ -62,7 +62,7 @@ const SELLER_FAQS = [
   {
     question: "When do payouts happen?",
     answer:
-      "After carrier pickup is confirmed and the configured delay passes, PlankMarket initiates the seller transfer through Stripe Connect. Bank availability depends on Stripe and the connected account's payout schedule. Buyers have a 48-hour post-delivery window to report damage or shortages. The seller dashboard shows transfer status and history.",
+      "Stripe processes a platform charge at checkout. After live carrier pickup is confirmed and the configured delay passes, PlankMarket initiates a separate Stripe Connect transfer if payment, shipment, refund, and dispute checks still pass. The transfer is withheld when live pickup evidence is missing, the shipment is a dry-run, the charge is refunded or disputed, or a marketplace dispute is open. Bank availability depends on Stripe and the connected account's payout schedule. PlankMarket is not a regulated escrow service. The 48-hour post-delivery claim window is separate from payout timing. The seller dashboard shows transfer status and history.",
   },
 ];
 

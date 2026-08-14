@@ -16,6 +16,15 @@ const PICKUP_EVIDENCE_STATUSES = new Set([
   "delivered",
 ]);
 
+/** Header statuses that may still carry live pickup proof. */
+const PICKUP_ELIGIBLE_SHIPMENT_STATUSES = new Set([
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+  "exception",
+  "dispatched",
+]);
+
 export function isProviderConfirmedPickup(
   data: Partial<ProviderConfirmedPickupEventData>,
 ): data is ProviderConfirmedPickupEventData {
@@ -61,9 +70,7 @@ export function hasPersistedProviderPickupEvidence(params: {
     params.shipmentQuoteId !== params.selectedQuoteId ||
     !params.priority1ShipmentId ||
     params.shipmentIsDryRun ||
-    !["in_transit", "out_for_delivery", "delivered"].includes(
-      params.shipmentStatus,
-    )
+    !PICKUP_ELIGIBLE_SHIPMENT_STATUSES.has(params.shipmentStatus)
   ) {
     return false;
   }

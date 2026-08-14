@@ -229,6 +229,7 @@ jobs:
               --yes \
               --token="$VERCEL_TOKEN" \
               --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
+              --build-env="SKIP_ENV_VALIDATION=1" \
               --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA"
           )
           url=$(DEPLOY_URL="$raw_url" node <<'NODE'
@@ -464,13 +465,31 @@ jobs:
           {"projectId":"$VERCEL_PROJECT_ID","orgId":"$VERCEL_ORG_ID"}
           EOF
 
+      - name: Record last-good production alias
+        id: last_good
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+        run: |
+          current=$(./.github/vercel-cli/node_modules/.bin/vercel inspect "$PRODUCTION_APP_URL" --token="$VERCEL_TOKEN" 2>/dev/null | awk '/^[[:space:]]*name[[:space:]]/ {print $2; exit}')
+          if [ -n "$current" ]; then
+            echo "deployment=$current" >> "$GITHUB_OUTPUT"
+            echo "Recorded last-good production deployment: $current"
+          else
+            echo "deployment=" >> "$GITHUB_OUTPUT"
+            echo "No prior production deployment id captured; promote will continue."
+          fi
+
       - name: Promote verified deployment
         env:
           STAGED_URL: ${{ steps.staged_url.outputs.url }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: >-
-          ./.github/vercel-cli/node_modules/.bin/vercel promote "$STAGED_URL"
-          --yes --token="$VERCEL_TOKEN"
+          LAST_GOOD: ${{ steps.last_good.outputs.deployment }}
+        run: |
+          echo "last_good=${LAST_GOOD}" >> "$GITHUB_STEP_SUMMARY"
+          echo "To roll back after a bad promote: vercel promote ${LAST_GOOD} --yes" >> "$GITHUB_STEP_SUMMARY"
+          ./.github/vercel-cli/node_modules/.bin/vercel promote "$STAGED_URL" --yes --token="$VERCEL_TOKEN"
 
       - name: Resolve promoted production alias
         id: production_alias

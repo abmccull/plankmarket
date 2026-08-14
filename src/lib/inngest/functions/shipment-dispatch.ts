@@ -782,8 +782,8 @@ export async function dispatchShipmentForOrder(orderId: string) {
           caseError,
         });
       });
-      throw new ShippingBookingReviewError(
-        "MANUAL_REVIEW_REQUIRED: a previous Priority1 dispatch attempt could not be reconciled; refusing a duplicate booking",
+      throw new Error(
+        "Previous Priority1 dispatch attempt is still unreconciled; retrying status before refusing a duplicate booking",
       );
     }
 

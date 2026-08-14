@@ -115,6 +115,29 @@ describe("hasPersistedProviderPickupEvidence", () => {
     ).toBe(false);
   });
 
+  it("accepts exception or dispatched headers when pickup proof already exists", () => {
+    expect(
+      hasPersistedProviderPickupEvidence({
+        ...validEvidence,
+        shipmentStatus: "exception",
+      }),
+    ).toBe(true);
+    expect(
+      hasPersistedProviderPickupEvidence({
+        ...validEvidence,
+        shipmentStatus: "dispatched",
+      }),
+    ).toBe(true);
+    expect(
+      hasPersistedProviderPickupEvidence({
+        ...validEvidence,
+        shipmentStatus: "exception",
+        shipmentTrackingEvents: [],
+        orderShippedAt: new Date("2026-07-11T18:00:00.000Z"),
+      }),
+    ).toBe(true);
+  });
+
   it("rejects dry-run, pre-pickup, missing-ID, quote-mismatch, and proofless rows", () => {
     expect(
       hasPersistedProviderPickupEvidence({
@@ -125,7 +148,15 @@ describe("hasPersistedProviderPickupEvidence", () => {
     expect(
       hasPersistedProviderPickupEvidence({
         ...validEvidence,
+        shipmentStatus: "pending",
+      }),
+    ).toBe(false);
+    expect(
+      hasPersistedProviderPickupEvidence({
+        ...validEvidence,
         shipmentStatus: "dispatched",
+        shipmentTrackingEvents: [],
+        orderShippedAt: null,
       }),
     ).toBe(false);
     expect(
