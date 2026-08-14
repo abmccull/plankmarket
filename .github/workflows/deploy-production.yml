@@ -472,7 +472,15 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           PRODUCTION_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |
-          current=$(./.github/vercel-cli/node_modules/.bin/vercel inspect "$PRODUCTION_APP_URL" --token="$VERCEL_TOKEN" 2>/dev/null | awk '/^[[:space:]]*name[[:space:]]/ {print $2; exit}')
+          if [ -z "$PRODUCTION_APP_URL" ]; then
+            echo "deployment=" >> "$GITHUB_OUTPUT"
+            echo "PRODUCTION_APP_URL is unset; skipping last-good capture."
+            exit 0
+          fi
+          current=$(
+            ./.github/vercel-cli/node_modules/.bin/vercel inspect "$PRODUCTION_APP_URL" --token="$VERCEL_TOKEN" 2>/dev/null |
+              awk '/^[[:space:]]*name[[:space:]]/ {print $2; exit}'
+          ) || true
           if [ -n "$current" ]; then
             echo "deployment=$current" >> "$GITHUB_OUTPUT"
             echo "Recorded last-good production deployment: $current"
