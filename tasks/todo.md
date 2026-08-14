@@ -46,10 +46,17 @@
 
 Implemented confirmed code/copy fixes from all four audits. Typecheck passed. Targeted vitest suites passed (refund, listing freshness, payout eligibility, shipping workflow, commercial copy, stripe transfer/charge, documents, tracking, dispatch, stripe webhook).
 
-Still operator/live: GitHub environment protection, production PITR drill, Vercel promote of current HEAD, live Stripe/Priority1 certification, real inventory. Warehouse street is still the seller legal address when ZIPs match; a dedicated listing street field was not added this pass.
+### Live-ops 2026-08-14
+
+- GitHub `main`: force-push and delete blocked, conversation resolution required, `enforce_admins=true`.
+- GitHub `Production` environment: protected branches only, `can_admins_bypass=false`.
+- Backup drill: schema dump of `dmznwutpmqalodcjxcjf` restored locally to 44 public tables. WAL archiver active (`archived_count=2998`, last archive 2026-08-14, 0 failures). Supabase management-API PITR restore still unauthorized. Sibling project Plank & Go (`njudrxnaopmxubdlpllw`) has PITR off per Supabase email.
+- Stripe live: platform `acct_1SzrQOIaMF8dNELi`, webhook `we_1T2eFpIaMF8dNELiv2ATrNXd` enabled at `https://www.plankmarket.com/api/webhooks/stripe`, succeeded live PI + Express Connect destination.
+- Priority1 live: quote batch `45110272` returned 12 rates; status/cancel authenticated. No paid dispatch booked.
+- Promote blocked: staged `bd11470` `/api/health` is 200, `/api/health/ready` 500s on missing production `RESEND_API_KEY`. Live www still the March deploy (`/api/health` 404).
 
 ## Out of scope this pass
 
-- Live Vercel promote, GitHub environment protection, production PITR drill
 - Changing Stripe tax mode
 - Replacing Priority1 with shipper-direct rates
+- Paid Priority1 dispatch/cancel of a real shipment
