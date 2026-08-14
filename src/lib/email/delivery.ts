@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { CreateEmailOptions } from "resend";
+import { env } from "@/env";
 import { resend } from "./client";
 import {
   assertValidEmailIdempotencyKey,
@@ -306,6 +307,12 @@ export async function sendEmailOrThrow(
 
   let acceptedProviderMessageId: string | null = null;
   try {
+    if (!env.RESEND_API_KEY) {
+      throw new EmailDeliveryError(
+        "RESEND_API_KEY is not configured; transactional email is disabled",
+        { code: "resend_not_configured" },
+      );
+    }
     const providerResponse = await resend.emails.send(
       {
         ...input.message,

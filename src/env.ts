@@ -39,7 +39,7 @@ export const env = createEnv({
       .regex(/^txcd_\d+$/)
       .optional(),
     UPLOADTHING_TOKEN: z.string().min(1),
-    RESEND_API_KEY: productionRequired(z.string().startsWith("re_")),
+    RESEND_API_KEY: z.string().startsWith("re_").optional(),
     RESEND_WEBHOOK_SECRET: productionRequired(
       z.string().startsWith("whsec_"),
     ),
