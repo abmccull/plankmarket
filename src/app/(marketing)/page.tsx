@@ -470,7 +470,7 @@ export default function HomePage() {
                   <CardTitle className="font-display text-base">
                     {persona.title}
                   </CardTitle>
-                  <CardDescription className="text-sm leading-relaxed">
+                  <CardDescription className="text-sm leading-relaxed text-foreground/80">
                     {persona.description}
                   </CardDescription>
                 </CardHeader>
