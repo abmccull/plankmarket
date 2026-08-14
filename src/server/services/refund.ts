@@ -978,7 +978,7 @@ export async function processOrderRefund({
     // Resolve and validate a provider-committed transfer while the order row is
     // still locked. A payout transaction can roll back after Stripe creates the
     // transfer, leaving no local transfer ID even though seller funds moved.
-    let resolvedTransfer =
+    const resolvedTransfer =
       !isFullRefund ||
       order.stripeTransferId ||
       order.escrowStatus === "released"
