@@ -1020,6 +1020,13 @@ export function shouldEmitProviderPickupEvent(params: {
   );
 }
 
+export function requireLiveDispatchShipmentId(id: unknown): number {
+  if (typeof id !== "number" || !Number.isInteger(id) || id <= 0) {
+    throw new Error("Priority1 dispatch response did not include a shipment ID");
+  }
+  return id;
+}
+
 export function getShipmentIdentifier(
   identifiers: ShipmentIdentifier[] | null | undefined,
   type: ShipmentIdentifier["type"],

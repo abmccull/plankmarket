@@ -187,6 +187,14 @@ vi.mock("@/server/services/shipping-workflow", () => {
     buildDispatchRequestForOrder: mocks.buildDispatchRequestForOrder,
     getOrderDispatchIneligibilityReason: mocks.getOrderDispatchIneligibilityReason,
     getShipmentIdentifier: mocks.getShipmentIdentifier,
+    requireLiveDispatchShipmentId: (id: unknown) => {
+      if (typeof id !== "number" || !Number.isInteger(id) || id <= 0) {
+        throw new Error(
+          "Priority1 dispatch response did not include a shipment ID",
+        );
+      }
+      return id;
+    },
     mapPriority1ShipmentStatus: mocks.mapPriority1ShipmentStatus,
     mergeTrackingEvents: mocks.mergeTrackingEvents,
     requireShippingBookingSnapshotForOrder:

@@ -31,6 +31,7 @@ import {
   getOrderDispatchIneligibilityReason,
   getShipmentIdentifier,
   mapPriority1ShipmentStatus,
+  requireLiveDispatchShipmentId,
   mergeTrackingEvents,
   requireShippingBookingSnapshotForOrder,
   ShippingBookingReviewError,
@@ -869,10 +870,8 @@ export async function dispatchShipmentForOrder(orderId: string) {
       throw dispatchError;
     }
 
-    if (!Number.isInteger(dispatchResult.id) || dispatchResult.id <= 0) {
-      throw new Error("Priority1 dispatch response did not include a shipment ID");
-    }
-    shipment.priority1ShipmentId = String(dispatchResult.id);
+    const liveShipmentId = requireLiveDispatchShipmentId(dispatchResult.id);
+    shipment.priority1ShipmentId = String(liveShipmentId);
     shipment.isDryRun = dispatchClaim.dryRun;
 
     const finalized = await finalizeDispatchedShipment({

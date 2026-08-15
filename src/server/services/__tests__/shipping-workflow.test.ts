@@ -11,6 +11,7 @@ import {
   freightSnapshotMatchesListing,
   getShipmentIdentifier,
   getShippingBookingSnapshotKeyByToken,
+  requireLiveDispatchShipmentId,
   isQuoteBookable,
   mapPriority1ShipmentStatus,
   mergeTrackingEvents,
@@ -306,6 +307,19 @@ describe("shipping-workflow", () => {
     const beforeHoliday = new Date("2026-07-02T17:00:00Z");
     const pickupDate = getNextBusinessDay(beforeHoliday);
     expect(formatPickupDate(pickupDate)).toBe("2026-07-06");
+  });
+
+  it("refuses to treat a missing or non-positive Priority1 id as a live booking", () => {
+    expect(() => requireLiveDispatchShipmentId(undefined)).toThrow(
+      /did not include a shipment ID/,
+    );
+    expect(() => requireLiveDispatchShipmentId(0)).toThrow(
+      /did not include a shipment ID/,
+    );
+    expect(() => requireLiveDispatchShipmentId("45110272")).toThrow(
+      /did not include a shipment ID/,
+    );
+    expect(requireLiveDispatchShipmentId(45110272)).toBe(45110272);
   });
 
   it("prefers the primary non-null shipment identifier", () => {
