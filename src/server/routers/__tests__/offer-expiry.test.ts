@@ -95,8 +95,8 @@ function createFreshListing() {
     floorPrice: null,
     territoryMode: "unrestricted" as const,
     allowedDestinationStates: [],
-    confirmationDueAt: new Date("2026-08-15T00:00:00.000Z"),
-    lastConfirmedAt: new Date("2026-07-29T00:00:00.000Z"),
+    confirmationDueAt: new Date("2099-08-15T00:00:00.000Z"),
+    lastConfirmedAt: new Date("2099-07-29T00:00:00.000Z"),
   };
 }
 

@@ -99,8 +99,8 @@ function createActiveListing(overrides: Record<string, unknown> = {}) {
     boxesPerPallet: 30,
     territoryMode: "unrestricted" as const,
     allowedDestinationStates: [],
-    confirmationDueAt: new Date("2026-08-15T12:00:00.000Z"),
-    lastConfirmedAt: new Date("2026-07-29T12:00:00.000Z"),
+    confirmationDueAt: new Date("2099-08-15T12:00:00.000Z"),
+    lastConfirmedAt: new Date("2099-07-29T12:00:00.000Z"),
     ...overrides,
   };
 }
