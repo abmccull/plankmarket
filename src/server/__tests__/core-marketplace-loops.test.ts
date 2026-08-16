@@ -107,7 +107,12 @@ function authedContext(params: {
     user: sessionUser(params.role),
     supabase: params.supabase ?? {},
     clientIp: "127.0.0.1",
-  } as Parameters<typeof createCaller>[0];
+    getAuthAssurance: async () => ({
+      currentLevel: "aal1",
+      nextLevel: "aal1",
+      recentVerificationSatisfied: false,
+    }),
+  } as unknown as Parameters<typeof createCaller>[0];
 }
 
 describe("core marketplace loops", () => {
