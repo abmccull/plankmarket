@@ -6,6 +6,10 @@ import { createServerCaller } from "@/lib/trpc/server";
 import { ListingCard } from "@/components/search/listing-card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  buildFlooringHubCanonicalPath,
+  parseFlooringHubPage,
+} from "@/lib/marketplace/flooring-hub-canonical";
 
 export const revalidate = 1800; // 30 minutes
 
@@ -27,34 +31,75 @@ const materialDescriptions: Record<string, string> = {
   tile: "Shop surplus tile flooring inventory with visible seller verification. Porcelain, ceramic, and stone tile listings depend on seller territories and current market coverage.",
 };
 
-const validMaterialTypes = ["hardwood", "engineered", "laminate", "vinyl_lvp", "bamboo", "tile"];
+const validMaterialTypes = [
+  "hardwood",
+  "engineered",
+  "laminate",
+  "vinyl_lvp",
+  "bamboo",
+  "tile",
+] as const;
+
+type ValidMaterialType = (typeof validMaterialTypes)[number];
+
+const FLOORING_HUB_PAGE_SIZE = 24;
+
+function isValidMaterialType(value: string): value is ValidMaterialType {
+  return (validMaterialTypes as readonly string[]).includes(value);
+}
 
 interface MaterialTypePageProps {
   params: Promise<{ materialType: string }>;
   searchParams: Promise<{ page?: string }>;
 }
 
-export async function generateMetadata(props: MaterialTypePageProps): Promise<Metadata> {
+export async function generateMetadata(
+  props: MaterialTypePageProps,
+): Promise<Metadata> {
   const params = await props.params;
+  const searchParams = await props.searchParams;
   const { materialType } = params;
 
-  if (!validMaterialTypes.includes(materialType)) {
+  if (!isValidMaterialType(materialType)) {
     return {
       title: "Category Not Found",
     };
   }
 
+  const page = parseFlooringHubPage(searchParams.page);
   const label = materialLabels[materialType];
   const description = materialDescriptions[materialType];
 
+  let hasListingsOnPage = page <= 1;
+  if (page >= 2) {
+    const trpc = await createServerCaller();
+    const result = await trpc.listing.list({
+      materialType: [materialType],
+      page,
+      limit: FLOORING_HUB_PAGE_SIZE,
+      sort: "date_newest",
+    });
+    hasListingsOnPage = result.items.length > 0;
+  }
+
+  const canonical = buildFlooringHubCanonicalPath({
+    materialType,
+    page,
+    hasListingsOnPage,
+  });
+
+  const titleBase = `Surplus ${label} Flooring for Sale`;
+  const title =
+    page >= 2 && hasListingsOnPage ? `${titleBase} | Page ${page}` : titleBase;
+
   return {
-    title: `Surplus ${label} Flooring for Sale`,
+    title,
     description,
     alternates: {
-      canonical: `/flooring/${materialType}`,
+      canonical,
     },
     openGraph: {
-      title: `Surplus ${label} Flooring for Sale | PlankMarket`,
+      title: `${titleBase} | PlankMarket`,
       description,
       type: "website",
     },
@@ -67,17 +112,17 @@ export default async function MaterialTypePage(props: MaterialTypePageProps) {
   const { materialType } = params;
 
   // Validate material type
-  if (!validMaterialTypes.includes(materialType)) {
+  if (!isValidMaterialType(materialType)) {
     notFound();
   }
 
-  const page = parseInt(searchParams.page || "1", 10);
-  const limit = 24;
+  const page = parseFlooringHubPage(searchParams.page);
+  const limit = FLOORING_HUB_PAGE_SIZE;
 
   // Fetch listings server-side
   const trpc = await createServerCaller();
   const result = await trpc.listing.list({
-    materialType: [materialType as "hardwood" | "engineered" | "laminate" | "vinyl_lvp" | "bamboo" | "tile"],
+    materialType: [materialType],
     page,
     limit,
     sort: "date_newest",
