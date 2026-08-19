@@ -50,6 +50,9 @@ export async function generateMetadata(props: MaterialTypePageProps): Promise<Me
   return {
     title: `Surplus ${label} Flooring for Sale`,
     description,
+    alternates: {
+      canonical: `/flooring/${materialType}`,
+    },
     openGraph: {
       title: `Surplus ${label} Flooring for Sale | PlankMarket`,
       description,
@@ -82,7 +85,7 @@ export default async function MaterialTypePage(props: MaterialTypePageProps) {
 
   const label = materialLabels[materialType];
   const description = materialDescriptions[materialType];
-  const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://plankmarket.com";
+  const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.plankmarket.com";
 
   return (
     <>
