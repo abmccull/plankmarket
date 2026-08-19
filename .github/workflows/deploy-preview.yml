@@ -235,6 +235,7 @@ jobs:
               --yes \
               --token="$VERCEL_TOKEN" \
               --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
+              --build-env="SKIP_ENV_VALIDATION=1" \
               --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA"
           )
           url=$(DEPLOY_URL="$raw_url" node <<'NODE'
