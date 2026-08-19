@@ -200,6 +200,7 @@ jobs:
       contents: read
     outputs:
       url: ${{ steps.deploy.outputs.url }}
+      ready_token: ${{ steps.deploy.outputs.ready_token }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
@@ -228,12 +229,11 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "${CRON_SECRET}" ]; then
-            echo "CRON_SECRET must be configured for the preview environment so readiness checks can authenticate." >&2
-            exit 1
-          fi
+          # Preview GitHub Environment does not provide CRON_SECRET. Mint an
+          # ephemeral token for this deployment so readiness can authenticate.
+          READY_TOKEN=$(openssl rand -hex 32)
+          echo "::add-mask::$READY_TOKEN"
           raw_url=$(
             .github/vercel-cli/node_modules/.bin/vercel deploy \
               --archive=tgz \
@@ -242,7 +242,7 @@ jobs:
               --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
               --build-env="SKIP_ENV_VALIDATION=1" \
               --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
-              --env="CRON_SECRET=$CRON_SECRET"
+              --env="CRON_SECRET=$READY_TOKEN"
           )
           url=$(DEPLOY_URL="$raw_url" node <<'NODE'
           const value = process.env.DEPLOY_URL?.trim();
@@ -272,6 +272,7 @@ jobs:
           NODE
           )
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+          printf 'ready_token=%s\n' "$READY_TOKEN" >> "$GITHUB_OUTPUT"
 
   verify_preview_liveness:
     name: Verify Preview Liveness
@@ -341,10 +342,14 @@ jobs:
       - name: Verify preview readiness and candidate fingerprint
         shell: bash
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_SECRET: ${{ needs.deploy.outputs.ready_token }}
           DEPLOY_URL: ${{ steps.deployment_url.outputs.url }}
           EXPECTED_BUILD_SHA: ${{ github.sha }}
         run: |
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "Missing ephemeral preview readiness token from deploy job." >&2
+            exit 1
+          fi
           curl -fsS --retry 5 --retry-all-errors \
             -H "authorization: Bearer $CRON_SECRET" \
             "$DEPLOY_URL/api/health/ready" \
