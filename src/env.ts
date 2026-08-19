@@ -2,10 +2,12 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 const isProduction = process.env.NODE_ENV === "production";
+// Vercel preview sets NODE_ENV=production but VERCEL_ENV=preview. Runtime-only
+// secrets are optional there (and in local/dev), matching env:check:preview.
 const isLiveProduction =
   isProduction && process.env.VERCEL_ENV !== "preview";
 const productionRequired = (schema: z.ZodString) =>
-  isProduction ? schema : schema.optional();
+  isLiveProduction ? schema : schema.optional();
 
 export const env = createEnv({
   server: {
@@ -47,7 +49,7 @@ export const env = createEnv({
     UPSTASH_REDIS_REST_URL: z.string().url(),
     UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
     INNGEST_EVENT_KEY: productionRequired(z.string().min(16)),
-    INNGEST_SIGNING_KEY: isProduction
+    INNGEST_SIGNING_KEY: isLiveProduction
       ? z.string().min(1)
       : z.string().min(1).optional(),
     ANTHROPIC_API_KEY: productionRequired(z.string().min(16)),
