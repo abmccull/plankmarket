@@ -381,8 +381,18 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Cache Playwright Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # Do not use --with-deps here. On this runner it runs apt against
+        # azure.archive.ubuntu.com and can hang until the 20m job timeout
+        # (run 32274042923), so smoke never starts. ubuntu-latest already
+        # ships the shared libraries needed for Playwright Chromium.
+        run: npx playwright install chromium
 
       - name: Run deployed public marketplace smoke
         env:
