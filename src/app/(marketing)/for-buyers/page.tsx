@@ -25,11 +25,14 @@ export const metadata: Metadata = {
   title: "For Buyers - Source Closeout Flooring",
   description:
     `Source closeout and surplus flooring with visible seller verification, detailed lot data, freight quotes, and a clear ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} shown before payment.`,
+  alternates: {
+    canonical: "/for-buyers",
+  },
   openGraph: {
     title: "Source closeout flooring with less guesswork",
     description:
       "Compare detailed surplus flooring lots, review seller verification, request freight quotes, and keep protected transaction actions on-platform.",
-    url: "https://plankmarket.com/for-buyers",
+    url: "/for-buyers",
   },
 };
 

@@ -229,13 +229,20 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
+          # Preview GitHub Environment does not provide CRON_SECRET. Mint an
+          # ephemeral token for this deployment so readiness can authenticate.
+          # Keep it in-job via GITHUB_ENV: masked job outputs are stripped by Actions.
+          READY_TOKEN=$(openssl rand -hex 32)
+          echo "::add-mask::$READY_TOKEN"
           raw_url=$(
             .github/vercel-cli/node_modules/.bin/vercel deploy \
               --archive=tgz \
               --yes \
               --token="$VERCEL_TOKEN" \
               --build-env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
-              --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA"
+              --build-env="SKIP_ENV_VALIDATION=1" \
+              --env="PLANKMARKET_BUILD_SHA=$GITHUB_SHA" \
+              --env="CRON_SECRET=$READY_TOKEN"
           )
           url=$(DEPLOY_URL="$raw_url" node <<'NODE'
           const value = process.env.DEPLOY_URL?.trim();
@@ -265,81 +272,32 @@ jobs:
           NODE
           )
           printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
+          {
+            echo "READY_TOKEN<<READY_TOKEN_EOF"
+            echo "$READY_TOKEN"
+            echo "READY_TOKEN_EOF"
+          } >> "$GITHUB_ENV"
 
-  verify_preview_liveness:
-    name: Verify Preview Liveness
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    env:
-      DEPLOY_URL: ${{ needs.deploy.outputs.url }}
-    steps:
       - name: Verify preview liveness
+        shell: bash
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: >-
           curl -fsS --retry 5 --retry-all-errors
           "$DEPLOY_URL/api/health"
 
-  verify_preview_readiness:
-    name: Verify Preview Readiness
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: preview
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 22.22.0
-
-      - name: Revalidate preview deployment URL
-        id: deployment_url
-        shell: bash
-        env:
-          CANDIDATE_URL: ${{ needs.deploy.outputs.url }}
-        run: |
-          url=$(node <<'NODE'
-          const value = process.env.CANDIDATE_URL?.trim();
-          let url;
-          try {
-            url = new URL(value);
-          } catch {
-            process.exit(1);
-          }
-          const isVercelDeployment =
-            url.hostname !== 'vercel.app' && url.hostname.endsWith('.vercel.app');
-          if (
-            url.protocol !== 'https:' ||
-            !isVercelDeployment ||
-            url.username ||
-            url.password ||
-            url.port ||
-            url.pathname !== '/' ||
-            url.search ||
-            url.hash
-          ) {
-            process.exit(1);
-          }
-          process.stdout.write(url.origin);
-          NODE
-          )
-          printf 'url=%s\n' "$url" >> "$GITHUB_OUTPUT"
-
       - name: Verify preview readiness and candidate fingerprint
         shell: bash
         env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          DEPLOY_URL: ${{ steps.deployment_url.outputs.url }}
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
           EXPECTED_BUILD_SHA: ${{ github.sha }}
         run: |
+          if [ -z "${READY_TOKEN:-}" ]; then
+            echo "Missing ephemeral preview readiness token." >&2
+            exit 1
+          fi
           curl -fsS --retry 5 --retry-all-errors \
-            -H "authorization: Bearer $CRON_SECRET" \
+            -H "authorization: Bearer $READY_TOKEN" \
             "$DEPLOY_URL/api/health/ready" \
             -o readiness.json
           node <<'NODE'
@@ -375,6 +333,29 @@ jobs:
           }
           NODE
 
+  verify_preview_liveness:
+    name: Verify Preview Liveness
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Confirm preview liveness verified during deploy
+        run: echo "Preview liveness was verified in the Deploy Preview job."
+
+  verify_preview_readiness:
+    name: Verify Preview Readiness
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Confirm preview readiness verified during deploy
+        run: echo "Preview readiness was verified in the Deploy Preview job."
   smoke_preview:
     name: Smoke Preview
     if: github.event.pull_request.head.repo.full_name == github.repository
@@ -400,8 +381,18 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Cache Playwright Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        # Do not use --with-deps here. On this runner it runs apt against
+        # azure.archive.ubuntu.com and can hang until the 20m job timeout
+        # (run 32274042923), so smoke never starts. ubuntu-latest already
+        # ships the shared libraries needed for Playwright Chromium.
+        run: npx playwright install chromium
 
       - name: Run deployed public marketplace smoke
         env:

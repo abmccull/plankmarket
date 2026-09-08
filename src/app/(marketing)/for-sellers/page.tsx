@@ -28,11 +28,14 @@ export const metadata: Metadata = {
   title: "For Sellers - Sell Surplus Flooring",
   description:
     `List closeout and surplus flooring with no listing fee. Sell to verified businesses with integrated offers, freight milestones, and a clear ${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} with projected seller transfer before acceptance.`,
+  alternates: {
+    canonical: "/for-sellers",
+  },
   openGraph: {
     title: "Turn surplus flooring into working capital",
     description:
       "Publish detailed inventory, reach verified buyers, and keep the order and freight trail in one marketplace.",
-    url: "https://plankmarket.com/for-sellers",
+    url: "/for-sellers",
   },
 };
 
