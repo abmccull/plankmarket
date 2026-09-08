@@ -38,6 +38,7 @@ describe("MobileNav", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseRouter.mockReturnValue({
+      bfcacheId: "mobile-nav-test",
       back: vi.fn(),
       forward: vi.fn(),
       push: vi.fn(),
