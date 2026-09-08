@@ -1,3 +1,8 @@
+import { findCheckoutReplay } from "@/server/services/checkout-idempotency";
+vi.mock("@/server/services/checkout-idempotency", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/services/checkout-idempotency")>(),
+  findCheckoutReplay: vi.fn(async () => undefined),
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.SKIP_ENV_VALIDATION = "1";
@@ -175,6 +180,7 @@ describe("order seller payout readiness", () => {
 
     await expect(
       caller.order.create({
+        requestId: "11111111-1111-4111-8111-111111111119",
         listingId: LISTING_ID,
         quantitySqFt: 200,
         shippingName: "Buyer Name",
@@ -250,6 +256,7 @@ describe("order seller payout readiness", () => {
 
     await expect(
       caller.order.createFromOffer({
+        requestId: "11111111-1111-4111-8111-111111111119",
         offerId: OFFER_ID,
         shippingName: "Buyer Name",
         shippingAddress: "123 Main St",
@@ -267,5 +274,24 @@ describe("order seller payout readiness", () => {
     expect(mocks.redisGet).not.toHaveBeenCalled();
     expect(mocks.redisEval).not.toHaveBeenCalled();
     expect(tx.insert).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("checkout response replay precedes mutable checkout guards", () => {
+  it.each(["create", "createFromOffer"] as const)("%s returns the original order before quote, offer, inventory or pending-limit checks", async (mode) => {
+    const previous = { id: "55555555-5555-4555-8555-555555555555", orderNumber: "PM-REPLAY", status: "pending", paymentStatus: "pending", totalPrice: 100, taxAmount: 0, taxStatus: "disabled", taxLiability: "none", taxJurisdictionSummary: [] };
+    vi.mocked(findCheckoutReplay).mockResolvedValueOnce(previous as unknown as Awaited<ReturnType<typeof findCheckoutReplay>>);
+    const tx = { execute: vi.fn(), select: vi.fn(), insert: vi.fn(), update: vi.fn() };
+    const db = { transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)) };
+    const caller = createCaller(createContext(db));
+    const input = { requestId: "11111111-1111-4111-8111-111111111119", listingId: LISTING_ID, offerId: OFFER_ID, quantitySqFt: 100,
+      shippingName: "Buyer Name", shippingAddress: "123 Main St", shippingCity: "Denver", shippingState: "CO", shippingZip: "80202", selectedQuoteToken: "already-consumed" };
+    await expect(caller.order[mode](input)).resolves.toMatchObject({ id: previous.id });
+    expect(findCheckoutReplay).toHaveBeenCalledWith(tx, BUYER_ID, input.requestId, expect.any(String));
+    expect(tx.select).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(mocks.redisGet).not.toHaveBeenCalled();
+    expect(mocks.redisEval).not.toHaveBeenCalled();
   });
 });

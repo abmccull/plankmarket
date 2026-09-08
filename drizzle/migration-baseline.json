@@ -36,7 +36,12 @@
     "0031_shipment_cancellation_queue.sql",
     "0032_media_deletion_claims.sql",
     "0033_security_privacy_and_tenancy.sql",
-    "0034_shipment_bol_number.sql"
+    "0034_shipment_bol_number.sql",
+    "0035_checkout_request_identity.sql",
+    "0036_private_verification_documents.sql",
+    "0037_listing_import_identity.sql",
+    "0038_seller_warehouses.sql",
+    "0039_product_specification_evidence.sql"
   ],
   "forwardMigrations": [
     "0014_auth_data_hardening.sql",
@@ -59,6 +64,11 @@
     "0031_shipment_cancellation_queue.sql",
     "0032_media_deletion_claims.sql",
     "0033_security_privacy_and_tenancy.sql",
-    "0034_shipment_bol_number.sql"
+    "0034_shipment_bol_number.sql",
+    "0035_checkout_request_identity.sql",
+    "0036_private_verification_documents.sql",
+    "0037_listing_import_identity.sql",
+    "0038_seller_warehouses.sql",
+    "0039_product_specification_evidence.sql"
   ]
 }

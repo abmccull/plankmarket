@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { ProductSpecificationFields } from "@/components/listings/product-specification-fields";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -169,7 +170,7 @@ const STEP_FIELDS: Record<number, (keyof ListingFormInput)[]> = {
 export default function CreateListingPage() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
+  const { saveError: draftSaveError, sellerId: draftSellerId, currentStep, formData, uploadedMediaIds, setStep, nextStep, prevStep, updateFormData, setMediaIds, reset } =
     useListingFormStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [demandContext, setDemandContext] =
@@ -194,6 +195,7 @@ export default function CreateListingPage() {
   const {
     register,
     handleSubmit,
+    reset: resetForm,
     setValue,
     watch,
     trigger,
@@ -202,6 +204,20 @@ export default function CreateListingPage() {
     resolver: zodResolver(listingFormSchema) as never,
     defaultValues: formData as Partial<ListingFormInput>,
   });
+
+  useEffect(() => {
+    useListingFormStore.getState().bindSeller(user?.id ?? null);
+    sellerDefaultsAppliedRef.current = false;
+    resetForm(useListingFormStore.getState().formData);
+  }, [user?.id, resetForm]);
+
+  useEffect(() => {
+    const subscription = watch((values) => {
+      const draft = useListingFormStore.getState();
+      if (user?.id && draft.sellerId === user.id) draft.updateFormData(values as Partial<ListingFormInput>);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, user?.id]);
 
   const watchedValues = watch();
   const rawListingSubtotal =
@@ -501,12 +517,13 @@ export default function CreateListingPage() {
     }
   };
 
-  if (requiresVerification) {
+  if (requiresVerification || draftSellerId !== (user?.id ?? null)) {
     return null;
   }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
+      {draftSaveError && <p role="alert" className="text-destructive">{draftSaveError}</p>}
       <div>
         <h1 className="text-3xl font-bold">Create New Listing</h1>
         <p className="text-muted-foreground mt-1">
@@ -683,14 +700,14 @@ export default function CreateListingPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Material Type *</Label>
+                  <Label htmlFor="listing-material-type">Material Type *</Label>
                   <Select
                     value={watchedValues.materialType}
                     onValueChange={(v) =>
                       setValue("materialType", v as ListingFormInput["materialType"], { shouldValidate: true })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-material-type">
                       <SelectValue placeholder="Select material" />
                     </SelectTrigger>
                     <SelectContent>
@@ -720,14 +737,14 @@ export default function CreateListingPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Finish</Label>
+                  <Label htmlFor="listing-finish">Finish</Label>
                   <Select
                     value={watchedValues.finish || ""}
                     onValueChange={(v) =>
                       setValue("finish", v as ListingFormInput["finish"])
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-finish">
                       <SelectValue placeholder="Select finish" />
                     </SelectTrigger>
                     <SelectContent>
@@ -741,14 +758,14 @@ export default function CreateListingPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Grade</Label>
+                  <Label htmlFor="listing-grade">Grade</Label>
                   <Select
                     value={watchedValues.grade || ""}
                     onValueChange={(v) =>
                       setValue("grade", v as ListingFormInput["grade"])
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-grade">
                       <SelectValue placeholder="Select grade" />
                     </SelectTrigger>
                     <SelectContent>
@@ -764,12 +781,12 @@ export default function CreateListingPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>Thickness</Label>
+                  <Label htmlFor="listing-thickness">Thickness</Label>
                   <Select
                     value={watchedValues.thickness ? String(watchedValues.thickness) : ""}
                     onValueChange={(v) => setValue("thickness", parseFloat(v))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-thickness">
                       <SelectValue placeholder="Select thickness" />
                     </SelectTrigger>
                     <SelectContent>
@@ -782,12 +799,12 @@ export default function CreateListingPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Width</Label>
+                  <Label htmlFor="listing-width">Width</Label>
                   <Select
                     value={watchedValues.width ? String(watchedValues.width) : ""}
                     onValueChange={(v) => setValue("width", parseFloat(v))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-width">
                       <SelectValue placeholder="Select width" />
                     </SelectTrigger>
                     <SelectContent>
@@ -811,15 +828,16 @@ export default function CreateListingPage() {
                 </div>
               </div>
 
+              <ProductSpecificationFields register={register} />
               {/* Wear Layer - shown for vinyl, engineered, laminate */}
               {getWearLayerOptionsForSingle(watchedValues.materialType).length > 0 && (
                 <div className="space-y-2">
-                  <Label>Wear Layer</Label>
+                  <Label htmlFor="listing-wear-layer">Wear Layer</Label>
                   <Select
                     value={watchedValues.wearLayer ? String(watchedValues.wearLayer) : ""}
                     onValueChange={(v) => setValue("wearLayer", parseFloat(v))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-wear-layer">
                       <SelectValue placeholder="Select wear layer" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1012,12 +1030,12 @@ export default function CreateListingPage() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Freight Class</Label>
+                  <Label htmlFor="listing-freight-class">Freight Class</Label>
                   <Select
                     value={watchedValues.freightClass || ""}
                     onValueChange={(v) => setValue("freightClass", v)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="listing-freight-class">
                       <SelectValue placeholder="Select freight class" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1519,14 +1537,14 @@ export default function CreateListingPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Condition *</Label>
+                <Label htmlFor="listing-condition">Condition *</Label>
                 <Select
                   value={watchedValues.condition}
                   onValueChange={(v) =>
                     setValue("condition", v as ListingFormInput["condition"], { shouldValidate: true })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="listing-condition">
                     <SelectValue placeholder="Select condition" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1545,14 +1563,14 @@ export default function CreateListingPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Reason Code</Label>
+                <Label htmlFor="listing-reason-code">Reason Code</Label>
                 <Select
                   value={watchedValues.reasonCode || ""}
                   onValueChange={(v) =>
                     setValue("reasonCode", v as ListingFormInput["reasonCode"])
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="listing-reason-code">
                     <SelectValue placeholder="Why is this being sold?" />
                   </SelectTrigger>
                   <SelectContent>

@@ -1,3 +1,20 @@
+// Origin persistence has dedicated ownership tests; retain the real snapshot validator here.
+vi.mock("@/server/services/warehouse-origin", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/services/warehouse-origin")>(),
+  loadWarehouseOrigin: vi.fn(async () => ({
+    identity: "fixture-origin", revision: "fixture-revision",
+    location: {
+      address: {addressLine1: "100 Seller Way", city: "Denver", state: "CO", postalCode: "80202", country: "US"},
+      contact: {companyName: "Seller Co", contactName: "Seller Rep", phoneNumber: "3035551212", email: "seller@example.com"},
+    },
+    pickupStart: "08:00", pickupEnd: "17:00", hasLoadingDock: true, hasForklift: false,
+    latitude: null, longitude: null, coordinateSource: "zip_centroid",
+  })),
+}));
+vi.mock("@/server/services/checkout-idempotency", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/services/checkout-idempotency")>(),
+  findCheckoutReplay: vi.fn(async () => undefined),
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.SKIP_ENV_VALIDATION = "1";
@@ -194,6 +211,8 @@ function createShippingArtifacts(params: {
     shippingPrice: 500,
     transitDays: 3,
     quoteExpiresAt: "2099-07-30T20:00:00.000Z",
+    originIdentity: "fixture-origin",
+    originRevision: "fixture-revision",
     originLocation: {
       address: {
         addressLine1: "100 Seller Way",
@@ -351,6 +370,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
 
     await expect(
       caller.order.create({
+        requestId: "11111111-1111-4111-8111-111111111119",
         listingId: LISTING_ID,
         quantitySqFt: 200,
         shippingName: "Buyer Name",
@@ -416,6 +436,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
 
     await expect(
       caller.order.createFromOffer({
+        requestId: "11111111-1111-4111-8111-111111111119",
         offerId: OFFER_ID,
         shippingName: "Buyer Name",
         shippingAddress: "123 Main St",
@@ -467,7 +488,9 @@ describe("listing freshness enforcement on buyer write paths", () => {
       shippingPrice: 500,
       transitDays: 3,
       quoteExpiresAt: "2099-07-30T20:00:00.000Z",
-      originLocation: {
+      originIdentity: "fixture-origin",
+    originRevision: "fixture-revision",
+    originLocation: {
         address: {
           addressLine1: "100 Seller Way",
           city: "Denver",
@@ -594,6 +617,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
 
     await expect(
       caller.order.createFromOffer({
+        requestId: "11111111-1111-4111-8111-111111111119",
         offerId: OFFER_ID,
         shippingName: "Buyer Name",
         shippingAddress: "123 Main St",
@@ -677,6 +701,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
 
     await expect(
       caller.order.create({
+        requestId: "11111111-1111-4111-8111-111111111119",
         listingId: LISTING_ID,
         quantitySqFt: 160,
         shippingName: "Buyer Name",
@@ -757,6 +782,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
 
     await expect(
       caller.order.createFromOffer({
+        requestId: "11111111-1111-4111-8111-111111111119",
         offerId: OFFER_ID,
         shippingName: "Buyer Name",
         shippingAddress: "123 Main St",
@@ -837,6 +863,7 @@ describe("listing freshness enforcement on buyer write paths", () => {
 
     await expect(
       caller.order.createFromOffer({
+        requestId: "11111111-1111-4111-8111-111111111119",
         offerId: OFFER_ID,
         shippingName: "Buyer Name",
         shippingAddress: "123 Main St",

@@ -1,4 +1,5 @@
 "use client";
+import { verificationDocumentHref } from "@/lib/verification-documents";
 
 import { trpc } from "@/lib/trpc/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -251,7 +252,7 @@ export default function AdminVerificationsPage() {
                         License Document
                       </h4>
                       <a
-                        href={user.verificationDocUrl}
+                        href={verificationDocumentHref(user.verificationDocUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-2 text-sm text-primary hover:underline"

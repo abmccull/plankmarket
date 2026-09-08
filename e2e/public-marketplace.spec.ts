@@ -48,3 +48,12 @@ for (const route of publicRoutes) {
     await expectNoBlockingAccessibilityViolations(page);
   });
 }
+
+for (const path of ["/buyer", "/seller/listings/new", "/admin"]) {
+  test(`${path} sends signed-out visitors to sign in`, async ({ page }) => {
+    await page.goto(path, { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/login\?redirect=/);
+    expect(new URL(page.url()).searchParams.get("redirect")).toBe(path);
+    await expect(page.getByRole("heading", { name: /sign in|welcome back/i }).first()).toBeVisible();
+  });
+}

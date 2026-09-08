@@ -48,6 +48,8 @@ export interface ShippingRateCacheKeyInput {
   title: string;
   condition: string;
   originZip: string;
+  originIdentity?: string;
+  originRevision?: string;
   destinationZip: string;
   pickupDate: string;
   quantitySqFt: number;
@@ -87,6 +89,8 @@ export function buildShippingRateResponseCacheKey(
     title: input.title,
     condition: input.condition,
     originZip: input.originZip,
+    originIdentity: input.originIdentity ?? null,
+    originRevision: input.originRevision ?? null,
     destinationZip: input.destinationZip,
     pickupDate: input.pickupDate,
     quantitySqFt: roundToFour(input.quantitySqFt),

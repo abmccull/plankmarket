@@ -1,6 +1,7 @@
 import Papa from "papaparse";
-import { csvListingRowSchema } from "@/lib/validators/listing";
+import { csvListingRowSchema, CSV_LISTING_FIELDS } from "@/lib/validators/listing";
 import type { z } from "zod";
+import { CSV_COLUMNS } from "@/lib/constants/csv-columns";
 
 export type ParsedListingRow = z.infer<typeof csvListingRowSchema>;
 
@@ -13,6 +14,7 @@ export interface CsvRowError {
 export interface CsvParseResult {
   validRows: ParsedListingRow[];
   errors: CsvRowError[];
+  warnings: string[];
   totalRows: number;
 }
 
@@ -23,7 +25,13 @@ export function parseListingsCsv(file: File): Promise<CsvParseResult> {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
+      transformHeader: (header) => header.trim().replace(/^\uFEFF/, ""),
       complete: (results) => {
+        const unknown = (results.meta.fields ?? []).filter((field) => !CSV_LISTING_FIELDS.includes(field));
+        const warnings = unknown.length ? [`Ignored unrecognized columns: ${unknown.join(", ")}. Their values will not be imported; rename them to supported columns if you need this data.`] : [];
+        const missing = CSV_COLUMNS.filter((column) => column.required && !(results.meta.fields ?? []).includes(column.key)).map((column) => column.key);
+        if (missing.length) { reject(new Error(`Missing required CSV columns: ${missing.join(", ")}.`)); return; }
+        if (results.errors.length) { reject(new Error(`CSV formatting error: ${results.errors.map((error) => error.message).join("; ")}`)); return; }
         // Filter out instruction/helper rows (start with ⬇ or "INSTRUCTIONS")
         const rawRows = (results.data as Record<string, string>[]).filter(
           (row) => !row.title?.startsWith("⬇") && !row.title?.startsWith("INSTRUCTIONS")
@@ -38,7 +46,9 @@ export function parseListingsCsv(file: File): Promise<CsvParseResult> {
         const errors: CsvRowError[] = [];
 
         rawRows.forEach((raw, index) => {
-          const result = csvListingRowSchema.safeParse(raw);
+          // Unknown fields are intentionally ignored only after returning a visible warning.
+          const known = Object.fromEntries(Object.entries(raw).filter(([key]) => CSV_LISTING_FIELDS.includes(key)));
+          const result = csvListingRowSchema.safeParse(known);
           if (result.success) {
             validRows.push(result.data);
           } else {
@@ -55,6 +65,7 @@ export function parseListingsCsv(file: File): Promise<CsvParseResult> {
         resolve({
           validRows,
           errors,
+          warnings,
           totalRows: rawRows.length,
         });
       },

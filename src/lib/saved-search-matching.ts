@@ -1,4 +1,5 @@
 import zipcodes from "zipcodes";
+import { hasReviewedWaterproofSpecification } from "@/lib/product-specifications";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
 import type { SearchFilters } from "@/types";
 
@@ -39,6 +40,10 @@ export interface SavedSearchMatchListing {
   palletLength?: number | null;
   palletWidth?: number | null;
   palletHeight?: number | null;
+  waterResistance?: string | null;
+  specificationProvenance?: string | null;
+  specificationReviewedAt?: Date | string | null;
+  specificationEvidenceId?: string | null;
   fullLotOnly?: boolean | null;
 }
 
@@ -198,6 +203,8 @@ export function listingMatchesSavedSearch(
   ) {
     return false;
   }
+
+  if (filters.waterproofRequired === true && !hasReviewedWaterproofSpecification(listing)) return false;
 
   if (filters.freightReady === true && !isPublicFreightQuoteReady(listing)) {
     return false;

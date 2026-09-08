@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { productSpecificationFields } from "@/lib/product-specifications";
 import { noContactInfo } from "@/lib/content-filter/zod";
 import {
   normalizeUsStateCode,
@@ -265,6 +266,7 @@ function applySellingRuleCrossFieldValidation(
 }
 
 const listingFormSchemaBase = z.object({
+    ...productSpecificationFields,
     // Step 1: Product Details
     title: z
       .string()
@@ -561,6 +563,7 @@ export const listingFilterSchema = z.object({
   // These are familiar opt-in confidence filters, not a request to surface
   // sellers or listings that lack evidence. Treat false as invalid at the API
   // boundary so a hidden negative constraint cannot be saved accidentally.
+  waterproofRequired: z.literal(true).optional(),
   sellerVerified: z.literal(true).optional(),
   freightReady: z.literal(true).optional(),
   fullLotOnly: z.boolean().optional(),
@@ -589,7 +592,7 @@ export const listingFilterSchema = z.object({
   }
 });
 
-const csvListingRowSchemaBase = z.object({
+export const csvListingRowSchemaBase = z.object({
     title: z.string().min(1),
     materialType: z.enum([
       "hardwood",
@@ -643,7 +646,15 @@ const csvListingRowSchemaBase = z.object({
         "other",
       ])
       .optional(),
+    packagingType: z.preprocess(v => v === "" ? undefined : v, productSpecificationFields.packagingType).optional(),
+    installationMethod: z.preprocess(v => v === "" ? undefined : v, productSpecificationFields.installationMethod).optional(),
+    lotNumber: productSpecificationFields.lotNumber,
+    waterResistance: z.preprocess(v => v === "" ? undefined : v, productSpecificationFields.waterResistance).optional(),
     color: z.string().optional(),
+    colorFamily: z.string().max(50).optional(),
+    brand: z.string().max(255).optional(),
+    modelNumber: z.string().max(255).optional(),
+    wearLayer: z.coerce.number().positive().optional(),
     thickness: z.coerce.number().optional(),
     width: z.coerce.number().optional(),
     length: z.coerce.number().optional(),
@@ -716,9 +727,14 @@ const csvListingRowSchemaBase = z.object({
       .transform((value) => value ?? PRICING_RULES_VERSION),
 });
 
-export const csvListingRowSchema = csvListingRowSchemaBase.superRefine(
-  applySellingRuleCrossFieldValidation,
-);
+export const CSV_LISTING_FIELDS = Object.keys(csvListingRowSchemaBase.shape);
+const CSV_REQUIRED_FIELDS = new Set(["title", "materialType", "totalSqFt", "askPricePerSqFt", "condition", "locationZip", "totalPallets", "palletWeight", "palletLength", "palletWidth", "palletHeight", "moq", "moqUnit"]);
+export const csvListingRowSchema = z.preprocess((input) => {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  return Object.fromEntries(Object.entries(input).map(([key, value]) => [key,
+    typeof value === "string" && value.trim() === "" && !CSV_REQUIRED_FIELDS.has(key) ? undefined : value,
+  ]));
+}, csvListingRowSchemaBase.strict().superRefine(applySellingRuleCrossFieldValidation));
 
 export type ListingFormInput = z.infer<typeof listingFormSchema>;
 export type ListingFilterInput = z.infer<typeof listingFilterSchema>;

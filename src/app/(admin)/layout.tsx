@@ -35,7 +35,7 @@ export default function AdminLayout({
   return (
     <div className="flex flex-1">
       <AdminSidebar />
-      <div className="flex-1 p-6 lg:p-8">{children}</div>
+      <div className="min-w-0 flex-1 p-6 lg:p-8">{children}</div>
     </div>
   );
 }

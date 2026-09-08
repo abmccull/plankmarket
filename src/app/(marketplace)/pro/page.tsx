@@ -1,3 +1,4 @@
+import { FEATURES } from "@/lib/feature-flags";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Check, LogIn, UserPlus } from "lucide-react";
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "PlankMarket Pro - Advanced Buyer and Seller Tools",
   description:
-    "Compare Free and Pro on PlankMarket. Pro adds unlimited listings and saved searches, saved-search monitoring and repricing tools, market intelligence, seller followups, bulk upload, promotion credit, and the Pro badge.",
+    "Compare Free and Pro on PlankMarket. Pro adds unlimited listings and saved searches, saved-search monitoring and repricing tools, market intelligence, seller followups, bulk upload, and the Pro badge.",
   alternates: {
     canonical: "/pro",
   },
@@ -44,7 +45,7 @@ const PRO_FEATURES = [
   "Market intelligence (pricing data, demand signals, competitive position)",
   "Seller CRM (tags, notes, followups)",
   "Bulk CSV import",
-  "$15/month promotion credit",
+  ...(FEATURES.PROMOTIONS_ENABLED ? ["$15/month promotion credit"] : []),
   "Pro badge on profile",
 ] as const;
 

@@ -1,0 +1,43 @@
+{
+  "observedAt": "2026-09-08T18:25:22.018Z",
+  "host": "aws-1-us-east-1.pooler.supabase.com",
+  "database": "postgres",
+  "schemas": [
+    "public",
+    "auth",
+    "extensions"
+  ],
+  "containsTableData": false,
+  "sha256": "2791c1b8a55f6ff4a8c461303a4439c85777980bebc58d6a1f2d3e452622eca0",
+  "ledger": [],
+  "status": "Native PostgreSQL isolated restore and schema 0034 readiness passed; hosted Supabase restore/security comparison remains unverified",
+  "extensions": [
+    {
+      "extname": "uuid-ossp",
+      "schema": "extensions",
+      "extversion": "1.1"
+    },
+    {
+      "extname": "pgcrypto",
+      "schema": "extensions",
+      "extversion": "1.3"
+    },
+    {
+      "extname": "pg_trgm",
+      "schema": "public",
+      "extversion": "1.6"
+    }
+  ],
+  "localCompatibilityRoles": [
+    "anon",
+    "authenticated",
+    "dashboard_user",
+    "service_role",
+    "supabase_admin",
+    "supabase_auth_admin",
+    "supabase_functions_admin"
+  ],
+  "exportSha256": "2791c1b8a55f6ff4a8c461303a4439c85777980bebc58d6a1f2d3e452622eca0",
+  "hashNormalization": "UTF-8 LF",
+  "projectReference": "dmznwutpmqalodcjxcjf"
+}

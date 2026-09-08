@@ -158,6 +158,7 @@ export interface SearchFilters {
   maxLotSize?: number;
   maxDistance?: number;
   buyerZip?: string;
+  waterproofRequired?: true;
   sellerVerified?: boolean;
   freightReady?: boolean;
   fullLotOnly?: boolean;

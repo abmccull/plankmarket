@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { ProductSpecificationFields } from "@/components/listings/product-specification-fields";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -172,6 +173,10 @@ export default function EditListingPage() {
         wearLayer: listing.wearLayer ?? undefined,
         brand: listing.brand ?? undefined,
         modelNumber: listing.modelNumber ?? undefined,
+        packagingType: listing.packagingType,
+        installationMethod: listing.installationMethod,
+        waterResistance: listing.waterResistance,
+        lotNumber: listing.lotNumber ?? undefined,
         sqFtPerBox: listing.sqFtPerBox ?? undefined,
         boxesPerPallet: listing.boxesPerPallet ?? undefined,
         totalSqFt: listing.totalSqFt,
@@ -207,14 +212,14 @@ export default function EditListingPage() {
         condition: listing.condition,
         reasonCode: listing.reasonCode ?? undefined,
         certifications: (listing.certifications as string[]) ?? [],
+        mediaIds: listing.media.map((item) => item.id),
       });
     }
   }, [listing, reset]);
 
   const onSubmit = async (data: ListingFormInput) => {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { mediaIds, ...updateData } = data;
+      const updateData = data;
       await updateMutation.mutateAsync({
         id: listingId,
         data: updateData,
@@ -452,7 +457,8 @@ export default function EditListingPage() {
               </div>
             </div>
 
-            {/* Wear Layer - shown for vinyl, engineered, laminate */}
+            <ProductSpecificationFields register={register} />
+              {/* Wear Layer - shown for vinyl, engineered, laminate */}
             {watchedValues.materialType &&
               getWearLayerOptionsForSingle(watchedValues.materialType).length > 0 && (
                 <div className="space-y-2">

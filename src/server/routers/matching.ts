@@ -14,6 +14,9 @@ import {
   toPublicListing,
 } from "@/server/security/public-data";
 import { publicActiveListingWhere } from "@/server/security/listing-visibility";
+import zipcodes from "zipcodes";
+import { getDirectPurchaseUnitPriceSql } from "@/server/db/expressions/listing-pricing";
+import { getListingBoundingBoxConditions, getListingDistanceMilesSql } from "@/server/db/expressions/listing-geo";
 
 /**
  * Maximum number of recommendations to return in each direction.
@@ -39,6 +42,7 @@ export const matchingRouter = createTRPCRouter({
 
     // Build filter conditions
     const conditions = [publicActiveListingWhere(new Date(), ctx.user)];
+    const purchasePrice = getDirectPurchaseUnitPriceSql();
 
     // Filter by preferred material types
     if (prefs.preferredMaterialTypes && prefs.preferredMaterialTypes.length > 0) {
@@ -61,13 +65,13 @@ export const matchingRouter = createTRPCRouter({
     // Filter by price range
     if (prefs.priceMinPerSqFt !== null && prefs.priceMinPerSqFt !== undefined) {
       conditions.push(
-        sql`${listings.askPricePerSqFt} >= ${prefs.priceMinPerSqFt}`
+        gte(purchasePrice, prefs.priceMinPerSqFt)
       );
     }
 
     if (prefs.priceMaxPerSqFt !== null && prefs.priceMaxPerSqFt !== undefined) {
       conditions.push(
-        sql`${listings.askPricePerSqFt} <= ${prefs.priceMaxPerSqFt}`
+        lte(purchasePrice, prefs.priceMaxPerSqFt)
       );
     }
 
@@ -80,17 +84,20 @@ export const matchingRouter = createTRPCRouter({
       conditions.push(lte(listings.totalSqFt, prefs.maxLotSizeSqFt));
     }
 
-    // Filter by waterproof requirement (wearLayer > 0 indicates waterproof-capable flooring)
     if (prefs.waterproofRequired) {
-      conditions.push(sql`${listings.wearLayer} > 0`);
+      conditions.push(sql`${listings.waterResistance} = 'waterproof' AND ${listings.specificationProvenance} = 'evidence_reviewed' AND ${listings.specificationReviewedAt} IS NOT NULL AND ${listings.specificationEvidenceId} IS NOT NULL`);
     }
 
-    // Filter by preferred location radius using haversine formula if zip is set
-    // We use the pre-geocoded lat/lng on listings and user prefs zip proximity.
-    // Since userPreferences doesn't store lat/lng directly, filter by state
-    // as a rough proximity proxy when no radius can be computed.
-    // For now, we skip radius filtering at the DB level and rely on the
-    // buyer's preferred location as an advisory.
+    if (prefs.preferredRadiusMiles && prefs.preferredRadiusMiles > 0) {
+      const origin = prefs.preferredZip ? zipcodes.lookup(prefs.preferredZip) : undefined;
+      if (!origin) {
+        return { items: [], prefsIncomplete: false, limitation: "location_unverified" as const };
+      }
+      conditions.push(
+        ...getListingBoundingBoxConditions(origin, prefs.preferredRadiusMiles),
+        lte(getListingDistanceMilesSql(origin.latitude, origin.longitude), prefs.preferredRadiusMiles),
+      );
+    }
 
     const items = await ctx.db.query.listings.findMany({
       where: and(...conditions),

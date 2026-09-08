@@ -1,5 +1,7 @@
 "use client";
 
+import { adminItems } from "@/lib/admin-navigation";
+
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/lib/stores/auth-store";
@@ -162,15 +164,7 @@ export function MobileNav() {
     const isSeller = user.role === "seller";
 
     if (isAdminUser && isOnAdminRoute) {
-      return [
-        { title: "Browse Listings", href: "/listings", icon: Search },
-        { title: "Admin Dashboard", href: "/admin", icon: LayoutDashboard },
-        { title: "Orders", href: "/admin/orders", icon: ShoppingCart },
-        { title: "Listings", href: "/admin/listings", icon: List },
-        { title: "Verifications", href: "/admin/verifications", icon: Shield },
-        { title: "Shipments", href: "/admin/shipments", icon: Package },
-        { title: "Settings", href: "/admin/settings", icon: Settings },
-      ];
+      return [{ title: "Browse Listings", href: "/listings", icon: Search }, ...adminItems];
     }
 
     // Admin on seller or buyer routes: show context-appropriate items + Admin Panel link
@@ -181,6 +175,7 @@ export function MobileNav() {
         return [
           adminPanelItem,
           { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
+          { title: "Warehouses", href: "/seller/warehouses", icon: Package },
           { title: "My Listings", href: "/seller/listings", icon: List },
           { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
           { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
@@ -212,6 +207,7 @@ export function MobileNav() {
     if (isSeller) {
       return [
         { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
+          { title: "Warehouses", href: "/seller/warehouses", icon: Package },
         { title: "My Listings", href: "/seller/listings", icon: List },
         { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
         { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },

@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  submitVerificationSchema,
   updateProfileSchema,
-  type SubmitVerificationInput,
   type UpdateProfileInput,
 } from "@/lib/validators/auth";
 import {
@@ -28,7 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function BuyerSettingsPage() {
   const { user } = useAuthStore();
@@ -37,25 +35,7 @@ export default function BuyerSettingsPage() {
   const utils = trpc.useUtils();
 
   const { data: profile } = trpc.auth.getProfile.useQuery();
-  const { data: verificationData } = trpc.auth.getVerificationData.useQuery();
   const updateProfile = trpc.auth.updateProfile.useMutation();
-  const submitVerification = trpc.auth.submitVerification.useMutation({
-    onSuccess: () => {
-      utils.auth.getSession.invalidate();
-      utils.auth.getProfile.invalidate();
-      toast.success("Verification submitted.");
-    },
-    onError: (error) => toast.error(error.message),
-  });
-  const resubmitVerification = trpc.auth.resubmitVerification.useMutation({
-    onSuccess: () => {
-      utils.auth.getSession.invalidate();
-      utils.auth.getProfile.invalidate();
-      toast.success("Verification resubmitted.");
-    },
-    onError: (error) => toast.error(error.message),
-  });
-
   const { data: addresses, isLoading: addressesLoading } = trpc.shippingAddress.list.useQuery();
   const createAddress = trpc.shippingAddress.create.useMutation({
     onSuccess: () => {
@@ -108,28 +88,6 @@ export default function BuyerSettingsPage() {
     resolver: zodResolver(createShippingAddressSchema),
   });
 
-  const {
-    register: registerVerification,
-    handleSubmit: handleSubmitVerification,
-    reset: resetVerification,
-    formState: { errors: verificationErrors },
-  } = useForm<SubmitVerificationInput>({
-    resolver: zodResolver(submitVerificationSchema),
-  });
-
-  useEffect(() => {
-    if (!profile) return;
-    resetVerification({
-      einTaxId: verificationData?.einTaxId ?? "",
-      businessWebsite: profile.businessWebsite ?? "",
-      verificationDocUrl: verificationData?.verificationDocUrl ?? "",
-      businessAddress: profile.businessAddress ?? "",
-      businessCity: profile.businessCity ?? "",
-      businessState: profile.businessState ?? "",
-      businessZip: profile.businessZip ?? "",
-    });
-  }, [profile, verificationData, resetVerification]);
-
   const onSubmit = async (data: UpdateProfileInput) => {
     setIsSubmitting(true);
     try {
@@ -147,13 +105,6 @@ export default function BuyerSettingsPage() {
     resetAddr();
   };
 
-  const onSubmitVerification = async (data: SubmitVerificationInput) => {
-    if (user?.verificationStatus === "rejected") {
-      await resubmitVerification.mutateAsync(data);
-      return;
-    }
-    await submitVerification.mutateAsync(data);
-  };
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -225,112 +176,7 @@ export default function BuyerSettingsPage() {
         </Card>
       </form>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Buyer Verification</CardTitle>
-          <CardDescription>
-            You can browse without verification, but checkout is blocked until approval.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Status</span>
-            <Badge variant="outline" className="capitalize">
-              {user?.verificationStatus ?? "unverified"}
-            </Badge>
-          </div>
-
-          {user?.verificationStatus === "verified" ? (
-            <p className="text-sm text-muted-foreground">
-              Your account is verified and can place orders.
-            </p>
-          ) : user?.verificationStatus === "pending" ? (
-            <p className="text-sm text-muted-foreground">
-              Verification is currently under review. We will unlock checkout once approved.
-            </p>
-          ) : (
-            <form onSubmit={handleSubmitVerification(onSubmitVerification)} className="space-y-3">
-              <div className="space-y-1">
-                <Label htmlFor="verify-ein">EIN / Tax ID</Label>
-                <Input id="verify-ein" placeholder="12-3456789" {...registerVerification("einTaxId")} />
-                {verificationErrors.einTaxId && (
-                  <p className="text-sm text-destructive">{verificationErrors.einTaxId.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="verify-website">Business Website</Label>
-                <Input
-                  id="verify-website"
-                  type="url"
-                  placeholder="https://yourcompany.com"
-                  {...registerVerification("businessWebsite")}
-                />
-                {verificationErrors.businessWebsite && (
-                  <p className="text-sm text-destructive">{verificationErrors.businessWebsite.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="verify-doc">Verification Document URL</Label>
-                <Input
-                  id="verify-doc"
-                  type="url"
-                  placeholder="https://storage.example.com/documents/license.jpg"
-                  {...registerVerification("verificationDocUrl")}
-                />
-                {verificationErrors.verificationDocUrl && (
-                  <p className="text-sm text-destructive">{verificationErrors.verificationDocUrl.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-1">
-                <Label htmlFor="verify-address">Business Address</Label>
-                <Input id="verify-address" {...registerVerification("businessAddress")} />
-                {verificationErrors.businessAddress && (
-                  <p className="text-sm text-destructive">{verificationErrors.businessAddress.message}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="verify-city">City</Label>
-                  <Input id="verify-city" {...registerVerification("businessCity")} />
-                  {verificationErrors.businessCity && (
-                    <p className="text-sm text-destructive">{verificationErrors.businessCity.message}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="verify-state">State</Label>
-                  <Input id="verify-state" maxLength={2} {...registerVerification("businessState")} />
-                  {verificationErrors.businessState && (
-                    <p className="text-sm text-destructive">{verificationErrors.businessState.message}</p>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="verify-zip">ZIP</Label>
-                  <Input id="verify-zip" {...registerVerification("businessZip")} />
-                  {verificationErrors.businessZip && (
-                    <p className="text-sm text-destructive">{verificationErrors.businessZip.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={submitVerification.isPending || resubmitVerification.isPending}
-              >
-                {(submitVerification.isPending || resubmitVerification.isPending) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {user?.verificationStatus === "rejected"
-                  ? "Resubmit Verification"
-                  : "Submit Verification"}
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+      <Card><CardHeader><CardTitle>Buyer Verification</CardTitle><CardDescription>Complete business verification to unlock checkout.</CardDescription></CardHeader><CardContent><Link href="/buyer/verification" className="underline">Open secure verification</Link></CardContent></Card>
 
       <Card>
         <CardHeader>

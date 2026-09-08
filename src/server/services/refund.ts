@@ -1,3 +1,4 @@
+import { canIssuePartialOrderRefund } from "@/lib/refund-eligibility";
 import type Stripe from "stripe";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -144,11 +145,7 @@ export function shouldReleaseInventoryOnRefund(params: {
   );
 }
 
-export function canIssuePartialOrderRefund(params: {
-  stripeTransferId: string | null;
-}): boolean {
-  return Boolean(params.stripeTransferId);
-}
+export { canIssuePartialOrderRefund } from "@/lib/refund-eligibility";
 
 export function requiresManualFreightAllocation(params: {
   sellerFreightContribution: number;

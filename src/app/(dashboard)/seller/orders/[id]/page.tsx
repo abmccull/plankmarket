@@ -20,6 +20,7 @@ import {
 } from "@/lib/utils";
 import { toast } from "sonner";
 import { Loader2, Package, Truck, MapPin, User, Star } from "lucide-react";
+import { OrderRecoveryPanel } from "@/components/shipping/order-recovery-panel";
 import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
 import { ReviewCard } from "@/components/shared/review-card";
@@ -277,6 +278,7 @@ export default function SellerOrderDetailPage() {
       <BuyerCrmPanel buyerId={order.buyerId} />
 
       {/* Shipment Tracking (Priority1 orders) */}
+      <OrderRecoveryPanel orderId={orderId} />
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
 
       <TransactionTimeline order={order} audience="seller" />

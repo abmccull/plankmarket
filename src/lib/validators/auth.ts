@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { verificationDocumentId } from "@/lib/verification-documents";
 import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const registerSchema = z.object({
@@ -32,10 +33,7 @@ export const submitVerificationSchema = z.object({
     .url("Please enter a valid URL")
     .optional()
     .or(z.literal("")),
-  verificationDocUrl: z
-    .string()
-    .url("Please provide a valid verification document URL")
-    .min(1, "Verification document URL is required"),
+  verificationDocUrl: z.string().refine(value => Boolean(verificationDocumentId(value)) || z.url().safeParse(value).success, "Upload a supporting document"),
   businessAddress: z.string().min(1, "Business address is required").max(500),
   businessCity: z.string().min(1, "City is required").max(100),
   businessState: z.string().length(2, "State must be 2-letter abbreviation"),
@@ -47,6 +45,7 @@ export const submitVerificationSchema = z.object({
  * The strict submitVerificationSchema remains the final submission gate.
  */
 export const saveVerificationDraftSchema = z.object({
+  expectedUpdatedAt: z.date().nullable().optional(),
   currentStep: z.number().int().min(1).max(3),
   businessWebsite: z.string().max(2048).optional(),
   einTaxId: z.string().max(11).optional(),

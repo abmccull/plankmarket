@@ -39,7 +39,7 @@ export const env = createEnv({
       .regex(/^txcd_\d+$/)
       .optional(),
     UPLOADTHING_TOKEN: z.string().min(1),
-    RESEND_API_KEY: z.string().startsWith("re_").optional(),
+    RESEND_API_KEY: productionRequired(z.string().startsWith("re_")),
     RESEND_WEBHOOK_SECRET: productionRequired(
       z.string().startsWith("whsec_"),
     ),
@@ -50,7 +50,7 @@ export const env = createEnv({
     INNGEST_SIGNING_KEY: isProduction
       ? z.string().min(1)
       : z.string().min(1).optional(),
-    ANTHROPIC_API_KEY: productionRequired(z.string().min(16)),
+    ANTHROPIC_API_KEY: z.string().min(16).optional(),
     ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
       .enum(["true", "false"])
       .default("false"),

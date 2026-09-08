@@ -51,6 +51,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("@/server/services/reconciliation-cases", () => ({
+  openReconciliationCase: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../client", () => ({
   inngest: {
     createFunction: mocks.createFunction,
@@ -222,6 +226,14 @@ describe("releaseSellerPayout", () => {
         transferError: null,
       }),
     );
+  });
+
+  it("does not create a payout when provider history is unresolved", async () => {
+    mocks.findTransfer.mockRejectedValue(new Error("history is incomplete"));
+    await expect(releaseSellerPayout("order_1")).rejects.toThrow("history is incomplete");
+    expect(mocks.createTransfer).not.toHaveBeenCalled();
+    expect(mocks.state.orderUpdates).toHaveLength(0);
+    expect(mocks.state.failureUpdates).toHaveLength(1);
   });
 
   it("fails closed when shipment evidence is still dry-run or otherwise not payout-eligible", async () => {

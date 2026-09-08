@@ -178,7 +178,7 @@ export function OnboardingChecklist({ variant }: OnboardingChecklistProps = {}) 
               {progress.percentComplete}%
             </span>
           </div>
-          <Progress value={progress.percentComplete} className="h-2" />
+          <Progress aria-label="Account setup completion" value={progress.percentComplete} className="h-2" />
         </div>
       </CardHeader>
 

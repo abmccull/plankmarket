@@ -52,7 +52,7 @@ describe("request observability helpers", () => {
         buildSha: "0123456789abcdef0123456789abcdef01234567",
         commercialPolicyVersion: 1,
         packageVersion: "0.1.0",
-        schemaVersion: "0034",
+        schemaVersion: "0039",
       },
       service: "plankmarket",
     });
@@ -70,7 +70,7 @@ describe("request observability helpers", () => {
       buildSha: null,
       commercialPolicyVersion: 1,
       packageVersion: "0.1.0",
-      schemaVersion: "0034",
+      schemaVersion: "0039",
     });
   });
 });

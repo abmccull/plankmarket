@@ -164,7 +164,7 @@ export const buyerRequestRouter = createTRPCRouter({
           offset,
         }),
         ctx.db
-          .select({ count: sql<number>`cast(count(*) as integer)` })
+          .select({ count: sql<number>`cast(count(*) as integer)`, openCount: sql<number>`cast(count(*) filter (where ${buyerRequests.status} = 'open') as integer)` })
           .from(buyerRequests)
           .where(eq(buyerRequests.buyerId, ctx.user.id)),
       ]);
@@ -172,6 +172,7 @@ export const buyerRequestRouter = createTRPCRouter({
       const total = countResult[0]?.count ?? 0;
 
       return {
+        openCount: countResult[0]?.openCount ?? 0,
         items,
         total,
         page: input.page,

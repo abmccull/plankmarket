@@ -19,10 +19,11 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Check, Loader2, ShieldCheck, Store, ShoppingBag } from "lucide-react";
+import { Loader2, Store, ShoppingBag } from "lucide-react";
 
 function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const defaultRole = searchParams.get("role") === "seller" ? "seller" : "buyer";
@@ -79,20 +80,7 @@ function RegisterForm() {
             ? "Start with basic account details. Listing is free; the 5% seller fee and inventory-only processing apply only on completed sales after verification."
             : "Start browsing immediately. The 5% buyer fee applies only when a purchase is completed, and the selected freight quote is shown before payment."}
         </CardDescription>
-        <div className="mt-4 grid grid-cols-2 gap-2 text-left text-xs">
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <p className="flex items-center gap-1.5 font-semibold text-foreground">
-              <Check className="h-3.5 w-3.5" /> 1. Account
-            </p>
-            <p className="mt-1 text-muted-foreground">Contact and login details</p>
-          </div>
-          <div className="rounded-lg border p-3">
-            <p className="flex items-center gap-1.5 font-semibold text-foreground">
-              <ShieldCheck className="h-3.5 w-3.5" /> 2. Verification
-            </p>
-            <p className="mt-1 text-muted-foreground">Save and resume after signup</p>
-          </div>
-        </div>
+        <p className="mt-3 text-sm text-muted-foreground">Next: verify your business. You can save your progress and return later.</p>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="space-y-4">
@@ -103,7 +91,7 @@ function RegisterForm() {
                 type="button"
                 onClick={() => setValue("role", "buyer")}
                 aria-pressed={selectedRole === "buyer"}
-                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
+                className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-colors ${
                   selectedRole === "buyer"
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"
@@ -122,7 +110,7 @@ function RegisterForm() {
                 type="button"
                 onClick={() => setValue("role", "seller")}
                 aria-pressed={selectedRole === "seller"}
-                className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
+                className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-colors ${
                   selectedRole === "seller"
                     ? "border-primary bg-primary/5"
                     : "border-border hover:border-primary/50"
@@ -144,6 +132,7 @@ function RegisterForm() {
             <Label htmlFor="name">Full Name</Label>
             <Input
               id="name"
+              autoComplete="name"
               placeholder="John Doe"
               {...register("name")}
               aria-describedby={errors.name ? "name-error" : undefined}
@@ -164,6 +153,7 @@ function RegisterForm() {
             <Label htmlFor="businessName">Business Name</Label>
             <Input
               id="businessName"
+              autoComplete="organization"
               placeholder="Acme Flooring Co."
               {...register("businessName")}
               aria-describedby={errors.businessName ? "businessName-error" : undefined}
@@ -184,6 +174,7 @@ function RegisterForm() {
             <Label htmlFor="email">Business Email</Label>
             <Input
               id="email"
+              autoComplete="email"
               type="email"
               placeholder="you@company.com"
               {...register("email")}
@@ -205,6 +196,7 @@ function RegisterForm() {
             <Label htmlFor="phone">Phone (optional)</Label>
             <Input
               id="phone"
+              autoComplete="tel"
               type="tel"
               placeholder="(555) 123-4567"
               {...register("phone")}
@@ -226,7 +218,9 @@ function RegisterForm() {
             <Label htmlFor="zipCode">ZIP Code</Label>
             <Input
               id="zipCode"
+              autoComplete="postal-code"
               placeholder="75001"
+              inputMode="numeric"
               maxLength={5}
               {...register("zipCode")}
               aria-describedby={errors.zipCode ? "zipCode-error" : undefined}
@@ -247,11 +241,13 @@ function RegisterForm() {
             <Label htmlFor="password">Password</Label>
             <Input
               id="password"
-              type="password"
+              autoComplete="new-password"
+              type={showPassword ? "text" : "password"}
               {...register("password")}
               aria-describedby={errors.password ? "password-error" : "password-hint"}
               aria-invalid={!!errors.password}
             />
+            <Button type="button" variant="ghost" size="sm" aria-controls="password" aria-pressed={showPassword} onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide password" : "Show password"}</Button>
             {!errors.password && (
               <p id="password-hint" className="text-sm text-muted-foreground">
                 Minimum 8 characters

@@ -167,7 +167,7 @@ let mockStoreState = {
 // --- Mocks ---
 
 vi.mock("@/lib/stores/listing-form-store", () => ({
-  useListingFormStore: () => mockStoreState,
+  useListingFormStore: Object.assign(() => ({ ...mockStoreState, sellerId: "seller-1" }), { getState: () => ({ ...mockStoreState, sellerId: "seller-1", bindSeller: vi.fn() }) }),
 }));
 
 vi.mock("@/lib/stores/auth-store", () => ({

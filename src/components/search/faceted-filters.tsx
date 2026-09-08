@@ -230,6 +230,7 @@ export function FacetedFilters({
     filters.maxLotSize !== undefined ||
     filters.buyerZip !== undefined ||
     filters.maxDistance !== undefined ||
+    filters.waterproofRequired !== undefined ||
     filters.sellerVerified !== undefined ||
     filters.freightReady !== undefined ||
     filters.fullLotOnly !== undefined;
@@ -327,6 +328,7 @@ export function FacetedFilters({
           Buying confidence
         </Label>
         <div className="flex flex-wrap gap-1.5" aria-label="Buying confidence filters">
+          <button type="button" aria-pressed={filters.waterproofRequired === true} onClick={() => onFiltersChange({ waterproofRequired: filters.waterproofRequired === true ? undefined : true })} className={badgeClass(filters.waterproofRequired === true)}>Evidence-reviewed waterproof</button>
           <button
             type="button"
             aria-pressed={filters.sellerVerified === true}
@@ -692,7 +694,7 @@ export function FacetedFilters({
             aria-label="Buyer ZIP code"
           />
           <Select
-            value={filters.maxDistance !== undefined ? String(filters.maxDistance) : ""}
+            value={filters.maxDistance !== undefined ? String(filters.maxDistance) : "0"}
             onValueChange={(v) => {
               const dist = parseInt(v);
               if (dist === 0) {
@@ -708,6 +710,7 @@ export function FacetedFilters({
             <SelectTrigger
               className="h-8 text-xs"
               aria-label="Maximum distance from buyer ZIP code"
+              disabled={!/^\d{5}$/.test(localZip)}
             >
               <SelectValue placeholder="Select distance" />
             </SelectTrigger>

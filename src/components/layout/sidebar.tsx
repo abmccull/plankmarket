@@ -47,6 +47,7 @@ interface SidebarShellStateProps {
 
 const sellerItems: SidebarItem[] = [
   { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
+  { title: "Warehouses", href: "/seller/warehouses", icon: Package },
   { title: "My Listings", href: "/seller/listings", icon: List },
   { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
   { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
@@ -105,7 +106,7 @@ function SidebarShellState({ title, description }: SidebarShellStateProps) {
           <p className="text-sm font-medium text-sidebar-foreground">
             Protected navigation is loading.
           </p>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          <p className="mt-1 text-xs leading-5 text-sidebar-foreground">
             We’ll show your dashboard tools as soon as your account context is confirmed.
           </p>
         </div>
@@ -169,13 +170,13 @@ export function Sidebar() {
               <LayoutDashboard className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">
+              <p className="text-sm font-semibold text-foreground">
                 {isAdminUser
                   ? "Admin Dashboard"
                   : isSellerContext
                     ? "Seller Dashboard"
                     : "Buyer Dashboard"}
-              </h2>
+              </p>
               <p className="text-xs text-muted-foreground">
                 {user?.businessName || user?.name}
               </p>
@@ -201,12 +202,16 @@ export function Sidebar() {
             pathname === item.href ||
             (item.href !== "/seller" &&
               item.href !== "/buyer" &&
-              pathname.startsWith(item.href));
+              pathname.startsWith(`${item.href}/`) &&
+              !items.some((other) => other.href !== item.href &&
+                other.href.startsWith(`${item.href}/`) &&
+                (pathname === other.href || pathname.startsWith(`${other.href}/`))));
           const isMessagesItem = item.href === "/messages";
           return (
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 isActive

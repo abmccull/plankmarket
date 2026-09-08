@@ -34,3 +34,15 @@ test.describe("authenticated seller journey", () => {
     ).toBeVisible();
   });
 });
+
+const adminStorageState = process.env.E2E_ADMIN_STORAGE_STATE?.trim();
+test.describe("authenticated admin journey", () => {
+  test.skip(!adminStorageState, "Set E2E_ADMIN_STORAGE_STATE to a dedicated admin session.");
+  test.use({ storageState: adminStorageState });
+  test("admin can open reconciliation", async ({ page }) => {
+    const response = await page.goto("/admin/reconciliation");
+    expect(response?.status()).toBeLessThan(400);
+    await expect(page).not.toHaveURL(/\/login(?:[/?]|$)/);
+    await expect(page.getByRole("heading", { name: /reconciliation/i }).first()).toBeVisible();
+  });
+});

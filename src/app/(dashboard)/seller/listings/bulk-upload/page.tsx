@@ -48,7 +48,10 @@ export default function BulkUploadPage() {
   const [state, setState] = useState<PageState>("upload");
   const [validRows, setValidRows] = useState<ParsedListingRow[]>([]);
   const [errors, setErrors] = useState<CsvRowError[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [totalRows, setTotalRows] = useState(0);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [requestStorageKey, setRequestStorageKey] = useState<string | null>(null);
   const requiresVerification =
     !!user &&
     user.role !== "admin" &&
@@ -83,8 +86,17 @@ export default function BulkUploadPage() {
   const handleFile = useCallback(async (file: File) => {
     try {
       const result = await parseListingsCsv(file);
+      if (!user?.id) throw new Error("Sign in before importing listings");
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(result.validRows)));
+      const fingerprint = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+      const storageKey = `plankmarket-import:${user.id}:${fingerprint}`;
+      const id = localStorage.getItem(storageKey) ?? crypto.randomUUID();
+      localStorage.setItem(storageKey, id);
+      setRequestStorageKey(storageKey);
+      setRequestId(id);
       setValidRows(result.validRows);
       setErrors(result.errors);
+      setWarnings(result.warnings ?? []);
       setTotalRows(result.totalRows);
 
       if (result.totalRows === 0) {
@@ -96,7 +108,7 @@ export default function BulkUploadPage() {
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to parse CSV"));
     }
-  }, []);
+  }, [user?.id]);
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -130,19 +142,26 @@ export default function BulkUploadPage() {
   };
 
   const handleSubmit = () => {
+    if (errors.length) { toast.error("Correct or remove invalid rows before importing"); return; }
     if (validRows.length === 0) {
       toast.error("No valid rows to submit");
       return;
     }
     setState("submitting");
-    bulkCreateMutation.mutate({ rows: validRows });
+    const id = requestId ?? crypto.randomUUID();
+    setRequestId(id);
+    bulkCreateMutation.mutate({ requestId: id, rows: validRows });
   };
 
   const handleReset = () => {
     setState("upload");
     setValidRows([]);
+    setWarnings([]);
     setErrors([]);
     setTotalRows(0);
+    setRequestId(null);
+    if (requestStorageKey) localStorage.removeItem(requestStorageKey);
+    setRequestStorageKey(null);
   };
 
   if (requiresVerification) {
@@ -238,6 +257,12 @@ export default function BulkUploadPage() {
         </div>
       )}
 
+      {(state === "preview" || state === "submitting") && warnings.length > 0 && (
+        <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-medium">Some columns will be ignored</p>
+          {warnings.map((warning) => <p key={warning} className="mt-1">{warning}</p>)}
+        </div>
+      )}
       {(state === "preview" || state === "submitting") && (
         <div className="space-y-4">
           {/* Summary bar */}
@@ -351,7 +376,7 @@ export default function BulkUploadPage() {
           <div className="flex justify-end">
             <Button
               onClick={handleSubmit}
-              disabled={validRows.length === 0 || state === "submitting"}
+              disabled={validRows.length === 0 || errors.length > 0 || state === "submitting"}
               size="lg"
             >
               {state === "submitting" ? (

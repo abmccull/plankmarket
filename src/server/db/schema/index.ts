@@ -1,4 +1,6 @@
 // Schema barrel exports
+export { warehouses } from "./warehouses";
+export type { Warehouse } from "./warehouses";
 export { users, userRoleEnum } from "./users";
 export type { User, NewUser } from "./users";
 
@@ -19,7 +21,7 @@ export type { Listing, NewListing } from "./listings";
 export { media } from "./media";
 export type { Media, NewMedia } from "./media";
 
-export { orders, orderStatusEnum } from "./orders";
+export { orders, orderStatusEnum, checkoutAbandonments } from "./orders";
 export type { Order, NewOrder } from "./orders";
 
 export { watchlist } from "./watchlist";
@@ -369,6 +371,10 @@ export const savedSearchesRelations = relations(savedSearches, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+export * from "./import-requests";
+
+export * from "./verification-documents";
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(users, {

@@ -16,6 +16,7 @@ import {
 
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
+    auth: { getProfile: { useQuery: vi.fn(() => ({ data: { id: "buyer-test" } })) } },
     listing: {
       getById: { useQuery: vi.fn() },
       getPurchaseConfig: { useQuery: vi.fn() },
@@ -23,6 +24,7 @@ vi.mock("@/lib/trpc/client", () => ({
     offer: { getOfferById: { useQuery: vi.fn() } },
     shippingAddress: { list: { useQuery: vi.fn() } },
     order: {
+      abandonCheckout: { useMutation: vi.fn(() => ({ mutateAsync: vi.fn() })) },
       create: { useMutation: vi.fn() },
       createFromOffer: { useMutation: vi.fn() },
     },
@@ -183,6 +185,7 @@ function setupDefaultMocks(overrides?: {
 describe("CheckoutPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.sessionStorage.clear();
     setupDefaultMocks();
   });
 
@@ -367,5 +370,71 @@ describe("CheckoutPage", () => {
       name: /Back to listing/i,
     });
     expect(backButton).toBeInTheDocument();
+  });
+});
+
+
+describe("CheckoutPage saved order recovery", () => {
+  const saved = {
+    mode: "direct" as const,
+    input: {
+      requestId: "11111111-1111-4111-8111-111111111111",
+      listingId: "22222222-2222-4222-8222-222222222222",
+      quantitySqFt: 2000, shippingName: "Buyer Name", shippingAddress: "123 Main Street",
+      shippingCity: "Denver", shippingState: "CO", shippingZip: "80202", selectedQuoteToken: "consumed-quote",
+    },
+  };
+  const order = { id: "same-order", status: "pending", paymentStatus: "pending", taxAmount: 0, totalPrice: 100, taxStatus: "disabled", taxLiability: "none", taxJurisdictionSummary: [] };
+  beforeEach(() => {
+    vi.clearAllMocks(); window.sessionStorage.clear(); setupDefaultMocks();
+    window.sessionStorage.setItem("plankmarket:checkout:v1:buyer-test:listing-123:direct", JSON.stringify(saved));
+  });
+
+  it("recovers a lost create response even when the full lot is no longer listed", async () => {
+    setupDefaultMocks({ listing: null });
+    const create = vi.fn().mockRejectedValueOnce(new Error("Response lost")).mockResolvedValue(order);
+    const payment = vi.fn().mockResolvedValue({ clientSecret: "secret" });
+    vi.mocked(trpc.order.create.useMutation).mockReturnValue({ mutateAsync: create } as unknown as ReturnType<typeof trpc.order.create.useMutation>);
+    vi.mocked(trpc.payment.createPaymentIntent.useMutation).mockReturnValue({ mutateAsync: payment } as unknown as ReturnType<typeof trpc.payment.createPaymentIntent.useMutation>);
+    render(<CheckoutPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Resume saved checkout" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Response lost"));
+    await user.click(screen.getByRole("button", { name: "Resume saved checkout" }));
+    expect(await screen.findByTestId("stripe-payment-form")).toBeInTheDocument();
+    expect(create.mock.calls).toEqual([[saved.input], [saved.input]]);
+    expect(payment).toHaveBeenCalledWith({ orderId: "same-order" });
+  });
+
+  it("retries payment preparation against the same persisted order", async () => {
+    const create = vi.fn().mockResolvedValue(order);
+    const payment = vi.fn().mockRejectedValueOnce(new Error("Payment unavailable")).mockResolvedValue({ clientSecret: "secret" });
+    vi.mocked(trpc.order.create.useMutation).mockReturnValue({ mutateAsync: create } as unknown as ReturnType<typeof trpc.order.create.useMutation>);
+    vi.mocked(trpc.payment.createPaymentIntent.useMutation).mockReturnValue({ mutateAsync: payment } as unknown as ReturnType<typeof trpc.payment.createPaymentIntent.useMutation>);
+    render(<CheckoutPage />); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Resume saved checkout" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Payment unavailable"));
+    await user.click(screen.getByRole("button", { name: "Resume saved checkout" }));
+    expect(await screen.findByTestId("stripe-payment-form")).toBeInTheDocument();
+    expect(payment.mock.calls).toEqual([[{ orderId: "same-order" }], [{ orderId: "same-order" }]]);
+  });
+
+  it("opens processing payments without preparing another payment or clearing recovery", async () => {
+    const payment = vi.fn();
+    vi.mocked(trpc.order.create.useMutation).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ ...order, paymentStatus: "processing" }) } as unknown as ReturnType<typeof trpc.order.create.useMutation>);
+    vi.mocked(trpc.payment.createPaymentIntent.useMutation).mockReturnValue({ mutateAsync: payment } as unknown as ReturnType<typeof trpc.payment.createPaymentIntent.useMutation>);
+    render(<CheckoutPage />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Resume saved checkout" }));
+    await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith("/buyer/orders/same-order"));
+    expect(payment).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("plankmarket:checkout:v1:buyer-test:listing-123:direct")).not.toBeNull();
+  });
+
+  it("does not discard the saved attempt when server reset is rejected", async () => {
+    vi.mocked(trpc.order.abandonCheckout.useMutation).mockReturnValue({ mutateAsync: vi.fn().mockRejectedValue(new Error("Active reservation")) } as unknown as ReturnType<typeof trpc.order.abandonCheckout.useMutation>);
+    render(<CheckoutPage />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Change checkout details" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Active reservation"));
+    expect(window.sessionStorage.getItem("plankmarket:checkout:v1:buyer-test:listing-123:direct")).not.toBeNull();
   });
 });

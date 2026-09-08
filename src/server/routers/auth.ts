@@ -27,7 +27,7 @@ import { env } from "@/env";
 import zipcodes from "zipcodes";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { inngest } from "@/lib/inngest/client";
-import { validateVerificationDocUrl } from "@/server/services/verification-doc-url";
+import { requireOwnedVerificationDocument } from "@/server/services/verification-documents";
 import {
   getChangedVerifiedBusinessFields,
   isVerificationStatus,
@@ -80,18 +80,7 @@ async function submitVerificationForUser(params: {
     });
   }
 
-  const urlValidation = validateVerificationDocUrl(input.verificationDocUrl);
-  if (!urlValidation.ok) {
-    console.warn("Rejected verification document URL at submission", {
-      userId: user.id,
-      role: user.role,
-      reason: urlValidation.reason,
-    });
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: urlValidation.reason ?? "Invalid verification document URL",
-    });
-  }
+  await requireOwnedVerificationDocument(input.verificationDocUrl, user.id);
 
   const previous = await db.query.users.findFirst({
     where: eq(users.id, user.id),
@@ -434,37 +423,17 @@ export const authRouter = createTRPCRouter({
         });
       }
 
-      const existing = await ctx.db.query.verificationDrafts.findFirst({
-        where: eq(verificationDrafts.userId, ctx.user.id),
+      return ctx.db.transaction(async tx => {
+        const [freshUser] = await tx.select({status:users.verificationStatus}).from(users).where(eq(users.id,ctx.user.id)).for("update");
+        if (!freshUser || !["unverified","rejected"].includes(freshUser.status)) throw new TRPCError({code:"CONFLICT",message:"Verification is no longer editable. Reload the page."});
+        const existing = await tx.query.verificationDrafts.findFirst({where:eq(verificationDrafts.userId,ctx.user.id)});
+        if ((existing?.updatedAt?.getTime() ?? null) !== (input.expectedUpdatedAt?.getTime() ?? null)) throw new TRPCError({code:"CONFLICT",message:"A newer draft is saved. Reload it before replacing your details."});
+        if (input.verificationDocUrl?.trim()) await requireOwnedVerificationDocument(input.verificationDocUrl,ctx.user.id);
+        const now=new Date();
+        const values={userId:ctx.user.id,currentStep:input.currentStep,...mergeVerificationDraftFields(existing,input),updatedAt:now};
+        await tx.insert(verificationDrafts).values(values).onConflictDoUpdate({target:verificationDrafts.userId,set:values});
+        return {currentStep:values.currentStep,updatedAt:now};
       });
-      const now = new Date();
-      const mergedFields = mergeVerificationDraftFields(existing, input);
-      const values = {
-        userId: ctx.user.id,
-        currentStep: input.currentStep,
-        ...mergedFields,
-        updatedAt: now,
-      };
-
-      await ctx.db
-        .insert(verificationDrafts)
-        .values(values)
-        .onConflictDoUpdate({
-          target: verificationDrafts.userId,
-          set: {
-            currentStep: values.currentStep,
-            businessWebsite: values.businessWebsite,
-            einTaxId: values.einTaxId,
-            verificationDocUrl: values.verificationDocUrl,
-            businessAddress: values.businessAddress,
-            businessCity: values.businessCity,
-            businessState: values.businessState,
-            businessZip: values.businessZip,
-            updatedAt: now,
-          },
-        });
-
-      return { currentStep: values.currentStep, updatedAt: now };
     }),
 
   submitVerificationDraft: strictProtectedProcedure.mutation(

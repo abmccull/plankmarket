@@ -420,6 +420,9 @@ export function buildDigestListingConditions(
     conditions.push(lte(listings.totalSqFt, filters.maxLotSize));
   }
 
+  if (filters.waterproofRequired === true) {
+    conditions.push(sql`${listings.waterResistance} = 'waterproof' AND ${listings.specificationProvenance} = 'evidence_reviewed' AND ${listings.specificationReviewedAt} IS NOT NULL AND ${listings.specificationEvidenceId} IS NOT NULL`);
+  }
   if (filters.sellerVerified === true) {
     conditions.push(sql<boolean>`exists (
       select 1
@@ -512,6 +515,10 @@ const alertListingSelection = {
   palletLength: listings.palletLength,
   palletWidth: listings.palletWidth,
   palletHeight: listings.palletHeight,
+  waterResistance: listings.waterResistance,
+  specificationProvenance: listings.specificationProvenance,
+  specificationReviewedAt: listings.specificationReviewedAt,
+  specificationEvidenceId: listings.specificationEvidenceId,
   fullLotOnly: listings.fullLotOnly,
 };
 

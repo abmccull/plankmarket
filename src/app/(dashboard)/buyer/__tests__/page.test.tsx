@@ -22,8 +22,8 @@ let buyerQueries: {
   orders: QueryState<{ total: number; items: never[] }>;
   watchlist: QueryState<{ total: number; items: never[] }>;
   savedSearches: QueryState<Array<{ id: string }>>;
-  recommended: QueryState<{ items: never[]; prefsIncomplete: boolean }>;
-  requests: QueryState<{ items: never[] }>;
+  recommended: QueryState<{ items: never[]; prefsIncomplete: boolean; limitation?: string }>;
+  requests: QueryState<{ items: never[]; openCount?: number }>;
   trending: QueryState<never[]>;
 } = {
   orders: {
@@ -208,4 +208,15 @@ describe("BuyerDashboardPage", () => {
       screen.getByRole("alert", { name: "We couldn't load recommendations" }),
     ).toBeInTheDocument();
   });
+  it("explains an unverified waterproof requirement without weakening it", () => {
+    buyerQueries.recommended.data = {
+      items: [], prefsIncomplete: false, limitation: "waterproof_unverified",
+    };
+    render(<BuyerDashboardPage />);
+    expect(screen.getByText("Waterproof performance needs confirmation")).toBeInTheDocument();
+    expect(screen.queryByText("No matching listings right now")).not.toBeInTheDocument();
+  });
+
 });
+
+it("shows aggregate open demand beyond the visible request page", () => { buyerQueries.requests = { data: { items: [], openCount: 51 }, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() }; render(<BuyerDashboardPage />); expect(screen.getByText("51")).toBeInTheDocument(); });

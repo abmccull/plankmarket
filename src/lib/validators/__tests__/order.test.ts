@@ -8,6 +8,7 @@ import {
 const VALID_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
 
 const validCreateOrderInput = {
+  requestId: VALID_UUID,
   listingId: VALID_UUID,
   quantitySqFt: 100,
   shippingName: "John Doe",
@@ -108,6 +109,7 @@ describe("updateOrderStatusSchema", () => {
 describe("createOrderFromOfferSchema", () => {
   it("accepts valid input", () => {
     const result = createOrderFromOfferSchema.safeParse({
+      requestId: VALID_UUID,
       offerId: VALID_UUID,
       shippingName: "Jane Smith",
       shippingAddress: "456 Oak Avenue",
@@ -121,6 +123,7 @@ describe("createOrderFromOfferSchema", () => {
 
   it("rejects an offer order without a verified quote token", () => {
     const result = createOrderFromOfferSchema.safeParse({
+      requestId: VALID_UUID,
       offerId: VALID_UUID,
       shippingName: "Jane Smith",
       shippingAddress: "456 Oak Avenue",
@@ -130,4 +133,10 @@ describe("createOrderFromOfferSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+});
+
+it("rejects a checkout without a retry key", () => {
+ const input = { ...validCreateOrderInput };
+ Reflect.deleteProperty(input, "requestId");
+ expect(createOrderSchema.safeParse(input).success).toBe(false);
 });

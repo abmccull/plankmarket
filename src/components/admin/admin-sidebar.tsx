@@ -3,44 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  TrendingUp,
-  Users,
-  List,
-  Package,
-  ShieldCheck,
-  MessageSquare,
-  Settings,
-  Megaphone,
-  Scale,
-  Wrench,
-  Database,
-} from "lucide-react";
-import { FEATURES } from "@/lib/feature-flags";
-
-interface SidebarItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const adminItems: SidebarItem[] = [
-  { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
-  { title: "Finance", href: "/admin/finance", icon: TrendingUp },
-  { title: "Users", href: "/admin/users", icon: Users },
-  { title: "Listings", href: "/admin/listings", icon: List },
-  { title: "Inventory", href: "/admin/inventory", icon: Database },
-  { title: "Orders", href: "/admin/orders", icon: Package },
-  { title: "Disputes", href: "/admin/disputes", icon: Scale },
-  { title: "Reconciliation", href: "/admin/reconciliation", icon: Wrench },
-  { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
-  ...(FEATURES.PROMOTIONS_ENABLED
-    ? [{ title: "Promotions", href: "/admin/promotions", icon: Megaphone }]
-    : []),
-  { title: "Feedback", href: "/admin/feedback", icon: MessageSquare },
-  { title: "Settings", href: "/admin/settings", icon: Settings },
-];
+import { LayoutDashboard } from "lucide-react";
+import { adminItems } from "@/lib/admin-navigation";
 
 export function AdminSidebar() {
   const pathname = usePathname();

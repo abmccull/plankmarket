@@ -665,6 +665,12 @@ export const adminProcedure = t.procedure
   .use(enforceAuthAssurance)
   .use(enforceAdmin);
 
+export const strictAdminProcedure = t.procedure
+  .use(enforceAuth)
+  .use(enforceStrictRateLimit)
+  .use(enforceAuthAssurance)
+  .use(enforceAdmin);
+
 // Strict rate limited procedure for sensitive operations (e.g., payment creation)
 export const strictRateLimitedProcedure = t.procedure.use(enforceAuth).use(enforceStrictRateLimit);
 

@@ -1,3 +1,4 @@
+import { getRefundEligibility } from "@/lib/refund-eligibility";
 import { TRPCError } from "@trpc/server";
 import {
   and,
@@ -881,6 +882,8 @@ export const disputeRouter = createTRPCRouter({
                 refundedAmount: true,
                 paymentStatus: true,
                 escrowStatus: true,
+                stripePaymentIntentId: true,
+                stripeTransferId: true,
                 deliveredAt: true,
               },
             },
@@ -911,7 +914,7 @@ export const disputeRouter = createTRPCRouter({
       ]);
       const count = countRows[0]?.count ?? 0;
       return {
-        disputes: items,
+        disputes: items.map((item) => ({ ...item, refundEligibility: getRefundEligibility(item.order) })),
         total: count,
         page: input.page,
         limit: input.limit,

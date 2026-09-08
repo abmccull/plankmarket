@@ -65,7 +65,7 @@ export function StripeOnboardingBanner() {
               <Button
                 onClick={handleSetUpPayments}
                 size="sm"
-                className="bg-amber-600 hover:bg-amber-700 text-white"
+                className="bg-amber-800 hover:bg-amber-900 text-white"
               >
                 <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
                 Set Up Now

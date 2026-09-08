@@ -24,11 +24,6 @@ import {
   buildShareableSearchParams,
 } from "@/lib/marketplace/search-gap";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -52,10 +47,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BookmarkPlus,
-  BellRing,
-  ClipboardPlus,
-  PackagePlus,
-  Share2,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchFilters, SortOption, PromotionTier } from "@/types";
@@ -64,6 +56,7 @@ import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 import type { FreightEstimateStatus } from "@/components/listings/listing-evidence";
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "proximity", label: "Nearest First" },
   { value: "date_newest", label: "Newest First" },
   { value: "date_oldest", label: "Oldest First" },
   { value: "price_asc", label: "Price: Low to High" },
@@ -109,6 +102,7 @@ interface ListingsBrowseClientProps {
     page: number;
     limit: number;
     hasMore: boolean;
+    locationLabel?: string | null;
   };
   sponsoredListings: ListingItem[];
   initialParams: {
@@ -150,6 +144,7 @@ const FILTER_PARAM_KEYS: Array<keyof SearchFilters> = [
   "maxLotSize",
   "maxDistance",
   "buyerZip",
+  "waterproofRequired",
   "sellerVerified",
   "freightReady",
   "fullLotOnly",
@@ -200,6 +195,7 @@ function writeFilterParams(params: URLSearchParams, filters: SearchFilters) {
   if (filters.buyerZip) {
     params.set("buyerZip", filters.buyerZip);
   }
+  if (filters.waterproofRequired === true) params.set("waterproofRequired", "true");
   if (filters.sellerVerified === true) {
     params.set("sellerVerified", "true");
   }
@@ -246,7 +242,10 @@ export function ListingsBrowseClient({
     () => searchParamsToFilters(currentSearchParams),
     [currentSearchParams],
   );
-  const currentSort = currentSearchParams.get("sort") ?? initialParams.sort;
+  const requestedSort = currentSearchParams.get("sort") ?? initialParams.sort;
+  const currentSort = requestedSort === "proximity" && initialData.locationLabel === null
+    ? "date_newest"
+    : requestedSort;
   const currentLimit = Number(currentSearchParams.get("limit") ?? initialData.limit);
   const viewMode: "grid" | "list" = currentLimit >= 50 ? "list" : "grid";
   const filterStateKey = currentFilters.buyerZip ?? user?.zipCode ?? "";
@@ -306,6 +305,9 @@ export function ListingsBrowseClient({
           ...currentFilters,
           ...updates,
         });
+        if ("buyerZip" in updates && !updates.buyerZip && params.get("sort") === "proximity") {
+          params.delete("sort");
+        }
         params.delete("page");
       });
     },
@@ -318,6 +320,7 @@ export function ListingsBrowseClient({
         params.delete(String(key));
       }
       params.delete("page");
+      if (params.get("sort") === "proximity") params.delete("sort");
     });
   }, [navigateWithParams]);
 
@@ -566,7 +569,7 @@ export function ListingsBrowseClient({
         </p>
       </header>
       {/* Search Bar */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -576,6 +579,7 @@ export function ListingsBrowseClient({
             defaultValue={currentFilters.query ?? ""}
             onChange={(e) => handleSearchChange(e.target.value)}
             minLength={3}
+            aria-label="Search flooring"
           />
         </div>
         <Button
@@ -649,6 +653,43 @@ export function ListingsBrowseClient({
         </Sheet>
       </div>
 
+      <form
+        className="mb-6 flex flex-wrap items-center gap-2 border-b pb-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const zip = String(new FormData(event.currentTarget).get("locationZip") ?? "").trim();
+          if (!/^\d{5}$/.test(zip)) return;
+          updateParams({ buyerZip: zip, sort: "proximity" });
+        }}
+      >
+        <label htmlFor="browse-location-zip" className="flex items-center gap-2 text-sm font-medium">
+          <MapPin className="h-4 w-4 text-secondary" aria-hidden="true" />
+          Near your job
+        </label>
+        <Input
+          key={currentFilters.buyerZip ?? "nationwide"}
+          id="browse-location-zip"
+          name="locationZip"
+          aria-label="Job ZIP code"
+          placeholder="ZIP code"
+          defaultValue={currentFilters.buyerZip ?? ""}
+          inputMode="numeric"
+          autoComplete="postal-code"
+          pattern="[0-9]{5}"
+          maxLength={5}
+          required
+          className="min-h-11 w-24"
+        />
+        <Button type="submit" variant="outline" className="min-h-11">Find nearby</Button>
+        <p className="w-full text-xs text-muted-foreground sm:w-auto sm:pl-2" role="status">
+          {currentFilters.buyerZip && initialData.locationLabel === null
+            ? "ZIP not recognized. Distance sorting is unavailable; try another ZIP."
+            : initialData.locationLabel
+              ? `${initialData.locationLabel}${currentFilters.maxDistance ? ` Â· within ${currentFilters.maxDistance} miles` : " Â· nationwide"}`
+              : "Enter a ZIP to put nearby inventory first."}
+        </p>
+      </form>
+
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="text-sm text-muted-foreground">
@@ -694,7 +735,11 @@ export function ListingsBrowseClient({
             </SelectTrigger>
             <SelectContent>
               {SORT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
+                <SelectItem
+                  key={opt.value}
+                  value={opt.value}
+                  disabled={opt.value === "proximity" && !currentFilters.buyerZip}
+                >
                   {opt.label}
                 </SelectItem>
               ))}
@@ -802,101 +847,20 @@ export function ListingsBrowseClient({
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-muted-foreground">
                 {hasFilters
-                  ? "Keep your criteria working. We can alert you, send your request to sellers, or help matching inventory get listed."
+                  ? "Tell sellers what you need, or save an alert for a matching lot."
                   : "Be first to know when inventory arrives, or tell qualified sellers exactly what your business needs."}
               </p>
 
-              <div className="mt-8 grid gap-4 text-left md:grid-cols-3">
-                <Card className="flex h-full flex-col shadow-sm">
-                  <CardHeader className="pb-3">
-                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <BellRing className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <h3 className="font-semibold leading-none tracking-tight">
-                      Get a match alert
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="flex flex-1 flex-col">
-                    <p className="flex-1 text-sm text-muted-foreground">
-                      Save these filters and get notified when a matching lot
-                      goes live.
-                    </p>
-                    <Button
-                      className="mt-5 w-full"
-                      variant="outline"
-                      onClick={handleSaveSearchClick}
-                    >
-                      <BookmarkPlus
-                        className="mr-2 h-4 w-4"
-                        aria-hidden="true"
-                      />
-                      Save search alert
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="flex h-full flex-col border-primary/30 bg-primary/[0.03] shadow-sm">
-                  <CardHeader className="pb-3">
-                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <ClipboardPlus className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <h3 className="font-semibold leading-none tracking-tight">
-                      Let sellers come to you
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="flex flex-1 flex-col">
-                    <p className="flex-1 text-sm text-muted-foreground">
-                      Post a structured buyer request using the safe product and
-                      price filters from this search.
-                    </p>
-                    <Button
-                      className="mt-5 w-full"
-                      onClick={handleBuyerRequestClick}
-                    >
-                      Post a buyer request
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                <Card className="flex h-full flex-col shadow-sm">
-                  <CardHeader className="pb-3">
-                    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <PackagePlus className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <h3 className="font-semibold leading-none tracking-tight">
-                      Have matching inventory?
-                    </h3>
-                  </CardHeader>
-                  <CardContent className="flex flex-1 flex-col">
-                    <p className="flex-1 text-sm text-muted-foreground">
-                      List the lot for verified buyers, or share this demand with
-                      a flooring seller you know.
-                    </p>
-                    <div className="mt-5 grid gap-2">
-                      <Button
-                        className="w-full"
-                        variant="secondary"
-                        onClick={handleSellerIntentClick}
-                      >
-                        List matching inventory
-                      </Button>
-                      <Button asChild className="w-full" variant="ghost">
-                        <a
-                          href={referralHref}
-                          onClick={() =>
-                            trackZeroResultAction("refer_inventory")
-                          }
-                        >
-                          <Share2
-                            className="mr-2 h-4 w-4"
-                            aria-hidden="true"
-                          />
-                          Refer a seller
-                        </a>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+              <div className="mx-auto mt-6 flex max-w-lg flex-col items-center gap-3">
+                <Button className="w-full sm:w-auto" onClick={handleBuyerRequestClick}>Post a buyer request</Button>
+                <p className="text-sm text-muted-foreground">Tell sellers what you need using your current search criteria.</p>
+                <Button variant="outline" className="w-full sm:w-auto" onClick={handleSaveSearchClick}>
+                  <BookmarkPlus className="mr-2 h-4 w-4" aria-hidden="true" />Save search alert
+                </Button>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm">
+                  <button type="button" onClick={handleSellerIntentClick} className="min-h-11 underline underline-offset-4">List matching inventory</button>
+                  <a className="inline-flex min-h-11 items-center underline underline-offset-4" href={referralHref} onClick={() => trackZeroResultAction("refer_inventory")}>Refer a seller</a>
+                </div>
               </div>
 
               {hasFilters && (

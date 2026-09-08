@@ -114,10 +114,13 @@ function createContext(db: Record<string, unknown>) {
 
 function createListingDb() {
   return {
+    select: vi.fn(() => ({ from: () => ({ where: async () => [{ id: "seller-1", name: "Seller", email: "seller@example.com", phone: "8015551212", businessName: "Seller Co", businessAddress: "123 Warehouse Rd", businessCity: "Salt Lake City", businessState: "UT", businessZip: "84101" }] }) })),
     query: {
       listings: {
         findFirst: vi.fn().mockResolvedValue({
           id: LISTING_ID,
+          sellerId: "seller-1",
+          warehouseId: null,
           title: "Engineered Oak",
           status: "active",
           condition: "new",
@@ -256,6 +259,7 @@ describe("shipping quote provider cache", () => {
           { code: "LGDEL" },
           { code: "RESD" },
           { code: "APPT" },
+          { code: "LGPU" },
         ],
       }),
     );
@@ -266,7 +270,7 @@ describe("shipping quote provider cache", () => {
     expect(persistedSnapshots).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          accessorialCodes: ["LGDEL", "RESD", "APPT"],
+          accessorialCodes: ["LGDEL", "RESD", "APPT", "LGPU"],
         }),
       ]),
     );

@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
+// Keep session protection alongside src/app, following the src-directory convention.
 export async function middleware(request: NextRequest) {
   return await updateSession(request);
 }

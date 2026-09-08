@@ -22,9 +22,13 @@ export async function readPublicReadCache<T>(
 ): Promise<T | null> {
   if (!key) return null;
   try {
-    const cached = await redis.get<string>(key);
+    const cached = await redis.get<string | ReturnType<typeof superjson.serialize>>(key);
     if (!cached) return null;
-    return superjson.parse<T>(cached);
+    // Upstash automatically decodes JSON strings by default. Preserve
+    // SuperJSON's Date metadata whether the client returned text or an object.
+    return typeof cached === "string"
+      ? superjson.parse<T>(cached)
+      : superjson.deserialize<T>(cached);
   } catch (error) {
     console.error("[public-read-cache] read failed", {
       key,

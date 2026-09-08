@@ -82,7 +82,7 @@ describe("findStripeTransferForOrder", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("returns undefined when the legacy scan is incomplete and unmatched", async () => {
+  it("fails closed when the legacy scan is incomplete and unmatched", async () => {
     const filler = Array.from({ length: 100 }, (_, index) =>
       transfer(`tr_other_${index}`, "another-order"),
     );
@@ -101,7 +101,7 @@ describe("findStripeTransferForOrder", () => {
         orderCreatedAt,
         destination: "acct_seller",
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("history is incomplete");
   });
 
   it("fails closed when multiple transfers claim the same order", async () => {
@@ -123,4 +123,16 @@ describe("findStripeTransferForOrder", () => {
       }),
     ).rejects.toThrow("Multiple seller transfers");
   });
+  it.each([
+    [{ data: [transfer("tr_grouped", "order-1")], has_more: true }],
+    [{ data: [], has_more: false }, { data: [], has_more: true }],
+    [{ data: [], has_more: false }, ...Array.from({ length: 10 }, (_, i) => ({
+      data: [transfer(`tr_${i}`, i === 0 ? "order-1" : "another-order")], has_more: true,
+    }))],
+  ])("rejects unfinished or malformed history even with a match", async (...pages) => {
+    const { stripe } = stripeWithTransferPages(pages);
+    await expect(findStripeTransferForOrder({ stripe, orderId: "order-1", orderCreatedAt }))
+      .rejects.toThrow("history is incomplete");
+  });
+
 });

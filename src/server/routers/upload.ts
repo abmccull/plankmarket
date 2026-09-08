@@ -4,7 +4,7 @@ import {
   verifiedBuyerProcedure,
 } from "../trpc";
 import { media, listings } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -36,6 +36,16 @@ function toMediaDeletionTrpcError(error: unknown): TRPCError {
 }
 
 export const uploadRouter = createTRPCRouter({
+  getOwnedMedia: sellerProcedure
+    .input(z.object({ ids: z.array(z.string().uuid()).max(20) }))
+    .query(async ({ ctx, input }) => {
+      if (!input.ids.length) return [];
+      const records = await ctx.db.query.media.findMany({
+        where: and(inArray(media.id, input.ids), eq(media.uploaderId, ctx.user.id), isNull(media.buyerRequestId), isNull(media.deletionClaimToken)),
+      });
+      const byId = new Map(records.map((record) => [record.id, record]));
+      return input.ids.flatMap((id) => { const record = byId.get(id); return record ? [record] : []; });
+    }),
   // Upload records are created only by UploadThing's signed server callback.
   // This endpoint only changes ordering on records owned by this seller.
   reorderMedia: sellerProcedure

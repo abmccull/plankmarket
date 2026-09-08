@@ -2,6 +2,13 @@ import type Stripe from "stripe";
 
 const LEGACY_TRANSFER_SCAN_PAGE_LIMIT = 10;
 
+export class IncompleteTransferHistoryError extends Error {
+  constructor(orderId: string) {
+    super(`Seller transfer history is incomplete for order ${orderId}; reconciliation required`);
+    this.name = "IncompleteTransferHistoryError";
+  }
+}
+
 function matchingOrderTransfers(
   transfers: Stripe.Transfer[],
   orderId: string,
@@ -41,6 +48,7 @@ export async function findStripeTransferForOrder(params: {
     matchingOrderTransfers(grouped.data, params.orderId),
     params.orderId,
   );
+  if (grouped.has_more) throw new IncompleteTransferHistoryError(params.orderId);
   if (groupedMatch) return groupedMatch;
 
   let startingAfter: string | undefined;
@@ -62,12 +70,13 @@ export async function findStripeTransferForOrder(params: {
     if (!result.has_more) return legacyMatches[0];
 
     const lastTransfer = result.data[result.data.length - 1];
-    if (!lastTransfer) break;
+    if (!lastTransfer || lastTransfer.id === startingAfter) {
+      throw new IncompleteTransferHistoryError(params.orderId);
+    }
     startingAfter = lastTransfer.id;
   }
 
-  if (legacyMatches[0]) return legacyMatches[0];
-  // An incomplete destination scan must not block first payout. transfer_group
-  // already missed, so create/refund can proceed and reconcilers can recover.
-  return undefined;
+  // A match on an unfinished scan is not proof of uniqueness either. Callers
+  // must stop before moving money until reconciliation resolves the history.
+  throw new IncompleteTransferHistoryError(params.orderId);
 }

@@ -197,6 +197,7 @@ export function getFilterBadges(
     });
   }
 
+  if (filters.waterproofRequired === true) badges.push({ key: "waterproofRequired", label: "Evidence-reviewed waterproof" });
   if (filters.sellerVerified === true) {
     badges.push({ key: "sellerVerified", label: "Verified sellers" });
   }
@@ -259,6 +260,7 @@ export function filtersToSearchParams(filters: SearchFilters): string {
   if (filters.maxDistance !== undefined)
     params.set("maxDistance", String(filters.maxDistance));
   if (filters.buyerZip) params.set("buyerZip", filters.buyerZip);
+  if (filters.waterproofRequired === true) params.set("waterproofRequired", "true");
   if (filters.sellerVerified === true)
     params.set("sellerVerified", "true");
   if (filters.freightReady === true)
@@ -327,6 +329,7 @@ export function searchParamsToFilters(searchParams: URLSearchParams): SearchFilt
     maxLotSize: parseOptionalNumber(searchParams.get("maxLotSize")),
     maxDistance: parseOptionalNumber(searchParams.get("maxDistance")),
     buyerZip: searchParams.get("buyerZip") || undefined,
+    ...(parsePositiveBoolean(searchParams.get("waterproofRequired")) ? { waterproofRequired: true } : {}),
     sellerVerified: parsePositiveBoolean(searchParams.get("sellerVerified")),
     freightReady: parsePositiveBoolean(searchParams.get("freightReady")),
     fullLotOnly: parseOptionalBoolean(searchParams.get("fullLotOnly")),

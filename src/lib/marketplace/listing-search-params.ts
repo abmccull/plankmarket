@@ -227,6 +227,7 @@ export function parseListingSearchParams(
       MAX_PUBLIC_DISTANCE_MILES,
     ),
     buyerZip: parseBuyerZip(params.buyerZip),
+    ...(parsePositiveBoolean(params.waterproofRequired) ? { waterproofRequired: true as const } : {}),
     sellerVerified: parsePositiveBoolean(params.sellerVerified),
     freightReady: parsePositiveBoolean(params.freightReady),
     fullLotOnly: parseOptionalBoolean(params.fullLotOnly),

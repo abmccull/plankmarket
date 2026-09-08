@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
+import { useState, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,6 +36,7 @@ import ShippingQuoteSelector, {
   type SelectedShippingQuote,
 } from "@/components/checkout/shipping-quote-selector";
 import Image from "next/image";
+import { checkoutAttemptKey, readCheckoutAttempt, persistCheckoutAttempt, type CheckoutAttempt } from "@/lib/checkout-attempt";
 
 type CheckoutStep = "address" | "shipping" | "payment";
 type SavedAddressOption = "new" | string; // "new" or address id
@@ -63,6 +64,28 @@ export default function CheckoutPage() {
   const searchParams = useSearchParams();
   const listingId = params.id as string;
   const offerId = searchParams.get("offerId");
+
+  const { data: buyer } = trpc.auth.getProfile.useQuery();
+  const [attempt, setAttempt] = useState<CheckoutAttempt | null>(null);
+  const [attemptReady, setAttemptReady] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const submittingRef = useRef(false);
+  const attemptKey = buyer ? checkoutAttemptKey(buyer.id, listingId, offerId) : null;
+
+  useEffect(() => {
+    setAttemptReady(false);
+    setAttempt(null);
+    setClientSecret(null);
+    setOrderId(null);
+    if (!attemptKey) return;
+    try {
+      setAttempt(readCheckoutAttempt(window.sessionStorage, attemptKey));
+      setRecoveryError(null);
+    } catch {
+      setRecoveryError("We could not read your saved checkout. Open your orders to verify any reservation before starting again.");
+    }
+    setAttemptReady(true);
+  }, [attemptKey]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentStep, setCurrentStep] = useState<CheckoutStep>("address");
@@ -96,15 +119,16 @@ export default function CheckoutPage() {
 
   // Check seller payment readiness
   useEffect(() => {
+    if (!attemptReady || attempt || recoveryError) return;
     if (listing?.seller && !listing.seller.stripeOnboardingComplete) {
       toast.error("This seller hasn't set up payment processing yet.");
       router.push(`/listings/${listingId}`);
     }
-  }, [listing, listingId, router]);
+  }, [listing, listingId, router, attemptReady, attempt, recoveryError]);
 
   // Validate offer status and expiry when offer data loads
   useEffect(() => {
-    if (!offerId || !offer) return;
+    if (!attemptReady || attempt || recoveryError || !offerId || !offer) return;
 
     if (offer.status !== "accepted") {
       toast.error("This offer is no longer available for checkout.");
@@ -116,8 +140,9 @@ export default function CheckoutPage() {
       toast.error("This offer has expired.");
       router.push(`/offers/${offerId}`);
     }
-  }, [offer, offerId, router]);
+  }, [offer, offerId, router, attemptReady, attempt, recoveryError]);
 
+  const abandonCheckout = trpc.order.abandonCheckout.useMutation();
   const createOrder = trpc.order.create.useMutation();
   const createOrderFromOffer = trpc.order.createFromOffer.useMutation();
   const createPaymentIntent = trpc.payment.createPaymentIntent.useMutation();
@@ -254,83 +279,131 @@ export default function CheckoutPage() {
     setCurrentStep("shipping");
   };
 
-  // Handle "Continue to Payment" — create order with shipping quote
+  // Replays always submit the exact saved payload and request ID. A payment
+  // preparation failure therefore never creates a second reservation.
+  const resumeAttempt = async (saved: CheckoutAttempt) => {
+    const order = saved.mode === "offer"
+      ? await createOrderFromOffer.mutateAsync(saved.input)
+      : await createOrder.mutateAsync(saved.input);
+    setOrderId(order.id);
+    setAuthoritativeTax({
+      amount: Number(order.taxAmount), total: Number(order.totalPrice),
+      status: order.taxStatus, liability: order.taxLiability,
+      jurisdictions: order.taxJurisdictionSummary,
+    });
+    if (order.status !== "pending" || !["pending", "failed"].includes(order.paymentStatus ?? "pending")) {
+      // Processing/captured payments are never cancelled or retried as a new
+      // order. The order page reads their authoritative current status.
+      if (attemptKey && ["cancelled", "refunded"].includes(order.status)) {
+        window.sessionStorage.removeItem(attemptKey);
+      }
+      router.push(`/buyer/orders/${order.id}`);
+      return;
+    }
+    const payment = await createPaymentIntent.mutateAsync({ orderId: order.id });
+    if (!payment.clientSecret) throw new Error("Payment is not ready. Resume this order to try again.");
+    setClientSecret(payment.clientSecret);
+    setCurrentStep("payment");
+  };
+
   const handleContinueToPayment = async () => {
-    if (!selectedQuote) {
+    if (submittingRef.current) return;
+    if (!attemptKey || !attemptReady) return;
+    if (!attempt && !selectedQuote) {
       toast.error("Please select a shipping option to continue.");
       return;
     }
-
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
-      const formData = getValues();
-      const shippingQuoteFields = {
-        selectedQuoteToken: selectedQuote.quoteToken,
-        selectedQuoteId: String(selectedQuote.quoteId),
-        selectedCarrier: selectedQuote.carrierName,
-        shippingPrice: selectedQuote.shippingPrice,
-        estimatedTransitDays: selectedQuote.transitDays,
-        quoteExpiresAt: selectedQuote.quoteExpiresAt,
-      };
-
-      // Use createFromOffer for accepted-offer checkouts so the
-      // server validates the offer price server-side.
-      const order = isOfferCheckout
-        ? await createOrderFromOffer.mutateAsync({
-            offerId: offerId!,
-            shippingName: formData.shippingName,
-            shippingAddress: formData.shippingAddress,
-            shippingCity: formData.shippingCity,
-            shippingState: formData.shippingState,
-            shippingZip: formData.shippingZip,
-            shippingPhone: formData.shippingPhone,
-            ...shippingQuoteFields,
-          })
-        : await createOrder.mutateAsync({
-            ...formData,
-            ...shippingQuoteFields,
-          });
-      setOrderId(order.id);
-      setAuthoritativeTax({
-        amount: Number(order.taxAmount),
-        total: Number(order.totalPrice),
-        status: order.taxStatus,
-        liability: order.taxLiability,
-        jurisdictions: order.taxJurisdictionSummary,
-      });
-
-      // Create payment intent
-      const paymentIntentData = await createPaymentIntent.mutateAsync({
-        orderId: order.id,
-      });
-
-      if (!paymentIntentData.clientSecret) {
-        throw new Error("Failed to create payment intent");
+      let saved = attempt;
+      if (!saved) {
+        const formData = getValues();
+        const shippingQuoteFields = {
+          requestId: crypto.randomUUID(),
+          selectedQuoteToken: selectedQuote!.quoteToken,
+          selectedQuoteId: String(selectedQuote!.quoteId),
+          selectedCarrier: selectedQuote!.carrierName,
+          shippingPrice: selectedQuote!.shippingPrice,
+          estimatedTransitDays: selectedQuote!.transitDays,
+          quoteExpiresAt: selectedQuote!.quoteExpiresAt,
+        };
+        const candidate: CheckoutAttempt = isOfferCheckout
+          ? { mode: "offer", input: {
+              offerId: offerId!, shippingName: formData.shippingName,
+              shippingAddress: formData.shippingAddress, shippingCity: formData.shippingCity,
+              shippingState: formData.shippingState, shippingZip: formData.shippingZip,
+              shippingPhone: formData.shippingPhone, ...shippingQuoteFields,
+            } }
+          : { mode: "direct", input: { ...formData, ...shippingQuoteFields } };
+        // If storage is unavailable, do not start a purchase we cannot recover.
+        saved = persistCheckoutAttempt(window.sessionStorage, attemptKey, candidate);
+        setAttempt(saved);
       }
-
-      setClientSecret(paymentIntentData.clientSecret);
-      setCurrentStep("payment");
-      toast.success("Order created! Please complete payment.");
+      await resumeAttempt(saved);
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Failed to create order";
-
-      if (
-        typeof message === "string" &&
-        message.includes("/buyer/settings")
-      ) {
-        toast.error("Please complete verification before checkout.");
-        router.push("/buyer/settings");
-        return;
-      }
-
+      const message = error instanceof Error ? error.message : "Checkout could not be completed. Resume your saved checkout to try again.";
       toast.error(message);
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
+  const handleChangeCheckout = async () => {
+    if (!attempt || !attemptKey || submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await abandonCheckout.mutateAsync({ requestId: attempt.input.requestId });
+      // The server tombstone commits before local state is removed. A delayed
+      // request using the old ID now fails rather than creating a hidden order.
+      window.sessionStorage.removeItem(attemptKey);
+      setAttempt(null);
+      setOrderId(null);
+      setClientSecret(null);
+      setAuthoritativeTax(null);
+      setSelectedQuote(null);
+      setCurrentStep("address");
+      toast.success("Checkout reset. Confirm your details and select shipping again.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "We could not safely reset this checkout. Resume it to check its status.");
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
+
+  // Render recovery before live catalog guards: a full-lot reservation can make
+  // the original listing unavailable, and an accepted offer may now be linked.
+  if (recoveryError || (attempt && !clientSecret)) {
+    return (
+      <div className="container mx-auto max-w-xl px-4 py-12 space-y-5">
+        <h1 className="text-2xl font-bold">Resume checkout</h1>
+        <p>{recoveryError ?? "Your checkout details are saved. Resume to recover the same order and payment. Your quantity and shipping details stay locked while we check its status."}</p>
+        {!recoveryError && <Button disabled={isSubmitting} onClick={handleContinueToPayment}>
+          {isSubmitting ? "Checking your order…" : "Resume saved checkout"}
+        </Button>}
+        {!recoveryError && <Button variant="outline" disabled={isSubmitting} onClick={handleChangeCheckout}>Change checkout details</Button>}
+        <Button variant="outline" onClick={() => router.push("/buyer/orders")}>View my orders</Button>
+      </div>
+    );
+  }
+  if (attempt && clientSecret && orderId) {
+    return (
+      <div className="container mx-auto max-w-xl px-4 py-12 space-y-5">
+        <h1 className="text-2xl font-bold">Complete payment</h1>
+        {authoritativeTax && <p className="text-lg font-semibold">Order total: {formatCurrency(authoritativeTax.total)}</p>}
+        <StripeProvider clientSecret={clientSecret}>
+          <StripePaymentForm listingId={listingId} orderId={orderId} />
+        </StripeProvider>
+        <Button variant="outline" onClick={() => router.push(`/buyer/orders/${orderId}`)}>View this order</Button>
+      </div>
+    );
+  }
+
   if (
+    !attemptReady ||
     isLoading ||
     isPurchaseConfigLoading ||
     (offerId && isOfferLoading)

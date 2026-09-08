@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const createOrderSchema = z.object({
+  requestId: z.string().uuid("A checkout request ID is required"),
   listingId: z.string().uuid(),
   quantitySqFt: z.number().positive("Quantity must be positive"),
   shippingName: z.string().min(2, "Shipping name is required"),
@@ -38,6 +39,7 @@ export const updateOrderStatusSchema = z.object({
 });
 
 export const createOrderFromOfferSchema = z.object({
+  requestId: z.string().uuid("A checkout request ID is required"),
   offerId: z.string().uuid(),
   shippingName: z.string().min(2, "Shipping name is required"),
   shippingAddress: z.string().min(5, "Shipping address is required"),

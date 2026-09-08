@@ -1,4 +1,5 @@
 import { createTRPCRouter } from "../trpc";
+import { verificationDocumentRouter } from "./verification-document";
 import { authRouter } from "./auth";
 import { listingRouter } from "./listing";
 import { orderRouter } from "./order";
@@ -21,6 +22,7 @@ import { matchingRouter } from "./matching";
 import { listingAssistantRouter } from "./listing-assistant";
 import { crmRouter } from "./crm";
 import { analyticsRouter } from "./analytics";
+import { warehouseRouter } from "./warehouse";
 import { shippingAddressRouter } from "./shipping-address";
 import { subscriptionRouter } from "./subscription";
 import { agentRouter } from "./agent";
@@ -31,6 +33,7 @@ import { inventoryIntegrationRouter } from "./inventory-integration";
 
 export const appRouter = createTRPCRouter({
   auth: authRouter,
+  verificationDocument: verificationDocumentRouter,
   listing: listingRouter,
   order: orderRouter,
   watchlist: watchlistRouter,
@@ -53,6 +56,7 @@ export const appRouter = createTRPCRouter({
   crm: crmRouter,
   analytics: analyticsRouter,
   shippingAddress: shippingAddressRouter,
+  warehouse: warehouseRouter,
   subscription: subscriptionRouter,
   agent: agentRouter,
   marketIntelligence: marketIntelligenceRouter,

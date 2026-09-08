@@ -1,237 +1,78 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, Loader2, Package, ArrowRight } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
+import { checkoutReceiptState } from "@/lib/checkout-receipt";
 
 export default function CheckoutSuccessPage() {
-  const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const listingId = params.id as string;
-
-  const paymentIntent = searchParams.get("payment_intent");
-  const paymentIntentClientSecret = searchParams.get("payment_intent_client_secret");
-  const orderIdParam = searchParams.get("orderId");
-
-  const { data: order, isLoading } = trpc.order.getById.useQuery(
-    { id: orderIdParam! },
-    { enabled: !!orderIdParam }
+  const orderId = searchParams.get("orderId");
+  const validId = !!orderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
+  const [checking, setChecking] = useState(true);
+  const query = trpc.order.getById.useQuery(
+    { id: orderId ?? "" },
+    { enabled: validId, retry: 1, refetchInterval: (query) => checking && (!query.state.data || checkoutReceiptState(query.state.data).poll) ? 2500 : false },
   );
+  const order = query.data;
+  const state = order ? checkoutReceiptState(order) : null;
+  const celebrated = useRef<string | null>(null);
 
-  const { data: myOrders } = trpc.order.getMyOrders.useQuery(
-    { page: 1, limit: 1 },
-    { enabled: !!order }
-  );
-
-  // Strip sensitive Stripe parameters from browser URL to prevent exposure
-  // in browser history, server logs, and referrer headers.
-  // Values are already captured above via useSearchParams() before removal.
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.has("payment_intent_client_secret") || url.searchParams.has("payment_intent")) {
-      url.searchParams.delete("payment_intent_client_secret");
-      url.searchParams.delete("payment_intent");
-      window.history.replaceState({}, "", url.toString());
-    }
+    url.searchParams.delete("payment_intent_client_secret");
+    url.searchParams.delete("payment_intent");
+    window.history.replaceState(window.history.state, "", url.toString());
+    const timer = setTimeout(() => setChecking(false), 60_000);
+    return () => clearTimeout(timer);
   }, []);
 
-  const celebratedRef = useRef(false);
   useEffect(() => {
-    if (myOrders?.total === 1 && !celebratedRef.current) {
-      celebratedRef.current = true;
-      celebrateMilestone("First Purchase!", "Welcome to PlankMarket — your first order has been placed.");
-    }
-  }, [myOrders]);
+    if (!order || !state?.paid || celebrated.current === order.id) return;
+    celebrated.current = order.id;
+    const key = `plankmarket:receipt-celebrated:${order.id}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* A receipt remains usable when browser storage is unavailable. */ }
+    celebrateMilestone("Purchase confirmed", "Your payment has been received.");
+  }, [order, state?.paid]);
 
-  useEffect(() => {
-    if (!paymentIntent || !paymentIntentClientSecret || !orderIdParam) {
-      router.push(`/listings/${listingId}/checkout`);
-      return;
-    }
-  }, [paymentIntent, paymentIntentClientSecret, orderIdParam, listingId, router]);
-
-  if (!paymentIntent || !paymentIntentClientSecret) {
-    return null;
-  }
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-20 max-w-2xl">
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-4" />
-          <p className="text-muted-foreground">Confirming your order...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="container mx-auto px-4 py-12 max-w-2xl">
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/20 mb-4">
-          <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" aria-hidden="true" />
-        </div>
-        <h1 className="text-3xl font-bold mb-2">Order Confirmed!</h1>
-        <p className="text-muted-foreground">
-          Thank you for your purchase. Your order has been placed successfully.
-        </p>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Order Details</CardTitle>
-          <CardDescription>
-            Order confirmation and details have been sent to your email.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Order Number</span>
-              <span className="font-medium">{order?.orderNumber || "Processing..."}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Payment Intent</span>
-              <span className="font-mono text-xs truncate max-w-[200px]">
-                {paymentIntent}
-              </span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Order Date</span>
-              <span>{order?.createdAt ? formatDate(order.createdAt) : "Just now"}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Status</span>
-              <span className="capitalize">{order?.status || "Pending"}</span>
-            </div>
-          </div>
-
-          {order && (
-            <>
-              <Separator />
-              <div className="space-y-3">
-                <h3 className="font-medium text-sm">Order Summary</h3>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(order.subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Buyer Fee</span>
-                  <span>{formatCurrency(order.buyerFee)}</span>
-                </div>
-                {order.shippingPrice &&
-                  (order.sellerFreightContribution > 0 ? (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          Full freight charge
-                        </span>
-                        <span>{formatCurrency(order.shippingPrice)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm text-green-700 dark:text-green-400">
-                        <span>Seller shipping credit</span>
-                        <span>
-                          -{formatCurrency(order.sellerFreightContribution)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between text-sm font-medium">
-                        <span>Buyer shipping</span>
-                        <span>{formatCurrency(order.buyerFreightCharge)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Buyer shipping
-                      </span>
-                      <span>{formatCurrency(order.buyerFreightCharge)}</span>
-                    </div>
-                  ))}
-                <Separator />
-                <div className="flex justify-between font-semibold">
-                  <span>Total Paid</span>
-                  <span className="text-primary">{formatCurrency(order.totalPrice)}</span>
-                </div>
-              </div>
-            </>
-          )}
-
-          <Separator />
-
-          <div className="space-y-3">
-            <h3 className="font-medium text-sm flex items-center gap-2">
-              <Package className="h-4 w-4" aria-hidden="true" />
-              What happens next?
-            </h3>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                  1
-                </span>
-                <span>The seller will be notified of your order</span>
-              </li>
-              {order?.selectedCarrier ? (
-                <>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                      2
-                    </span>
-                    <span>
-                      Your shipment will be dispatched via{" "}
-                      <strong>{order.selectedCarrier}</strong>
-                      {order.estimatedTransitDays &&
-                        ` (est. ${order.estimatedTransitDays} business days)`}
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                      3
-                    </span>
-                    <span>Track live shipment status in your buyer dashboard</span>
-                  </li>
-                </>
-              ) : (
-                <>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                      2
-                    </span>
-                    <span>You will receive tracking information once your order ships</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-medium">
-                      3
-                    </span>
-                    <span>Track your order status in your buyer dashboard</span>
-                  </li>
-                </>
-              )}
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-col sm:flex-row gap-3 mt-6">
-        <Button asChild variant="outline" className="flex-1">
-          <Link href="/buyer/orders">
-            View All Orders
-          </Link>
-        </Button>
-        <Button asChild className="flex-1">
-          <Link href="/">
-            Continue Shopping
-            <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-          </Link>
-        </Button>
-      </div>
+  return <div className="container mx-auto max-w-2xl px-4 py-12">
+    <div className="mb-8 text-center" role="status" aria-live="polite">
+      {state?.paid && <CheckCircle2 className="mx-auto mb-4 h-12 w-12 text-green-600" aria-hidden="true" />}
+      {validId && query.isLoading && <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" aria-hidden="true" />}
+      <h1 className="text-3xl font-bold">{!validId ? "Order reference missing" : query.isError ? "Unable to load your order" : state?.title ?? "Checking your payment"}</h1>
+      <p className="mt-3 text-muted-foreground">{!validId ? "Find your purchase in your orders." : query.isError ? "We could not verify the payment status. Do not pay again. Retry or open your orders." : state?.description ?? "Retrieving the saved order and its payment status."}</p>
+      {state?.poll && !checking && <p className="mt-3 text-sm">Confirmation is taking longer than usual. Your order is saved; check again or return to your orders.</p>}
+      {(query.isError || (state?.poll && !checking)) && <Button variant="outline" className="mt-4" disabled={query.isFetching} onClick={() => void query.refetch()}>Check status again</Button>}
     </div>
-  );
+    {order && <Card>
+      <CardHeader><CardTitle>Order {order.orderNumber}</CardTitle></CardHeader>
+      <CardContent>
+        <dl className="space-y-3 text-sm">
+          {[
+            ["Order date", formatDate(order.createdAt)],
+            ["Order status", order.status],
+            ["Payment status", order.paymentStatus.replaceAll("_", " ")],
+            ["Inventory subtotal", formatCurrency(order.subtotal)],
+            ["Buyer fee", formatCurrency(order.buyerFee)],
+            ["Buyer shipping", formatCurrency(order.buyerFreightCharge)],
+            ["Tax", formatCurrency(order.taxAmount)],
+            [state?.paid ? "Total paid" : "Order total", formatCurrency(order.totalPrice)],
+          ].map(([label, value]) => <div key={label} className="flex justify-between gap-4"><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{value}</dd></div>)}
+        </dl>
+      </CardContent>
+    </Card>}
+    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+      <Button asChild className="flex-1"><Link href={order ? `/buyer/orders/${order.id}` : "/buyer/orders"}>{order ? "View order" : "View my orders"}</Link></Button>
+      <Button asChild variant="outline" className="flex-1"><Link href="/listings">Continue shopping</Link></Button>
+    </div>
+  </div>;
 }

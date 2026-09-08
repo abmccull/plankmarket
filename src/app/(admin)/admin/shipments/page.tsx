@@ -34,6 +34,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 type ShipmentStatus = "pending" | "dispatched" | "in_transit" | "out_for_delivery" | "delivered" | "exception" | "cancelled";
 
 interface Shipment {
+  recovery: import("@/lib/order-recovery").OrderRecovery;
   id: string;
   orderId: string;
   carrierName: string | null;
@@ -153,17 +154,11 @@ export default function AdminShipmentsPage() {
     {
       accessorKey: "lastError",
       header: "Attention",
-      cell: ({ row }) =>
-        row.original.lastError ? (
-          <span
-            className="block max-w-64 truncate text-sm text-destructive"
-            title={row.original.lastError}
-          >
-            {row.original.lastError}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
+      cell: ({ row }) => <div className="max-w-72 space-y-1 text-sm">
+        <p className="font-medium">{row.original.recovery.title}</p>
+        <p className="text-muted-foreground">{row.original.recovery.description}</p>
+        {row.original.recovery.action && <a className="underline" href={row.original.recovery.action.href}>{row.original.recovery.action.label}</a>}
+      </div>,
     },
     {
       id: "carrierRate",

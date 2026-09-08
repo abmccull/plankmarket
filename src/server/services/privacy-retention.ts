@@ -1,3 +1,5 @@
+import { verificationDocumentId } from "@/lib/verification-documents";
+import { deletePrivateVerificationDocument, purgeAbandonedVerificationDocuments } from "./verification-documents";
 import { and, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type Database } from "@/server/db";
 import {
@@ -42,7 +44,7 @@ function buildVerificationDocumentReference(params: {
   due: boolean;
 }): VerificationDocumentReference {
   const documentUrl = params.documentUrl?.trim() || "";
-  const trustedKey = getUploadThingFileKeyFromUrl(documentUrl);
+  const trustedKey = verificationDocumentId(documentUrl) ? documentUrl : getUploadThingFileKeyFromUrl(documentUrl);
 
   return {
     kind: params.kind,
@@ -106,7 +108,7 @@ function getVerificationDocumentPurgeOutcome(
   const normalizedUrl = documentUrl?.trim() || null;
   if (!normalizedUrl) return "no_document";
 
-  const uploadThingKey = getUploadThingFileKeyFromUrl(normalizedUrl);
+  const uploadThingKey = verificationDocumentId(normalizedUrl) ? normalizedUrl : getUploadThingFileKeyFromUrl(normalizedUrl);
   const groupKey = uploadThingKey
     ? `key:${uploadThingKey}`
     : `url:${normalizedUrl}`;
@@ -118,7 +120,7 @@ const TERMINAL_SAMPLE_REQUEST_STATUSES = ["declined", "cancelled", "delivered"] 
 export async function runPrivacyRetentionSweep(
   executor: DbExecutor = db,
   now = new Date(),
-  deleteVerificationDocument: (key: string) => Promise<void> = deleteUploadThingFile,
+  deleteVerificationDocument: (key: string) => Promise<void> = async key => { if (verificationDocumentId(key)) await deletePrivateVerificationDocument(key); else await deleteUploadThingFile(key); },
 ): Promise<PrivacyRetentionSweepResult> {
   const draftDocumentReferences = await executor
     .select({
@@ -293,6 +295,8 @@ export async function runPrivacyRetentionSweep(
     .delete(shippingAddresses)
     .where(lte(shippingAddresses.retentionPurgeAfter, now))
     .returning({ id: shippingAddresses.id });
+
+  if (executor === db) await purgeAbandonedVerificationDocuments(now);
 
   return {
     verificationDraftsDeleted: deletedDrafts.length,

@@ -1,3 +1,4 @@
+import { FEATURES } from "@/lib/feature-flags";
 import { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ export default function PricingPage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-10 sm:py-14">
         <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
@@ -54,6 +55,64 @@ export default function PricingPage() {
               Buyer and seller fees are shown separately. Seller processing is
               disclosed on inventory only, and freight is quoted before payment.
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Fee Example */}
+      <section className="py-10 sm:py-14">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="font-display text-3xl">Fee Example</h2>
+            <p className="mt-3 text-muted-foreground">
+              See how the buyer total and seller transfer are modeled on a typical transaction
+            </p>
+          </div>
+          <div className="max-w-3xl mx-auto">
+            <Card className="border-primary/30">
+              <CardHeader>
+                <CardTitle className="text-xl">Example: $10,000 inventory order</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm font-medium">Inventory subtotal</span>
+                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.inventorySubtotal}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Quoted freight</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.quotedFreight}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Buyer fee ({PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeePercent}%)</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerFee}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 bg-secondary/10 px-3 rounded-md">
+                    <span className="text-sm font-semibold">Buyer total before tax</span>
+                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerTotal}</span>
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Seller fee ({PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeePercent}%)</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.sellerFee}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm">Seller Stripe fee ({PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel})</span>
+                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.sellerStripeFee}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
+                    <span className="text-sm font-semibold">Projected seller transfer</span>
+                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.projectedSellerTransfer}</span>
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="flex justify-between items-start py-2">
+                    <span className="text-sm text-muted-foreground">Freight disclosure</span>
+                    <span className="text-sm text-muted-foreground text-right">Displayed freight charge may include carrier charges plus PlankMarket shipping service margin</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </section>
@@ -162,7 +221,7 @@ export default function PricingPage() {
                   Power users can upgrade to Pro for unlimited listings,
                   unlimited saved searches, saved-search monitoring and seller
                   repricing tools, bulk CSV import, seller CRM, market
-                  intelligence, and monthly promotion credit.
+                  intelligence{FEATURES.PROMOTIONS_ENABLED ? ", and monthly promotion credit" : ""}.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex justify-center pb-8">
@@ -232,64 +291,6 @@ export default function PricingPage() {
                         {PUBLIC_COMMERCIAL_COPY.notRegulatedEscrow}
                       </p>
                     </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Fee Example */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl">Fee Example</h2>
-            <p className="mt-3 text-muted-foreground">
-              See how the buyer total and seller transfer are modeled on a typical transaction
-            </p>
-          </div>
-          <div className="max-w-3xl mx-auto">
-            <Card className="border-primary/30">
-              <CardHeader>
-                <CardTitle className="text-xl">Example: $10,000 inventory order</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm font-medium">Inventory subtotal</span>
-                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.inventorySubtotal}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Quoted freight</span>
-                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.quotedFreight}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Buyer fee ({PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeePercent}%)</span>
-                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerFee}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 bg-secondary/10 px-3 rounded-md">
-                    <span className="text-sm font-semibold">Buyer total</span>
-                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerTotal}</span>
-                  </div>
-                  <Separator className="my-4" />
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Seller fee ({PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeePercent}%)</span>
-                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.sellerFee}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm">Seller Stripe fee ({PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel})</span>
-                    <span className="text-sm">{PUBLIC_COMMERCIAL_COPY.exampleOrder.sellerStripeFee}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 bg-primary/10 px-3 rounded-md">
-                    <span className="text-sm font-semibold">Projected seller transfer</span>
-                    <span className="text-sm font-semibold">{PUBLIC_COMMERCIAL_COPY.exampleOrder.projectedSellerTransfer}</span>
-                  </div>
-                  <Separator className="my-4" />
-                  <div className="flex justify-between items-start py-2">
-                    <span className="text-sm text-muted-foreground">Freight disclosure</span>
-                    <span className="text-sm text-muted-foreground text-right">Displayed freight charge may include carrier charges plus PlankMarket shipping service margin</span>
                   </div>
                 </div>
               </CardContent>

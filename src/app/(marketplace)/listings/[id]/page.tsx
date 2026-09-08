@@ -179,9 +179,11 @@ async function ListingContent({ id }: { id: string }) {
       price: directPurchaseUnitPrice * listing.totalSqFt,
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
-      itemCondition: listing.condition === "new_overstock"
-        ? "https://schema.org/NewCondition"
-        : "https://schema.org/UsedCondition",
+      // Closeout/discontinued describe the sale reason, not prior use.
+      // Omit unknown physical condition instead of labelling it used.
+      ...(listing.condition === "new_overstock"
+        ? { itemCondition: "https://schema.org/NewCondition" }
+        : {}),
       seller: listing.seller ? {
         "@type": "Organization",
         name: listing.seller.displayName,
@@ -276,6 +278,12 @@ async function ListingContent({ id }: { id: string }) {
                   {listing.length && <SpecItem label="Length" value={`${listing.length}"`} />}
                   {listing.color && <SpecItem label="Color" value={listing.color} />}
                   {listing.brand && <SpecItem label="Brand" value={listing.brand} />}
+                  {listing.modelNumber && <SpecItem label="Model" value={listing.modelNumber} />}
+                  <SpecItem label="Packaging" value={(listing.packagingType ?? "unknown").replaceAll("_", " ")} />
+                  <SpecItem label="Installation" value={(listing.installationMethod ?? "unknown").replaceAll("_", " ")} />
+                  <SpecItem label="Water performance" value={(listing.waterResistance ?? "unknown").replaceAll("_", " ")} />
+                  {listing.lotNumber && <SpecItem label="Lot / batch" value={listing.lotNumber} />}
+                  <SpecItem label="Specification source" value={(listing.specificationProvenance ?? "unknown").replaceAll("_", " ")} />
                 </dl>
               </CardContent>
             </Card>

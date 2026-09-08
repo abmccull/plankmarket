@@ -32,20 +32,6 @@ import {
   Sparkles,
 } from "lucide-react";
 
-function calcTrend(
-  current: number,
-  previous: number,
-): { value: number; label: string } {
-  if (previous === 0) {
-    return { value: current > 0 ? 100 : 0, label: "vs prev 30d" };
-  }
-
-  return {
-    value: Math.round(((current - previous) / previous) * 100),
-    label: "vs prev 30d",
-  };
-}
-
 export default function SellerDashboardPage() {
   const listingStatsQuery = trpc.listing.getSellerStats.useQuery();
   const orderStatsQuery = trpc.order.getSellerOrderStats.useQuery();
@@ -93,12 +79,12 @@ export default function SellerDashboardPage() {
   const pendingOrders =
     orderStats.find((s) => s.status === "pending")?.count ?? 0;
 
-  const revenueTrend = analyticsData
-    ? calcTrend(analyticsData.kpis.revenue, analyticsData.kpis.prevRevenue)
-    : undefined;
-  const ordersTrend = analyticsData
-    ? calcTrend(analyticsData.kpis.orders, analyticsData.kpis.prevOrders)
-    : undefined;
+  const moneySummary = orderStats.reduce((sum, row) => ({
+    refunds: sum.refunds + (row.buyerRefunds ?? 0),
+    transfers: sum.transfers + (row.netTransfers ?? 0),
+    awaitingTransfer: sum.awaitingTransfer + (row.awaitingTransfer ?? 0),
+    awaitingPayment: sum.awaitingPayment + (row.awaitingPayment ?? 0),
+  }), { refunds: 0, transfers: 0, awaitingTransfer: 0, awaitingPayment: 0 });
 
   return (
     <div className="space-y-8">
@@ -144,20 +130,28 @@ export default function SellerDashboardPage() {
               accentColor="accent"
             />
             <StatsCard
-              title="Total Revenue"
+              title="Paid seller proceeds (all time)"
               value={formatCurrency(totalRevenue)}
               icon={DollarSign}
               accentColor="secondary"
-              trend={revenueTrend}
             />
             <StatsCard
               title="Pending Orders"
               value={formatNumber(pendingOrders)}
               icon={ShoppingCart}
               accentColor="warning"
-              trend={ordersTrend}
             />
           </div>
+
+          <section aria-label="All-time seller financial totals" className="space-y-2">
+            <p className="text-sm text-muted-foreground">All-time local order records. Proceeds exclude unpaid and cancelled orders and reflect recorded refunds. Transfers are to your seller account, not confirmation of bank settlement.</p>
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+              <div><dt>Buyer refunds</dt><dd>{formatCurrency(moneySummary.refunds)}</dd></div>
+              <div><dt>Recorded net seller transfers</dt><dd>{formatCurrency(moneySummary.transfers)}</dd></div>
+              <div><dt>Paid, awaiting seller transfer</dt><dd>{formatCurrency(moneySummary.awaitingTransfer)}</dd></div>
+              <div><dt>Awaiting buyer payment</dt><dd>{formatCurrency(moneySummary.awaitingPayment)}</dd></div>
+            </dl>
+          </section>
 
           {!isPro && !proBannerDismissed ? (
             <div className="relative flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100/30 px-5 py-4">

@@ -1,0 +1,23 @@
+{
+  "scope": "public only; authenticated product unscored",
+  "overall": 7,
+  "base": 7.1,
+  "cohesion": 7,
+  "routeViewportCombinations": 18,
+  "detectedAxeViolations": 0,
+  "horizontalOverflow": 0,
+  "scores": {
+    "Visual hierarchy": 7,
+    "Layout and spacing": 6,
+    "Typography": 8,
+    "Color and contrast": 8,
+    "Components and states": 7,
+    "Interaction and feedback": 7,
+    "Information architecture and navigation": 7,
+    "Conversion and task flow": 6,
+    "Accessibility and inclusive UX": 8,
+    "Imagery and iconography": 6,
+    "Brand visual system": 8,
+    "Emotional trust and polish": 7
+  }
+}

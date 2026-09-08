@@ -1,3 +1,7 @@
+vi.mock("@/server/services/checkout-idempotency", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/server/services/checkout-idempotency")>(),
+  findCheckoutReplay: vi.fn(async () => undefined),
+}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.SKIP_ENV_VALIDATION = "1";
@@ -198,6 +202,7 @@ describe("offer MOQ enforcement", () => {
 
     await expect(
       caller.order.createFromOffer({
+        requestId: "11111111-1111-4111-8111-111111111119",
         offerId: OFFER_ID,
         shippingName: "Buyer Name",
         shippingAddress: "123 Main St",

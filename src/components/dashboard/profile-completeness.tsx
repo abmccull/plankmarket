@@ -67,7 +67,7 @@ export function ProfileCompleteness() {
               {percentage}% complete
             </span>
           </div>
-          <Progress value={percentage} className="h-2" />
+          <Progress aria-label="Profile completion" value={percentage} className="h-2" />
         </div>
 
         {missingFields.length > 0 && (

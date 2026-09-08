@@ -41,6 +41,22 @@ describe("shipping rate response cache", () => {
     expect(first.startsWith("shipping-rate-response:")).toBe(true);
   });
 
+  it("isolates same-ZIP warehouses and origin revisions", () => {
+    const base = {
+      providerMode: "live" as const, listingId: "listing-1", title: "Oak", condition: "new",
+      originZip: "84101", originIdentity: "warehouse:a", originRevision: "revision-1",
+      destinationZip: "75001", pickupDate: "2026-08-03", quantitySqFt: 500,
+      palletsNeeded: 2, piecesPerPallet: 30, palletWeight: 1200, palletLength: 48,
+      palletWidth: 40, palletHeight: 60, freightClass: "125", nmfcCode: null,
+      freightPaymentMode: "buyer_pays", sellerFreightStates: null,
+      freightDropCharge: null, accessorialCodes: [],
+    };
+    const key = buildShippingRateResponseCacheKey(base);
+    expect(key).not.toBe(buildShippingRateResponseCacheKey({...base, originIdentity: "warehouse:b"}));
+    expect(key).not.toBe(buildShippingRateResponseCacheKey({...base, originRevision: "revision-2"}));
+    expect(key).toBe(buildShippingRateResponseCacheKey({...base}));
+  });
+
   it("isolates dry-run and live cache keys for the same freight inputs", () => {
     const base = {
       providerMode: "live" as const,

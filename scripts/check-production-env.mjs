@@ -138,12 +138,11 @@ const schema = z.object({
     .regex(/^txcd_\d+$/)
     .optional(),
   UPLOADTHING_TOKEN: z.string().min(16),
-  RESEND_API_KEY: z.string().startsWith("re_").min(10).optional(),
+  RESEND_API_KEY: z.string().startsWith("re_").min(10),
   RESEND_WEBHOOK_SECRET: z
     .string()
     .startsWith("whsec_")
-    .min(16)
-    .optional(),
+    .min(16),
   EMAIL_FROM: z
     .string()
     .email()
@@ -155,20 +154,20 @@ const schema = z.object({
     .default("PlankMarket <noreply@plankmarket.com>"),
   UPSTASH_REDIS_REST_URL: z.string().url(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(16),
-  INNGEST_EVENT_KEY: z.string().min(16).optional(),
-  INNGEST_SIGNING_KEY: z.string().min(16).optional(),
+  INNGEST_EVENT_KEY: z.string().min(16),
+  INNGEST_SIGNING_KEY: z.string().min(16),
   ANTHROPIC_API_KEY: z.string().min(16).optional(),
   ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
     .enum(["true", "false"])
     .default("false"),
-  VERIFICATION_WEBHOOK_SECRET: z.string().min(32).optional(),
-  VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1).optional(),
-  PRIORITY1_API_KEY: z.string().min(16).optional(),
-  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: z.string().min(1).optional(),
+  VERIFICATION_WEBHOOK_SECRET: z.string().min(32),
+  VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1),
+  PRIORITY1_API_KEY: z.string().min(16),
+  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: z.string().min(1),
   PRIORITY1_DRY_RUN: z
     .enum(["true", "false"])
     .default(requestedMode === "production" ? "false" : "true"),
-  CRON_SECRET: z.string().min(32).optional(),
+  CRON_SECRET: z.string().min(32),
   NODE_ENV: z.enum(["production", "preview", "staging"]).optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(32),
@@ -204,7 +203,7 @@ try {
       if (value === undefined || value === "") {
         missingKeys.push(`${key}: ${issue.message}`);
       } else {
-        invalidValues.push(`${key}: ${issue.message} (received: "${value}")`);
+        invalidValues.push(`${key}: ${issue.message}`);
       }
     }
   }
@@ -214,6 +213,13 @@ try {
     if (typeof value === "string" && isPlaceholder(value)) {
       invalidValues.push(`${key}: contains a placeholder or local-only value`);
     }
+  }
+
+  if (requestedMode === "production" && (!env.STRIPE_TAX_MODE || env.STRIPE_TAX_MODE === "disabled")) {
+    conditionalIssues.push("STRIPE_TAX_MODE: production checkout requires an approved, supported tax policy; disabled tax blocks checkout");
+  }
+  if (env.STRIPE_TAX_BUYER_FEE_TREATMENT === "taxable" && !env.STRIPE_TAX_BUYER_FEE_TAX_CODE) {
+    conditionalIssues.push("STRIPE_TAX_BUYER_FEE_TAX_CODE: required when the buyer fee is taxable");
   }
 
   // Use parsed data with defaults applied for conditional checks
@@ -271,7 +277,7 @@ try {
       !env.STRIPE_TAX_BUYER_FEE_TREATMENT ||
       env.STRIPE_TAX_BUYER_FEE_TREATMENT === "undecided")
   ) {
-    issues.push(
+    conditionalIssues.push(
       "STRIPE_TAX_MODE=platform_liable requires legal acknowledgement, a decision reference, a shipping tax code, and a decided buyer-fee treatment",
     );
   }

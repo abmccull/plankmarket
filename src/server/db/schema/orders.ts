@@ -7,6 +7,8 @@ import {
   timestamp,
   integer,
   index,
+  uniqueIndex,
+  primaryKey,
   pgEnum,
   jsonb,
 } from "drizzle-orm/pg-core";
@@ -42,6 +44,8 @@ export const orders = pgTable(
   "orders",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    checkoutRequestId: uuid("checkout_request_id"),
+    checkoutInputFingerprint: varchar("checkout_input_fingerprint", { length: 64 }),
     orderNumber: varchar("order_number", { length: 20 }).unique().notNull(),
     buyerId: uuid("buyer_id")
       .references(() => users.id, { onDelete: "restrict" })
@@ -212,6 +216,8 @@ export const orders = pgTable(
     transferError: text("transfer_error"),
   },
   (table) => [
+    uniqueIndex("orders_buyer_checkout_request_unique").on(table.buyerId, table.checkoutRequestId),
+    check("orders_checkout_request_fingerprint_pair", sql`(${table.checkoutRequestId} IS NULL) = (${table.checkoutInputFingerprint} IS NULL)`),
     index("orders_buyer_id_idx").on(table.buyerId),
     index("orders_seller_id_idx").on(table.sellerId),
     index("orders_listing_id_idx").on(table.listingId),
@@ -331,3 +337,11 @@ export const orders = pgTable(
 // Note: ordersRelations is defined in schema/index.ts to avoid duplicate definitions
 export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;
+
+// A durable tombstone closes the race between abandoning a request whose
+// response was lost and an in-flight order creation using that same request.
+export const checkoutAbandonments = pgTable("checkout_abandonments", {
+  buyerId: uuid("buyer_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  requestId: uuid("request_id").notNull(),
+  abandonedAt: timestamp("abandoned_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [primaryKey({ columns: [table.buyerId, table.requestId] })]);

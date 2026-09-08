@@ -1,3 +1,4 @@
+import { getOrderRecovery } from "@/lib/order-recovery";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -15,6 +16,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { redis } from "@/lib/redis/client";
 import { randomUUID } from "crypto";
+import { loadWarehouseOrigin } from "../services/warehouse-origin";
 import {
   applyShippingMarkup,
   captureCommercialPolicy,
@@ -131,6 +133,7 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
+      const pickupOrigin = await loadWarehouseOrigin(ctx.db, listing);
       const {
         palletWeight,
         palletLength,
@@ -157,9 +160,7 @@ export const shippingRouter = createTRPCRouter({
         !freightClass ||
         !totalPallets ||
         !sqFtPerBox ||
-        !boxesPerPallet ||
-        !listing.seller.businessAddress ||
-        !listing.seller.phone
+        !boxesPerPallet
       ) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -184,14 +185,7 @@ export const shippingRouter = createTRPCRouter({
           shippingState: locationState,
           shippingZip: originZip,
         });
-        if (listing.seller.businessZip) {
-          const sellerOriginZip = normalizeUsZip(listing.seller.businessZip);
-          if (sellerOriginZip !== originZip) {
-            throw new Error(
-              "The seller legal address ZIP does not match this listing's warehouse ZIP. Update the listing pickup location before checkout.",
-            );
-          }
-        }
+        if (originZip !== pickupOrigin.location.address.postalCode) throw new Error("Listing pickup ZIP changed; update warehouse assignment.");
       } catch (error) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -213,6 +207,9 @@ export const shippingRouter = createTRPCRouter({
         residentialDelivery: input.residentialDelivery,
         appointmentDelivery: input.appointmentDelivery,
       });
+      // Priority1 reference code LGPU: lift gate pickup. Unknown legacy loading
+      // equipment is conservatively quoted with pickup liftgate service.
+      if (!pickupOrigin.hasLoadingDock && !pickupOrigin.hasForklift) accessorialCodes.push("LGPU");
       const rateItem = {
         freightClass: freightClass ?? "125",
         packagingType: "Pallet",
@@ -238,6 +235,8 @@ export const shippingRouter = createTRPCRouter({
         title: listing.title,
         condition: listing.condition,
         originZip,
+        originIdentity: pickupOrigin.identity,
+        originRevision: pickupOrigin.revision,
         destinationZip,
         pickupDate: pickupDateKey,
         quantitySqFt: input.quantitySqFt,
@@ -359,21 +358,10 @@ export const shippingRouter = createTRPCRouter({
           commercialPolicy: captureCommercialPolicy(now),
           transitDays: quote.transitDays,
           quoteExpiresAt: quoteExpiresAt.toISOString(),
-          originLocation: {
-            address: {
-              addressLine1: listing.seller.businessAddress!,
-              city: locationCity,
-              state: locationState,
-              postalCode: originZip,
-              country: "US",
-            },
-            contact: {
-              companyName: listing.seller.businessName || listing.seller.name,
-              contactName: listing.seller.name,
-              phoneNumber: listing.seller.phone!,
-              email: listing.seller.email,
-            },
-          },
+          originIdentity: pickupOrigin.identity,
+          originRevision: pickupOrigin.revision,
+          originCapabilities: { hasLoadingDock: pickupOrigin.hasLoadingDock, hasForklift: pickupOrigin.hasForklift, coordinateSource: pickupOrigin.coordinateSource, latitude: pickupOrigin.latitude, longitude: pickupOrigin.longitude },
+          originLocation: pickupOrigin.location,
           lineItems: [
             {
               freightClass,
@@ -393,8 +381,8 @@ export const shippingRouter = createTRPCRouter({
           ],
           pickupWindow: {
             date: formatPriority1Date(pickupDate),
-            startTime: "08:00",
-            endTime: "17:00",
+            startTime: pickupOrigin.pickupStart,
+            endTime: pickupOrigin.pickupEnd,
           },
           deliveryWindow: {
             date: formatPriority1Date(estimatedDeliveryDate),
@@ -510,6 +498,18 @@ export const shippingRouter = createTRPCRouter({
         };
       });
       return quotes;
+    }),
+
+  getRecovery: protectedProcedure
+    .input(z.object({ orderId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const order = await ctx.db.query.orders.findFirst({
+        where: and(eq(orders.id, input.orderId), ctx.user.role === "admin" ? undefined : ctx.user.role === "seller" ? eq(orders.sellerId, ctx.user.id) : eq(orders.buyerId, ctx.user.id)),
+        columns: { status: true, paymentStatus: true, escrowStatus: true, transferFailedAt: true },
+      });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+      const shipment = await ctx.db.query.shipments.findFirst({ where: eq(shipments.orderId, input.orderId) });
+      return getOrderRecovery(order, shipment ?? null, ctx.user.role);
     }),
 
   // Get tracking information for an order

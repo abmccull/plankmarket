@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { SpecificationReview } from "@/components/admin/specification-review";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc/client";
 import { DataTable, DataTableColumnHeader } from "@/components/admin/data-table";
 import { Button } from "@/components/ui/button";
@@ -57,6 +59,7 @@ export default function AdminListingsPage() {
   const { data: listingsData, isLoading } = trpc.admin.getListings.useQuery({ page: 1, limit: 50 });
   const utils = trpc.useUtils();
 
+  const [specReviewId, setSpecReviewId] = useState<string | null>(null);
   const [flagDialogOpen, setFlagDialogOpen] = useState(false);
   const [unflagDialogOpen, setUnflagDialogOpen] = useState(false);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
@@ -173,11 +176,12 @@ export default function AdminListingsPage() {
       cell: ({ row }) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Actions for ${row.original.title}`}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setSpecReviewId(row.original.id)}>Review product specifications</DropdownMenuItem>
             <DropdownMenuItem asChild>
               <a href={`/listings/${row.original.id}`} target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="mr-2 h-4 w-4" />
@@ -260,6 +264,7 @@ export default function AdminListingsPage() {
         </div>
       )}
 
+      <Dialog open={specReviewId !== null} onOpenChange={open => { if (!open) setSpecReviewId(null); }}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Review product specifications</DialogTitle></DialogHeader>{specReviewId && <SpecificationReview key={specReviewId} listingId={specReviewId} onComplete={() => { setSpecReviewId(null); void utils.admin.getListings.invalidate(); toast.success("Specification evidence review saved"); }} />}</DialogContent></Dialog>
       {/* Flag Listing Dialog */}
       <AlertDialog open={taxDialogOpen} onOpenChange={setTaxDialogOpen}>
         <AlertDialogContent>

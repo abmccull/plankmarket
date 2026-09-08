@@ -51,6 +51,7 @@ type DisputeStatus =
   | "closed";
 
 interface DisputeRow {
+  refundEligibility: { canRefund: boolean; canPartialRefund: boolean; remainingCents: number; reason: string | null };
   id: string;
   reason: string;
   reasonCode: string;
@@ -445,7 +446,7 @@ export default function AdminDisputesPage() {
                         <SelectValue placeholder="Choose a final outcome" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="resolved_buyer">
+                        <SelectItem value="resolved_buyer" disabled={!selectedDispute?.refundEligibility.canRefund}>
                           Buyer remedy — refund and close
                         </SelectItem>
                         <SelectItem value="resolved_seller">
@@ -470,6 +471,7 @@ export default function AdminDisputesPage() {
                           min="0.01"
                           step="0.01"
                           max={(remainingRefundCents / 100).toFixed(2)}
+                          readOnly={!selectedDispute?.refundEligibility.canPartialRefund}
                           value={refundDollars}
                           onChange={(event) =>
                             setRefundDollars(event.target.value)
@@ -480,7 +482,8 @@ export default function AdminDisputesPage() {
                           {formatCurrency(remainingRefundCents / 100)}.
                         </p>
                       </div>
-                      {isPartial && (
+                      {selectedDispute?.refundEligibility.reason && <p role="status" className="text-sm text-muted-foreground">{selectedDispute.refundEligibility.reason}</p>}
+                      {isPartial && selectedDispute?.refundEligibility.canPartialRefund && (
                         <div className="flex items-center justify-between gap-4 rounded-md bg-amber-50 p-3 dark:bg-amber-950/30">
                           <div>
                             <Label htmlFor="confirmPartial">
@@ -534,12 +537,15 @@ export default function AdminDisputesPage() {
                   resolution.trim().length < 10 ||
                   resolveMutation.isPending ||
                   (outcome === "resolved_buyer" &&
-                    (refundCents <= 0 ||
+                    (!selectedDispute?.refundEligibility.canRefund ||
+                      (isPartial && !selectedDispute?.refundEligibility.canPartialRefund) ||
+                      refundCents <= 0 ||
                       refundCents > remainingRefundCents ||
                       (isPartial && !confirmPartialSettlement)))
                 }
                 onClick={() => {
                   if (!selectedDispute || !outcome) return;
+                  if (outcome === "resolved_buyer" && (!selectedDispute.refundEligibility.canRefund || (isPartial && !selectedDispute.refundEligibility.canPartialRefund))) return;
                   resolveMutation.mutate({
                     disputeId: selectedDispute.id,
                     resolution: resolution.trim(),

@@ -10,7 +10,7 @@ import {
 
 describe("marketplace schema readiness contract", () => {
   it("binds health and pre-deploy checks through privacy, lineage, and operations artifacts", () => {
-    expect(MARKETPLACE_SCHEMA_VERSION).toBe("0034");
+    expect(MARKETPLACE_SCHEMA_VERSION).toBe("0039");
     expect(marketplaceSchemaContract.extensions).toContain("pg_trgm");
     expect(marketplaceSchemaContract.sensitiveTables).toContain(
       "inventory_adjustments",

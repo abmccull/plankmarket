@@ -445,6 +445,16 @@ describe("direct partial refund transfer recovery", () => {
     );
   });
 
+  it("does not refund or reverse funds when transfer history is incomplete", async () => {
+    const order = { ...baseOrder, stripeTransferId: null, escrowStatus: "held" };
+    providerMocks.findTransfer.mockRejectedValue(new Error("history is incomplete"));
+    const { db } = createMockDatabase(order);
+    await expect(processOrderRefund({ db, orderId: order.id, amountCents: 2_500 }))
+      .rejects.toThrow("history is incomplete");
+    expect(providerMocks.createRefund).not.toHaveBeenCalled();
+    expect(providerMocks.createReversal).not.toHaveBeenCalled();
+  });
+
   it("rejects a mismatched orphan transfer before creating a refund", async () => {
     const order = {
       ...baseOrder,

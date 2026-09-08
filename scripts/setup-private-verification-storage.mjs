@@ -1,0 +1,24 @@
+import {readFileSync} from "node:fs";
+import {parse} from "dotenv";
+import {createClient} from "@supabase/supabase-js";
+const args=process.argv.slice(2);
+const value=flag=>{const i=args.indexOf(flag);return i>=0?args[i+1]:null;};
+const file=value("--file"),expected=value("--project");
+if(!file||!expected) throw new Error("Pass --file ENV_FILE --project EXPECTED_PROJECT_REF; add --apply to provision");
+const env=parse(readFileSync(file));
+const url=new URL(env.NEXT_PUBLIC_SUPABASE_URL);
+if(url.hostname!==`${expected}.supabase.co`) throw new Error("Explicit project does not match storage target");
+if(!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("Service credential required");
+const client=createClient(url.toString(),env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+const bucket="verification-documents";
+const options={public:false,fileSizeLimit:10485760,allowedMimeTypes:["application/pdf","image/jpeg","image/png"]};
+const current=await client.storage.getBucket(bucket);
+if(current.data?.public) throw new Error("Existing bucket is public; stop for privacy incident review, do not silently adopt it");
+if(current.error && !["404","400"].includes(String(current.error.statusCode))) throw new Error("Cannot inspect target bucket");
+console.log(`Target ${expected}; private verification bucket; 10 MB PDF/JPEG/PNG only`);
+if(!args.includes("--apply")){console.log("Read-only inspection complete. --apply is required for a write.");process.exit(0);}
+const result=current.data?await client.storage.updateBucket(bucket,options):await client.storage.createBucket(bucket,options);
+if(result.error) throw new Error("Bucket provisioning failed");
+const check=await client.storage.getBucket(bucket);
+if(check.error||!check.data||check.data.public||Number(check.data.file_size_limit)!==10485760||JSON.stringify([...(check.data.allowed_mime_types??[])].sort())!==JSON.stringify([...options.allowedMimeTypes].sort())) throw new Error("Bucket read-back did not match expected private constraints");
+console.log("Private bucket constraints verified. Review storage policies separately: no public read/list/update policies may expose this bucket.");

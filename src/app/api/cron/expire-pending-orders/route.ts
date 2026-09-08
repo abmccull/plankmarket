@@ -11,10 +11,12 @@ import {
   isStripePaymentIntentCancelable,
 } from "@/server/services/order-transitions";
 import { redis } from "@/lib/redis/client";
+import { openReconciliationCase } from "@/server/services/reconciliation-cases";
 
 const ORDER_EXPIRY_MINUTES = 45;
 const EXPIRY_BATCH_SIZE = 25;
 const EXPIRY_LOCK_KEY = "cron:expire-pending-orders";
+const EXPIRY_CURSOR_KEY = "cron:expire-pending-orders:cursor:v1";
 
 function safeCompareBearerToken(
   authHeader: string | null,
@@ -59,22 +61,33 @@ export async function GET(req: NextRequest) {
 
   try {
     const cutoff = new Date(Date.now() - ORDER_EXPIRY_MINUTES * 60 * 1000);
+    const cursor = await redis.get<{ createdAt: string; id: string }>(EXPIRY_CURSOR_KEY);
+    const cursorDate = cursor ? new Date(cursor.createdAt) : null;
+    const validCursor = cursor && cursorDate && Number.isFinite(cursorDate.getTime()) &&
+      /^[0-9a-f-]{36}$/i.test(cursor.id);
 
     const staleOrders = await db.query.orders.findMany({
       where: and(
         eq(orders.status, "pending"),
         lt(orders.createdAt, cutoff),
         sql`coalesce(${orders.paymentStatus}, 'pending') NOT IN ('succeeded', 'processing', 'refunded', 'partially_refunded')`,
+        validCursor
+          ? sql`(${orders.createdAt}, ${orders.id}) > (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
+          : undefined,
       ),
       columns: {
         id: true,
+        createdAt: true,
         status: true,
         paymentStatus: true,
         totalPrice: true,
         stripePaymentIntentId: true,
         inventoryReleasedAt: true,
       },
-      orderBy: [asc(orders.createdAt)],
+      // Preserve PostgreSQL microseconds; JS Date truncation can revisit an
+      // entire batch whose rows share one transaction timestamp.
+      extras: { expiryCursorCreatedAt: sql<string>`${orders.createdAt}::text`.as("expiry_cursor_created_at") },
+      orderBy: [asc(orders.createdAt), asc(orders.id)],
       limit: EXPIRY_BATCH_SIZE,
     });
 
@@ -104,6 +117,15 @@ export async function GET(req: NextRequest) {
           // A live captured charge is not late-window inventory. Refunding it
           // here races webhook/tax apply and can book freight against a
           // charge that no longer exists. Leave apply to payment_intent.succeeded.
+          await openReconciliationCase(db, {
+            caseKey: `pending-expiry:${order.id}`,
+            type: "payment_mismatch",
+            source: "stripe",
+            severity: "high",
+            title: "Captured payment awaits order reconciliation",
+            summary: "Expiry preserved a captured payment; replay or reconcile the payment webhook.",
+            orderId: order.id,
+          });
           continue;
         }
 
@@ -203,8 +225,36 @@ export async function GET(req: NextRequest) {
         orderId: order.id,
         error: error instanceof Error ? error.message : "Unknown error",
       });
+      try {
+        await openReconciliationCase(db, {
+        caseKey: `pending-expiry:${order.id}`,
+        type: "provider_failure",
+        source: "stripe",
+        severity: "high",
+        title: "Pending order expiry requires review",
+        summary: error instanceof Error ? error.message : "Unknown expiry error",
+        orderId: order.id,
+        });
+      } catch (reconciliationError) {
+        failures.push({
+          orderId: order.id,
+          error: `Reconciliation recording failed: ${reconciliationError instanceof Error ? reconciliationError.message : "Unknown error"}`,
+        });
+      }
     }
   }
+
+    // Advance even over captured payments and provider failures. A stable
+    // keyset survives removals; wrapping after the final page retries old skips.
+    const lastOrder = staleOrders.at(-1);
+    if (lastOrder && staleOrders.length === EXPIRY_BATCH_SIZE) {
+      await redis.set(EXPIRY_CURSOR_KEY, {
+        createdAt: lastOrder.expiryCursorCreatedAt,
+        id: lastOrder.id,
+      });
+    } else {
+      await redis.del(EXPIRY_CURSOR_KEY);
+    }
 
     return NextResponse.json(
       {

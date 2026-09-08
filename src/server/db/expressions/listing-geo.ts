@@ -20,7 +20,12 @@ export function getListingDistanceMilesSql(
     )
   )`;
 
-  return sql<number>`${EARTH_RADIUS_MILES} * acos(${cosine})`;
+  // PostgreSQL greatest/least ignore NULL, which otherwise invents a distance
+  // for inventory with no known coordinates. ASC naturally puts NULL last.
+  return sql<number>`case
+    when ${listings.locationLat} is null or ${listings.locationLng} is null then null
+    else ${EARTH_RADIUS_MILES} * acos(${cosine})
+  end`;
 }
 
 export function getListingBoundingBoxConditions(

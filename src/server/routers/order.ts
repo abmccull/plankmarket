@@ -1,3 +1,7 @@
+import { checkoutInputFingerprint, findCheckoutReplay, abandonCheckoutAttempt } from "@/server/services/checkout-idempotency";
+import { loadWarehouseOrigin, requireCurrentWarehouseOrigin, type WarehouseOrigin } from "../services/warehouse-origin";
+import { sellerFinancialAggregates } from "@/server/db/expressions/seller-financials";
+import { aggregateCentsToDollars } from "@/lib/financial-display";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -384,6 +388,7 @@ function parseRedisJsonValue(
 }
 
 async function consumeAcceptedOfferShippingArtifacts<T>(params: {
+  pickupOrigin: WarehouseOrigin;
   selectedQuoteToken?: string;
   /** @deprecated Ignored — consume is token-only to avoid shared quoteId races. */
   selectedQuoteId?: string;
@@ -403,6 +408,7 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
     totalPallets: number | null;
   };
   validateBeforeConsume: (quote: {
+    pickupOrigin: WarehouseOrigin;
     fullFreightCharge: number;
     freightFundingMode: FreightFundingMode;
     buyerFreightCharge: number;
@@ -563,6 +569,8 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
     });
   }
 
+  requireCurrentWarehouseOrigin(bookingSnapshot, params.pickupOrigin);
+
   let palletsNeeded: number;
   try {
     palletsNeeded = computePalletsNeeded({
@@ -600,6 +608,7 @@ async function consumeAcceptedOfferShippingArtifacts<T>(params: {
     secondExpectedValue: rawSnapshotString,
     validate: () =>
       params.validateBeforeConsume({
+        pickupOrigin: params.pickupOrigin,
         fullFreightCharge: quote.shippingPrice,
         freightFundingMode: quote.freightFundingMode,
         buyerFreightCharge: quote.buyerFreightCharge,
@@ -726,6 +735,11 @@ async function saveShippingAddressBestEffort(params: {
 }
 
 export const orderRouter = createTRPCRouter({
+  abandonCheckout: strictVerifiedBuyerProcedure
+    .input(z.object({ requestId: z.string().uuid() }))
+    .mutation(({ ctx, input }) => ctx.db.transaction((tx) =>
+      abandonCheckoutAttempt(tx, ctx.user.id, input.requestId),
+    )),
   // Create a new order (Buy Now) — wrapped in a transaction with row locking
   create: strictVerifiedBuyerProcedure
     .input(createOrderSchema)
@@ -733,9 +747,13 @@ export const orderRouter = createTRPCRouter({
       let restoreArtifacts: Awaited<
         ReturnType<typeof consumeAcceptedOfferShippingArtifacts>
       >["restoreArtifacts"] | null = null;
+      let replayed = false;
+      const fingerprint = checkoutInputFingerprint("direct", input);
       let order;
       try {
       order = await ctx.db.transaction(async (tx) => {
+        const replay = await findCheckoutReplay(tx, ctx.user.id, input.requestId, fingerprint);
+        if (replay) { replayed = true; return replay; }
         await enforcePendingOrderLimit(tx, ctx.user.id);
 
         // Lock the listing row to prevent concurrent purchases (SELECT ... FOR UPDATE)
@@ -858,6 +876,7 @@ export const orderRouter = createTRPCRouter({
           },
           restoreArtifacts: consumedRestore,
         } = await consumeAcceptedOfferShippingArtifacts({
+          pickupOrigin: await loadWarehouseOrigin(tx, listing),
           selectedQuoteToken: input.selectedQuoteToken,
           selectedQuoteId: input.selectedQuoteId,
           buyerId: ctx.user.id,
@@ -876,6 +895,7 @@ export const orderRouter = createTRPCRouter({
             totalPallets: listing.totalPallets,
           },
           validateBeforeConsume: async (quotedFreightFunding) => {
+            const pickupOrigin = quotedFreightFunding.pickupOrigin;
             const {
               freightFunding,
               feeBreakdown: preTaxFeeBreakdown,
@@ -902,9 +922,10 @@ export const orderRouter = createTRPCRouter({
               inventoryTaxCode: listing.stripeTaxCode,
               inventoryTaxCodeStatus: listing.taxCodeStatus,
               shipFrom: {
-                city: listing.locationCity,
-                state: listing.locationState,
-                postalCode: listing.locationZip,
+                line1: pickupOrigin.location.address.addressLine1,
+                city: pickupOrigin.location.address.city,
+                state: pickupOrigin.location.address.state,
+                postalCode: pickupOrigin.location.address.postalCode,
               },
               shipTo: {
                 line1: input.shippingAddress,
@@ -931,6 +952,8 @@ export const orderRouter = createTRPCRouter({
           .insert(orders)
           .values({
             orderNumber: generateOrderNumber(),
+            checkoutRequestId: input.requestId,
+            checkoutInputFingerprint: fingerprint,
             buyerId: ctx.user.id,
             sellerId: listing.sellerId,
             listingId: listing.id,
@@ -999,7 +1022,7 @@ export const orderRouter = createTRPCRouter({
         throw error;
       }
 
-      await saveShippingAddressBestEffort({
+      if (!replayed) await saveShippingAddressBestEffort({
         db: ctx.db,
         userId: ctx.user.id,
         name: input.shippingName,
@@ -1030,9 +1053,13 @@ export const orderRouter = createTRPCRouter({
       let restoreArtifacts: Awaited<
         ReturnType<typeof consumeAcceptedOfferShippingArtifacts>
       >["restoreArtifacts"] | null = null;
+      let replayed = false;
+      const fingerprint = checkoutInputFingerprint("offer", input);
       let order;
       try {
       order = await ctx.db.transaction(async (tx) => {
+        const replay = await findCheckoutReplay(tx, ctx.user.id, input.requestId, fingerprint);
+        if (replay) { replayed = true; return replay; }
         await enforcePendingOrderLimit(tx, ctx.user.id);
 
         // Lock offer row with FOR UPDATE
@@ -1192,6 +1219,7 @@ export const orderRouter = createTRPCRouter({
           },
           restoreArtifacts: consumedRestore,
         } = await consumeAcceptedOfferShippingArtifacts({
+          pickupOrigin: await loadWarehouseOrigin(tx, listing),
           selectedQuoteToken: input.selectedQuoteToken,
           selectedQuoteId: input.selectedQuoteId,
           buyerId: ctx.user.id,
@@ -1210,6 +1238,7 @@ export const orderRouter = createTRPCRouter({
             totalPallets: listing.totalPallets,
           },
           validateBeforeConsume: async (quotedFreightFunding) => {
+            const pickupOrigin = quotedFreightFunding.pickupOrigin;
             const {
               freightFunding,
               feeBreakdown: preTaxFeeBreakdown,
@@ -1233,9 +1262,10 @@ export const orderRouter = createTRPCRouter({
               inventoryTaxCode: listing.stripeTaxCode,
               inventoryTaxCodeStatus: listing.taxCodeStatus,
               shipFrom: {
-                city: listing.locationCity,
-                state: listing.locationState,
-                postalCode: listing.locationZip,
+                line1: pickupOrigin.location.address.addressLine1,
+                city: pickupOrigin.location.address.city,
+                state: pickupOrigin.location.address.state,
+                postalCode: pickupOrigin.location.address.postalCode,
               },
               shipTo: {
                 line1: input.shippingAddress,
@@ -1262,6 +1292,8 @@ export const orderRouter = createTRPCRouter({
           .insert(orders)
           .values({
             orderNumber: generateOrderNumber(),
+            checkoutRequestId: input.requestId,
+            checkoutInputFingerprint: fingerprint,
             buyerId: ctx.user.id,
             sellerId: offer.sellerId,
             listingId: offer.listingId,
@@ -1339,7 +1371,7 @@ export const orderRouter = createTRPCRouter({
         throw error;
       }
 
-      await saveShippingAddressBestEffort({
+      if (!replayed) await saveShippingAddressBestEffort({
         db: ctx.db,
         userId: ctx.user.id,
         name: input.shippingName,
@@ -1939,18 +1971,25 @@ export const orderRouter = createTRPCRouter({
       });
     }),
 
-  // Get seller order stats
+  // Get seller order stats (all-time cohort, exact cents; not bank settlement)
   getSellerOrderStats: sellerProcedure.query(async ({ ctx }) => {
     const stats = await ctx.db
       .select({
         status: orders.status,
         count: sql<number>`count(*)::int`,
-        totalRevenue: sql<number>`coalesce(sum(${orders.sellerPayout}), 0)::float`,
+        ...sellerFinancialAggregates,
       })
       .from(orders)
       .where(eq(orders.sellerId, ctx.user.id))
       .groupBy(orders.status);
 
-    return stats;
+    return stats.map((row) => ({
+      status: row.status, count: row.count,
+      totalRevenue: aggregateCentsToDollars(row.proceedsCents),
+      buyerRefunds: aggregateCentsToDollars(row.buyerRefundsCents),
+      netTransfers: aggregateCentsToDollars(row.netTransfersCents),
+      awaitingTransfer: aggregateCentsToDollars(row.awaitingTransferCents),
+      awaitingPayment: aggregateCentsToDollars(row.awaitingPaymentCents),
+    }));
   }),
 });

@@ -31,7 +31,10 @@
     "email:dev": "email dev --dir src/emails",
     "db:seed": "tsx scripts/seed.ts",
     "inngest:dev": "npx --yes inngest-cli@1.36.0 dev",
-    "perf:staging": "tsx scripts/run-staging-load-test.ts"
+    "perf:staging": "tsx scripts/run-staging-load-test.ts",
+    "test:e2e:release": "node scripts/check-release-prerequisites.mjs",
+    "db:export:baseline": "node scripts/export-schema-baseline.mjs",
+    "db:bootstrap:local": "node scripts/bootstrap-local-database.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

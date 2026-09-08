@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { useUploadThing } from "@/lib/uploadthing";
 import { trpc } from "@/lib/trpc/client";
@@ -24,12 +24,25 @@ interface UploadedImage {
   sortOrder: number;
 }
 
-export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
+export function PhotoUpload({ onImagesChange, initialMediaIds = [] }: PhotoUploadProps) {
+  const initialIds = useRef(initialMediaIds);
+  const hydrated = useRef(initialIds.current.length === 0);
+  const { data: restoredMedia, isLoading: isRestoring, error: restoreError } = trpc.upload.getOwnedMedia.useQuery(
+    { ids: initialIds.current }, { enabled: initialIds.current.length > 0, refetchOnWindowFocus: false },
+  );
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const deleteMediaMutation = trpc.upload.deleteMedia.useMutation();
+  useEffect(() => {
+    if (hydrated.current || !restoredMedia) return;
+    hydrated.current = true;
+    setUploadedImages(restoredMedia.map((item, sortOrder) => ({ id: item.id, url: item.url, fileName: item.fileName ?? "Photo", sortOrder })));
+    if (restoredMedia.length !== initialIds.current.length) {
+      toast.error("Some saved photos are no longer available. Review the remaining photos before saving.");
+      onImagesChange(restoredMedia.map((item) => item.id));
+    }
+  }, [restoredMedia, onImagesChange]);
 
   const { startUpload } = useUploadThing("listingImageUploader", {
     onClientUploadComplete: async (files) => {
@@ -97,9 +110,9 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
         return;
       }
 
-      await startUpload(acceptedFiles, { listingId });
+      await startUpload(acceptedFiles, {});
     },
-    [listingId, uploadedImages.length, startUpload]
+    [uploadedImages.length, startUpload]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -108,20 +121,13 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
       "image/*": [".png", ".jpg", ".jpeg", ".webp"],
     },
     maxFiles: 20,
-    disabled: isUploading || uploadedImages.length >= 20,
+    disabled: isUploading || isRestoring || !!restoreError || uploadedImages.length >= 20,
   });
 
-  const handleDelete = async (imageId: string) => {
-    try {
-      await deleteMediaMutation.mutateAsync({ id: imageId });
-      const updatedImages = uploadedImages.filter((img) => img.id !== imageId);
-      setUploadedImages(updatedImages);
-      onImagesChange(updatedImages.map((img) => img.id));
-      toast.success("Image deleted");
-    } catch (error) {
-      console.error("Error deleting image:", error);
-      toast.error("Failed to delete image");
-    }
+  const handleDelete = (imageId: string) => {
+    const updatedImages = uploadedImages.filter((img) => img.id !== imageId);
+    setUploadedImages(updatedImages);
+    onImagesChange(updatedImages.map((img) => img.id));
   };
 
   const handleMoveUp = (index: number) => {
@@ -150,6 +156,9 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
 
   return (
     <div className="space-y-4">
+      {isRestoring && <p role="status" className="text-sm text-muted-foreground">Restoring saved photos...</p>}
+      {restoreError && <p role="alert" className="text-sm text-destructive">Saved photos could not be loaded. Reload this page before editing photos.</p>}
+      <p className="text-xs text-muted-foreground">Photo changes are applied when you save. The first photo is the cover.</p>
       {/* Upload Counter */}
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">
@@ -225,6 +234,7 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
               {/* Action buttons */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent sm:bg-black/40 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                 <Button
+                  type="button"
                   size="icon"
                   variant="secondary"
                   className="h-9 w-9"
@@ -235,6 +245,7 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
                   <GripVertical className="h-4 w-4 rotate-180" />
                 </Button>
                 <Button
+                  type="button"
                   size="icon"
                   variant="secondary"
                   className="h-9 w-9"
@@ -245,6 +256,7 @@ export function PhotoUpload({ onImagesChange, listingId }: PhotoUploadProps) {
                   <GripVertical className="h-4 w-4" />
                 </Button>
                 <Button
+                  type="button"
                   size="icon"
                   variant="destructive"
                   className="h-9 w-9"

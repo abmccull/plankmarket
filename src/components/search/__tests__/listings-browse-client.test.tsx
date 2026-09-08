@@ -328,3 +328,33 @@ describe("ListingsBrowseClient search gap", () => {
     );
   });
 });
+
+
+describe("nearby inventory discovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentParams = new URLSearchParams("query=oak&materialType=hardwood&page=3");
+    authState = { user: null, isAuthenticated: false, isLoading: false };
+  });
+
+  it("sets nationwide nearest sorting while preserving product filters and resetting pagination", async () => {
+    const user = userEvent.setup();
+    renderBrowse();
+    await user.type(screen.getByRole("textbox", { name: "Job ZIP code" }), "84101");
+    await user.click(screen.getByRole("button", { name: "Find nearby" }));
+    const destination = new URL(mockPush.mock.calls[0][0], "https://example.com");
+    expect(destination.searchParams.get("buyerZip")).toBe("84101");
+    expect(destination.searchParams.get("sort")).toBe("proximity");
+    expect(destination.searchParams.get("materialType")).toBe("hardwood");
+    expect(destination.searchParams.has("maxDistance")).toBe(false);
+    expect(destination.searchParams.has("page")).toBe(false);
+  });
+
+  it("rejects an incomplete ZIP without navigating", async () => {
+    const user = userEvent.setup();
+    renderBrowse();
+    await user.type(screen.getByRole("textbox", { name: "Job ZIP code" }), "841");
+    await user.click(screen.getByRole("button", { name: "Find nearby" }));
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+});

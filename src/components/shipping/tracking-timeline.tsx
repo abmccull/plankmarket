@@ -18,7 +18,7 @@ interface TrackingTimelineProps {
 
 const STATUS_CONFIG = {
   pending: {
-    label: "Pending Pickup",
+    label: "Booking pending",
     variant: "warning" as const,
     color: "bg-yellow-500",
   },
@@ -65,12 +65,14 @@ function formatTimestamp(timestamp: string): string {
 }
 
 export default function TrackingTimeline({ orderId }: TrackingTimelineProps) {
-  const { data: shipment, isLoading } = trpc.shipping.getTracking.useQuery(
+  const { data: shipment, isLoading, isError, refetch, isFetching } = trpc.shipping.getTracking.useQuery(
     { orderId },
     {
       refetchInterval: 5 * 60 * 1000, // Auto-refetch every 5 minutes
     }
   );
+
+  if (isError) return <Card><CardContent className="space-y-3 pt-6"><p role="alert">Tracking is unavailable. The last provider state has not been confirmed.</p><Button variant="outline" onClick={() => void refetch()} disabled={isFetching}>Retry tracking</Button></CardContent></Card>;
 
   // Don't render anything if there's no shipment data
   if (!shipment && !isLoading) {

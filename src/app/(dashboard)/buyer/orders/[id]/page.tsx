@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
 import { Loader2, Package, MapPin, Truck, Store, Star } from "lucide-react";
+import { OrderRecoveryPanel } from "@/components/shipping/order-recovery-panel";
 import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
 import { ReviewCard } from "@/components/shared/review-card";
@@ -215,6 +216,7 @@ export default function BuyerOrderDetailPage() {
       </div>
 
       {/* Shipment Tracking (Priority1 orders) */}
+      <OrderRecoveryPanel orderId={orderId} />
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
 
       <TransactionTimeline order={order} audience="buyer" />

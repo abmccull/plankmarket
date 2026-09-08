@@ -132,10 +132,7 @@ export default function BuyerDashboardPage() {
 
   const recommendedListings = recommendedData?.items ?? [];
   const prefsIncomplete = recommendedData?.prefsIncomplete ?? false;
-  const openRequestsCount =
-    myRequestsData?.items?.filter(
-      (r: { status: string }) => r.status === "open"
-    ).length ?? 0;
+  const openRequestsCount = myRequestsData?.openCount ?? 0;
 
   return (
     <div className="space-y-8">
@@ -372,6 +369,22 @@ export default function BuyerDashboardPage() {
                   </Link>
                 </div>
               </div>
+            ) : recommendedData.limitation === "location_unverified" ? (
+              <StatePanel
+                icon={Search}
+                title="Add a valid ZIP for nearby matches"
+                description="We need a recognized ZIP code to match inventory within your preferred distance."
+                primaryAction={{ label: "Update preferences", href: "/preferences" }}
+                className="min-h-0 px-4 py-8"
+              />
+            ) : recommendedData.limitation === "waterproof_unverified" ? (
+              <StatePanel
+                icon={Search}
+                title="Waterproof performance needs confirmation"
+                description="Your waterproof requirement is saved. We cannot yet verify it from listing specifications, so we are not recommending unconfirmed matches. Ask the seller for the manufacturer's specification and warranty before buying."
+                primaryAction={{ label: "Browse listings", href: "/listings" }}
+                className="min-h-0 px-4 py-8"
+              />
             ) : recommendedListings.length === 0 ? (
               <StatePanel
                 icon={Search}

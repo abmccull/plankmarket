@@ -14,7 +14,7 @@ export default function DashboardLayout({
   return (
     <div className="flex flex-1">
       <Sidebar />
-      <div className="flex-1 p-6 lg:p-8">
+      <div className="min-w-0 flex-1 p-6 lg:p-8">
         <VerificationGate>{children}</VerificationGate>
       </div>
     </div>

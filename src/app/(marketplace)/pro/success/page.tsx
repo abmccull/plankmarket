@@ -1,3 +1,4 @@
+import { FEATURES } from "@/lib/feature-flags";
 import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProBadge } from "@/components/pro-badge";
@@ -10,7 +11,7 @@ const UNLOCKED_FEATURES = [
   "Market intelligence",
   "Seller CRM",
   "Bulk CSV import",
-  "$15/month promotion credit",
+  ...(FEATURES.PROMOTIONS_ENABLED ? ["$15/month promotion credit"] : []),
   "Pro badge on profile",
 ] as const;
 

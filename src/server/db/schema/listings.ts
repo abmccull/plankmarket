@@ -12,11 +12,13 @@ import {
   pgEnum,
   check,
   unique,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { ListingTaxCodeStatus } from "@/lib/tax-policy";
 import { money } from "../custom-types";
 import { users } from "./users";
+import { warehouses } from "./warehouses";
 import { promotionTierEnum } from "./promotions";
 
 export const listingStatusEnum = pgEnum("listing_status", [
@@ -123,6 +125,14 @@ export const listings = pgTable(
     wearLayer: real("wear_layer"),
     brand: varchar("brand", { length: 255 }),
     modelNumber: varchar("model_number", { length: 255 }),
+    packagingType: text("packaging_type").$type<"unknown" | "sealed_cartons" | "open_cartons" | "loose_boards" | "mixed">().notNull().default("unknown"),
+    installationMethod: text("installation_method").$type<"unknown" | "click_lock" | "glue_down" | "nail_down" | "staple_down" | "floating" | "multiple">().notNull().default("unknown"),
+    lotNumber: varchar("lot_number", { length: 100 }),
+    waterResistance: text("water_resistance").$type<"unknown" | "not_waterproof" | "water_resistant" | "waterproof">().notNull().default("unknown"),
+    specificationProvenance: text("specification_provenance").$type<"unknown" | "seller_declared" | "evidence_reviewed">().notNull().default("unknown"),
+    specificationEvidenceId: uuid("specification_evidence_id"),
+    specificationReviewedAt: timestamp("specification_reviewed_at", { withTimezone: true }),
+    specificationReviewedBy: uuid("specification_reviewed_by").references(() => users.id, { onDelete: "set null" }),
     searchDocument: text("search_document").generatedAlwaysAs(sql`
       lower(coalesce("title", ''))
         || E'\\x1F' || lower(coalesce("description", ''))
@@ -149,6 +159,7 @@ export const listings = pgTable(
     locationCity: varchar("location_city", { length: 100 }),
     locationState: varchar("location_state", { length: 2 }),
     locationZip: varchar("location_zip", { length: 10 }),
+    warehouseId: uuid("warehouse_id").references(() => warehouses.id, { onDelete: "restrict" }),
     locationLat: real("location_lat"),
     locationLng: real("location_lng"),
 
@@ -245,7 +256,9 @@ export const listings = pgTable(
     soldAt: timestamp("sold_at", { withTimezone: true }),
   },
   (table) => [
+    foreignKey({ name: "listings_warehouse_seller_fk", columns: [table.warehouseId, table.sellerId], foreignColumns: [warehouses.id, warehouses.sellerId] }).onDelete("restrict"),
     unique("listings_id_seller_idx").on(table.id, table.sellerId),
+    index("listings_warehouse_idx").on(table.warehouseId),
     index("listings_seller_id_idx").on(table.sellerId),
     index("listings_status_idx").on(table.status),
     index("listings_material_type_idx").on(table.materialType),

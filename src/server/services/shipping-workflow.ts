@@ -319,7 +319,7 @@ export const shippingBookingSnapshotSchema = z
     carrierRate: z.number().nonnegative(),
     shippingPrice: z.number().nonnegative(),
     accessorialCodes: z
-      .array(z.enum(["LGDEL", "RESD", "APPT"]))
+      .array(z.enum(["LGDEL", "RESD", "APPT", "LGPU"]))
       .default([]),
     commercialPolicy: z
       .object({
@@ -335,6 +335,9 @@ export const shippingBookingSnapshotSchema = z
       .optional(),
     transitDays: z.number().int().nonnegative(),
     quoteExpiresAt: z.string().datetime(),
+    originCapabilities: z.object({ hasLoadingDock: z.boolean(), hasForklift: z.boolean(), coordinateSource: z.enum(["zip_centroid","legacy_unverified"]), latitude: z.number().nullable(), longitude: z.number().nullable() }).optional(),
+    originIdentity: z.string().min(1).optional(),
+    originRevision: z.string().min(1).optional(),
     originLocation: providerLocationSchema,
     lineItems: z.array(freightLineItemSchema).min(1),
     pickupWindow: providerWindowSchema,
@@ -866,7 +869,7 @@ export function buildDispatchRequestForOrder(
       ],
       quoteId: snapshot.quoteId,
       insuranceAmount: 0,
-      pickupNote: `PlankMarket Order ${context.order.orderNumber}`,
+      pickupNote: `PlankMarket Order ${context.order.orderNumber}${snapshot.originCapabilities ? `; ${snapshot.originCapabilities.hasLoadingDock ? "Loading dock available" : "No loading dock"}; ${snapshot.originCapabilities.hasForklift ? "Forklift available" : "No forklift"}` : ""}`,
     },
   };
 }

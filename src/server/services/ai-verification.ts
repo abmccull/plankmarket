@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { verificationDocumentId } from "@/lib/verification-documents";
+import { readPrivateVerificationDocument } from "./verification-documents";
 import { validateVerificationDocUrl } from "@/server/services/verification-doc-url";
 import {
   verificationResultSchema,
@@ -200,6 +202,13 @@ Return ONLY valid JSON matching this exact structure (no markdown, no additional
 async function fetchImageAsBase64(
   url: string,
 ): Promise<{ base64: string; mediaType: string } | null> {
+  if (verificationDocumentId(url)) {
+    try {
+      const {row,data}=await readPrivateVerificationDocument(url);
+      if (!["image/jpeg","image/png"].includes(row.mimeType) || data.size>5*1024*1024) return null;
+      return {base64:Buffer.from(await data.arrayBuffer()).toString("base64"),mediaType:row.mimeType};
+    } catch { return null; }
+  }
   const validation = validateVerificationDocUrl(url);
   if (!validation.ok || !validation.parsedUrl) {
     console.warn("Blocked verification document URL", {

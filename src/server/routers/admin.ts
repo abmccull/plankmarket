@@ -1,3 +1,4 @@
+import { getOrderRecovery } from "@/lib/order-recovery";
 import { createTRPCRouter, adminProcedure } from "../trpc";
 import {
   users,
@@ -2012,6 +2013,7 @@ export const adminRouter = createTRPCRouter({
             columns: {
               id: true,
               orderNumber: true,
+              status: true, paymentStatus: true, escrowStatus: true, transferFailedAt: true,
               buyerId: true,
               sellerId: true,
               carrierRate: true,
@@ -2032,7 +2034,7 @@ export const adminRouter = createTRPCRouter({
         .where(whereClause);
 
       return {
-        items: shipmentsList,
+        items: shipmentsList.map((shipment) => ({ ...shipment, recovery: getOrderRecovery(shipment.order, shipment, "admin") })),
         total: count,
         page: input.page,
         limit: input.limit,

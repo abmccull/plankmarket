@@ -1,0 +1,26 @@
+export interface RecoveryOrder { status: string; paymentStatus: string | null; escrowStatus?: string | null; transferFailedAt?: Date | string | null }
+export interface RecoveryShipment { status: string; priority1ShipmentId?: string | null; dispatchAttemptedAt?: Date | string | null; cancellationRequestedAt?: Date | string | null; lastError?: string | null; isDryRun?: boolean }
+export interface OrderRecovery { code: string; title: string; description: string; needsAttention: boolean; action: { label: string; href: string } | null }
+/** Presentation only. Never creates bookings, advances order state, or authorizes money movement. */
+export function getOrderRecovery(order: RecoveryOrder, shipment: RecoveryShipment | null, role: string): OrderRecovery {
+  const action = role === "admin" ? { label: "Review reconciliation", href: "/admin/reconciliation" } : { label: "Contact support", href: "/contact" };
+  const state = (code: string, title: string, description: string, needsAttention = false): OrderRecovery => ({ code, title, description, needsAttention, action: needsAttention ? action : null });
+  if (order.escrowStatus === "disputed") return state("disputed", "Order under review", "Payment and fulfillment require review before another action. Existing reservations and provider records must be reconciled.", true);
+  if (order.paymentStatus === "refunded" || order.status === "refunded") return shipment && shipment.status !== "cancelled" && shipment.status !== "delivered" ? state("refunded_freight_open", "Refund recorded; freight needs review", "The refund is recorded, but the freight record is still open. Do not book a replacement until the carrier obligation is reconciled.", true) : state("refunded", "Refund recorded", "The order refund is recorded. Bank posting time is separate. Check the order for the refunded amount.");
+  if (shipment?.cancellationRequestedAt && shipment.status !== "cancelled") return state("cancellation_pending", "Carrier cancellation awaiting confirmation", "A cancellation request is recorded. Freight may still be active; do not create another booking.", true);
+  if (order.status === "cancelled") return state("cancelled", "Order cancelled", "The order is closed. Any outstanding refund or freight obligation must be reconciled before placing a replacement order.", Boolean(shipment && shipment.status !== "cancelled"));
+  if (order.paymentStatus === "processing") return state("payment_processing", "Payment processing", "Payment has not been confirmed. Refresh this order; do not submit another payment or book freight.");
+  if (order.paymentStatus !== "succeeded" && order.paymentStatus !== "partially_refunded") return state("payment_unconfirmed", "Payment not confirmed", "No successful payment is recorded for this order. Use the existing order's payment recovery flow or contact support; do not create a replacement booking.", true);
+  if (shipment?.isDryRun) return state("unverified_shipment", "Shipment not verified with the carrier", "This record is a simulation or lacks live provider verification. It is not confirmation of pickup or delivery.", true);
+  if (!shipment) return state("awaiting_booking", "Payment recorded; freight not yet confirmed", "A successful payment does not confirm a carrier booking. Refresh this order for fulfillment progress; contact support if it does not advance.", true);
+  if (shipment.status === "exception" || shipment.lastError) return state("shipment_exception", "Shipment needs attention", "The latest freight operation needs review. A provider booking may already exist; support must reconcile it before any new booking.", true);
+  if (shipment.status === "cancelled") return state("shipment_cancelled", "Carrier booking cancelled", "The freight booking is cancelled. The order's payment and any refund are separate; support can review the next step.", true);
+  if (!shipment.priority1ShipmentId) return shipment.dispatchAttemptedAt
+    ? state("booking_unknown", "Carrier booking outcome not confirmed", "A booking was attempted but the provider reference is not recorded. Do not retry booking until support checks the carrier record.", true)
+    : state("booking_pending", "Awaiting carrier booking", "Freight has not been confirmed by the carrier. Refresh status; a new booking is not required from this screen.");
+  if (order.transferFailedAt) return state("transfer_attention", "Seller transfer needs review", "Freight progress is recorded, but the seller transfer requires reconciliation. Refreshing this screen does not retry the transfer.", true);
+  if (shipment.status === "delivered") return state("delivered", "Delivery recorded", "The carrier's delivery state is recorded. Seller transfers, refunds and bank settlement remain separate financial states.");
+  if (shipment.status === "out_for_delivery") return state("out_for_delivery", "Out for delivery", "The carrier reports the final delivery leg. Delivery has not yet been confirmed.");
+  if (shipment.status === "in_transit") return state("in_transit", "In transit", "The carrier reports transit. Delivery has not yet been confirmed.");
+  return state("booked", "Carrier booking recorded", "The carrier reference is recorded. A booking or scheduled pickup is not proof that pickup has occurred.");
+}

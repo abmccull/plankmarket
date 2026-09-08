@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { useBulkUploadStore } from "@/lib/stores/bulk-upload-store";
@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 
 export default function BulkPhotoWizardPage() {
   const router = useRouter();
+  const [hasPendingPhotos, setHasPendingPhotos] = useState(false);
+  const requireSavedPhotos = () => { if (!hasPendingPhotos) return true; toast.error("Save your photo changes before continuing"); return false; };
   const { batchId, listings, currentPhotoIndex, setCurrentPhotoIndex, reset } =
     useBulkUploadStore();
 
@@ -54,18 +56,21 @@ export default function BulkPhotoWizardPage() {
   const progressPercent = (listingsWithPhotos.length / listings.length) * 100;
 
   const handlePrevious = () => {
+    if (!requireSavedPhotos()) return;
     if (currentPhotoIndex > 0) {
       setCurrentPhotoIndex(currentPhotoIndex - 1);
     }
   };
 
   const handleNext = () => {
+    if (!requireSavedPhotos()) return;
     if (currentPhotoIndex < listings.length - 1) {
       setCurrentPhotoIndex(currentPhotoIndex + 1);
     }
   };
 
   const handlePublish = () => {
+    if (!requireSavedPhotos()) return;
     const idsWithPhotos = listingsWithPhotos.map((l) => l.id);
     if (idsWithPhotos.length === 0) {
       toast.error("Add photos to at least one listing before publishing");
@@ -75,6 +80,7 @@ export default function BulkPhotoWizardPage() {
   };
 
   const handleSaveExit = () => {
+    if (!requireSavedPhotos()) return;
     toast.info(
       `${listings.length} listing${listings.length !== 1 ? "s" : ""} saved as drafts. Add photos anytime from your listings page.`
     );
@@ -116,7 +122,7 @@ export default function BulkPhotoWizardPage() {
             {listings.map((listing, index) => (
               <button
                 key={listing.id}
-                onClick={() => setCurrentPhotoIndex(index)}
+                onClick={() => { if (requireSavedPhotos()) setCurrentPhotoIndex(index); }}
                 className={cn(
                   "w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-muted/50",
                   index === currentPhotoIndex && "bg-primary/5 border-l-2 border-l-primary"
@@ -161,6 +167,7 @@ export default function BulkPhotoWizardPage() {
           <BulkPhotoUpload
             key={currentListing.id}
             listingId={currentListing.id}
+            onPendingChange={setHasPendingPhotos}
           />
 
           {/* Navigation */}
