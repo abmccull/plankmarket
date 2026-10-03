@@ -84,11 +84,12 @@ describe("RegisterForm", () => {
   it("makes account creation visibly separate from verification", () => {
     render(<RegisterPage />);
 
-    expect(screen.getByText(/create your account/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /create your buyer account/i })).toBeInTheDocument();
     expect(screen.getByText(/of 2/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/we do not ask for an ein/i),
+      screen.getByText(/verify your business before buying/i),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/ein|tax id/i)).not.toBeInTheDocument();
   });
 
   // 3. Shows seller account title when "Sell Flooring" clicked
@@ -253,8 +254,7 @@ describe("RegisterForm", () => {
   });
 
   // 9. Handles server error (mutation rejection)
-  it("shows toast error when mutation fails", async () => {
-    const { toast } = await import("sonner");
+  it("shows a persistent inline error when mutation fails", async () => {
 
     mockMutateAsync.mockRejectedValue(new Error("Email already registered"));
 
@@ -268,7 +268,7 @@ describe("RegisterForm", () => {
     );
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Email already registered");
+      expect(screen.getByRole("alert")).toHaveTextContent("Email already registered");
     });
   });
 

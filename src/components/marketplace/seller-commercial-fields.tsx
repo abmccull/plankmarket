@@ -319,6 +319,7 @@ export function SellerCommercialFulfillmentFields({
           {territory.mode === "allowed_states" ? (
             <div className="space-y-2">
               <StateBadgeSelector
+                fieldName="allowedDestinationStates"
                 label={copy.territoryStateLabel}
                 selected={territory.selectedStates}
                 onChange={(selectedStates) =>
@@ -375,6 +376,7 @@ export function SellerCommercialFulfillmentFields({
           {freight.mode === "seller_pays_selected" ? (
             <div className="space-y-2">
               <StateBadgeSelector
+                fieldName="sellerFreightStates"
                 label={copy.freightStateLabel}
                 selected={freight.selectedStates}
                 onChange={(selectedStates) =>
@@ -585,6 +587,7 @@ export function ChoiceCard({
 }
 
 export function StateBadgeSelector({
+  fieldName,
   label,
   selected,
   onChange,
@@ -592,6 +595,7 @@ export function StateBadgeSelector({
   describedBy,
   invalid = false,
 }: {
+  fieldName?: "allowedDestinationStates" | "sellerFreightStates";
   label: string;
   selected: UsStateCode[];
   onChange: (states: UsStateCode[]) => void;
@@ -629,6 +633,8 @@ export function StateBadgeSelector({
     <div
       className="space-y-3"
       role="group"
+      data-listing-field={fieldName}
+      tabIndex={fieldName ? -1 : undefined}
       aria-labelledby={labelId}
       aria-describedby={buildDescribedBy(helperTextId, describedBy)}
       data-invalid={invalid ? "true" : undefined}

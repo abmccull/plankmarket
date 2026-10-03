@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { BlogReturnLink } from "@/components/blog/blog-return-link";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, Clock, Calendar } from "lucide-react";
@@ -11,8 +13,7 @@ import {
   getPostBySlug,
   getAllContent,
   getRelatedPosts,
-  renderMarkdown,
-  extractHeadings,
+  renderArticle,
   serializeJsonLd,
 } from "@/lib/blog";
 
@@ -73,10 +74,9 @@ export default async function BlogPostPage({
   const post = getPostBySlug(slug);
   if (!post) notFound();
 
-  const html = await renderMarkdown(post.content);
+  const { html, headings } = await renderArticle(post.content, post.title);
   const related = getRelatedPosts(post, 3);
   const isPillar = post.type === "pillar";
-  const headings = extractHeadings(post.content);
   const showToc = headings.length >= 3;
 
   const jsonLd = {
@@ -115,17 +115,26 @@ export default async function BlogPostPage({
       />
       <article className="container mx-auto px-4 py-12 sm:py-16">
         {/* Breadcrumbs */}
-        <nav className="flex items-center gap-1.5 text-sm text-muted-foreground mb-8">
+        <nav
+          aria-label="Breadcrumb"
+          className="flex flex-wrap items-center gap-[6px] text-sm text-muted-foreground mb-8"
+        >
           <Link href="/" className="hover:text-foreground transition-colors">
             Home
           </Link>
           <ChevronRight className="h-3 w-3" />
-          <Link
-            href="/blog"
-            className="hover:text-foreground transition-colors"
+          <Suspense
+            fallback={
+              <Link
+                href="/blog#articles"
+                className="inline-flex min-h-11 items-center"
+              >
+                Back to articles
+              </Link>
+            }
           >
-            Blog
-          </Link>
+            <BlogReturnLink />
+          </Suspense>
           <ChevronRight className="h-3 w-3" />
           <span className="text-foreground truncate max-w-[200px] sm:max-w-none">
             {post.title}
@@ -153,14 +162,32 @@ export default async function BlogPostPage({
           </div>
         </header>
 
+        {showToc && (
+          <details className="mb-8 border-y border-border py-3 xl:hidden">
+            <summary className="cursor-pointer py-2 font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+              On this page
+            </summary>
+            <div className="mt-3 max-h-80 overflow-y-auto">
+              <TableOfContents headings={headings} />
+            </div>
+          </details>
+        )}
+
         {/* Content + optional TOC sidebar */}
         {showToc ? (
           <div className="flex gap-12">
-            <div className={`${isPillar ? "max-w-4xl" : "max-w-3xl"} flex-1 min-w-0`}>
+            <div
+              className={`${isPillar ? "max-w-4xl" : "max-w-3xl"} flex-1 min-w-0`}
+            >
               <PostContent html={html} />
             </div>
             <aside className="hidden xl:block w-64 shrink-0">
-              <TableOfContents headings={headings} />
+              <div className="sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto">
+                <p className="font-display text-sm text-muted-foreground mb-3 uppercase tracking-wide">
+                  On this page
+                </p>
+                <TableOfContents headings={headings} />
+              </div>
             </aside>
           </div>
         ) : (

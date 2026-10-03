@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import Image from "next/image";
-import { Logo } from "@/components/brand/logo";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -13,7 +11,7 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-1">
+    <div className="flex min-w-0 flex-1">
       {/* Branded left panel — desktop only */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         {/* Real wood planks photography */}
@@ -46,11 +44,8 @@ export default function AuthLayout({
       </div>
 
       {/* Form panel */}
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-12 bg-background">
-        <Link href="/" className="lg:hidden mb-8">
-          <Logo variant="full" size="lg" />
-        </Link>
-        <div className="w-full max-w-md">
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-start bg-background px-4 py-4 sm:py-8 lg:justify-center lg:py-12">
+        <div className="min-w-0 w-full max-w-md">
           {children}
         </div>
       </div>

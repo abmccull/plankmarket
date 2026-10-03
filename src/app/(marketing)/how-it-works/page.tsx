@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,6 @@ import {
   Search,
   ShoppingCart,
   Truck,
-  Package,
   DollarSign,
   BarChart3,
   Shield,
@@ -22,6 +21,7 @@ import {
   Globe,
 } from "lucide-react";
 import { TransactionTimelineExplainer } from "@/components/marketplace/transaction-timeline";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export const metadata: Metadata = {
   title: "How It Works - Buy & Sell Surplus Flooring",
@@ -40,35 +40,70 @@ export default function HowItWorksPage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-10 sm:py-14">
         <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
         <div className="container mx-auto px-4 relative z-10">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              Simple & Transparent
+              Buy, sell and coordinate freight
             </Badge>
             <h1 className="font-display text-4xl tracking-tight sm:text-5xl">
               How PlankMarket Works
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              PlankMarket connects buyers and sellers of surplus flooring materials through a simple, transparent process. Whether you are sourcing materials or clearing inventory, we make it easy.
+              Browse flooring without an account, or prepare your business to
+              sell. Keep the listing, offer, payment and shipment record
+              together.
             </p>
+            <nav
+              aria-label="Choose your journey"
+              className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium"
+            >
+              <Link
+                href="#buyers"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Buying flooring
+              </Link>
+              <Link
+                href="#sellers"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Selling inventory
+              </Link>
+              <Link
+                href="#payment"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Payment and transfer
+              </Link>
+              <Link
+                href="#freight"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Freight
+              </Link>
+            </nav>
           </div>
         </div>
       </section>
 
       {/* Buyer Steps */}
-      <section className="py-20">
+      <section id="buyers" className="scroll-mt-24 py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <Badge variant="outline" className="mb-4">For Buyers</Badge>
+          <div className="text-center mb-8">
+            <Badge variant="outline" className="mb-4">
+              For Buyers
+            </Badge>
             <h2 className="font-display text-3xl">
               Find and Purchase Flooring
             </h2>
             <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
-              Finding the flooring inventory you need has never been easier. Our platform simplifies the entire purchasing process from discovery to delivery.
+              Compare the lot first. Create an account to save searches, ask
+              questions or make an offer; complete business verification before
+              checkout.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
@@ -78,7 +113,7 @@ export default function HowItWorksPage() {
                 step: "1",
                 title: "Browse Inventory",
                 description:
-                  "Browse listings featuring hardwood, engineered wood, vinyl plank, laminate, bamboo, and tile. Filter by material type, color, finish, lot size, price, and location.",
+                  "Browse without an account. Filter flooring by material, quantity, condition, price and location, then inspect the lot details and photos.",
               },
               {
                 icon: ShoppingCart,
@@ -90,9 +125,8 @@ export default function HowItWorksPage() {
               {
                 icon: CreditCard,
                 step: "3",
-                title: "Pay Through Stripe",
-                description:
-                  "Complete your purchase through Stripe. After tracked carrier pickup and the configured delay, PlankMarket rechecks the transaction before initiating a separate seller transfer.",
+                title: "Verify and Check Out",
+                description: `After business approval, review your quantity, the ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel}, selected freight and any applicable tax before paying through Stripe.`,
               },
               {
                 icon: Truck,
@@ -102,14 +136,17 @@ export default function HowItWorksPage() {
                   "Track your order status through your dashboard. Inspect materials upon delivery and note any issues on the delivery receipt. You have 48 hours after delivery to report damage or shortages with photo evidence.",
               },
             ].map((item) => (
-              <Card key={item.step} className="card-hover-lift">
+              <Card key={item.step}>
                 <CardHeader>
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold shrink-0">
                       {item.step}
                     </div>
                     <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                      <item.icon className="h-6 w-6 text-primary" />
+                      <item.icon
+                        className="h-6 w-6 text-primary"
+                        aria-hidden="true"
+                      />
                     </div>
                   </div>
                   <CardTitle className="font-display">{item.title}</CardTitle>
@@ -122,56 +159,63 @@ export default function HowItWorksPage() {
       </section>
 
       {/* Seller Steps */}
-      <section className="py-20 bg-muted/30">
+      <section id="sellers" className="scroll-mt-24 py-10 sm:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <Badge variant="outline" className="mb-4">For Sellers</Badge>
+          <div className="text-center mb-8">
+            <Badge variant="outline" className="mb-4">
+              For Sellers
+            </Badge>
             <h2 className="font-display text-3xl">
               List and Sell Your Surplus
             </h2>
             <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
-              Turn your surplus flooring inventory into revenue. PlankMarket provides everything you need to list, manage, and sell your overstock, closeouts, and discontinued materials.
+              Prepare lot details in a draft on this browser while you complete
+              business verification. Approval is required to upload product
+              photos and publish.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
             {[
               {
-                icon: Package,
+                icon: Shield,
                 step: "1",
-                title: "List Your Inventory",
+                title: "Create and Verify Your Account",
                 description:
-                  "Use the guided flow to upload photos and record material type, color, finish, dimensions, quantity, and condition.",
+                  "Register your seller account and complete the resumable business-verification steps. You can prepare a local draft before approval; connect Stripe to receive seller transfers.",
               },
               {
                 icon: DollarSign,
                 step: "2",
-                title: "Set Your Pricing",
+                title: "Prepare and Price the Lot",
                 description:
-                  "You control the price. Set competitive rates based on market conditions, material quality, and lot size. Update pricing anytime to respond to demand.",
+                  "Prepare specifications, condition, quantity, minimum order, pricing and pallet details in your local draft. After approval, add product photos, review the details and publish.",
               },
               {
                 icon: ShoppingCart,
                 step: "3",
                 title: "Receive Orders or Offers",
                 description:
-                  "Get notified immediately when a buyer places an order or submits an offer. Accept, counter, or decline — all on-platform. Stripe processes buyer payments.",
+                  "Review orders and offers in your dashboard. Answer questions and accept, counter or decline offers on-platform. Stripe processes completed buyer payments.",
               },
               {
                 icon: BarChart3,
                 step: "4",
                 title: "Ship & Get Paid",
                 description:
-                  "Coordinate freight pickup through PlankMarket and track it on the order. After confirmed pickup and the configured delay, PlankMarket rechecks the transaction before initiating a Stripe Connect transfer. Bank availability is determined by Stripe and the seller's bank.",
+                  "Coordinate freight pickup through PlankMarket and track it on the order. After confirmed pickup and the release waiting period, PlankMarket checks payment, shipment, refund and dispute status before initiating a Stripe Connect transfer. Bank availability is determined by Stripe and the seller's bank.",
               },
             ].map((item) => (
-              <Card key={item.step} className="card-hover-lift">
+              <Card key={item.step}>
                 <CardHeader>
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-8 h-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center text-sm font-bold shrink-0">
                       {item.step}
                     </div>
                     <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                      <item.icon className="h-6 w-6 text-secondary" />
+                      <item.icon
+                        className="h-6 w-6 text-secondary"
+                        aria-hidden="true"
+                      />
                     </div>
                   </div>
                   <CardTitle className="font-display">{item.title}</CardTitle>
@@ -183,7 +227,10 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      <section className="border-y bg-background py-20">
+      <section
+        id="payment"
+        className="scroll-mt-24 border-y bg-background py-10 sm:py-14"
+      >
         <div className="container mx-auto px-4">
           <div className="mx-auto mb-10 max-w-3xl text-center">
             <Badge variant="outline" className="mb-4">
@@ -199,18 +246,27 @@ export default function HowItWorksPage() {
             </p>
           </div>
           <div className="mx-auto max-w-3xl">
-            <TransactionTimelineExplainer />
+            <details className="rounded-lg border p-5">
+              <summary className="cursor-pointer font-semibold">
+                See the payment and shipment milestones
+              </summary>
+              <div className="mt-5">
+                <TransactionTimelineExplainer />
+              </div>
+            </details>
           </div>
         </div>
       </section>
 
       {/* Benefits */}
-      <section className="py-20">
+      <section className="py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl">Key Benefits</h2>
+          <div className="text-center mb-8">
+            <h2 className="font-display text-3xl">
+              Built around the transaction
+            </h2>
             <p className="mt-3 text-muted-foreground">
-              Why flooring professionals trust PlankMarket
+              The details and records you can review before and after purchase.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
@@ -230,8 +286,7 @@ export default function HowItWorksPage() {
               {
                 icon: CreditCard,
                 title: "Stripe-Processed Payments",
-                description:
-                  "Stripe processes the buyer charge. PlankMarket initiates a separate seller transfer only after tracked pickup, the configured delay, and transaction-state checks.",
+                description: PUBLIC_COMMERCIAL_COPY.paymentHoldModel,
               },
               {
                 icon: Globe,
@@ -240,10 +295,13 @@ export default function HowItWorksPage() {
                   "Buy and sell flooring where seller territories and current supported-market coverage overlap. Buyers select an integrated carrier quote at checkout when available, and sellers prepare the order for scheduled pickup.",
               },
             ].map((item) => (
-              <Card key={item.title} className="card-hover-lift">
+              <Card key={item.title}>
                 <CardHeader>
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-2">
-                    <item.icon className="h-6 w-6 text-primary" />
+                    <item.icon
+                      className="h-6 w-6 text-primary"
+                      aria-hidden="true"
+                    />
                   </div>
                   <CardTitle className="font-display">{item.title}</CardTitle>
                   <CardDescription>{item.description}</CardDescription>
@@ -255,10 +313,12 @@ export default function HowItWorksPage() {
       </section>
 
       {/* Shipping & Freight */}
-      <section className="py-20 bg-muted/30">
+      <section id="freight" className="scroll-mt-24 py-10 sm:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <Badge variant="outline" className="mb-4">Shipping & Freight</Badge>
+          <div className="text-center mb-8">
+            <Badge variant="outline" className="mb-4">
+              Shipping & Freight
+            </Badge>
             <h2 className="font-display text-3xl">
               How freight works on PlankMarket
             </h2>
@@ -281,9 +341,11 @@ export default function HowItWorksPage() {
                   "Checkout uses PlankMarket's integrated carrier quotes. After payment, the seller coordinates the scheduled warehouse pickup through the order workflow.",
               },
             ].map((item) => (
-              <Card key={item.question} className="card-hover-lift">
+              <Card key={item.question}>
                 <CardHeader>
-                  <CardTitle className="text-base font-semibold">{item.question}</CardTitle>
+                  <CardTitle className="text-base font-semibold">
+                    {item.question}
+                  </CardTitle>
                   <CardDescription>{item.answer}</CardDescription>
                 </CardHeader>
               </Card>
@@ -293,35 +355,40 @@ export default function HowItWorksPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-20">
+      <section className="py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
+          <div className="rounded-xl bg-primary p-6 text-primary-foreground relative overflow-hidden sm:p-10">
             <div className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl" />
             <div className="text-center relative z-10">
               <h2 className="font-display text-3xl mb-4">
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
-                Whether you are looking to source surplus flooring or clear out excess inventory, PlankMarket makes it easy.
+                Browse available lots now, or create a seller account and
+                prepare your business verification.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Link href="/register?role=buyer">
-                  <Button
-                    size="xl"
-                    variant="gold"
-                  >
-                    Start Buying <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/register?role=seller">
-                  <Button
-                    size="xl"
-                    variant="secondary"
-                    className="border-2 border-white/70 text-white bg-white/10 hover:bg-white/20"
-                  >
-                    Start Selling
-                  </Button>
-                </Link>
+                <Button
+                  asChild
+                  size="xl"
+                  variant="gold"
+                  className="h-auto min-h-12 w-full whitespace-normal px-4 py-3 sm:w-auto"
+                >
+                  <Link href="/listings">
+                    Browse inventory{" "}
+                    <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="xl"
+                  variant="outline"
+                  className="h-auto min-h-12 w-full whitespace-normal px-4 py-3 sm:w-auto"
+                >
+                  <Link href="/register?role=seller">
+                    Create seller account
+                  </Link>
+                </Button>
               </div>
             </div>
           </div>

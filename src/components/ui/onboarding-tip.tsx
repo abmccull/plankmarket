@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Info, X } from "lucide-react";
 
 interface OnboardingTipProps {
@@ -14,34 +14,47 @@ function getStorageKey(id: string) {
 
 function readDismissed(id: string): boolean {
   if (typeof window === "undefined") return false;
-  return localStorage.getItem(getStorageKey(id)) === "true";
+  try {
+    return localStorage.getItem(getStorageKey(id)) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeToStorage(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
 }
 
 export function OnboardingTip({ id, children }: OnboardingTipProps) {
-  const [isDismissed, setIsDismissed] = useState(() => readDismissed(id));
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
+  const savedDismissal = useSyncExternalStore(subscribeToStorage, () => readDismissed(id), () => false);
 
-  if (isDismissed) return null;
+  if (dismissedId === id || savedDismissal) return null;
 
   const handleDismiss = () => {
-    localStorage.setItem(getStorageKey(id), "true");
-    setIsDismissed(true);
+    setDismissedId(id);
+    try {
+      localStorage.setItem(getStorageKey(id), "true");
+    } catch {
+      // Remember this choice for the open page even when optional storage is unavailable.
+    }
   };
 
   return (
-    <div className="rounded-lg border border-info/30 bg-info/10 dark:bg-info/10 dark:border-info/30 px-4 py-3 mb-4">
-      <div className="flex items-start gap-3">
-        <Info className="h-4 w-4 text-info dark:text-info mt-0.5 flex-shrink-0" aria-hidden="true" />
-        <div className="flex-1 text-sm text-blue-800 dark:text-blue-200">
+    <div className="flex items-start gap-2 py-1 text-muted-foreground">
+        <Info className="mt-3.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <div className="flex min-h-11 flex-1 items-center text-sm">
           {children}
         </div>
         <button
+          type="button"
           onClick={handleDismiss}
-          className="text-info dark:text-info hover:text-info dark:hover:text-info-foreground flex-shrink-0"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           aria-label="Dismiss tip"
         >
           <X className="h-4 w-4" />
         </button>
-      </div>
     </div>
   );
 }

@@ -1,457 +1,701 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { AppRouter } from "@/server/routers/_app";
 import { trpc } from "@/lib/trpc/client";
-import { DataTable, DataTableColumnHeader } from "@/components/admin/data-table";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { DataTable } from "@/components/admin/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  QueryErrorState,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from "sonner";
-import {
-  Loader2,
-  Package,
-  TrendingUp,
-  DollarSign,
-  PiggyBank,
-  ExternalLink,
-  RefreshCw,
-} from "lucide-react";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { formatCurrency, getErrorMessage } from "@/lib/utils";
-import type { ColumnDef } from "@tanstack/react-table";
 
-type ShipmentStatus = "pending" | "dispatched" | "in_transit" | "out_for_delivery" | "delivered" | "exception" | "cancelled";
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type Shipment = RouterOutputs["admin"]["getShipments"]["items"][number];
+type ShipmentStatus = Shipment["status"];
+type ShipmentInput = { status?: ShipmentStatus; page: number; limit: number };
+type ReviewTarget = { shipment: Shipment; input: ShipmentInput };
 
-interface Shipment {
-  recovery: import("@/lib/order-recovery").OrderRecovery;
-  id: string;
-  orderId: string;
-  carrierName: string | null;
-  status: ShipmentStatus;
-  isDryRun: boolean;
-  proNumber: string | null;
-  bolUrl: string | null;
-  lastError: string | null;
-  createdAt: Date | string;
-  order: {
-    id: string;
-    orderNumber: string;
-    carrierRate: number | null;
-    shippingPrice: number | null;
-    freightFundingMode:
-      | "buyer_pays"
-      | "seller_pays"
-      | "seller_pays_selected_states";
-    buyerFreightCharge: number;
-    sellerFreightContribution: number;
-    shippingMargin: number | null;
-  };
-}
-
-const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline" }> = {
-  pending: {
-    label: "Pending Pickup",
-    variant: "warning",
-  },
-  dispatched: {
-    label: "Dispatched",
-    variant: "default",
-  },
-  in_transit: {
-    label: "In Transit",
-    variant: "default",
-  },
-  out_for_delivery: {
-    label: "Out for Delivery",
-    variant: "default",
-  },
-  delivered: {
-    label: "Delivered",
-    variant: "success",
-  },
-  exception: {
-    label: "Exception",
-    variant: "destructive",
-  },
-  cancelled: {
-    label: "Cancelled",
-    variant: "secondary",
-  },
+const PAGE_SIZE = 25;
+const controlClassName =
+  "h-auto min-h-11 min-w-0 max-w-full whitespace-normal px-3 py-2";
+const STATUS_CONFIG: Record<
+  ShipmentStatus,
+  {
+    label: string;
+    variant: "default" | "secondary" | "destructive" | "success" | "warning";
+  }
+> = {
+  pending: { label: "Pending Pickup", variant: "warning" },
+  dispatched: { label: "Dispatched", variant: "default" },
+  in_transit: { label: "In Transit", variant: "default" },
+  out_for_delivery: { label: "Out for Delivery", variant: "default" },
+  delivered: { label: "Delivered", variant: "success" },
+  exception: { label: "Exception", variant: "destructive" },
+  cancelled: { label: "Cancelled", variant: "secondary" },
 };
 
+function FreightDetails({ shipment }: { shipment: Shipment }) {
+  const order = shipment.order;
+  const money = (value: number | null) =>
+    value == null ? "Not recorded" : formatCurrency(value);
+  const values = [
+    ["Carrier rate", money(order.carrierRate)],
+    ["Full freight", money(order.shippingPrice)],
+    ["Buyer shipping", money(order.buyerFreightCharge)],
+    ["Seller contribution", money(order.sellerFreightContribution)],
+    ["Shipping margin", money(order.shippingMargin)],
+    [
+      "Funding",
+      order.freightFundingMode === "buyer_pays"
+        ? "Buyer"
+        : order.freightFundingMode === "seller_pays"
+          ? "Seller nationwide"
+          : "Seller selected state",
+    ],
+  ];
+  return (
+    <details className="min-w-0 text-sm">
+      <summary className="min-h-11 cursor-pointer py-3 font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        Freight details
+      </summary>
+      <dl className="space-y-2 pb-2">
+        {values.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-xs text-muted-foreground">{label}</dt>
+            <dd className="break-words font-medium tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
+function ShipmentState({ shipment }: { shipment: Shipment }) {
+  const config = STATUS_CONFIG[shipment.status];
+  return (
+    <div className="min-w-0 space-y-2">
+      <Badge variant={config.variant} className="whitespace-normal">
+        {config.label}
+      </Badge>
+      <div className="space-y-1 break-words text-sm">
+        <p className="font-medium">{shipment.recovery.title}</p>
+        <p className="text-muted-foreground">{shipment.recovery.description}</p>
+        {shipment.recovery.action && (
+          <a
+            href={shipment.recovery.action.href}
+            className="inline-flex min-h-11 items-center underline underline-offset-4"
+          >
+            {shipment.recovery.action.label}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminShipmentsPage() {
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const user = useAuthStore((state) => state.user);
+  if (!user || user.role !== "admin") {
+    return <StatePanelLoading label="Checking administrator access" rows={2} />;
+  }
+  return <ShipmentsQueue key={user.id} actorId={user.id} />;
+}
+
+function ShipmentsQueue({ actorId }: { actorId: string }) {
   const [page, setPage] = useState(1);
-  const limit = 50;
-
-  const { data, isLoading } = trpc.admin.getShipments.useQuery({
-    status: statusFilter !== "all" ? (statusFilter as ShipmentStatus) : undefined,
+  const [status, setStatus] = useState<ShipmentStatus | "all">("all");
+  const [selected, setSelected] = useState<Shipment | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [refreshNote, setRefreshNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(false);
+  const pending = useRef(false);
+  const reviewRequired = useRef(false);
+  const input: ShipmentInput = {
+    status: status === "all" ? undefined : status,
     page,
-    limit,
-  });
-
-  const { data: stats } = trpc.admin.getShippingStats.useQuery();
-
+    limit: PAGE_SIZE,
+  };
+  const shipmentsQuery = trpc.admin.getShipments.useQuery(input);
+  const statsQuery = trpc.admin.getShippingStats.useQuery();
   const utils = trpc.useUtils();
+  const repoll = trpc.admin.repollShipment.useMutation({ retry: false });
 
-  const repollMutation = trpc.admin.repollShipment.useMutation({
-    onSuccess: () => {
-      toast.success("Shipment tracking data refreshed");
-      utils.admin.getShipments.invalidate();
-    },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  function isCurrent() {
+    const live = useAuthStore.getState().user;
+    return mounted.current && live?.id === actorId && live.role === "admin";
+  }
+
+  function openSync(shipment: Shipment) {
+    if (
+      !isCurrent() ||
+      pending.current ||
+      reviewRequired.current ||
+      shipmentsQuery.isError ||
+      shipmentsQuery.isFetching
+    )
+      return;
+    setSelected(shipment);
+    setActionError(null);
+  }
+
+  async function refreshAfterChange() {
+    // Invalidate every page/filter without triggering inactive queue reads.
+    // Do not seed a query cache from a departed administrator's direct read.
+    if (!isCurrent()) return;
+    await utils.admin.getShipments.invalidate(undefined, {
+      refetchType: "none",
+    });
+    if (!isCurrent()) return;
+    await utils.admin.getShippingStats.invalidate(undefined, {
+      refetchType: "none",
+    });
+    if (!isCurrent()) return;
+    const queueResult = await shipmentsQuery.refetch();
+    if (!isCurrent()) return;
+    const statsResult = await statsQuery.refetch();
+    if (!isCurrent()) return;
+    if (queueResult.error || statsResult.error) {
+      setRefreshNote(
+        "The latest queue or totals could not be loaded. Retry the affected read; do not repeat the carrier sync to refresh the display.",
+      );
+    } else {
+      setRefreshNote(null);
+    }
+  }
+
+  async function confirmSync() {
+    if (
+      !selected ||
+      !isCurrent() ||
+      pending.current ||
+      reviewRequired.current ||
+      shipmentsQuery.isError ||
+      shipmentsQuery.isFetching
+    )
+      return;
+    const target = selected;
+    const targetInput = { ...input };
+    pending.current = true;
+    setBusy(true);
+    setActionError(null);
+    let accepted = false;
+    try {
+      const result = await repoll.mutateAsync({ shipmentId: target.id });
+      if (!isCurrent()) return;
+      if (!result || result.id !== target.id) {
+        throw new Error(
+          "The carrier sync response did not confirm this shipment.",
+        );
+      }
+      accepted = true;
+      setNotice("Carrier status updated for " + target.order.orderNumber + ".");
+      setRefreshNote(null);
+      setSelected(null);
+      await refreshAfterChange();
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (accepted) {
+        setRefreshNote(
+          "The carrier sync completed, but its queue or totals could not refresh. Retry the affected read; do not repeat the carrier sync.",
+        );
+      } else {
+        reviewRequired.current = true;
+        setReviewTarget({ shipment: target, input: targetInput });
+        setActionError(
+          getErrorMessage(error, "We could not confirm the carrier sync.") +
+            " The request may have updated shipment or order records. Read the latest shipment record before deciding on another sync.",
+        );
+      }
+    } finally {
+      pending.current = false;
+      if (isCurrent()) setBusy(false);
+    }
+  }
+
+  async function readLatestShipment() {
+    if (!reviewTarget || !isCurrent() || pending.current) return;
+    const target = reviewTarget;
+    pending.current = true;
+    setBusy(true);
+    try {
+      // This is a database read only. It does not replay the carrier operation.
+      const result = await utils.client.admin.getShipments.query(target.input);
+      if (!isCurrent()) return;
+      const fresh = result.items.find(
+        (shipment) => shipment.id === target.shipment.id,
+      );
+      if (!fresh) {
+        throw new Error(
+          "This shipment is no longer in the selected queue page. Carrier sync remains paused. Review reconciliation for this order before taking further action.",
+        );
+      }
+      await utils.admin.getShipments.invalidate(undefined, {
+        refetchType: "none",
+      });
+      if (!isCurrent()) return;
+      await utils.admin.getShippingStats.invalidate(undefined, {
+        refetchType: "none",
+      });
+      if (!isCurrent()) return;
+      setSelected((previous) => (previous?.id === fresh.id ? fresh : previous));
+      reviewRequired.current = false;
+      setReviewTarget(null);
+      setActionError(null);
+      setNotice(
+        "Shipment record reloaded. Review its current status before deciding on another sync. This read does not confirm completion of the earlier carrier request or follow-on processing.",
+      );
+      const queueResult = await shipmentsQuery.refetch();
+      if (!isCurrent()) return;
+      const statsResult = await statsQuery.refetch();
+      if (!isCurrent()) return;
+      setRefreshNote(
+        queueResult.error || statsResult.error
+          ? "The shipment record was read, but the queue or totals could not refresh. Retry the affected read before another carrier sync."
+          : null,
+      );
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (reviewRequired.current) {
+        setActionError(
+          getErrorMessage(
+            error,
+            "The shipment record could not be read. Carrier sync remains paused.",
+          ),
+        );
+      } else {
+        setRefreshNote(
+          "The shipment record was read, but the queue or totals could not refresh. Retry the affected read before another carrier sync.",
+        );
+      }
+    } finally {
+      pending.current = false;
+      if (isCurrent()) setBusy(false);
+    }
+  }
+
+  const actionsDisabled =
+    busy ||
+    !!reviewTarget ||
+    shipmentsQuery.isError ||
+    shipmentsQuery.isFetching;
+
+  function renderActions(shipment: Shipment) {
+    return (
+      <div className="min-w-0 space-y-2">
+        <Button
+          type="button"
+          variant="outline"
+          className={controlClassName}
+          aria-label={"Sync carrier status for " + shipment.order.orderNumber}
+          disabled={actionsDisabled}
+          onClick={() => openSync(shipment)}
+        >
+          <RefreshCw className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words">Sync carrier status</span>
+        </Button>
+        {shipment.bolUrl && (
+          <Button asChild variant="ghost" className={controlClassName}>
+            <a
+              href={shipment.bolUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={
+                "View bill of lading for " + shipment.order.orderNumber
+              }
+            >
+              <ExternalLink className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 break-words">Bill of lading</span>
+            </a>
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  function carrierDetails(shipment: Shipment) {
+    return (
+      <div className="min-w-0 space-y-2 break-words text-sm">
+        <p>{shipment.carrierName ?? "Carrier not recorded"}</p>
+        <Badge
+          variant={shipment.isDryRun ? "warning" : "success"}
+          className="whitespace-normal"
+        >
+          {shipment.isDryRun ? "Dry run / unverified" : "Priority1 live"}
+        </Badge>
+        <p className="text-xs text-muted-foreground">
+          PRO:{" "}
+          <span className="break-all">
+            {shipment.proNumber ?? "Not recorded"}
+          </span>
+        </p>
+      </div>
+    );
+  }
 
   const columns: ColumnDef<Shipment>[] = [
     {
-      accessorKey: "order",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Order #" />
-      ),
+      id: "order",
+      header: "Order",
       cell: ({ row }) => (
-        <span className="font-medium">{row.original.order.orderNumber}</span>
+        <span className="break-all font-medium">
+          {row.original.order.orderNumber}
+        </span>
       ),
     },
     {
-      accessorKey: "carrierName",
+      id: "carrier",
       header: "Carrier",
-      cell: ({ row }) => <span>{row.original.carrierName ?? "—"}</span>,
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => {
-        const statusConfig = STATUS_CONFIG[row.original.status] ?? STATUS_CONFIG.pending;
-        return (
-          <Badge variant={statusConfig.variant}>
-            {statusConfig.label}
-          </Badge>
-        );
-      },
-    },
-    {
-      accessorKey: "isDryRun",
-      header: "Provider",
       cell: ({ row }) => (
-        <Badge variant={row.original.isDryRun ? "warning" : "success"}>
-          {row.original.isDryRun ? "Dry run / unverified" : "Priority1 live"}
-        </Badge>
+        <div className="min-w-0 max-w-44">{carrierDetails(row.original)}</div>
       ),
     },
     {
-      accessorKey: "lastError",
-      header: "Attention",
-      cell: ({ row }) => <div className="max-w-72 space-y-1 text-sm">
-        <p className="font-medium">{row.original.recovery.title}</p>
-        <p className="text-muted-foreground">{row.original.recovery.description}</p>
-        {row.original.recovery.action && <a className="underline" href={row.original.recovery.action.href}>{row.original.recovery.action.label}</a>}
-      </div>,
-    },
-    {
-      id: "carrierRate",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Carrier Rate" />
-      ),
+      id: "status",
+      header: "Status and recovery",
       cell: ({ row }) => (
-        <span className="text-muted-foreground">
-          {row.original.order.carrierRate != null
-            ? formatCurrency(row.original.order.carrierRate)
-            : "—"}
-        </span>
+        <div className="min-w-0 max-w-64">
+          <ShipmentState shipment={row.original} />
+        </div>
       ),
     },
     {
-      id: "shippingPrice",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Full Freight" />
-      ),
+      id: "freight",
+      header: "Freight",
       cell: ({ row }) => (
-        <span className="font-medium">
-          {row.original.order.shippingPrice != null
-            ? formatCurrency(row.original.order.shippingPrice)
-            : "—"}
-        </span>
-      ),
-    },
-    {
-      id: "buyerFreightCharge",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Buyer Shipping" />
-      ),
-      cell: ({ row }) => (
-        <span>{formatCurrency(row.original.order.buyerFreightCharge)}</span>
-      ),
-    },
-    {
-      id: "freightFundingMode",
-      header: "Funding",
-      cell: ({ row }) => (
-        <span className="whitespace-nowrap text-sm">
-          {row.original.order.freightFundingMode === "buyer_pays"
-            ? "Buyer"
-            : row.original.order.freightFundingMode === "seller_pays"
-              ? "Seller nationwide"
-              : "Seller selected state"}
-        </span>
-      ),
-    },
-    {
-      id: "sellerFreightContribution",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Seller Contribution" />
-      ),
-      cell: ({ row }) => (
-        <span
-          className={
-            row.original.order.sellerFreightContribution > 0
-              ? "font-medium text-amber-700 dark:text-amber-400"
-              : "text-muted-foreground"
-          }
-        >
-          {formatCurrency(row.original.order.sellerFreightContribution)}
-        </span>
-      ),
-    },
-    {
-      id: "margin",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Margin" />
-      ),
-      cell: ({ row }) => {
-        const margin = row.original.order.shippingMargin;
-        if (margin === null) return <span className="text-muted-foreground">—</span>;
-        return (
-          <span className={margin >= 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
-            {formatCurrency(margin)}
-          </span>
-        );
-      },
-    },
-    {
-      accessorKey: "proNumber",
-      header: "PRO #",
-      cell: ({ row }) => (
-        row.original.proNumber ? (
-          <span className="font-mono text-sm">{row.original.proNumber}</span>
-        ) : (
-          <span className="text-muted-foreground">N/A</span>
-        )
-      ),
-    },
-    {
-      accessorKey: "bolUrl",
-      header: "BOL",
-      cell: ({ row }) => (
-        row.original.bolUrl ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            asChild
-            className="h-8 px-2"
-          >
-            <a
-              href={row.original.bolUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="View Bill of Lading"
-            >
-              <ExternalLink className="h-4 w-4" aria-hidden="true" />
-            </a>
-          </Button>
-        ) : (
-          <span className="text-muted-foreground">N/A</span>
-        )
+        <div className="min-w-0 max-w-44">
+          <FreightDetails shipment={row.original} />
+        </div>
       ),
     },
     {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => repollMutation.mutate({ shipmentId: row.original.id })}
-          disabled={repollMutation.isPending}
-          aria-label="Re-poll shipment tracking data"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${repollMutation.isPending ? "animate-spin" : ""}`}
-            aria-hidden="true"
-          />
-        </Button>
+        <div className="min-w-0 max-w-52">{renderActions(row.original)}</div>
       ),
     },
   ];
+  const stats = statsQuery.data;
+  const statsValues = stats
+    ? [
+        ["Total shipments", stats.totalShipments.toLocaleString()],
+        ["Active shipments", stats.activeShipments.toLocaleString()],
+        ["Recorded full freight", formatCurrency(stats.totalFreightBooked)],
+        ["Buyer shipping", formatCurrency(stats.totalBuyerFreightCharges)],
+        [
+          "Seller contributions",
+          formatCurrency(stats.totalSellerFreightContributions),
+        ],
+        ["Recorded shipping margin", formatCurrency(stats.totalMargin)],
+      ]
+    : [];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Shipment Management</h1>
-        <p className="text-muted-foreground mt-1">
-          Monitor all shipments, carrier rates, and shipping margins
+    <div className="min-w-0 space-y-8">
+      <header className="space-y-2">
+        <h1 className="text-3xl font-bold">Shipments</h1>
+        <p className="max-w-3xl text-muted-foreground">
+          Find shipments that need attention, review freight details, and sync
+          carrier updates when needed.
         </p>
-      </div>
+      </header>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <Package className="h-4 w-4" />
-                Total Shipments
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{stats.totalShipments}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <TrendingUp className="h-4 w-4" />
-                Active Shipments
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{stats.activeShipments}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <DollarSign className="h-4 w-4" />
-                Full Freight Booked
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">
-                {formatCurrency(stats.totalFreightBooked)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <DollarSign className="h-4 w-4" />
-                Buyer Shipping
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">
-                {formatCurrency(stats.totalBuyerFreightCharges)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <DollarSign className="h-4 w-4" />
-                Seller Contributions
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">
-                {formatCurrency(stats.totalSellerFreightContributions)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <PiggyBank className="h-4 w-4" />
-                Total Margin
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">
-                {formatCurrency(stats.totalMargin)}
-              </p>
-            </CardContent>
-          </Card>
+      {notice && (
+        <div
+          role="status"
+          className="space-y-2 rounded-md border bg-muted/30 p-4 text-sm"
+        >
+          <p>{notice}</p>
+          {refreshNote && <p>{refreshNote}</p>}
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Status:</span>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="pending">Pending Pickup</SelectItem>
-              <SelectItem value="dispatched">Dispatched</SelectItem>
-              <SelectItem value="in_transit">In Transit</SelectItem>
-              <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="exception">Exception</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+      {reviewTarget && !selected && (
+        <div
+          role="alert"
+          className="space-y-3 rounded-md border border-destructive/30 p-4 text-sm"
+        >
+          <p className="font-medium">
+            Review carrier sync for {reviewTarget.shipment.order.orderNumber}
+          </p>
+          <p>
+            {actionError ??
+              "Carrier sync is paused until the latest shipment record is read."}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className={controlClassName}
+            disabled={busy}
+            onClick={() => {
+              if (isCurrent() && !pending.current)
+                setSelected(reviewTarget.shipment);
+            }}
+          >
+            Review carrier sync
+          </Button>
         </div>
-      </div>
+      )}
 
-      {/* Table */}
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <section aria-label="Shipment queue" className="min-w-0 space-y-4">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0 space-y-2 sm:w-64">
+            <Label htmlFor="shipment-status">Shipment status</Label>
+            <select
+              id="shipment-status"
+              value={status}
+              disabled={busy || !!reviewTarget}
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              onChange={(event) => {
+                if (!isCurrent() || pending.current || reviewRequired.current)
+                  return;
+                const value = event.target.value;
+                if (value !== "all" && !(value in STATUS_CONFIG)) return;
+                setStatus(value as ShipmentStatus | "all");
+                setPage(1);
+              }}
+            >
+              <option value="all">All statuses</option>
+              {Object.entries(STATUS_CONFIG).map(([value, config]) => (
+                <option key={value} value={value}>
+                  {config.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className={controlClassName}
+            disabled={busy || shipmentsQuery.isFetching}
+            onClick={() => {
+              if (isCurrent() && !pending.current)
+                void shipmentsQuery.refetch();
+            }}
+          >
+            <RefreshCw className="h-4 w-4 shrink-0" aria-hidden="true" />
+            Refresh shipments
+          </Button>
         </div>
-      ) : data && data.items.length > 0 ? (
-        <>
-          <DataTable columns={columns} data={data.items} />
+        {shipmentsQuery.isError ? (
+          <QueryErrorState
+            title="Shipments unavailable"
+            description="The shipment queue could not be loaded. Refresh it before taking carrier action. Shipping totals are loaded separately."
+            onRetry={() => {
+              if (isCurrent() && !pending.current)
+                void shipmentsQuery.refetch();
+            }}
+            isRetrying={shipmentsQuery.isFetching || busy}
+          />
+        ) : shipmentsQuery.isLoading || !shipmentsQuery.data ? (
+          <StatePanelLoading label="Loading shipments" />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={shipmentsQuery.data.items}
+            serverPagination={{
+              page,
+              pageSize: PAGE_SIZE,
+              total: shipmentsQuery.data.total,
+              totalPages: shipmentsQuery.data.totalPages,
+              isFetching: busy || !!reviewTarget || shipmentsQuery.isFetching,
+              onPageChange: (nextPage) => {
+                if (isCurrent() && !pending.current && !reviewRequired.current)
+                  setPage(nextPage);
+              },
+            }}
+            renderMobileRow={(shipment) => (
+              <article
+                aria-label={"Shipment " + shipment.order.orderNumber}
+                className="min-w-0 space-y-3"
+              >
+                <p className="break-all font-semibold">
+                  {shipment.order.orderNumber}
+                </p>
+                {carrierDetails(shipment)}
+                <ShipmentState shipment={shipment} />
+                {renderActions(shipment)}
+                <FreightDetails shipment={shipment} />
+              </article>
+            )}
+          />
+        )}
+      </section>
 
-          {/* Pagination */}
-          {data.totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Showing {(page - 1) * limit + 1} to{" "}
-                {Math.min(page * limit, data.total)} of {data.total} shipments
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm">
-                  Page {page} of {data.totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
-                  disabled={page === data.totalPages}
-                >
-                  Next
-                </Button>
+      <section
+        aria-label="Shipping totals"
+        className="min-w-0 space-y-4 border-t pt-6"
+      >
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold">Shipping totals</h2>
+          <p className="text-sm text-muted-foreground">
+            All shipment records. Recorded freight amounts include every status
+            and are not cash received or settled payouts.
+          </p>
+        </div>
+        {statsQuery.isError ? (
+          <div
+            role="alert"
+            className="space-y-3 rounded-md border border-destructive/30 p-4"
+          >
+            <h3 className="font-semibold">Shipping totals unavailable</h3>
+            <p className="text-sm text-muted-foreground">
+              The totals could not be loaded. You can continue using the
+              shipment queue.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className={controlClassName}
+              disabled={busy || statsQuery.isFetching}
+              onClick={() => {
+                if (isCurrent() && !pending.current) void statsQuery.refetch();
+              }}
+            >
+              Retry shipping totals
+            </Button>
+          </div>
+        ) : statsQuery.isLoading || !stats ? (
+          <StatePanelLoading label="Loading shipping totals" rows={1} />
+        ) : (
+          <dl className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+            {statsValues.map(([label, value]) => (
+              <div key={label} className="min-w-0 border-l-2 pl-3">
+                <dt className="text-sm text-muted-foreground">{label}</dt>
+                <dd className="break-words text-xl font-semibold tabular-nums">
+                  {value}
+                </dd>
               </div>
+            ))}
+          </dl>
+        )}
+      </section>
+
+      <AlertDialog
+        open={!!selected}
+        onOpenChange={(open) => {
+          if (!open && isCurrent() && !pending.current) setSelected(null);
+        }}
+      >
+        <AlertDialogContent
+          className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] min-w-0 overflow-y-auto p-[min(1.5rem,24px)]"
+          onEscapeKeyDown={(event) => {
+            if (pending.current) event.preventDefault();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sync carrier status</AlertDialogTitle>
+            <AlertDialogDescription>
+              Read the carrier&apos;s latest status and apply it to this
+              shipment. This may update shipment and order records and start
+              existing fulfillment processing. It does not book a new shipment.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selected && (
+            <div className="min-w-0 space-y-3 text-sm">
+              <dl className="space-y-2 rounded-md border p-3">
+                <div>
+                  <dt className="text-muted-foreground">Order</dt>
+                  <dd className="break-all font-semibold">
+                    {selected.order.orderNumber}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Carrier</dt>
+                  <dd className="break-words">
+                    {selected.carrierName ?? "Not recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">
+                    Current recorded status
+                  </dt>
+                  <dd>{STATUS_CONFIG[selected.status].label}</dd>
+                </div>
+              </dl>
+              {actionError && (
+                <p role="alert" className="break-words text-destructive">
+                  {actionError}
+                </p>
+              )}
+              {reviewTarget && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={controlClassName}
+                    disabled={busy}
+                    onClick={() => void readLatestShipment()}
+                  >
+                    Read latest shipment record
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    This reads the marketplace record only. It does not contact
+                    the carrier or repeat the sync.
+                  </p>
+                  <a
+                    href="/admin/reconciliation"
+                    className="inline-flex min-h-11 items-center underline underline-offset-4"
+                  >
+                    Review reconciliation
+                  </a>
+                </div>
+              )}
             </div>
           )}
-        </>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No shipments found</p>
-        </div>
-      )}
+          <AlertDialogFooter className="gap-2 sm:flex-wrap sm:space-x-0">
+            <AlertDialogCancel className={controlClassName} disabled={busy}>
+              Close
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className={controlClassName}
+              disabled={actionsDisabled || !selected}
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmSync();
+              }}
+            >
+              {busy && (
+                <Loader2
+                  className="h-4 w-4 shrink-0 animate-spin"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="min-w-0 break-words">
+                {busy ? "Syncing…" : "Confirm carrier sync"}
+              </span>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

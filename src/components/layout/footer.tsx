@@ -1,13 +1,30 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Logo } from "@/components/brand/logo";
+import { isPathWithin, isWorkspacePath } from "@/lib/workspace-navigation";
 
 export function Footer() {
+  const pathname = usePathname();
+  const workspace = isWorkspacePath(pathname) && !isPathWithin(pathname, "/admin");
+  const accountEntry = ["/register", "/login", "/forgot-password", "/reset-password", "/account-recovery"].includes(pathname);
+  if (workspace || accountEntry) {
+    return <footer className="border-t bg-background" aria-label={accountEntry ? "Account support and policies" : "Workspace footer"}>
+      <div className="mx-auto flex max-w-screen-2xl flex-wrap items-center justify-between gap-x-6 px-6 py-2 text-xs text-muted-foreground lg:px-8">
+        <p>&copy; {new Date().getFullYear()} PlankMarket</p>
+        <nav aria-label={accountEntry ? "Account support links" : "Workspace support and policies"} className="flex flex-wrap gap-x-5">
+          {[{ href: "/contact", title: "Help" }, { href: "/pricing", title: "Fees" }, { href: "/privacy", title: "Privacy" }, { href: "/terms", title: "Terms" }, { href: "/preferences", title: "Preferences" }].map((item) => <Link key={item.href} href={item.href} className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{item.title}</Link>)}
+        </nav>
+      </div>
+    </footer>;
+  }
   return (
     <footer className="border-t bg-gradient-to-b from-background to-muted/50">
       <div className="h-1 bg-gradient-to-r from-primary via-accent to-secondary" />
       <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          <div>
+        <div className="grid grid-cols-2 gap-8 lg:grid-cols-4">
+          <div className="col-span-2 min-w-0 lg:col-span-1">
             <div className="mb-4">
               <Logo variant="full" size="md" />
             </div>

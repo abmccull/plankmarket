@@ -1,14 +1,21 @@
+import { withRoleProviderCoordinator } from "../services/role-provider-coordinator";
+import { openRoleProviderWriteSession } from "../services/role-provider-write-session";
+import { sellerActivationRoleProvider } from "../services/seller-activation-provider";
+import { resumeAccountSetup } from "../services/resume-account-setup";
 import {
   createTRPCRouter,
   publicProcedure,
   protectedProcedure,
   rateLimitedPublicProcedure,
   strictProtectedProcedure,
+  verificationDraftSaveProcedure,
 } from "../trpc";
 import {
   registerSchema,
   saveVerificationDraftSchema,
+  submitVerificationDraftSchema,
   submitVerificationSchema,
+  getVerificationSubmissionSchema,
   updateProfileSchema,
 } from "@/lib/validators/auth";
 import {
@@ -34,6 +41,8 @@ import {
   verificationStateUpdate,
 } from "@/server/services/verification-state";
 import { getMaskedDisplayName } from "@/server/security/public-data";
+import { canCreateListings } from "@/lib/auth/roles";
+import { getPreferenceCompletion } from "@/lib/preferences-completion";
 import {
   mergeVerificationDraftFields,
   parseVerificationDraftSubmission,
@@ -43,151 +52,124 @@ type VerificationSubmission = z.infer<typeof submitVerificationSchema>;
 
 async function submitVerificationForUser(params: {
   db: typeof import("@/server/db").db;
-  user: {
-    id: string;
-    role: string;
-    verificationStatus: string;
-  };
-  input: VerificationSubmission;
+  user: { id: string; role: string; verificationStatus: string };
+  input?: VerificationSubmission;
+  expectedDraftUpdatedAt?: Date;
 }) {
-  const { db, user, input } = params;
-
+  const { db, user } = params;
   if (user.role !== "buyer" && user.role !== "seller") {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "Only buyer and seller accounts can submit verification",
-    });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Only buyer and seller accounts can submit verification" });
   }
-
   if (user.verificationStatus === "pending") {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Your verification request is already under review",
-    });
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Your verification request is already under review" });
   }
   if (user.verificationStatus === "verified") {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "This account is already verified",
-    });
+    throw new TRPCError({ code: "BAD_REQUEST", message: "This account is already verified" });
   }
 
-  const normalizedWebsite = input.businessWebsite?.trim() || null;
-  if (user.role === "seller" && !normalizedWebsite) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Business website is required for seller verification",
-    });
-  }
+  // The owner row is also the draft-save lock. Freeze the checked draft and
+  // install its canonical values in one transaction; provider I/O follows it.
+  const transition = await db.transaction(async tx => {
+    const [previous] = await tx.select({
+      role: users.role,
+      active: users.active,
+      verificationStatus: users.verificationStatus,
+      verificationSubmissionId: users.verificationSubmissionId,
+      verificationRequestedAt: users.verificationRequestedAt,
+    }).from(users).where(eq(users.id, user.id)).for("update");
+    if (!previous || !previous.active || !["buyer", "seller"].includes(previous.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Business verification is unavailable for this account" });
+    }
+    if (!isVerificationStatus(previous.verificationStatus) || !["unverified", "rejected"].includes(previous.verificationStatus)) {
+      throw new TRPCError({ code: "CONFLICT", message: "Your verification state changed. Refresh the page before submitting again." });
+    }
+    const previousStatus = previous.verificationStatus;
 
-  await requireOwnedVerificationDocument(input.verificationDocUrl, user.id);
-
-  const previous = await db.query.users.findFirst({
-    where: eq(users.id, user.id),
-    columns: {
-      verificationStatus: true,
-      verificationSubmissionId: true,
-      verificationRequestedAt: true,
-    },
-  });
-  const previousStatus =
-    previous && isVerificationStatus(previous.verificationStatus)
-      ? previous.verificationStatus
-      : "unverified";
-  const submissionId = crypto.randomUUID();
-  const requestedAt = new Date();
-
-  const [updated] = await db
-    .update(users)
-    .set({
-      einTaxId: input.einTaxId,
-      businessWebsite: normalizedWebsite,
-      verificationDocUrl: input.verificationDocUrl,
-      businessAddress: input.businessAddress,
-      businessCity: input.businessCity,
-      businessState: input.businessState,
-      businessZip: input.businessZip,
+    let input = params.input;
+    if (params.expectedDraftUpdatedAt) {
+      const [draft] = await tx.select().from(verificationDrafts)
+        .where(eq(verificationDrafts.userId, user.id)).for("update");
+      if (!draft || draft.updatedAt.getTime() !== params.expectedDraftUpdatedAt.getTime()) {
+        throw new TRPCError({ code: "CONFLICT", message: "A newer draft is saved. Check the saved draft before submitting." });
+      }
+      const parsed = parseVerificationDraftSubmission(draft);
+      if (!parsed.success) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: parsed.error.issues[0]?.message ?? "Complete every verification step before submitting" });
+      }
+      input = parsed.data;
+    }
+    const roleValidation = getVerificationSubmissionSchema(previous.role).safeParse(input);
+    if (!roleValidation.success) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: roleValidation.error.issues[0]?.message ?? "Review your business details before submitting" });
+    }
+    const validated = roleValidation.data;
+    await requireOwnedVerificationDocument(validated.verificationDocUrl, user.id, tx);
+    const submissionId = crypto.randomUUID();
+    const requestedAt = new Date();
+    const [updated] = await tx.update(users).set({
+      einTaxId: validated.einTaxId,
+      businessWebsite: validated.businessWebsite || null,
+      verificationDocUrl: validated.verificationDocUrl,
+      businessAddress: validated.businessAddress,
+      businessCity: validated.businessCity,
+      businessState: validated.businessState,
+      businessZip: validated.businessZip,
       ...verificationStateUpdate("pending"),
       verificationSubmissionId: submissionId,
       verificationRequestedAt: requestedAt,
       verificationNotes: null,
       aiVerificationScore: null,
       aiVerificationNotes: null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(users.id, user.id),
-        eq(users.verificationStatus, previousStatus),
-        previous?.verificationSubmissionId
-          ? eq(
-              users.verificationSubmissionId,
-              previous.verificationSubmissionId,
-            )
-          : isNull(users.verificationSubmissionId),
-      ),
-    )
-    .returning();
-
-  if (!updated) {
-    throw new TRPCError({
-      code: "CONFLICT",
-      message:
-        "Your verification state changed. Refresh the page before submitting again.",
-    });
-  }
-
+      updatedAt: requestedAt,
+    }).where(and(
+      eq(users.id, user.id),
+      eq(users.verificationStatus, previous.verificationStatus),
+      previous.verificationSubmissionId
+        ? eq(users.verificationSubmissionId, previous.verificationSubmissionId)
+        : isNull(users.verificationSubmissionId),
+    )).returning({ id: users.id });
+    if (!updated) {
+      throw new TRPCError({ code: "CONFLICT", message: "Your verification state changed. Refresh the page before submitting again." });
+    }
+    return { previous, previousStatus, submissionId, requestedAt };
+  });
+  const { previous, previousStatus, submissionId, requestedAt } = transition;
   try {
-    // Await provider acceptance so the serverless request cannot terminate
-    // before the durable verification job is queued.
-    await inngest.send({
-      id: `verification-submitted:${submissionId}`,
-      name: "verification/submitted",
-      data: { userId: user.id, submissionId },
-    });
+    // Acceptance is awaited after commit. An uncertain delivery is compensated
+    // only while this exact submission remains pending.
+    await inngest.send({ id: `verification-submitted:${submissionId}`, name: "verification/submitted", data: { userId: user.id, submissionId } });
   } catch {
-    // If event delivery is uncertain, roll back only this exact submission.
-    // An event that was actually accepted becomes harmlessly stale.
-    await db
-      .update(users)
-      .set({
-        ...verificationStateUpdate(previousStatus),
-        verificationSubmissionId:
-          previous?.verificationSubmissionId ?? null,
-        verificationRequestedAt:
-          previous?.verificationRequestedAt ?? null,
-        verificationNotes: "Verification queue unavailable; please retry.",
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(users.id, user.id),
-          eq(users.verificationStatus, "pending"),
-          eq(users.verificationSubmissionId, submissionId),
-        ),
-      );
-    console.error("Failed to enqueue business verification", {
-      userId: user.id,
-      submissionId,
-    });
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Verification could not be queued. Please try again.",
-    });
+    await db.update(users).set({
+      ...verificationStateUpdate(previousStatus),
+      verificationSubmissionId: previous.verificationSubmissionId,
+      verificationRequestedAt: previous.verificationRequestedAt,
+      verificationNotes: "Verification queue unavailable; please retry.",
+      updatedAt: new Date(),
+    }).where(and(eq(users.id, user.id), eq(users.verificationStatus, "pending"), eq(users.verificationSubmissionId, submissionId)));
+    console.error("Failed to enqueue business verification", { userId: user.id, submissionId });
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Verification could not be queued. Please try again." });
   }
 
-  return {
-    verificationStatus: "pending" as const,
-    submissionId,
-    requestedAt,
-  };
+  if (params.expectedDraftUpdatedAt) {
+    // A successful queue receipt must survive cleanup failure; never remove a
+    // replacement draft that appeared after the submitted snapshot was read.
+    await db.delete(verificationDrafts).where(and(
+      eq(verificationDrafts.userId, user.id),
+      eq(verificationDrafts.updatedAt, params.expectedDraftUpdatedAt),
+    )).catch(() => { console.error("Failed to remove submitted verification draft", { userId: user.id, submissionId }); });
+  }
+  return { verificationStatus: "pending" as const, submissionId, requestedAt };
 }
+
 
 export const authRouter = createTRPCRouter({
   // Register a new user (creates DB record after Supabase auth signup)
   register: rateLimitedPublicProcedure
     .input(registerSchema)
     .mutation(async ({ ctx, input }) => {
+      // Admit before external/account creation: busy registration is safe to retry.
+      const profileId = crypto.randomUUID();
+      const { newUser, authUser } = await withRoleProviderCoordinator(profileId, async () => {
       // Sign up with Supabase Auth
       const { data: authData, error: authError } =
         await ctx.supabase.auth.signUp({
@@ -217,20 +199,8 @@ export const authRouter = createTRPCRouter({
       }
       const authUser = authData.user;
 
-      // Set app_metadata.role using service role client (server-writable only, not client-mutable)
-      const { createServiceClient } = await import("@/lib/supabase/server");
-      const serviceClient = await createServiceClient();
-      const { error: roleMetadataError } =
-        await serviceClient.auth.admin.updateUserById(authUser.id, {
-        app_metadata: { ...authUser.app_metadata, role: input.role },
-      });
-      if (roleMetadataError) {
-        await serviceClient.auth.admin.deleteUser(authUser.id).catch(() => {});
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "We could not finish configuring your account.",
-        });
-      }
+      // Create the unique application profile before initializing provider role.
+      // Existing identities must never be reset by a repeated public signup.
 
       // Geo-lookup from ZIP code
       let lat: number | undefined;
@@ -249,6 +219,7 @@ export const authRouter = createTRPCRouter({
         const [inserted] = await ctx.db
           .insert(users)
           .values({
+            id: profileId,
             authId: authUser.id,
             email: input.email,
             name: input.name,
@@ -281,14 +252,8 @@ export const authRouter = createTRPCRouter({
           role: input.role,
         });
 
-        // Avoid orphaned auth users that appear "logged in" but have no app profile.
-        await serviceClient.auth.admin
-          .deleteUser(authUser.id)
-          .catch(() => {
-            console.error("Failed to rollback orphaned auth user", {
-              authUserId: authUser.id,
-            });
-          });
+        // Never delete the auth identity on an uncertain or duplicate profile
+        // insert. It can belong to an existing account or another registration.
 
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -296,6 +261,17 @@ export const authRouter = createTRPCRouter({
             "We could not finish creating your account profile. Please try again.",
         });
       }
+
+      if (!newUser) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Your account profile needs support review." });
+        const roleSession = await openRoleProviderWriteSession(ctx.db, newUser!.id, await sellerActivationRoleProvider());
+        const external = await roleSession.read();
+        if ((external.appMetadata.role != null && external.appMetadata.role !== newUser!.role) ||
+            external.appMetadata.plankmarket_seller_activation != null || external.appMetadata.plankmarket_role_write != null) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Your account needs support confirmation. Sign in to account recovery." });
+        }
+        await roleSession.ensure({ role: newUser!.role, plankmarket_seller_activation: null }, "registration", null);
+        return { newUser, authUser };
+      });
 
       // Await provider acceptance so serverless teardown cannot discard it.
       await sendWelcomeEmail({
@@ -339,6 +315,10 @@ export const authRouter = createTRPCRouter({
       };
     }),
 
+  // No caller-supplied identity or role. Strict limiter and current Auth ownership.
+  resumeAccountSetup: strictProtectedProcedure.mutation(({ ctx }) =>
+    resumeAccountSetup(ctx.db, ctx.user.id, ctx.authUser.id)),
+
   // Get current user profile
   getProfile: protectedProcedure.query(async ({ ctx }) => {
     return ctx.user;
@@ -356,140 +336,88 @@ export const authRouter = createTRPCRouter({
     return data ?? { einTaxId: null, verificationDocUrl: null };
   }),
 
-  // Resume a server-persisted verification draft. Sensitive fields are scoped
-  // to the current authenticated user and never written to browser storage.
+  // Owner-only draft reads contain the user's sensitive verification fields.
   getVerificationDraft: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.role !== "buyer" && ctx.user.role !== "seller") {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Business verification is available to buyer and seller accounts",
-      });
+      throw new TRPCError({ code: "FORBIDDEN", message: "Business verification is available to buyer and seller accounts" });
     }
-
-    const [draft, sensitiveProfile] = await Promise.all([
-      ctx.db.query.verificationDrafts.findFirst({
-        where: eq(verificationDrafts.userId, ctx.user.id),
-      }),
-      ctx.db.query.users.findFirst({
-        where: eq(users.id, ctx.user.id),
-        columns: {
-          einTaxId: true,
-          verificationDocUrl: true,
-        },
-      }),
-    ]);
-
+    const draft = await ctx.db.query.verificationDrafts.findFirst({ where: eq(verificationDrafts.userId, ctx.user.id) });
+    if (draft) {
+      // Null in an existing row is an intentional clear, not a profile fallback.
+      return {
+        ownerId: ctx.user.id,
+        currentStep: draft.currentStep,
+        businessWebsite: draft.businessWebsite ?? "",
+        einTaxId: draft.einTaxId ?? "",
+        verificationDocUrl: draft.verificationDocUrl ?? "",
+        businessAddress: draft.businessAddress ?? "",
+        businessCity: draft.businessCity ?? "",
+        businessState: draft.businessState ?? "",
+        businessZip: draft.businessZip ?? "",
+        updatedAt: draft.updatedAt,
+      };
+    }
+    const sensitiveProfile = await ctx.db.query.users.findFirst({
+      where: eq(users.id, ctx.user.id), columns: { einTaxId: true, verificationDocUrl: true },
+    });
     return {
-      currentStep: draft?.currentStep ?? 1,
-      businessWebsite:
-        draft?.businessWebsite ?? ctx.user.businessWebsite ?? "",
-      einTaxId: draft?.einTaxId ?? sensitiveProfile?.einTaxId ?? "",
-      verificationDocUrl:
-        draft?.verificationDocUrl ??
-        sensitiveProfile?.verificationDocUrl ??
-        "",
-      businessAddress:
-        draft?.businessAddress ??
-        (ctx.user.businessAddress === "Pending verification"
-          ? ""
-          : ctx.user.businessAddress ?? ""),
-      businessCity:
-        draft?.businessCity ??
-        (ctx.user.businessCity === "NA" ? "" : ctx.user.businessCity ?? ""),
-      businessState:
-        draft?.businessState ??
-        (ctx.user.businessState === "NA" ? "" : ctx.user.businessState ?? ""),
-      businessZip: draft?.businessZip ?? ctx.user.businessZip ?? "",
-      updatedAt: draft?.updatedAt ?? null,
+      ownerId: ctx.user.id,
+      currentStep: 1,
+      businessWebsite: ctx.user.businessWebsite ?? "",
+      einTaxId: sensitiveProfile?.einTaxId ?? "",
+      verificationDocUrl: sensitiveProfile?.verificationDocUrl ?? "",
+      businessAddress: ctx.user.businessAddress === "Pending verification" ? "" : ctx.user.businessAddress ?? "",
+      businessCity: ctx.user.businessCity === "NA" ? "" : ctx.user.businessCity ?? "",
+      businessState: ctx.user.businessState === "NA" ? "" : ctx.user.businessState ?? "",
+      businessZip: ctx.user.businessZip ?? "",
+      updatedAt: null,
     };
   }),
 
-  saveVerificationDraft: strictProtectedProcedure
+  saveVerificationDraft: verificationDraftSaveProcedure
     .input(saveVerificationDraftSchema)
     .mutation(async ({ ctx, input }) => {
+      if (input.expectedOwnerId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Your signed-in account changed. Reload before editing verification." });
+      }
       if (ctx.user.role !== "buyer" && ctx.user.role !== "seller") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Business verification is available to buyer and seller accounts",
-        });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Business verification is available to buyer and seller accounts" });
       }
-      if (
-        ctx.user.verificationStatus === "pending" ||
-        ctx.user.verificationStatus === "verified"
-      ) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This verification can no longer be edited",
-        });
+      if (ctx.user.verificationStatus === "pending" || ctx.user.verificationStatus === "verified") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This verification can no longer be edited" });
       }
-
       return ctx.db.transaction(async tx => {
-        const [freshUser] = await tx.select({status:users.verificationStatus}).from(users).where(eq(users.id,ctx.user.id)).for("update");
-        if (!freshUser || !["unverified","rejected"].includes(freshUser.status)) throw new TRPCError({code:"CONFLICT",message:"Verification is no longer editable. Reload the page."});
-        const existing = await tx.query.verificationDrafts.findFirst({where:eq(verificationDrafts.userId,ctx.user.id)});
-        if ((existing?.updatedAt?.getTime() ?? null) !== (input.expectedUpdatedAt?.getTime() ?? null)) throw new TRPCError({code:"CONFLICT",message:"A newer draft is saved. Reload it before replacing your details."});
-        if (input.verificationDocUrl?.trim()) await requireOwnedVerificationDocument(input.verificationDocUrl,ctx.user.id);
-        const now=new Date();
-        const values={userId:ctx.user.id,currentStep:input.currentStep,...mergeVerificationDraftFields(existing,input),updatedAt:now};
-        await tx.insert(verificationDrafts).values(values).onConflictDoUpdate({target:verificationDrafts.userId,set:values});
-        return {currentStep:values.currentStep,updatedAt:now};
+        const [freshUser] = await tx.select({ status: users.verificationStatus, role: users.role, active: users.active })
+          .from(users).where(eq(users.id, ctx.user.id)).for("update");
+        if (!freshUser || !freshUser.active || !["buyer", "seller"].includes(freshUser.role)) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Business verification is unavailable for this account" });
+        }
+        if (!["unverified", "rejected"].includes(freshUser.status)) {
+          throw new TRPCError({ code: "CONFLICT", message: "Verification is no longer editable. Reload the page." });
+        }
+        const existing = await tx.query.verificationDrafts.findFirst({ where: eq(verificationDrafts.userId, ctx.user.id) });
+        if ((existing?.updatedAt.getTime() ?? null) !== (input.expectedUpdatedAt?.getTime() ?? null)) {
+          throw new TRPCError({ code: "CONFLICT", message: "A newer draft is saved. Check it before replacing your details." });
+        }
+        if (input.verificationDocUrl?.trim()) await requireOwnedVerificationDocument(input.verificationDocUrl, ctx.user.id, tx);
+        // Millisecond Dates are the public CAS token. Even a frozen/backward
+        // clock must not issue the same token for two successful writes.
+        const updatedAt = new Date(Math.max(Date.now(), (existing?.updatedAt.getTime() ?? 0) + 1));
+        const values = { userId: ctx.user.id, currentStep: input.currentStep, ...mergeVerificationDraftFields(existing, input), updatedAt };
+        await tx.insert(verificationDrafts).values(values).onConflictDoUpdate({ target: verificationDrafts.userId, set: values });
+        return { ownerId: ctx.user.id, currentStep: values.currentStep, updatedAt };
       });
     }),
 
-  submitVerificationDraft: strictProtectedProcedure.mutation(
-    async ({ ctx }) => {
-      if (
-        ctx.user.verificationStatus === "pending" ||
-        ctx.user.verificationStatus === "verified"
-      ) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "This verification can no longer be submitted",
-        });
+  submitVerificationDraft: strictProtectedProcedure
+    .input(submitVerificationDraftSchema)
+    .mutation(async ({ ctx, input }) => {
+      if (input.expectedOwnerId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Your signed-in account changed. Reload before submitting verification." });
       }
+      return submitVerificationForUser({ db: ctx.db, user: ctx.user, expectedDraftUpdatedAt: input.expectedUpdatedAt });
+    }),
 
-      const draft = await ctx.db.query.verificationDrafts.findFirst({
-        where: eq(verificationDrafts.userId, ctx.user.id),
-      });
-      if (!draft) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Save your verification details before submitting",
-        });
-      }
-
-      const parsed = parseVerificationDraftSubmission(draft);
-      if (!parsed.success) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            parsed.error.issues[0]?.message ??
-            "Complete every verification step before submitting",
-        });
-      }
-
-      const result = await submitVerificationForUser({
-        db: ctx.db,
-        user: ctx.user,
-        input: parsed.data,
-      });
-
-      // The queued submission now owns the canonical values. Draft cleanup is
-      // best-effort so a cleanup failure cannot make a successful submission
-      // appear to have failed and tempt the user to submit it twice.
-      await ctx.db
-        .delete(verificationDrafts)
-        .where(eq(verificationDrafts.userId, ctx.user.id))
-        .catch(() => {
-          console.error("Failed to remove submitted verification draft", {
-            userId: ctx.user.id,
-            submissionId: result.submissionId,
-          });
-        });
-
-      return result;
-    },
-  ),
 
   // Update user profile
   updateProfile: strictProtectedProcedure
@@ -643,8 +571,10 @@ export const authRouter = createTRPCRouter({
     .input(z.object({ role: z.enum(["buyer", "seller"]).optional() }).optional())
     .query(async ({ ctx, input }) => {
     const user = ctx.user;
-    // Allow explicit role override (e.g. admin viewing seller dashboard)
-    const role = input?.role ?? user.role;
+    const role = input?.role ?? (user.role === "seller" ? "seller" : "buyer");
+    if (role === "seller" && !canCreateListings(user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Selling setup requires a seller account." });
+    }
 
     // Common checks
     const emailVerified = !!ctx.authUser?.email_confirmed_at;
@@ -655,7 +585,7 @@ export const authRouter = createTRPCRouter({
     const prefs = await ctx.db.query.userPreferences.findFirst({
       where: eq(userPreferences.userId, user.id),
     });
-    const preferencesSet = !!prefs;
+    const preferencesSet = getPreferenceCompletion(prefs, role).profileComplete;
 
     if (role === "seller") {
       // Seller-specific checks

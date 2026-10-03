@@ -11,6 +11,9 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= "anon-test";
 process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ??= "pk_test_123";
 
+// These legacy cases contain no seller applications; activation has separate SQL proof.
+vi.mock("@/server/services/seller-activation", () => ({ expireSellerActivationEvidence: vi.fn().mockResolvedValue(0) }));
+
 const { runPrivacyRetentionSweep } = await import(
   "@/server/services/privacy-retention"
 );
@@ -72,6 +75,12 @@ function createExecutor(params: {
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockResolvedValue(params.usersToPurge),
       }),
+    })
+    .mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+    })
+    .mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
     });
 
   const executor = {
@@ -170,6 +179,10 @@ describe("privacy retention sweep", () => {
       verificationProviderRetentionBlocked: 0,
       sampleRequestsPurged: 0,
       shippingAddressesDeleted: 0,
+      sellerActivationsExpired: 0,
+      sellerActivationEvidencePurged: 0,
+      sellerActivationProviderDeletionFailed: 0,
+      sellerActivationProviderRetentionBlocked: 0,
     });
     expect(userUpdateValues).toContainEqual({
       einTaxId: null,
@@ -232,6 +245,10 @@ describe("privacy retention sweep", () => {
       verificationProviderRetentionBlocked: 0,
       sampleRequestsPurged: 0,
       shippingAddressesDeleted: 0,
+      sellerActivationsExpired: 0,
+      sellerActivationEvidencePurged: 0,
+      sellerActivationProviderDeletionFailed: 0,
+      sellerActivationProviderRetentionBlocked: 0,
     });
   });
 

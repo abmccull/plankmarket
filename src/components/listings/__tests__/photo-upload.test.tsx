@@ -6,6 +6,7 @@ vi.mock("@/lib/uploadthing", () => ({ useUploadThing: () => ({ startUpload: vi.f
 // Image loading is outside this state-transition test.
 // eslint-disable-next-line @next/next/no-img-element
 vi.mock("next/image", () => ({ default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} /> }));
+vi.mock("@/lib/stores/auth-store", () => ({ useAuthStore: { getState: () => ({ user: { id: "synthetic-photo-seller" } }), subscribe: () => () => {} } }));
 import { PhotoUpload } from "../photo-upload";
 describe("saved listing photos", () => {
  it("restores owned photos and only stages reordering/removal without form submission", async () => {

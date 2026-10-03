@@ -176,4 +176,4 @@ Start with verified sellers. Focus on wear layer, width, finish, and freight bef
 
 ---
 
-*PlankMarket helps flooring buyers source overstock engineered hardwood from verified sellers. [Browse current listings →](/browse?category=engineered-hardwood)*
+*PlankMarket helps flooring buyers source overstock engineered hardwood from verified sellers. [Browse current listings →](/listings?materialType=engineered)*

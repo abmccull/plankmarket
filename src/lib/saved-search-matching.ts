@@ -1,6 +1,7 @@
 import zipcodes from "zipcodes";
 import { hasReviewedWaterproofSpecification } from "@/lib/product-specifications";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
+import { getPurchaseQuantityPreview } from "@/lib/marketplace/purchase-quantity-preview";
 import type { SearchFilters } from "@/types";
 
 const WIDTH_TOLERANCE = 0.1;
@@ -45,6 +46,9 @@ export interface SavedSearchMatchListing {
   specificationReviewedAt?: Date | string | null;
   specificationEvidenceId?: string | null;
   fullLotOnly?: boolean | null;
+  moq?: number | null;
+  moqUnit?: "sqft" | "pallets" | null;
+  partialQuantityMarkupPercent?: number | null;
 }
 
 function hasText(value: string | null | undefined): boolean {
@@ -196,6 +200,18 @@ export function listingMatchesSavedSearch(
   ) {
     return false;
   }
+
+  if (filters.hideQuantityConflicts === true && getPurchaseQuantityPreview({
+    ...listing,
+    purchaseTerms: typeof listing.fullLotOnly === "boolean" && listing.partialQuantityMarkupPercent !== undefined
+      ? {
+          fullLotOnly: listing.fullLotOnly,
+          partialQuantityMarkupPercent: listing.partialQuantityMarkupPercent,
+          sqFtPerBox: listing.sqFtPerBox ?? null,
+          boxesPerPallet: listing.boxesPerPallet ?? null,
+        }
+      : undefined,
+  }, filters.minLotSize)?.status === "unavailable") return false;
 
   if (
     filters.sellerVerified === true &&

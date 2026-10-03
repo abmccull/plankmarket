@@ -1,190 +1,550 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
+import { Suspense, useState } from "react";
+import { ListingImage as Image } from "@/components/listings/listing-image";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ListingStatusBadge } from "@/components/dashboard/status-badge";
 import {
-  formatCurrency,
-  formatSqFt,
-  formatRelativeTime,
-} from "@/lib/utils";
-import { Plus, Loader2, Eye, Heart, ExternalLink, Rocket, FileSpreadsheet } from "lucide-react";
+  QueryErrorState,
+  StatePanel,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
+import { formatCurrency, formatSqFt } from "@/lib/utils";
+import { getListingFreshnessStatus } from "@/lib/listing-freshness";
+import {
+  Plus,
+  Package,
+  Eye,
+  Heart,
+  ExternalLink,
+  Rocket,
+  FileSpreadsheet,
+  Search,
+  Loader2,
+} from "lucide-react";
 import { BoostModal } from "@/components/promotions/boost-modal";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import { FEATURES } from "@/lib/feature-flags";
+import { toast } from "sonner";
 import type { ListingStatus, PromotionTier } from "@/types";
 
-export default function SellerListingsPage() {
-  const [activeTab, setActiveTab] = useState<ListingStatus | undefined>(
-    undefined
-  );
+const FILTERS = [
+  ["all", "All listings"],
+  ["active", "Active"],
+  ["needs_confirmation", "Needs confirmation"],
+  ["draft", "Drafts"],
+  ["sold", "Sold"],
+  ["expired", "Expired"],
+  ["archived", "Archived"],
+] as const;
+type ListingAction = {
+  kind: "publish" | "reconfirm";
+  id: string;
+  title: string;
+  quantity: number;
+  condition: string;
+  updatedAt: Date;
+};
+
+function SellerInventoryContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const requestedFilter = params.get("status") ?? "all";
+  const filter = FILTERS.some(([value]) => value === requestedFilter)
+    ? requestedFilter
+    : "all";
+  const queryText = (params.get("q") ?? "").slice(0, 120);
+  const requestedPage = Number(params.get("page"));
+  const page =
+    Number.isSafeInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : 1;
+  const [action, setAction] = useState<ListingAction | null>(null);
   const [boostListing, setBoostListing] = useState<{
     id: string;
     title: string;
   } | null>(null);
-
-  const { data, isLoading } = trpc.listing.getMyListings.useQuery({
-    status: activeTab,
-    page: 1,
-    limit: 50,
+  const utils = trpc.useUtils();
+  const query = trpc.listing.getMyListings.useQuery({
+    status:
+      filter === "all"
+        ? undefined
+        : filter === "needs_confirmation"
+          ? "active"
+          : (filter as ListingStatus),
+    needsConfirmation: filter === "needs_confirmation",
+    query: queryText || undefined,
+    page,
+    limit: 20,
   });
+  const updateParams = (changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(params.toString());
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    const search = next.toString();
+    router.push(search ? `${pathname}?${search}` : pathname, { scroll: false });
+  };
+  const refresh = async () => {
+    await Promise.all([
+      utils.listing.getMyListings.invalidate(),
+      utils.listing.getSellerStats.invalidate(),
+    ]);
+    setAction(null);
+  };
+  const publish = trpc.listing.publishBulk.useMutation({
+    onSuccess: async (result) => {
+      if (result.publishedCount > 0) toast.success("Listing published");
+      else if (result.alreadyPublishedIds.length)
+        toast.success("Listing is already published");
+      else {
+        toast.error(
+          result.skippedDetails[0]?.message ??
+            "Finish this draft before publishing.",
+        );
+        return;
+      }
+      if (result.alertsPending)
+        toast.info("Your listing is live. Buyer alerts are queued for retry.");
+      await refresh();
+    },
+    onError: async (error) => {
+      toast.error(error.message);
+      if (error.data?.code === "CONFLICT") {
+        await utils.listing.getMyListings.invalidate();
+        setAction(null);
+      }
+    },
+  });
+  const reconfirm = trpc.listing.reconfirm.useMutation({
+    onSuccess: async () => {
+      toast.success("Availability confirmed");
+      await refresh();
+    },
+    onError: async (error) => {
+      toast.error(error.message);
+      await utils.listing.getMyListings.invalidate();
+      if (error.data?.code === "CONFLICT") setAction(null);
+    },
+  });
+  const acting = publish.isPending || reconfirm.isPending;
+  const totalPages = Math.max(1, query.data?.totalPages ?? 1);
+  const hasFilters = filter !== "all" || !!queryText;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">My Listings</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your flooring inventory listings
+          <p className="mt-1 text-muted-foreground">
+            Keep inventory accurate, finish drafts, and get ready for the next
+            sale.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/seller/listings/bulk-upload">
-            <Button variant="outline">
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/seller/listings/bulk-upload">
               <FileSpreadsheet className="mr-2 h-4 w-4" />
               Bulk Upload
-            </Button>
-          </Link>
-          <Link href="/seller/listings/new">
-            <Button>
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/seller/listings/new">
               <Plus className="mr-2 h-4 w-4" />
               Create Listing
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
-      </div>
+      </header>
 
-      <Tabs
-        value={activeTab || "all"}
-        onValueChange={(v) =>
-          setActiveTab(v === "all" ? undefined : (v as ListingStatus))
-        }
+      <form
+        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          updateParams({ q: String(data.get("q") ?? "").trim(), page: null });
+        }}
       >
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="draft">Draft</TabsTrigger>
-          <TabsTrigger value="sold">Sold</TabsTrigger>
-          <TabsTrigger value="expired">Expired</TabsTrigger>
-        </TabsList>
+        <div className="min-w-0 flex-1 space-y-2">
+          <Label htmlFor="listing-search">Search your inventory</Label>
+          <Input
+            key={queryText}
+            id="listing-search"
+            name="q"
+            defaultValue={queryText}
+            maxLength={120}
+            placeholder="Listing title, brand, or model"
+            type="search"
+          />
+        </div>
+        <Button type="submit" variant="outline">
+          <Search className="mr-2 h-4 w-4" />
+          Search
+        </Button>
+        <div className="space-y-2">
+          <Label htmlFor="listing-status">Show</Label>
+          <select
+            id="listing-status"
+            className="min-h-11 w-full rounded-md border border-input bg-background px-3 sm:min-w-48"
+            value={filter}
+            onChange={(event) =>
+              updateParams({
+                status:
+                  event.target.value === "all" ? null : event.target.value,
+                page: null,
+              })
+            }
+          >
+            {FILTERS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </form>
 
-        <TabsContent value={activeTab || "all"} className="mt-6">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : data?.items.length === 0 ? (
-            <div className="text-center py-12 border rounded-lg bg-muted/20">
-              <Package className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold">No listings found</h3>
-              <p className="text-muted-foreground mt-1">
-                Create your first listing to get started.
-              </p>
-              <Link href="/seller/listings/new" className="mt-4 inline-block">
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Listing
-                </Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {data?.items.map((listing) => (
-                <div
-                  key={listing.id}
-                  className="flex items-center gap-4 rounded-lg border p-4 hover:bg-muted/30 transition-colors"
-                >
-                  {/* Thumbnail */}
-                  <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center overflow-hidden shrink-0">
-                    {listing.media?.[0] ? (
-                      <Image
-                        src={listing.media[0].url}
-                        alt={listing.title}
-                        width={64}
-                        height={64}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <Package className="h-6 w-6 text-muted-foreground" />
-                    )}
-                  </div>
+      {filter === "needs_confirmation" && (
+        <p className="rounded-md border bg-muted/30 p-3 text-sm">
+          Confirm stock that is still available. Overdue listings stay hidden
+          from buyers until you confirm. Quantity and active order reservations
+          are unchanged.
+        </p>
+      )}
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-medium truncate">
-                        {listing.title}
-                      </h3>
-                      <ListingStatusBadge status={listing.status as ListingStatus} />
-                      {listing.promotionTier && (
-                        <PromotionBadge tier={listing.promotionTier as PromotionTier} />
+      {query.isLoading ? (
+        <StatePanelLoading label="Loading your listings" rows={4} />
+      ) : query.isError || !query.data ? (
+        <QueryErrorState
+          title="Your listings could not load"
+          description="Your inventory has not changed. Try again to see the latest availability."
+          onRetry={() => void query.refetch()}
+          isRetrying={query.isFetching}
+        />
+      ) : query.data.items.length === 0 ? (
+        <StatePanel
+          icon={Package}
+          title={
+            page > 1
+              ? "No listings on this page"
+              : hasFilters
+                ? "No listings match"
+                : "Start with your first listing"
+          }
+          description={
+            page > 1
+              ? "Inventory may have changed. Return to the first page."
+              : hasFilters
+                ? "Try another search or clear your filters."
+                : "Add flooring inventory, clear photos, and pickup details so buyers can order with confidence."
+          }
+          primaryAction={
+            hasFilters || page > 1
+              ? {
+                  label: page > 1 ? "First page" : "Clear filters",
+                  onClick: () =>
+                    updateParams(
+                      page > 1
+                        ? { page: null }
+                        : { q: null, status: null, page: null },
+                    ),
+                }
+              : { label: "Create listing", href: "/seller/listings/new" }
+          }
+        />
+      ) : (
+        <>
+          <p
+            role="status"
+            aria-live="polite"
+            className="text-sm text-muted-foreground"
+          >
+            {query.data.total} listing{query.data.total === 1 ? "" : "s"}
+            {query.isFetching ? " · Updating…" : ""}
+          </p>
+          <ul
+            className="divide-y rounded-lg border bg-card"
+            aria-label="Your inventory"
+          >
+            {query.data.items.map((listing) => {
+              const freshness = getListingFreshnessStatus(listing);
+              const needsConfirmation =
+                listing.status === "active" && freshness !== "fresh";
+              const hidden =
+                listing.status === "active" &&
+                (freshness === "overdue" || freshness === "unconfirmed");
+              const isDraft = listing.status === "draft";
+              const hasPhoto = listing.media.length > 0;
+              return (
+                <li key={listing.id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                      {listing.media[0] ? (
+                        <Image
+                          src={listing.media[0].url}
+                          alt=""
+                          width={64}
+                          height={64}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Package
+                          className="h-6 w-6 text-muted-foreground"
+                          aria-hidden="true"
+                        />
                       )}
                     </div>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                      <span>{formatSqFt(listing.totalSqFt)}</span>
-                      <span>
-                        {formatCurrency(listing.askPricePerSqFt)}/sq ft
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Eye className="h-3 w-3" />
-                        {listing.viewsCount}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Heart className="h-3 w-3" />
-                        {listing.watchlistCount}
-                      </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <ListingStatusBadge
+                          status={listing.status as ListingStatus}
+                        />
+                        {needsConfirmation && (
+                          <Badge variant={hidden ? "destructive" : "outline"}>
+                            {hidden ? "Hidden · confirm stock" : "Confirm soon"}
+                          </Badge>
+                        )}
+                        {listing.promotionTier && (
+                          <PromotionBadge
+                            tier={listing.promotionTier as PromotionTier}
+                          />
+                        )}
+                      </div>
+                      <h2 className="break-words font-semibold leading-snug">
+                        {listing.title}
+                      </h2>
+                      <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                        <div>
+                          <dt className="sr-only">Available quantity</dt>
+                          <dd>{formatSqFt(listing.totalSqFt)}</dd>
+                        </div>
+                        <div>
+                          <dt className="sr-only">Asking price</dt>
+                          <dd>
+                            {formatCurrency(listing.askPricePerSqFt)}/sq ft
+                          </dd>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <dt>
+                            <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span className="sr-only">Views</span>
+                          </dt>
+                          <dd>{listing.viewsCount}</dd>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <dt>
+                            <Heart className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span className="sr-only">Watchlists</span>
+                          </dt>
+                          <dd>{listing.watchlistCount}</dd>
+                        </div>
+                      </dl>
                     </div>
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                    <span className="text-xs text-muted-foreground">
-                      {formatRelativeTime(listing.createdAt)}
-                    </span>
-                    {FEATURES.PROMOTIONS_ENABLED && listing.status === "active" && !listing.promotionTier && (
+                  {isDraft && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {hasPhoto
+                        ? "Review your details, then publish when this inventory is ready to sell."
+                        : "Add at least one clear product photo to finish this draft."}
+                    </p>
+                  )}
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t pt-3">
+                    <Button
+                      asChild
+                      variant={isDraft && !hasPhoto ? "default" : "outline"}
+                      className="min-h-11"
+                    >
+                      <Link href={`/seller/listings/${listing.id}/edit`}>
+                        {isDraft ? "Finish listing" : "Edit listing"}
+                      </Link>
+                    </Button>
+                    {isDraft && hasPhoto && (
                       <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setBoostListing({
+                        disabled={acting}
+                        className="min-h-11"
+                        onClick={() => {
+                          publish.reset();
+                          reconfirm.reset();
+                          setAction({
+                            kind: "publish",
                             id: listing.id,
                             title: listing.title,
+                            quantity: listing.totalSqFt,
+                            condition: listing.condition,
+                            updatedAt: listing.updatedAt,
                           });
                         }}
-                        className="text-primary"
                       >
-                        <Rocket className="mr-1 h-3 w-3" />
-                        Boost
+                        Publish listing
                       </Button>
                     )}
-                    <Link href={`/seller/listings/${listing.id}/edit`}>
-                      <Button variant="outline" size="sm">
-                        Edit
+                    {needsConfirmation && (
+                      <Button
+                        disabled={acting}
+                        className="min-h-11"
+                        onClick={() => {
+                          publish.reset();
+                          reconfirm.reset();
+                          setAction({
+                            kind: "reconfirm",
+                            id: listing.id,
+                            title: listing.title,
+                            quantity: listing.totalSqFt,
+                            condition: listing.condition,
+                            updatedAt: listing.updatedAt,
+                          });
+                        }}
+                      >
+                        Confirm availability
                       </Button>
-                    </Link>
-                    <Link href={`/listings/${listing.id}`}>
-                      <Button variant="ghost" size="icon">
-                        <ExternalLink className="h-4 w-4" />
+                    )}
+                    {listing.status === "active" && !hidden && (
+                      <Button asChild variant="ghost" className="min-h-11">
+                        <Link href={`/listings/${listing.id}`}>
+                          <ExternalLink
+                            className="mr-2 h-4 w-4"
+                            aria-hidden="true"
+                          />
+                          View listing
+                          <span className="sr-only">: {listing.title}</span>
+                        </Link>
                       </Button>
-                    </Link>
+                    )}
+                    {FEATURES.PROMOTIONS_ENABLED &&
+                      listing.status === "active" &&
+                      !listing.promotionTier && (
+                        <Button
+                          variant="ghost"
+                          className="min-h-11"
+                          onClick={() =>
+                            setBoostListing({
+                              id: listing.id,
+                              title: listing.title,
+                            })
+                          }
+                        >
+                          <Rocket className="mr-2 h-4 w-4" aria-hidden="true" />
+                          Boost
+                        </Button>
+                      )}
                   </div>
-                </div>
-              ))}
+                </li>
+              );
+            })}
+          </ul>
+          <nav
+            aria-label="Listing pages"
+            className="flex flex-wrap items-center justify-between gap-3 border-t pt-4"
+          >
+            <p className="text-sm text-muted-foreground">
+              Page {page} of {totalPages}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={page <= 1 || query.isFetching}
+                onClick={() =>
+                  updateParams({ page: page > 2 ? String(page - 1) : null })
+                }
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                disabled={!query.data.hasMore || query.isFetching}
+                onClick={() => updateParams({ page: String(page + 1) })}
+              >
+                Next
+              </Button>
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          </nav>
+        </>
+      )}
 
+      <Dialog
+        open={!!action}
+        onOpenChange={(open) => {
+          if (!open && !acting) setAction(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {action?.kind === "publish"
+                ? "Ready to publish?"
+                : "Confirm this inventory is available"}
+            </DialogTitle>
+            <DialogDescription>{action?.title}</DialogDescription>
+          </DialogHeader>
+          <p className="text-sm">
+            {action?.kind === "publish"
+              ? "Confirm that the quantity, condition, price, photos, and pickup information are accurate. Buyers will be able to find this listing."
+              : "Confirm the remaining quantity and product condition are still accurate. This does not change quantities or inventory reserved by orders."}
+          </p>
+          {action && (
+            <p className="text-sm font-medium">
+              {formatSqFt(action.quantity)} remaining ·{" "}
+              {action.condition.replaceAll("_", " ")}
+            </p>
+          )}
+          {(publish.error || reconfirm.error) && (
+            <p role="alert" className="text-sm text-destructive">
+              {(publish.error ?? reconfirm.error)?.message}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={acting}
+              onClick={() => setAction(null)}
+            >
+              Keep reviewing
+            </Button>
+            <Button
+              disabled={acting}
+              onClick={() => {
+                if (!action) return;
+                if (action.kind === "publish")
+                  publish.mutate({
+                    listingIds: [action.id],
+                    expectedUpdatedAt: { [action.id]: action.updatedAt },
+                  });
+                else
+                  reconfirm.mutate({
+                    id: action.id,
+                    expectedUpdatedAt: action.updatedAt,
+                  });
+              }}
+            >
+              {acting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {action?.kind === "publish"
+                ? "Publish listing"
+                : "Yes, still available"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {boostListing && (
         <BoostModal
           listingId={boostListing.id}
           listingTitle={boostListing.title}
-          open={!!boostListing}
+          open
           onOpenChange={(open) => {
             if (!open) setBoostListing(null);
           }}
@@ -194,24 +554,6 @@ export default function SellerListingsPage() {
   );
 }
 
-function Package({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m7.5 4.27 9 5.15" />
-      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-      <path d="m3.3 7 8.7 5 8.7-5" />
-      <path d="M12 22V12" />
-    </svg>
-  );
+export default function SellerListingsPage() {
+  return <Suspense fallback={<StatePanelLoading label="Loading your inventory" rows={4} />}><SellerInventoryContent /></Suspense>;
 }

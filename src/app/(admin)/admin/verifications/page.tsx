@@ -1,4 +1,5 @@
 "use client";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { verificationDocumentHref } from "@/lib/verification-documents";
 
 import { trpc } from "@/lib/trpc/client";
@@ -19,7 +20,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { toast } from "sonner";
+import { QueryErrorState } from "@/components/ui/state-panel";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AdminActivationQueue } from "@/components/seller-activation/admin-activation-queue";
 
 interface VerificationUser {
   id: string;
@@ -59,12 +63,74 @@ interface AIVerificationData {
     string,
     { pass: boolean; note: string } | { found: boolean; note: string }
   >;
+  automation?: {
+    decision: "auto_approve" | "manual_review";
+    reasons: string[];
+    policy: string;
+  };
 }
 
+const reviewReasonLabels: Record<string, string> = {
+  automation_disabled: "Automatic approval is not enabled",
+  unsupported_account: "Account role requires review",
+  document_not_inspected: "Document could not be inspected",
+  document_not_eligible: "Document type needs review",
+  document_unreadable_or_suspicious:
+    "Document is unclear or has integrity concerns",
+  business_name_mismatch: "Document business name needs confirmation",
+  ein_mismatch: "Document tax ID does not clearly match",
+  state_mismatch: "Document state does not clearly match",
+  issuer_missing: "Issuing authority is not clear",
+  document_expired_or_undated: "Document date needs confirmation",
+  email_not_confirmed: "Account email is not confirmed",
+  business_domain_mismatch: "Email and business website domains differ",
+  advisory_checks_failed: "Automated checks found insufficient evidence",
+  jev_unavailable_or_uncertain: "Jev could not clear the consistency checks",
+};
+
 export default function AdminVerificationsPage() {
-  const { data: verifications, isLoading, refetch } =
-    trpc.admin.getPendingVerifications.useQuery();
-  const updateVerification = trpc.admin.updateVerification.useMutation();
+  const actor = useAuthStore((state) => state.user);
+  if (actor?.role !== "admin")
+    return <p role="status">Checking administrator access…</p>;
+  return <Suspense fallback={<p role="status">Loading verification workspace…</p>}><VerificationTabs actorId={actor.id} /></Suspense>;
+}
+function VerificationTabs({ actorId }: { actorId: string }) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const tab = params.get("tab") === "seller-applications" ? "seller-applications" : "business";
+  return <div className="space-y-5"><h1 className="text-3xl font-bold">Verifications</h1><Tabs value={tab} onValueChange={value => {
+    const next = new URLSearchParams(params.toString());
+    if (value === "seller-applications") next.set("tab", value); else next.delete("tab");
+    router.push("/admin/verifications" + (next.size ? "?" + next.toString() : ""));
+  }}><TabsList className="h-auto min-h-11 max-w-full"><TabsTrigger value="business" className="min-h-10 whitespace-normal">Business verification</TabsTrigger><TabsTrigger value="seller-applications" className="min-h-10 whitespace-normal">Seller applications</TabsTrigger></TabsList><TabsContent value="business"><VerificationQueue key={actorId} actorId={actorId} /></TabsContent><TabsContent value="seller-applications"><AdminActivationQueue /></TabsContent></Tabs></div>;
+}
+function VerificationQueue({ actorId }: { actorId: string }) {
+  const mounted = useRef(false);
+  const working = useRef(false);
+  const selection = useRef<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [uncertain, setUncertain] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () =>
+    mounted.current &&
+    useAuthStore.getState().user?.id === actorId &&
+    useAuthStore.getState().user?.role === "admin";
+
+  const utils = trpc.useUtils();
+  const queue = trpc.admin.getPendingVerifications.useQuery();
+  const { data: verifications, isLoading } = queue;
+  const queueUnavailable = queue.isError || readFailed;
+  const updateVerification = trpc.admin.updateVerification.useMutation({
+    retry: false,
+  });
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     userId: string | null;
@@ -77,41 +143,146 @@ export default function AdminVerificationsPage() {
   const handleVerificationAction = async (
     userId: string,
     submissionId: string | null,
-    action: "approve" | "reject"
+    action: "approve" | "reject",
   ) => {
+    if (busy || queueUnavailable || !current()) return;
+    setProblem(null);
+    selection.current = userId;
+    setNotice(null);
     setConfirmDialog({ open: true, userId, submissionId, action });
-    if (action === "approve") {
-      setRejectionNotes(""); // Clear notes for approval
-    }
+    setRejectionNotes("");
   };
 
+  const refreshQueue = async () => {
+    try {
+      const result = await queue.refetch({ throwOnError: true });
+      if (!current()) return;
+      setReadFailed(false);
+      return result.data;
+    } catch {
+      if (current()) setReadFailed(true);
+    }
+  };
+  const reviewLatest = async () => {
+    const target = confirmDialog.userId;
+    const rows = await refreshQueue();
+    if (!current() || !target || selection.current !== target || !rows) return;
+    const row = rows.find((item) => item.id === target);
+    setUncertain((previous) => {
+      const next = { ...previous };
+      delete next[target];
+      return next;
+    });
+    setProblem(null);
+    if (!row) {
+      selection.current = null;
+      setRejectionNotes("");
+      setConfirmDialog({
+        open: false,
+        userId: null,
+        submissionId: null,
+        action: null,
+      });
+    } else if (row.verificationSubmissionId !== confirmDialog.submissionId) {
+      selection.current = null;
+      setRejectionNotes("");
+      setConfirmDialog({
+        open: false,
+        userId: null,
+        submissionId: null,
+        action: null,
+      });
+      setProblem(
+        "This verification submission changed. Review the current submission before deciding.",
+      );
+    }
+  };
   const confirmAction = async () => {
-    if (!confirmDialog.userId || !confirmDialog.action) return;
-
-    if (confirmDialog.action === "reject" && !rejectionNotes.trim()) {
-      toast.error("Please provide rejection notes");
+    const target = { ...confirmDialog };
+    if (
+      !target.userId ||
+      !target.action ||
+      !verifications?.some(
+        (row) =>
+          row.id === target.userId &&
+          row.verificationSubmissionId === target.submissionId,
+      ) ||
+      working.current ||
+      queueUnavailable ||
+      queue.isFetching ||
+      !current() ||
+      uncertain[target.userId]
+    )
+      return;
+    if (target.action === "reject" && !rejectionNotes.trim()) {
+      setProblem("Please provide rejection notes");
       return;
     }
-
+    const notes = rejectionNotes;
+    working.current = true;
+    setBusy(true);
+    setProblem(null);
     try {
-      await updateVerification.mutateAsync({
-        userId: confirmDialog.userId,
-        submissionId: confirmDialog.submissionId,
-        status: confirmDialog.action === "approve" ? "verified" : "rejected",
-        notes: confirmDialog.action === "reject" ? rejectionNotes : undefined,
-      });
-      toast.success(
-        `Verification ${confirmDialog.action === "approve" ? "approved" : "rejected"}`
+      await utils.admin.getPendingVerifications.cancel();
+      if (!current()) return;
+      try {
+        await updateVerification.mutateAsync({
+          userId: target.userId,
+          submissionId: target.submissionId,
+          status: target.action === "approve" ? "verified" : "rejected",
+          notes: target.action === "reject" ? notes : undefined,
+        });
+      } catch (error) {
+        if (!current()) return;
+        const code = (error as { data?: { code?: string } }).data?.code;
+        const known = [
+          "BAD_REQUEST",
+          "FORBIDDEN",
+          "UNAUTHORIZED",
+          "NOT_FOUND",
+          "CONFLICT",
+        ].includes(code ?? "");
+        setProblem(
+          known
+            ? error instanceof Error
+              ? error.message
+              : "Verification decision was rejected."
+            : "Verification result unconfirmed. Review the latest verification before another attempt.",
+        );
+        if (!known)
+          setUncertain((previous) => ({ ...previous, [target.userId!]: true }));
+        return;
+      }
+      if (!current()) return;
+      setNotice(
+        target.action === "approve"
+          ? "Verification approved."
+          : "Verification rejected.",
       );
-      refetch();
-      setConfirmDialog({ open: false, userId: null, submissionId: null, action: null });
+      setConfirmDialog({
+        open: false,
+        userId: null,
+        submissionId: null,
+        action: null,
+      });
       setRejectionNotes("");
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : "Failed to update verification";
-      toast.error(message);
+      await utils.admin.getPendingVerifications.invalidate(undefined, {
+        refetchType: "none",
+      });
+      if (!current()) return;
+      await refreshQueue();
+    } catch {
+      if (current()) setReadFailed(true);
+    } finally {
+      if (current()) {
+        working.current = false;
+        setBusy(false);
+      }
     }
   };
+  const selectedUser = verifications?.find(
+    (item) => item.id === confirmDialog.userId,
+  );
 
   const maskEIN = (ein: string | null) => {
     if (!ein) return "N/A";
@@ -121,7 +292,7 @@ export default function AdminVerificationsPage() {
   };
 
   const parseAIVerification = (
-    aiNotes: string | null
+    aiNotes: string | null,
   ): AIVerificationData | null => {
     if (!aiNotes) return null;
     try {
@@ -145,13 +316,34 @@ export default function AdminVerificationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Verification Queue</h1>
+        <h2 className="text-xl font-semibold">Verification Queue</h2>
         <p className="text-muted-foreground mt-1">
           Review business verification requests flagged for manual review
         </p>
       </div>
 
-      {isLoading ? (
+      {notice ? <p role="status">{notice}</p> : null}
+      {!confirmDialog.open && problem ? (
+        <p role="alert" className="text-destructive">
+          {problem}
+        </p>
+      ) : null}
+      <Button
+        variant="outline"
+        className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+        disabled={busy || queue.isFetching}
+        onClick={() => void refreshQueue()}
+      >
+        Refresh queue
+      </Button>
+      {queueUnavailable ? (
+        <QueryErrorState
+          title="Verifications unavailable"
+          description="The verification queue could not be loaded. Retry this read without repeating an accepted decision."
+          onRetry={() => void refreshQueue()}
+          isRetrying={queue.isFetching}
+        />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
@@ -177,13 +369,18 @@ export default function AdminVerificationsPage() {
                       </p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <Badge variant="outline" className="flex items-center gap-1">
+                      <Badge
+                        variant="outline"
+                        className="flex items-center gap-1"
+                      >
                         <Clock className="h-3 w-3" />
                         Pending
                       </Badge>
                       {user.aiVerificationScore !== null && (
                         <Badge
-                          variant={getAIScoreBadgeColor(user.aiVerificationScore)}
+                          variant={getAIScoreBadgeColor(
+                            user.aiVerificationScore,
+                          )}
                           className="flex items-center gap-1"
                         >
                           <Shield className="h-3 w-3" />
@@ -207,7 +404,9 @@ export default function AdminVerificationsPage() {
                       </div>
                       {user.businessWebsite && (
                         <div>
-                          <span className="text-muted-foreground">Website:</span>
+                          <span className="text-muted-foreground">
+                            Website:
+                          </span>
                           <a
                             href={user.businessWebsite}
                             target="_blank"
@@ -222,7 +421,9 @@ export default function AdminVerificationsPage() {
                       )}
                       {user.businessAddress && (
                         <div className="col-span-2">
-                          <span className="text-muted-foreground">Address:</span>
+                          <span className="text-muted-foreground">
+                            Address:
+                          </span>
                           <p className="font-medium">
                             {user.businessAddress}
                             {user.businessCity && `, ${user.businessCity}`}
@@ -293,30 +494,44 @@ export default function AdminVerificationsPage() {
                           <p className="text-sm text-muted-foreground">
                             {aiData.reasoning}
                           </p>
+                          {aiData.automation?.decision === "manual_review" && (
+                            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                              <p className="font-medium">
+                                Manual review reasons
+                              </p>
+                              <ul className="mt-1 list-disc pl-5">
+                                {aiData.automation.reasons.map((reason) => (
+                                  <li key={reason}>
+                                    {reviewReasonLabels[reason] ?? reason}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           <div className="space-y-2">
                             {Object.entries(aiData.checks).map(
                               ([checkName, check]) => {
                                 const passed =
                                   "pass" in check ? check.pass : !check.found;
                                 return (
-                              <div
-                                key={checkName}
-                                className="flex items-start gap-2 text-sm"
-                              >
-                                {passed ? (
-                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                                ) : (
-                                  <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                                )}
-                                <div>
-                                  <span className="font-medium">
-                                    {checkName.replace(/([A-Z])/g, " $1")}
-                                  </span>
-                                  <p className="text-muted-foreground">
-                                    {check.note}
-                                  </p>
-                                </div>
-                              </div>
+                                  <div
+                                    key={checkName}
+                                    className="flex items-start gap-2 text-sm"
+                                  >
+                                    {passed ? (
+                                      <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                    ) : (
+                                      <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                                    )}
+                                    <div>
+                                      <span className="font-medium">
+                                        {checkName.replace(/([A-Z])/g, " $1")}
+                                      </span>
+                                      <p className="text-muted-foreground">
+                                        {check.note}
+                                      </p>
+                                    </div>
+                                  </div>
                                 );
                               },
                             )}
@@ -336,7 +551,8 @@ export default function AdminVerificationsPage() {
                           "approve",
                         )
                       }
-                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      disabled={busy || queue.isFetching}
+                      className="flex-1 h-auto min-h-11 max-w-full whitespace-normal py-2 bg-green-600 hover:bg-green-700"
                     >
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Approve
@@ -350,7 +566,8 @@ export default function AdminVerificationsPage() {
                           "reject",
                         )
                       }
-                      className="flex-1"
+                      disabled={busy || queue.isFetching}
+                      className="flex-1 h-auto min-h-11 max-w-full whitespace-normal py-2"
                     >
                       <XCircle className="mr-2 h-4 w-4" />
                       Reject
@@ -376,13 +593,19 @@ export default function AdminVerificationsPage() {
       <Dialog
         open={confirmDialog.open}
         onOpenChange={(open) => {
-          if (!open) {
-            setConfirmDialog({ open: false, userId: null, submissionId: null, action: null });
+          if (!open && !busy) {
+            selection.current = null;
+            setConfirmDialog({
+              open: false,
+              userId: null,
+              submissionId: null,
+              action: null,
+            });
             setRejectionNotes("");
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {confirmDialog.action === "approve"
@@ -390,35 +613,70 @@ export default function AdminVerificationsPage() {
                 : "Reject Verification"}
             </DialogTitle>
             <DialogDescription>
+              <span className="mb-2 block break-words font-medium">
+                {selectedUser?.businessName || selectedUser?.name} ·{" "}
+                {selectedUser?.email}
+              </span>
               {confirmDialog.action === "approve"
                 ? "This will mark the user as verified and allow them full access to PlankMarket."
                 : "This will reject the verification request. The user will be notified with your notes."}
             </DialogDescription>
           </DialogHeader>
+          {problem ? (
+            <p role="alert" className="text-sm text-destructive">
+              {problem}
+            </p>
+          ) : null}
+          {queueUnavailable || uncertain[confirmDialog.userId ?? ""] ? (
+            <Button
+              variant="outline"
+              className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+              disabled={busy || queue.isFetching}
+              onClick={() => void reviewLatest()}
+            >
+              Review latest verification
+            </Button>
+          ) : null}
           {confirmDialog.action === "reject" && (
             <div className="py-4">
               <label
                 htmlFor="rejection-notes"
                 className="text-sm font-medium mb-2 block"
               >
-                Rejection Notes (Required)
+                Correction request (required)
               </label>
               <Textarea
                 id="rejection-notes"
+                disabled={
+                  busy ||
+                  queueUnavailable ||
+                  !!uncertain[confirmDialog.userId ?? ""]
+                }
                 value={rejectionNotes}
                 onChange={(e) => setRejectionNotes(e.target.value)}
-                placeholder="Explain why the verification is being rejected..."
+                placeholder="Name the field or document, explain what is missing or incorrect, and state what the applicant should submit instead."
+                maxLength={2000}
+                aria-describedby="verification-correction-guidance"
                 rows={4}
                 aria-required="true"
                 aria-invalid={!rejectionNotes.trim()}
               />
+              <p id="verification-correction-guidance" className="mt-2 text-sm text-muted-foreground">The applicant sees this message. Give an actionable correction and avoid including sensitive identifiers.</p>
             </div>
           )}
           <DialogFooter>
             <Button
               variant="outline"
+              className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+              disabled={busy}
               onClick={() => {
-                setConfirmDialog({ open: false, userId: null, submissionId: null, action: null });
+                selection.current = null;
+                setConfirmDialog({
+                  open: false,
+                  userId: null,
+                  submissionId: null,
+                  action: null,
+                });
                 setRejectionNotes("");
               }}
             >
@@ -428,8 +686,16 @@ export default function AdminVerificationsPage() {
               variant={
                 confirmDialog.action === "approve" ? "default" : "destructive"
               }
+              className="h-auto min-h-11 max-w-full whitespace-normal py-2"
               onClick={confirmAction}
               disabled={
+                busy ||
+                queueUnavailable ||
+                queue.isFetching ||
+                !!uncertain[confirmDialog.userId ?? ""] ||
+                !selectedUser ||
+                selectedUser.verificationSubmissionId !==
+                  confirmDialog.submissionId ||
                 updateVerification.isPending ||
                 (confirmDialog.action === "reject" && !rejectionNotes.trim())
               }

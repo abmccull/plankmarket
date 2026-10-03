@@ -54,6 +54,12 @@ const router = createTRPCRouter({
 
 const createCaller = createCallerFactory(router);
 
+const COMPLETE_BUYER_PREFERENCES = {
+  preferredZip: "84101", preferredRadiusMiles: 100,
+  preferredMaterialTypes: ["engineered"], priceMaxPerSqFt: 5,
+  preferredShippingMode: "both", urgency: "2_weeks",
+};
+
 function createCallerContext(overrides: Record<string, unknown> = {}) {
   return {
     db: overrides.db,
@@ -78,7 +84,7 @@ describe("matching waterproof requirements", () => {
   it("does not recommend any lot without a supported waterproof specification", async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const db = { query: {
-      userPreferences: { findFirst: vi.fn().mockResolvedValue({ profileComplete: true, waterproofRequired: true }) },
+      userPreferences: { findFirst: vi.fn().mockResolvedValue({ ...COMPLETE_BUYER_PREFERENCES, profileComplete: true, waterproofRequired: true }) },
       listings: { findMany },
     } };
     const caller = createCaller(createCallerContext({ db }));
@@ -99,7 +105,7 @@ describe("matching price and geography", () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const db = { query: {
       userPreferences: { findFirst: vi.fn().mockResolvedValue({
-        profileComplete: true, waterproofRequired: false, preferredZip: "84101",
+        ...COMPLETE_BUYER_PREFERENCES, profileComplete: true, waterproofRequired: false, preferredZip: "84101",
         preferredRadiusMiles: 100, priceMaxPerSqFt: 3,
       }) }, listings: { findMany },
     } };
@@ -116,7 +122,7 @@ describe("matching price and geography", () => {
     const findMany = vi.fn();
     const db = { query: {
       userPreferences: { findFirst: vi.fn().mockResolvedValue({
-        profileComplete: true, preferredZip: "00000", preferredRadiusMiles: 100,
+        ...COMPLETE_BUYER_PREFERENCES, profileComplete: true, preferredZip: "00000", preferredRadiusMiles: 100,
       }) }, listings: { findMany },
     } };
     const caller = createCaller(createCallerContext({ db }));
@@ -124,5 +130,64 @@ describe("matching price and geography", () => {
       items: [], prefsIncomplete: false, limitation: "location_unverified",
     });
     expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("matching derives completion for each preference context", () => {
+  const OWNER = "11111111-1111-4111-8111-111111111111";
+  const COMPLETE_SELLER = {
+    originZip: "84101", shipCapable: true, typicalMaterialTypes: ["hardwood"],
+    minLotSqFt: 400, preferredBuyerRadiusMiles: 250, pricingStyle: "fixed", leadTimeDaysMin: 0,
+  };
+
+  function fixture(preferences: Record<string, unknown>) {
+    const listings = vi.fn().mockResolvedValue([]);
+    const requests = vi.fn().mockResolvedValue([]);
+    const findPreferences = vi.fn().mockResolvedValue({ userId: OWNER, role: "seller", ...preferences });
+    const db = { query: { userPreferences: { findFirst: findPreferences }, listings: { findMany: listings }, buyerRequests: { findMany: requests } } };
+    const caller = createCaller(createCallerContext({
+      db,
+      user: { id: OWNER, role: "seller", active: true, verificationStatus: "verified", businessState: "CO" },
+      getAuthAssurance: vi.fn().mockRejectedValue(new Error("Buying preferences do not require payout MFA")),
+    }));
+    return { caller, listings, requests, findPreferences };
+  }
+
+  it("recommends buying inventory from filled fields despite a false legacy seller flag", async () => {
+    const f = fixture({ ...COMPLETE_BUYER_PREFERENCES, profileComplete: false });
+    expect(await f.caller.matching.recommendedListings()).toEqual({ items: [], prefsIncomplete: false });
+    expect(await f.caller.matching.recommendedRequests()).toEqual({ items: [], prefsIncomplete: true });
+    expect(f.listings).toHaveBeenCalledOnce();
+    expect(f.requests).not.toHaveBeenCalled();
+  });
+
+  it("does not use complete selling preferences as a buying match configuration", async () => {
+    const f = fixture({ ...COMPLETE_SELLER, preferredRadiusMiles: 100, profileComplete: true });
+    expect(await f.caller.matching.recommendedListings()).toEqual({ items: [], prefsIncomplete: true });
+    expect(await f.caller.matching.recommendedRequests()).toEqual({ items: [], prefsIncomplete: false });
+    expect(f.listings).not.toHaveBeenCalled();
+    expect(f.requests).toHaveBeenCalledOnce();
+  });
+
+  it("keeps both directions available when both field groups are filled, independent of stored role", async () => {
+    const f = fixture({ ...COMPLETE_BUYER_PREFERENCES, ...COMPLETE_SELLER, role: "buyer", profileComplete: false });
+    expect(await f.caller.matching.recommendedListings()).toEqual({ items: [], prefsIncomplete: false });
+    expect(await f.caller.matching.recommendedRequests()).toEqual({ items: [], prefsIncomplete: false });
+    expect(f.listings).toHaveBeenCalledOnce();
+    expect(f.requests).toHaveBeenCalledOnce();
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+    for (const [input] of f.findPreferences.mock.calls) {
+      const query = new PgDialect().sqlToQuery(input.where);
+      expect(query.sql).toContain('"user_preferences"."user_id"');
+      expect(query.params).toEqual([OWNER]);
+    }
+  });
+
+  it("does not query either inventory direction for an analytics-only row", async () => {
+    const f = fixture({ analyticsTrackingEnabled: true, preferredRadiusMiles: 100, shipCapable: false, profileComplete: true });
+    expect(await f.caller.matching.recommendedListings()).toEqual({ items: [], prefsIncomplete: true });
+    expect(await f.caller.matching.recommendedRequests()).toEqual({ items: [], prefsIncomplete: true });
+    expect(f.listings).not.toHaveBeenCalled();
+    expect(f.requests).not.toHaveBeenCalled();
   });
 });

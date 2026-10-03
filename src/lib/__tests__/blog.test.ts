@@ -3,20 +3,23 @@ import { renderMarkdown, serializeJsonLd } from "@/lib/blog";
 
 describe("blog rendering", () => {
   it("sanitizes raw HTML and unsafe links from markdown content", async () => {
-    const html = await renderMarkdown([
-      "# Title",
-      "",
-      "<script>alert('xss')</script>",
-      "",
-      '[bad link](javascript:alert("xss"))',
-      "",
-      "## Section",
-    ].join("\n"));
+    const html = await renderMarkdown(
+      [
+        "# Title",
+        "",
+        "<script>alert('xss')</script>",
+        "",
+        '[bad link](javascript:alert("xss"))',
+        "",
+        "## Section",
+      ].join("\n"),
+    );
 
     expect(html).not.toContain("<script");
     expect(html).not.toContain("javascript:alert");
     expect(html).toContain('<h2 id="user-content-section">');
-    expect(html).toContain('<a href="#section">Section</a>');
+    expect(html).toContain('href="#user-content-section"');
+    expect(html).toContain('aria-label="Link to Section"');
   });
 
   it("escapes less-than characters in JSON-LD payloads", () => {

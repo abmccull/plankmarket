@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 import {
   ArrowRight,
   Camera,
@@ -30,7 +31,6 @@ import {
   Shield,
   Calculator,
 } from "lucide-react";
-import { CarryingCostCalculator } from "@/components/marketing/carrying-cost-calculator";
 
 export const metadata: Metadata = {
   title: "Seller Guide - How to List and Sell Surplus Flooring",
@@ -49,7 +49,7 @@ export default function SellerGuidePage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-10 sm:py-14">
         <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
@@ -62,16 +62,46 @@ export default function SellerGuidePage() {
               Seller Guide
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Everything you need to know to successfully sell surplus flooring materials on PlankMarket. From registration to getting paid.
+              Prepare an accurate listing, coordinate pickup and understand your
+              seller transfer. Start with the task you need.
             </p>
+            <nav
+              aria-label="Seller guide sections"
+              className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm font-medium"
+            >
+              <Link
+                href="#prepare"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Account and approval
+              </Link>
+              <Link
+                href="#publish"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Prepare a listing
+              </Link>
+              <Link
+                href="#ship"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Ship an order
+              </Link>
+              <Link
+                href="#get-paid"
+                className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+              >
+                Understand payment
+              </Link>
+            </nav>
           </div>
         </div>
       </section>
 
       {/* Getting Started */}
-      <section className="py-20">
+      <section id="prepare" className="scroll-mt-24 py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="text-center mb-7">
             <h2 className="font-display text-3xl">Getting Started</h2>
             <p className="mt-3 text-muted-foreground">
               Three simple steps to start selling on PlankMarket
@@ -84,21 +114,21 @@ export default function SellerGuidePage() {
                 step: "1",
                 title: "Create Your Account",
                 description:
-                  "Register with your business name and contact information. Add EIN and supporting documents later in the resumable verification flow; publishing stays locked until approval.",
+                  "Register with your business and contact details. Prepare a listing draft on this browser before approval, and complete business verification when your documents are ready.",
               },
               {
                 icon: ClipboardList,
                 step: "2",
                 title: "Complete Your Profile",
                 description:
-                  "Add your company logo, business description, location, service areas, business hours, shipping capabilities, and return policies to build buyer trust.",
+                  "Confirm your business details and pickup location. Add accurate shipping information and set up your connected Stripe account for seller transfers.",
               },
               {
                 icon: Package,
                 step: "3",
                 title: "Create Your First Listing",
                 description:
-                  "Upload clear photos, specify material details, set pricing, and publish an accurate record buyers can evaluate.",
+                  "Prepare material details and pricing in your local draft. After approval, upload clear product photos, review the details and publish.",
               },
             ].map((item) => (
               <Card key={item.step} className="card-hover-lift relative">
@@ -120,36 +150,16 @@ export default function SellerGuidePage() {
         </div>
       </section>
 
-      {/* ── Carrying Cost Calculator ── */}
-      <section className="py-20 bg-gradient-to-br from-destructive/5 via-background to-primary/5 border-y border-border">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
-              <Calculator className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              Free Calculator
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl max-w-3xl mx-auto">
-              How much is holding{" "}
-              <span className="text-destructive">actually costing you?</span>
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Before you list, see what surplus inventory is costing you every
-              month in storage, insurance, depreciation, and lost capital.
-            </p>
-          </div>
-          <div className="max-w-5xl mx-auto">
-            <CarryingCostCalculator />
-          </div>
-        </div>
-      </section>
-
       {/* Creating Effective Listings */}
-      <section className="py-20 bg-muted/30">
+      <section id="publish" className="scroll-mt-24 py-10 sm:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl">Creating Effective Listings</h2>
+          <div className="text-center mb-7">
+            <h2 className="font-display text-3xl">
+              Creating Effective Listings
+            </h2>
             <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
-              The quality of your listings directly impacts how quickly your inventory sells. Follow these best practices.
+              The quality of your listings directly impacts how quickly your
+              inventory sells. Follow these best practices.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
@@ -208,7 +218,10 @@ export default function SellerGuidePage() {
                 <CardContent>
                   <ul className="space-y-2">
                     {item.tips.map((tip) => (
-                      <li key={tip} className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <li
+                        key={tip}
+                        className="flex items-start gap-2 text-sm text-muted-foreground"
+                      >
                         <CheckCircle2 className="h-4 w-4 text-secondary shrink-0 mt-0.5" />
                         <span>{tip}</span>
                       </li>
@@ -221,10 +234,35 @@ export default function SellerGuidePage() {
         </div>
       </section>
 
+      <aside
+        className="border-y bg-muted/20 py-6"
+        aria-label="Optional seller calculator"
+      >
+        <div className="container mx-auto flex max-w-4xl items-start gap-3 px-4">
+          <Calculator
+            className="mt-1 h-5 w-5 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <div>
+            <p className="font-semibold">Still weighing when to sell?</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use your own assumptions to compare holding costs and estimated
+              seller net.
+            </p>
+            <Link
+              href="/tools/carrying-cost-calculator"
+              className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4"
+            >
+              Open the carrying-cost calculator
+            </Link>
+          </div>
+        </div>
+      </aside>
+
       {/* Material Types */}
-      <section className="py-20">
+      <section className="py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="text-center mb-7">
             <h2 className="font-display text-3xl">Supported Material Types</h2>
             <p className="mt-3 text-muted-foreground">
               PlankMarket supports all major flooring material categories
@@ -283,10 +321,12 @@ export default function SellerGuidePage() {
       </section>
 
       {/* Order Management */}
-      <section className="py-20 bg-muted/30">
+      <section className="py-10 sm:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl">Managing Orders & Shipping</h2>
+          <div className="text-center mb-7">
+            <h2 id="ship" className="scroll-mt-24 font-display text-3xl">
+              Managing Orders & Shipping
+            </h2>
             <p className="mt-3 text-muted-foreground">
               From order notification to delivery confirmation
             </p>
@@ -298,14 +338,14 @@ export default function SellerGuidePage() {
                 step: "1",
                 title: "Order Notification",
                 description:
-                  "Receive instant email and dashboard notifications when a buyer places an order. Review order details promptly.",
+                  "Check order notifications and your seller dashboard. Review the order details and required next step promptly.",
               },
               {
                 icon: MessageSquare,
                 step: "2",
                 title: "Coordinate with Buyer",
                 description:
-                  "Use built-in messaging to confirm details, provide estimated ship dates, offer freight quotes, and share carrier options.",
+                  "Use the order and built-in messaging to confirm pickup details. Freight options and amounts are handled through the platform.",
               },
               {
                 icon: Package,
@@ -319,7 +359,7 @@ export default function SellerGuidePage() {
                 step: "4",
                 title: "Ship & Track",
                 description:
-                  "Arrange freight and mark the order as shipped with tracking information. Buyers can follow delivery progress through their dashboard.",
+                  "Prepare the booked shipment, use the order documents and confirm pickup details. Follow tracking and shipping updates on the order.",
               },
               {
                 icon: DollarSign,
@@ -337,7 +377,9 @@ export default function SellerGuidePage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <item.icon className="h-5 w-5 text-primary" />
-                      <CardTitle className="font-display text-lg">{item.title}</CardTitle>
+                      <CardTitle className="font-display text-lg">
+                        {item.title}
+                      </CardTitle>
                     </div>
                     <CardDescription>{item.description}</CardDescription>
                   </div>
@@ -349,12 +391,15 @@ export default function SellerGuidePage() {
       </section>
 
       {/* Freight & Shipping Requirements */}
-      <section className="py-20">
+      <section className="py-10 sm:py-14">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="font-display text-3xl">Freight & Shipping Requirements</h2>
+          <div className="text-center mb-7">
+            <h2 className="font-display text-3xl">
+              Freight & Shipping Requirements
+            </h2>
             <p className="mt-3 text-muted-foreground max-w-2xl mx-auto">
-              Clear guidelines for packaging and shipping surplus flooring materials
+              Clear guidelines for packaging and shipping surplus flooring
+              materials
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
@@ -405,9 +450,9 @@ export default function SellerGuidePage() {
       </section>
 
       {/* Tips for Faster Sales */}
-      <section className="py-20 bg-muted/30">
+      <section className="py-10 sm:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
+          <div className="text-center mb-7">
             <h2 className="font-display text-3xl">Tips for Faster Sales</h2>
           </div>
           <Card className="max-w-3xl mx-auto bg-gradient-to-br from-amber-50 to-amber-100/50 border-amber-200">
@@ -436,7 +481,7 @@ export default function SellerGuidePage() {
                     icon: Clock,
                     title: "Respond Fast",
                     description:
-                      "Respond to inquiries within 24 hours. Quick communication increases sale completion rates.",
+                      "Respond promptly with clear answers about quantity, condition and pickup.",
                   },
                   {
                     icon: Truck,
@@ -457,7 +502,9 @@ export default function SellerGuidePage() {
                     </div>
                     <div>
                       <p className="font-semibold text-sm">{tip.title}</p>
-                      <p className="text-sm text-muted-foreground">{tip.description}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {tip.description}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -468,7 +515,7 @@ export default function SellerGuidePage() {
       </section>
 
       {/* Payment Processing */}
-      <section className="py-20">
+      <section id="get-paid" className="scroll-mt-24 py-10 sm:py-14">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
             <Card>
@@ -476,9 +523,12 @@ export default function SellerGuidePage() {
                 <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-2 mx-auto">
                   <CreditCard className="h-7 w-7 text-primary" />
                 </div>
-                <CardTitle className="font-display text-2xl">Payment Processing</CardTitle>
+                <CardTitle className="font-display text-2xl">
+                  Payment Processing
+                </CardTitle>
                 <CardDescription>
-                  All payments are processed through Stripe Connect for secure, reliable transactions
+                  Buyers pay through Stripe; seller transfers are sent to your
+                  connected Stripe account.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -490,16 +540,25 @@ export default function SellerGuidePage() {
                     "Bank availability depends on Stripe and your connected account payout schedule",
                     "View all transaction history and earnings in your seller dashboard",
                   ].map((item) => (
-                    <li key={item} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <li
+                      key={item}
+                      className="flex items-start gap-2 text-sm text-muted-foreground"
+                    >
                       <CheckCircle2 className="h-4 w-4 text-secondary shrink-0 mt-0.5" />
                       <span>{item}</span>
                     </li>
                   ))}
                 </ul>
                 <p className="mt-6 text-sm text-muted-foreground">
-                  PlankMarket charges a commission on each completed sale with no monthly or listing fees.
-                  See our{" "}
-                  <Link href="/pricing" className="text-primary hover:underline font-medium">
+                  There is no required subscription or listing fee. Completed
+                  inventory sales have a{" "}
+                  {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus{" "}
+                  {PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel} processing. Pro
+                  is an optional paid subscription. See our{" "}
+                  <Link
+                    href="/pricing"
+                    className="text-primary hover:underline font-medium"
+                  >
                     Pricing & Fees
                   </Link>{" "}
                   page for details.
@@ -511,7 +570,7 @@ export default function SellerGuidePage() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 bg-muted/30">
+      <section className="py-10 sm:py-14 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="relative overflow-hidden rounded-3xl bg-primary p-8 text-primary-foreground sm:p-12">
             <div className="absolute top-0 right-0 h-64 w-64 rounded-full bg-accent/15 blur-3xl" />
@@ -520,15 +579,14 @@ export default function SellerGuidePage() {
                 Ready to Start Selling?
               </h2>
               <p className="mx-auto mb-8 max-w-xl text-primary-foreground">
-                Create your seller account today and turn your surplus flooring inventory into revenue. Our team is here to help you succeed.
+                Create your seller account today and turn your surplus flooring
+                inventory into revenue. Our team is here to help you succeed.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link href="/register?role=seller">
-                  <Button
-                    size="xl"
-                    variant="gold"
-                  >
-                    Create Seller Account <ArrowRight className="ml-2 h-4 w-4" />
+                  <Button size="xl" variant="gold">
+                    Create Seller Account{" "}
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
                 <Link href="/contact">

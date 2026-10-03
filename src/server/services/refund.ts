@@ -899,7 +899,7 @@ async function persistRefundState(params: {
       type: "system" as const,
       title: "Refund Processed",
       message: `A ${isFullRefund ? "full" : "partial"} refund of ${refundAmountFormatted} has been issued for order ${params.order.orderNumber}.${params.reason ? ` Reason: ${params.reason}` : ""}`,
-      data: { orderId: params.order.id },
+      data: { orderId: params.order.id, recipientSide: "buyer" },
       read: false,
     },
     {
@@ -907,7 +907,7 @@ async function persistRefundState(params: {
       type: "system" as const,
       title: "Order Refunded",
       message: `A ${isFullRefund ? "full" : "partial"} refund of ${refundAmountFormatted} has been issued for order ${params.order.orderNumber}.${params.reason ? ` Reason: ${params.reason}` : ""}`,
-      data: { orderId: params.order.id },
+      data: { orderId: params.order.id, recipientSide: "seller" },
       read: false,
     },
   ]);

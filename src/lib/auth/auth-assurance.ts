@@ -36,12 +36,16 @@ const SELLER_FINANCIAL_PROCEDURES = new Set([
 ]);
 
 const RECENT_AUTH_PROCEDURES = new Set([
+  "resale.review",
+  "resale.saveRule",
   "admin.refundOrder",
   "admin.retryTransfer",
   "admin.suspendUser",
   "admin.unsuspendUser",
   "admin.forceCancelOrder",
   "admin.updateUser",
+  "admin.reviewSellerActivation",
+  "admin.reconcileSellerActivation",
   "admin.updateVerification",
   "admin.updateSetting",
   "admin.updateSettings",

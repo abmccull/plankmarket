@@ -7,6 +7,7 @@ import {
 import {
   sellerCommercialDefaultsSchema,
   upsertPreferencesSchema,
+  mergedPreferencesSchema,
   type SellerCommercialDefaults,
 } from "@/lib/validators/preferences";
 import { userPreferences } from "../db/schema/user-preferences";
@@ -17,11 +18,13 @@ import {
   orders,
   sampleRequests,
 } from "../db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { resolveSellerDefaultsListingUpdate } from "@/lib/seller-defaults-apply";
 import type { db as applicationDb } from "../db";
+import { getPreferenceCompletion } from "@/lib/preferences-completion";
+import { canCreateListings } from "@/lib/auth/roles";
 
 const NEGOTIATION_WARNING_STATUSES = ["pending", "countered"] as const;
 const ACTIVE_ORDER_STATUSES = [
@@ -239,46 +242,6 @@ function publicApplySummary(plan: ActiveListingApplyPlan) {
   return summary;
 }
 
-/**
- * Buyer preference fields used for profile completion scoring.
- */
-const BUYER_CORE_FIELDS: Array<keyof typeof userPreferences.$inferSelect> = [
-  "preferredZip",
-  "preferredRadiusMiles",
-  "preferredMaterialTypes",
-  "priceMaxPerSqFt",
-  "preferredShippingMode",
-  "urgency",
-];
-
-/**
- * Seller preference fields used for profile completion scoring.
- */
-const SELLER_CORE_FIELDS: Array<keyof typeof userPreferences.$inferSelect> = [
-  "originZip",
-  "shipCapable",
-  "typicalMaterialTypes",
-  "minLotSqFt",
-  "preferredBuyerRadiusMiles",
-  "pricingStyle",
-  "leadTimeDaysMin",
-];
-
-/**
- * Returns a list of fields that are filled (non-null, non-empty) from a preferences record.
- */
-function getFilledFields(
-  prefs: typeof userPreferences.$inferSelect,
-  fields: Array<keyof typeof userPreferences.$inferSelect>
-): Array<keyof typeof userPreferences.$inferSelect> {
-  return fields.filter((field) => {
-    const value = prefs[field];
-    if (value === null || value === undefined) return false;
-    if (Array.isArray(value) && value.length === 0) return false;
-    return true;
-  });
-}
-
 export const preferencesRouter = createTRPCRouter({
   /**
    * Persist optional analytics consent without running the role-specific
@@ -323,99 +286,85 @@ export const preferencesRouter = createTRPCRouter({
     }),
 
   /**
-   * Upsert the current user's preferences. Role is validated against the user's
-   * actual profile role — input role must match. Uses onConflictDoUpdate on userId.
+   * Patch one preference workspace. Workspace choice never grants seller authority.
+   * Serialize owned reads and writes so partial saves validate the latest answers.
    */
   upsert: protectedProcedure
     .input(upsertPreferencesSchema)
     .mutation(async ({ ctx, input }) => {
-      const userRole = ctx.user.role;
-
-      // Validate that the role in input matches the user's actual role.
-      // Admins may set either role.
-      if (userRole !== "admin" && input.role !== userRole) {
+      if (input.role === "seller" && !canCreateListings(ctx.user.role)) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: `You can only set ${userRole} preferences (your account role is ${userRole})`,
+          message: "Seller access is required to save selling preferences",
         });
       }
-
-      const now = new Date();
-
-      // Build the upsert payload from input, spreading role-specific fields.
-      // Explicitly clear dependent seller fields when their parent option is
-      // disabled so saved defaults can never retain a contradictory hidden
-      // state from an earlier form submission.
-      const { role, ...inputRoleFields } = input;
-      const roleFields: Record<string, unknown> = { ...inputRoleFields };
-      if (role === "seller") {
-        if (roleFields.canSplitLots === false) {
-          roleFields.partialQuantityMarkupPercent = null;
+      return ctx.db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`plankmarket:preferences:${ctx.user.id}`}, 0))`);
+        const existing = await tx.query.userPreferences.findFirst({
+          where: eq(userPreferences.userId, ctx.user.id),
+        });
+        const { role, ...requested } = input;
+        // Undefined omits a field; null, false, zero and [] are deliberate answers.
+        const patch: Partial<typeof userPreferences.$inferInsert> = Object.fromEntries(
+          Object.entries(requested).filter(([, value]) => value !== undefined),
+        );
+        // These defaults match the existing table for a first-use row. Never
+        // write the loaded record back: unrelated groups and consent stay intact.
+        const merged = {
+          preferredRadiusMiles: 100,
+          shipCapable: false,
+          canSplitLots: false,
+          automaticMarkdownEnabled: false,
+          sellingTerritoryMode: "unrestricted",
+          freightPaymentMode: "buyer_pays",
+          ...existing,
+          ...patch,
+        };
+        if (role === "seller") {
+          if (!merged.canSplitLots) patch.partialQuantityMarkupPercent = null;
+          if (!merged.automaticMarkdownEnabled) {
+            patch.automaticMarkdownFloorPercent = null;
+            patch.automaticMarkdownIntervalDays = null;
+          }
+          if (merged.sellingTerritoryMode === "unrestricted") patch.allowedDestinationStates = [];
+          if (merged.freightPaymentMode === "buyer_pays") {
+            patch.sellerFreightStates = [];
+            patch.freightDropCharge = null;
+          }
         }
-        if (roleFields.automaticMarkdownEnabled === false) {
-          roleFields.automaticMarkdownFloorPercent = null;
-          roleFields.automaticMarkdownIntervalDays = null;
-        }
-        if (roleFields.sellingTerritoryMode === "unrestricted") {
-          roleFields.allowedDestinationStates = [];
-        }
-        if (roleFields.freightPaymentMode === "buyer_pays") {
-          roleFields.sellerFreightStates = [];
-          roleFields.freightDropCharge = null;
-        }
-      }
-
-      // Determine whether the profile should be considered complete
-      // by checking if enough core fields are filled after this upsert.
-      const coreFields =
-        role === "buyer" ? BUYER_CORE_FIELDS : SELLER_CORE_FIELDS;
-      const COMPLETION_THRESHOLD = Math.ceil(coreFields.length * 0.7); // 70% filled
-
-      // Count how many of the core fields will be filled post-upsert
-      const filledCount = coreFields.filter((field) => {
-        const key = field as keyof typeof roleFields;
-        const value = roleFields[key as string];
-        if (value === undefined || value === null) return false;
-        if (Array.isArray(value) && value.length === 0) return false;
-        return true;
-      }).length;
-
-      const profileComplete = filledCount >= COMPLETION_THRESHOLD;
-
-      const [result] = await ctx.db
-        .insert(userPreferences)
-        .values({
-          userId: ctx.user.id,
+        const savedAnswers = { ...merged, ...patch };
+        // Existing nullable DB answers are absent for validation. The wire
+        // parser already checked every explicitly supplied value before this.
+        const validation = mergedPreferencesSchema.safeParse({
+          ...Object.fromEntries(Object.entries(savedAnswers).filter(([, value]) => value != null)),
           role,
-          ...roleFields,
-          analyticsConsentUpdatedAt:
-            input.analyticsTrackingEnabled === undefined ? undefined : now,
-          profileComplete,
-          completedAt: profileComplete ? now : null,
-          updatedAt: now,
-          createdAt: now,
-        })
-        .onConflictDoUpdate({
-          target: userPreferences.userId,
-          set: {
-            ...roleFields,
-            analyticsConsentUpdatedAt:
-              input.analyticsTrackingEnabled === undefined ? undefined : now,
-            profileComplete,
-            completedAt: profileComplete ? now : null,
-            updatedAt: now,
-          },
-        })
-        .returning();
-
-      if (!result) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to save preferences",
         });
-      }
-
-      return result;
+        if (!validation.success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: validation.error.issues[0]?.message ?? "Check your preferences",
+            cause: validation.error,
+          });
+        }
+        const now = new Date();
+        const legacyRole = existing?.role ?? (ctx.user.role === "seller" ? "seller" : "buyer");
+        const { profileComplete } = getPreferenceCompletion(savedAnswers, legacyRole === "seller" ? "seller" : "buyer");
+        const updated = {
+          ...patch,
+          ...(input.analyticsTrackingEnabled === undefined ? {} : { analyticsConsentUpdatedAt: now }),
+          profileComplete,
+          completedAt: profileComplete ? existing?.completedAt ?? now : null,
+          updatedAt: now,
+        };
+        const [result] = await tx.insert(userPreferences)
+          .values({ ...updated, userId: ctx.user.id, role: legacyRole })
+          .onConflictDoUpdate({ target: userPreferences.userId, set: updated })
+          .returning();
+        if (!result) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to save preferences" });
+        }
+        return result;
+      });
     }),
 
   /**
@@ -543,39 +492,16 @@ export const preferencesRouter = createTRPCRouter({
    * Returns a completion status breakdown for the user's preferences.
    * Shows how many core fields are filled, total fields, percentage, and which are missing.
    */
-  getCompletionStatus: protectedProcedure.query(async ({ ctx }) => {
+  getCompletionStatus: protectedProcedure
+    .input(z.object({ role: z.enum(["buyer", "seller"]) }).optional())
+    .query(async ({ ctx, input }) => {
+    const role = input?.role ?? (ctx.user.role === "seller" ? "seller" : "buyer");
+    if (role === "seller" && !canCreateListings(ctx.user.role)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Seller access is required to view selling setup" });
+    }
     const prefs = await ctx.db.query.userPreferences.findFirst({
       where: eq(userPreferences.userId, ctx.user.id),
     });
-
-    if (!prefs) {
-      const role = ctx.user.role === "seller" ? "seller" : "buyer";
-      const coreFields = role === "buyer" ? BUYER_CORE_FIELDS : SELLER_CORE_FIELDS;
-      return {
-        filledCount: 0,
-        totalFields: coreFields.length,
-        completionPercent: 0,
-        missingFields: coreFields as string[],
-        profileComplete: false,
-      };
-    }
-
-    const coreFields =
-      prefs.role === "buyer" ? BUYER_CORE_FIELDS : SELLER_CORE_FIELDS;
-
-    const filledFields = getFilledFields(prefs, coreFields);
-    const missingFields = coreFields.filter(
-      (f) => !filledFields.includes(f)
-    );
-
-    return {
-      filledCount: filledFields.length,
-      totalFields: coreFields.length,
-      completionPercent: Math.round(
-        (filledFields.length / coreFields.length) * 100
-      ),
-      missingFields: missingFields as string[],
-      profileComplete: prefs.profileComplete,
-    };
+    return getPreferenceCompletion(prefs, role);
   }),
 });

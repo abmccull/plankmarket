@@ -10,10 +10,8 @@ import {
   disputes,
   notifications,
   reconciliationCases,
-  promotionCredits,
-  agentConfigs,
 } from "@/server/db/schema";
-import { eq, and, sql, or, lte, isNull } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { env } from "@/env";
 import { inngest } from "@/lib/inngest/client";
 import {
@@ -23,7 +21,7 @@ import {
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
 import { stripe } from "@/lib/stripe";
 import { isStripeChargeRefunded } from "@/server/services/stripe-charge-state";
-import { PRO_MONTHLY_CREDIT } from "@/lib/pro";
+import { applyVerifiedProInvoiceCredit } from "@/server/services/subscription-invoice-credit";
 import {
   reconcileOrderRefundLifecycleFromStripe,
   reconcileOrderRefundFromStripe,
@@ -40,7 +38,7 @@ import {
   SHIPPING_DISPATCH_SAFETY_BUFFER_MS,
   requireShippingBookingSnapshotForOrder,
 } from "@/server/services/shipping-workflow";
-import { mapStripeSubscriptionStatus } from "@/server/services/stripe-webhook-policy";
+import { applySubscriptionAdoptionEvent, applySubscriptionIdentityEvent } from "@/server/services/subscription-lifecycle-identity";
 import {
   openReconciliationCase,
   resolveReconciliationCaseByKey,
@@ -56,19 +54,6 @@ import {
   failStripeWebhookEvent,
   receiveStripeWebhookEvent,
 } from "@/server/services/stripe-webhook-inbox";
-
-function getStripeCustomerId(
-  customer: string | Stripe.Customer | Stripe.DeletedCustomer,
-): string {
-  return typeof customer === "string" ? customer : customer.id;
-}
-
-function subscriptionEventIsCurrent(eventCreatedAt: Date) {
-  return or(
-    isNull(users.stripeSubscriptionEventCreatedAt),
-    lte(users.stripeSubscriptionEventCreatedAt, eventCreatedAt),
-  );
-}
 
 const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
 export const STRIPE_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
@@ -1523,249 +1508,27 @@ export async function processStripeWebhookEvent(eventId: string) {
         break;
       }
 
-      case "customer.subscription.created": {
-        const subscription = event.data
-          .object as Stripe.Subscription;
-        const userId = subscription.metadata.userId;
-
-        if (userId) {
-          const eventCreatedAt = new Date(event.created * 1000);
-          const proStatus = mapStripeSubscriptionStatus(subscription.status);
-          const [updated] = await db
-            .update(users)
-            .set({
-              proStatus,
-              stripeSubscriptionId: subscription.id,
-              stripeCustomerId: getStripeCustomerId(subscription.customer),
-              proStartedAt:
-                proStatus === "active" || proStatus === "trialing"
-                  ? new Date()
-                  : null,
-              stripeSubscriptionEventCreatedAt: eventCreatedAt,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(users.id, userId),
-                subscriptionEventIsCurrent(eventCreatedAt),
-              ),
-            )
-            .returning({ id: users.id });
-
-          // Credit grant removed — invoice.payment_succeeded is the single source
-          // for promotion credits (fires for both initial and renewal invoices)
-
-          if (
-            updated &&
-            (proStatus === "active" || proStatus === "trialing")
-          ) {
-            await inngest.send({
-              id: `subscription-activated:${event.id}`,
-              name: "subscription/activated",
-              data: { userId },
-            });
-          }
-        }
-        break;
-      }
-
+      case "customer.subscription.created":
       case "customer.subscription.updated": {
-        const subscription = event.data
-          .object as Stripe.Subscription;
-        const userId = subscription.metadata.userId;
-
-        if (userId) {
-          const proStatus = mapStripeSubscriptionStatus(subscription.status);
-          const eventCreatedAt = new Date(event.created * 1000);
-
-          const updateFields: Record<string, unknown> = {
-            proStatus,
-            stripeSubscriptionId: subscription.id,
-            stripeCustomerId: getStripeCustomerId(subscription.customer),
-            stripeSubscriptionEventCreatedAt: eventCreatedAt,
-            proExpiresAt: null,
-            updatedAt: new Date(),
-          };
-
-          // If canceled, record when the subscription will actually end
-          if (subscription.status === "canceled") {
-            const cancelPeriodEnd =
-              subscription.items.data[0]?.current_period_end;
-            if (cancelPeriodEnd) {
-              const expiresDate = new Date(cancelPeriodEnd * 1000);
-              // Only set grace period if expiry is in the future
-              if (expiresDate > new Date()) {
-                updateFields.proExpiresAt = expiresDate;
-              }
-              // If already past, leave proExpiresAt null (immediate termination)
-            }
-          }
-
-          const [updated] = await db
-            .update(users)
-            .set(updateFields)
-            .where(
-              and(
-                eq(users.id, userId),
-                subscriptionEventIsCurrent(eventCreatedAt),
-              ),
-            )
-            .returning({ id: users.id });
-
-          // Notify on payment issues
-          if (updated && subscription.status === "past_due") {
-            await inngest.send({
-                id: `subscription-payment-failed:${event.id}`,
-                name: "subscription/payment-failed",
-                data: { userId },
-              });
-          }
-        }
+        const outbound = await applySubscriptionAdoptionEvent(db, event, { provider: stripe });
+        if (outbound) await inngest.send(outbound);
         break;
       }
 
       case "customer.subscription.deleted": {
-        const subscription = event.data
-          .object as Stripe.Subscription;
-        const userId = subscription.metadata.userId;
-
-        if (userId) {
-          const eventCreatedAt = new Date(event.created * 1000);
-          const [updated] = await db
-            .update(users)
-            .set({
-              proStatus: "free",
-              stripeSubscriptionId: null,
-              proExpiresAt: null,
-              proStartedAt: null,
-              stripeSubscriptionEventCreatedAt: eventCreatedAt,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(users.id, userId),
-                subscriptionEventIsCurrent(eventCreatedAt),
-              ),
-            )
-            .returning({ id: users.id });
-
-          if (updated) {
-            await inngest.send({
-              id: `subscription-expired:${event.id}`,
-              name: "subscription/expired",
-              data: { userId },
-            });
-          }
-        }
+        const outbound = await applySubscriptionIdentityEvent(db, event, { provider: stripe });
+        if (outbound) await inngest.send(outbound);
         break;
       }
 
       case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-
-        // Only process subscription renewals (parent.type = subscription_details)
-        const isSubscriptionInvoice =
-          invoice.parent?.type === "subscription_details" &&
-          invoice.parent.subscription_details?.subscription;
-
-        if (isSubscriptionInvoice) {
-          const customerId =
-            typeof invoice.customer === "string"
-              ? invoice.customer
-              : invoice.customer?.id;
-
-          if (customerId) {
-            const user = await db.query.users.findFirst({
-              where: eq(users.stripeCustomerId, customerId),
-              columns: { id: true },
-            });
-
-            if (user) {
-              // Grant and budget reset are one effect, keyed by the Stripe
-              // invoice rather than the webhook event (Stripe can redeliver
-              // equivalent invoice events with different event IDs).
-              const periodEnd =
-                invoice.lines?.data?.[0]?.period?.end;
-              if (periodEnd) {
-                await db.transaction(async (tx) => {
-                  const [credit] = await tx
-                    .insert(promotionCredits)
-                    .values({
-                      userId: user.id,
-                      amount: PRO_MONTHLY_CREDIT,
-                      usedAmount: 0,
-                      source: "subscription",
-                      stripeInvoiceId: invoice.id,
-                      expiresAt: new Date(periodEnd * 1000),
-                    })
-                    .onConflictDoNothing({
-                      target: promotionCredits.stripeInvoiceId,
-                    })
-                    .returning({ id: promotionCredits.id });
-
-                  if (!credit) return;
-
-                  await tx
-                    .update(agentConfigs)
-                    .set({
-                      monitorBudgetUsed: 0,
-                      updatedAt: new Date(),
-                    })
-                    .where(eq(agentConfigs.userId, user.id));
-                });
-              }
-            }
-          }
-        }
+        await applyVerifiedProInvoiceCredit(db, event, { provider: stripe });
         break;
       }
 
       case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-
-        // Only process subscription invoices (skip one-off invoices)
-        const isSubscriptionInvoice =
-          invoice.parent?.type === "subscription_details" &&
-          invoice.parent.subscription_details?.subscription;
-        if (!isSubscriptionInvoice) break;
-
-        const customerId =
-          typeof invoice.customer === "string"
-            ? invoice.customer
-            : invoice.customer?.id;
-
-        if (customerId) {
-          const user = await db.query.users.findFirst({
-            where: eq(users.stripeCustomerId, customerId),
-            columns: { id: true },
-          });
-
-          if (user) {
-            const eventCreatedAt = new Date(event.created * 1000);
-            const [updated] = await db
-              .update(users)
-              .set({
-                proStatus: "past_due",
-                stripeSubscriptionEventCreatedAt: eventCreatedAt,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(users.id, user.id),
-                  subscriptionEventIsCurrent(eventCreatedAt),
-                ),
-              )
-              .returning({ id: users.id });
-
-            if (updated) {
-              await inngest.send({
-                id: `invoice-payment-failed:${event.id}`,
-                name: "subscription/payment-failed",
-                data: { userId: user.id },
-              });
-            }
-          }
-        }
+        const outbound = await applySubscriptionIdentityEvent(db, event, { provider: stripe });
+        if (outbound) await inngest.send(outbound);
         break;
       }
 

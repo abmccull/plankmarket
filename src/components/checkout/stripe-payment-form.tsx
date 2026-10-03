@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { useStripe, useElements } from "@stripe/react-stripe-js";
 import { Button } from "@/components/ui/button";
+import { StripePaymentFields, usePaymentUiState } from "@/components/checkout/stripe-provider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, ShieldCheck, AlertCircle } from "lucide-react";
 
@@ -14,17 +15,14 @@ interface StripePaymentFormProps {
 export function StripePaymentForm({ listingId, orderId }: StripePaymentFormProps) {
   const stripe = useStripe();
   const elements = useElements();
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { isProcessing, startProcessing, finishProcessing } = usePaymentUiState();
+  const [paymentReady, setPaymentReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!stripe || !elements) {
-      return;
-    }
-
-    setIsProcessing(true);
+    if (!stripe || !elements || !paymentReady || !startProcessing()) return;
     setErrorMessage(null);
 
     try {
@@ -41,7 +39,7 @@ export function StripePaymentForm({ listingId, orderId }: StripePaymentFormProps
     } catch {
       setErrorMessage("An unexpected error occurred. Please try again.");
     } finally {
-      setIsProcessing(false);
+      finishProcessing();
     }
   };
 
@@ -58,13 +56,7 @@ export function StripePaymentForm({ listingId, orderId }: StripePaymentFormProps
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="rounded-lg border bg-background p-4">
-            <PaymentElement
-              options={{
-                layout: "tabs",
-              }}
-            />
-          </div>
+          <StripePaymentFields onReadyChange={setPaymentReady} />
 
           {errorMessage && (
             <div
@@ -81,7 +73,7 @@ export function StripePaymentForm({ listingId, orderId }: StripePaymentFormProps
             type="submit"
             className="w-full"
             size="lg"
-            disabled={!stripe || !elements || isProcessing}
+            disabled={!stripe || !elements || !paymentReady || isProcessing}
           >
             {isProcessing ? (
               <>

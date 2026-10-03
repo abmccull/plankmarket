@@ -160,6 +160,11 @@ const schema = z.object({
   ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
     .enum(["true", "false"])
     .default("false"),
+  TYPESAFE_API_KEY: z.string().min(1).optional(),
+  TYPESAFE_VERIFICATION_ENABLED: z.enum(["true", "false"]).default("false"),
+  VERIFICATION_AUTO_APPROVAL_ENABLED: z.enum(["true", "false"]).default("false"),
+  VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE: z.string().min(1).optional(),
+  VERIFICATION_AUTO_APPROVAL_EVALUATION_REFERENCE: z.string().min(1).optional(),
   VERIFICATION_WEBHOOK_SECRET: z.string().min(32),
   VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1),
   PRIORITY1_API_KEY: z.string().min(16),
@@ -284,10 +289,32 @@ try {
 
   if (
     requestedMode === "production" &&
-    validatedEnv.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS !== "false"
+    validatedEnv.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS === "true" &&
+    !validatedEnv.VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE
   ) {
     conditionalIssues.push(
-      "ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: must remain false in production until privacy/legal approval explicitly changes the policy",
+      "ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: requires a privacy/legal approval reference",
+    );
+  }
+  if (validatedEnv.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS === "true" &&
+    !validatedEnv.ANTHROPIC_API_KEY) {
+    conditionalIssues.push(
+      "ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: requires a server-side Anthropic key",
+    );
+  }
+  if (validatedEnv.TYPESAFE_VERIFICATION_ENABLED === "true" &&
+    (!validatedEnv.TYPESAFE_API_KEY ||
+      !validatedEnv.VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE)) {
+    conditionalIssues.push(
+      "TYPESAFE_VERIFICATION_ENABLED: requires a server-side key and a document-evidence egress approval reference",
+    );
+  }
+  if (validatedEnv.VERIFICATION_AUTO_APPROVAL_ENABLED === "true" &&
+    (validatedEnv.TYPESAFE_VERIFICATION_ENABLED !== "true" ||
+      validatedEnv.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS !== "true" ||
+      !validatedEnv.VERIFICATION_AUTO_APPROVAL_EVALUATION_REFERENCE)) {
+    conditionalIssues.push(
+      "VERIFICATION_AUTO_APPROVAL_ENABLED: requires both evidence services and an evaluation reference",
     );
   }
 

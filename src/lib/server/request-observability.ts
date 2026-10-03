@@ -31,9 +31,7 @@ export interface ReleaseMetadata {
   schemaVersion: string;
 }
 
-function resolveBuildSha(
-  env: NodeJS.ProcessEnv = process.env,
-): string | null {
+function resolveBuildSha(env: NodeJS.ProcessEnv = process.env): string | null {
   for (const key of BUILD_SHA_ENV_KEYS) {
     const value = env[key]?.trim();
     if (value && BUILD_SHA_PATTERN.test(value)) {
@@ -58,7 +56,17 @@ export function resolveRequestId(headers: Headers): string {
 export function attachRequestId(request: Request, requestId: string): Request {
   const headers = new Headers(request.headers);
   headers.set(REQUEST_ID_HEADER, requestId);
-  return new Request(request, { headers });
+  // Next.js can proxy route requests. Passing that proxy to Undici's Request
+  // constructor accesses private state on the proxy instead of its target.
+  // Copy the public fields so streamed mutation bodies and aborts still work.
+  const init: RequestInit & { duplex: "half" } = {
+    method: request.method,
+    headers,
+    body: request.body,
+    signal: request.signal,
+    duplex: "half",
+  };
+  return new Request(request.url, init);
 }
 
 export function createObservabilityHeaders(params: {
@@ -68,7 +76,10 @@ export function createObservabilityHeaders(params: {
 }): Headers {
   const headers = new Headers(params.headers);
   headers.set(REQUEST_ID_HEADER, params.requestId);
-  headers.set("Server-Timing", `app;dur=${Math.max(0, Math.round(params.durationMs))}`);
+  headers.set(
+    "Server-Timing",
+    `app;dur=${Math.max(0, Math.round(params.durationMs))}`,
+  );
   return headers;
 }
 

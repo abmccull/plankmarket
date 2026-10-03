@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { createTRPCContext } from "@/server/trpc";
+import { MFA_REQUIRED_MESSAGE, type AuthAssuranceState } from "@/lib/auth/auth-assurance";
 
 process.env.SKIP_ENV_VALIDATION = "1";
 process.env.DATABASE_URL ??=
@@ -45,13 +47,9 @@ vi.mock("@/lib/inngest/client", () => ({
   inngest: { send: mocks.inngestSend },
 }));
 
-const { createCallerFactory, createTRPCRouter } =
-  await import("@/server/trpc");
-const {
-  BUYER_CLAIM_WINDOW_MS,
-  disputeRouter,
-  evaluateBuyerClaimEligibility,
-} = await import("@/server/routers/dispute");
+const { createCallerFactory, createTRPCRouter } = await import("@/server/trpc");
+const { BUYER_CLAIM_WINDOW_MS, disputeRouter, evaluateBuyerClaimEligibility } =
+  await import("@/server/routers/dispute");
 
 const router = createTRPCRouter({ dispute: disputeRouter });
 const createCaller = createCallerFactory(router);
@@ -69,6 +67,7 @@ function callerContext(
   params: {
     id?: string;
     role?: "buyer" | "seller" | "admin";
+    getAuthAssurance?: () => Promise<AuthAssuranceState>;
   } = {},
 ) {
   const role = params.role ?? "buyer";
@@ -88,12 +87,12 @@ function callerContext(
   return {
     db: dbWithDefaults,
     authUser: { id: `auth-${id}` },
-    getAuthAssurance: async () => ({
+    getAuthAssurance: params.getAuthAssurance ?? (async () => ({
       currentLevel: "aal2" as const,
       nextLevel: "aal2" as const,
       lastFactorVerificationAt: NOW.toISOString(),
       recentVerificationSatisfied: true,
-    }),
+    })),
     user: {
       id,
       role,
@@ -104,7 +103,7 @@ function callerContext(
     },
     supabase: {},
     clientIp: "127.0.0.1",
-  } as Parameters<typeof createCaller>[0];
+  } as Awaited<ReturnType<typeof createTRPCContext>>;
 }
 
 function createClaimTransaction(params: {
@@ -163,15 +162,17 @@ function createClaimTransaction(params: {
     .mockReturnValueOnce({
       from: () => ({
         where: vi.fn(() => ({
-          for: vi.fn().mockResolvedValue([
-            {
-              id: MEDIA_ID,
-              uploaderId: BUYER_ID,
-              listingId: null,
-              buyerRequestId: null,
-              mimeType: "image/jpeg",
-            },
-          ]),
+          orderBy: () => ({
+            for: vi.fn().mockResolvedValue([
+              {
+                id: MEDIA_ID,
+                uploaderId: BUYER_ID,
+                listingId: null,
+                buyerRequestId: null,
+                mimeType: "image/jpeg",
+              },
+            ]),
+          }),
         })),
       }),
     });
@@ -181,6 +182,78 @@ function createClaimTransaction(params: {
     insertEvidence,
   };
 }
+
+describe("shared claim routes enforce admin session assurance", () => {
+  const routes = [
+    ["getOrderClaimState", (caller: ReturnType<typeof createCaller>) => caller.dispute.getOrderClaimState({ orderId: ORDER_ID })],
+    ["getDispute", (caller: ReturnType<typeof createCaller>) => caller.dispute.getDispute({ disputeId: DISPUTE_ID })],
+    ["create", (caller: ReturnType<typeof createCaller>) => caller.dispute.create({ orderId: ORDER_ID, reasonCode: "quantity_shortage", description: "The delivered quantity is short by two boxes.", evidence: [{ mediaId: MEDIA_ID, evidenceType: "photo" }] })],
+    ["addEvidence", (caller: ReturnType<typeof createCaller>) => caller.dispute.addEvidence({ disputeId: DISPUTE_ID, evidence: [{ mediaId: MEDIA_ID, evidenceType: "photo" }] })],
+    ["addMessage", (caller: ReturnType<typeof createCaller>) => caller.dispute.addMessage({ disputeId: DISPUTE_ID, message: "Please review the uploaded evidence." })],
+  ] as const;
+
+  it.each(routes)("denies AAL1 admin %s before handler work", async (_name, invoke) => {
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const transaction = vi.fn().mockResolvedValue(null);
+    const getAuthAssurance = vi.fn().mockResolvedValue({ currentLevel: "aal1", nextLevel: "aal2", lastFactorVerificationAt: null, recentVerificationSatisfied: false });
+    const caller = createCaller(callerContext({ query: { orders: { findFirst }, disputes: { findFirst } }, transaction }, { id: ADMIN_ID, role: "admin", getAuthAssurance }));
+    await expect(invoke(caller)).rejects.toMatchObject({ code: "FORBIDDEN", message: MFA_REQUIRED_MESSAGE });
+    expect(getAuthAssurance).toHaveBeenCalledTimes(1);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(routes)("fails closed if assurance is unavailable for admin %s", async (_name, invoke) => {
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const transaction = vi.fn().mockResolvedValue(null);
+    const getAuthAssurance = vi.fn().mockRejectedValue(new Error("Auth unavailable"));
+    const caller = createCaller(callerContext({ query: { orders: { findFirst }, disputes: { findFirst } }, transaction }, { id: ADMIN_ID, role: "admin", getAuthAssurance }));
+    await expect(invoke(caller)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(getAuthAssurance).toHaveBeenCalledTimes(1);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(["buyer", "seller", "admin"] as const)("allows %s to read their authorized claim state", async (role) => {
+    const findFirst = vi.fn().mockResolvedValue({ id: ORDER_ID, buyerId: BUYER_ID, sellerId: SELLER_ID, status: "delivered", paymentStatus: "succeeded", deliveredAt: new Date(), shipment: null, dispute: null });
+    const getAuthAssurance = role === "admin"
+      ? vi.fn().mockResolvedValue({ currentLevel: "aal2", nextLevel: "aal2", lastFactorVerificationAt: null, recentVerificationSatisfied: false })
+      : vi.fn().mockRejectedValue(new Error("Participant access must not require MFA"));
+    const caller = createCaller(callerContext({ query: { orders: { findFirst } } }, { id: role === "admin" ? ADMIN_ID : role === "seller" ? SELLER_ID : BUYER_ID, role, getAuthAssurance }));
+    await expect(caller.dispute.getOrderClaimState({ orderId: ORDER_ID })).resolves.toMatchObject({ eligible: true, existingDispute: null });
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(getAuthAssurance).toHaveBeenCalledTimes(role === "admin" ? 1 : 0);
+  });
+
+  it.each(["buyer", "seller"] as const)("still rejects a nonparticipant %s", async (role) => {
+    const findFirst = vi.fn().mockResolvedValue({ order: { buyerId: BUYER_ID, sellerId: SELLER_ID } });
+    const getAuthAssurance = vi.fn().mockRejectedValue(new Error("Unexpected MFA"));
+    const caller = createCaller(callerContext({ query: { disputes: { findFirst } } }, { id: "77777777-7777-4777-8777-777777777777", role, getAuthAssurance }));
+    await expect(caller.dispute.getDispute({ disputeId: DISPUTE_ID })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(getAuthAssurance).not.toHaveBeenCalled();
+  });
+
+  it.each(["buyer", "seller", "admin"] as const)("preserves authorized %s claim messages", async (role) => {
+    const id = role === "admin" ? ADMIN_ID : role === "seller" ? SELLER_ID : BUYER_ID;
+    const message = { id: "message-1", disputeId: DISPUTE_ID, senderId: id, message: "Additional claim details" };
+    const insertValues = vi.fn(() => ({ returning: vi.fn().mockResolvedValue([message]) }));
+    const tx = {
+      select: vi.fn()
+        .mockReturnValueOnce({ from: () => ({ where: () => ({ for: vi.fn().mockResolvedValue([{ id: DISPUTE_ID, orderId: ORDER_ID, status: "open" }]) }) }) })
+        .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: vi.fn().mockResolvedValue([{ buyerId: BUYER_ID, sellerId: SELLER_ID }]) }) }) }),
+      insert: vi.fn(() => ({ values: insertValues })),
+      update: vi.fn(() => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) })),
+    };
+    const transaction = vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx));
+    const getAuthAssurance = role === "admin"
+      ? vi.fn().mockResolvedValue({ currentLevel: "aal2", nextLevel: "aal2", lastFactorVerificationAt: null, recentVerificationSatisfied: false })
+      : vi.fn().mockRejectedValue(new Error("Participant messages must not require MFA"));
+    const caller = createCaller(callerContext({ transaction }, { id, role, getAuthAssurance }));
+    await expect(caller.dispute.addMessage({ disputeId: DISPUTE_ID, message: message.message })).resolves.toEqual(message);
+    expect(insertValues).toHaveBeenCalledWith({ disputeId: DISPUTE_ID, senderId: id, message: message.message });
+    expect(getAuthAssurance).toHaveBeenCalledTimes(role === "admin" ? 1 : 0);
+  });
+});
 
 describe("buyer claim policy", () => {
   beforeEach(() => {
@@ -201,9 +274,7 @@ describe("buyer claim policy", () => {
     const late = evaluateBuyerClaimEligibility({
       orderStatus: "delivered",
       paymentStatus: "succeeded",
-      deliveryOccurredAt: new Date(
-        NOW.getTime() - BUYER_CLAIM_WINDOW_MS - 1,
-      ),
+      deliveryOccurredAt: new Date(NOW.getTime() - BUYER_CLAIM_WINDOW_MS - 1),
       now: NOW,
     });
     expect(late).toMatchObject({
@@ -257,7 +328,7 @@ describe("buyer claim policy", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it("atomically attaches owned evidence for an eligible buyer claim", async () => {
+  it.each(["buyer", "seller"] as const)("atomically attaches owned evidence for an eligible buyer claim (%s account)", async (role) => {
     const { tx, insertDispute, insertEvidence } = createClaimTransaction({
       deliveredAt: new Date(NOW.getTime() - 60 * 60 * 1000),
     });
@@ -267,7 +338,10 @@ describe("buyer claim policy", () => {
           callback(tx),
       ),
     };
-    const caller = createCaller(callerContext(db));
+    const context = callerContext(db);
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
 
     const result = await caller.dispute.create({
       orderId: ORDER_ID,
@@ -300,9 +374,12 @@ describe("buyer claim policy", () => {
     ]);
   });
 
-  it("does not allow a buyer to submit an admin reporting-window override", async () => {
+  it.each(["buyer", "seller"] as const)("does not allow a buyer to submit an admin reporting-window override (%s account)", async (role) => {
     const db = { transaction: vi.fn() };
-    const caller = createCaller(callerContext(db));
+    const context = callerContext(db);
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
     await expect(
       caller.dispute.create({
         orderId: ORDER_ID,
@@ -317,7 +394,7 @@ describe("buyer claim policy", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it("hides carrier document URLs from buyers before delivery", async () => {
+  it.each(["buyer", "seller"] as const)("hides carrier document URLs from buyers before delivery (%s account)", async (role) => {
     const db = {
       query: {
         orders: {
@@ -338,7 +415,10 @@ describe("buyer claim policy", () => {
         },
       },
     };
-    const caller = createCaller(callerContext(db));
+    const context = callerContext(db);
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
 
     await expect(
       caller.dispute.getOrderClaimState({ orderId: ORDER_ID }),
@@ -348,6 +428,25 @@ describe("buyer claim policy", () => {
         deliveryReceiptUrl: null,
       },
     });
+  });
+
+  it.each([SELLER_ID, "77777777-7777-4777-8777-777777777777"])("prevents %s from opening another account's purchase claim", async (id) => {
+    const { tx, insertDispute, insertEvidence } = createClaimTransaction({ deliveredAt: new Date(NOW.getTime() - 60 * 60 * 1000) });
+    const db = { transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)) };
+    const caller = createCaller(callerContext(db, { id, role: "seller" }));
+    await expect(caller.dispute.create({
+      orderId: ORDER_ID, reasonCode: "quantity_shortage",
+      description: "The delivery was short six cartons compared with the signed order.",
+      evidence: [{ mediaId: MEDIA_ID, evidenceType: "photo" }],
+    })).rejects.toMatchObject({ code: "FORBIDDEN", message: "You can only open a claim for your own purchase" });
+    expect(insertDispute).not.toHaveBeenCalled();
+    expect(insertEvidence).not.toHaveBeenCalled();
+  });
+
+  it("rejects a nonparticipant returned by claim-state lookup", async () => {
+    const findFirst = vi.fn().mockResolvedValue({ id: ORDER_ID, buyerId: BUYER_ID, sellerId: SELLER_ID });
+    const caller = createCaller(callerContext({ query: { orders: { findFirst } } }, { id: "77777777-7777-4777-8777-777777777777", role: "seller" }));
+    await expect(caller.dispute.getOrderClaimState({ orderId: ORDER_ID })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("preserves carrier document access for sellers on the same shipment state", async () => {
@@ -422,15 +521,21 @@ describe("buyer claim policy", () => {
     };
     const caller = createCaller(callerContext(db));
 
-    const result = await caller.dispute.getOrderClaimState({ orderId: ORDER_ID });
+    const result = await caller.dispute.getOrderClaimState({
+      orderId: ORDER_ID,
+    });
 
     expect(result.existingDispute?.evidence[0]?.media).toEqual({
       id: MEDIA_ID,
       fileName: "claim-photo.jpg",
       mimeType: "image/jpeg",
     });
-    expect(result.existingDispute?.evidence[0]?.media).not.toHaveProperty("url");
-    expect(result.existingDispute?.evidence[0]?.media).not.toHaveProperty("key");
+    expect(result.existingDispute?.evidence[0]?.media).not.toHaveProperty(
+      "url",
+    );
+    expect(result.existingDispute?.evidence[0]?.media).not.toHaveProperty(
+      "key",
+    );
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         with: expect.objectContaining({
@@ -603,9 +708,7 @@ describe("claim resolution money safety", () => {
     const db = {
       query: {
         disputes: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValue(existingPartialRefundDispute()),
+          findFirst: vi.fn().mockResolvedValue(existingPartialRefundDispute()),
         },
         reconciliationCases: {
           findFirst: vi.fn().mockResolvedValue(null),
@@ -640,9 +743,7 @@ describe("claim resolution money safety", () => {
     const db = {
       query: {
         disputes: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValue(existingPartialRefundDispute()),
+          findFirst: vi.fn().mockResolvedValue(existingPartialRefundDispute()),
         },
         reconciliationCases: {
           findFirst: vi.fn().mockResolvedValue(null),
@@ -678,9 +779,7 @@ describe("claim resolution money safety", () => {
     const db = {
       query: {
         disputes: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValue(existingPartialRefundDispute()),
+          findFirst: vi.fn().mockResolvedValue(existingPartialRefundDispute()),
         },
         reconciliationCases: {
           findFirst: vi.fn().mockResolvedValue(null),
@@ -724,9 +823,7 @@ describe("claim resolution money safety", () => {
     const db = {
       query: {
         disputes: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValue(existingPartialRefundDispute()),
+          findFirst: vi.fn().mockResolvedValue(existingPartialRefundDispute()),
         },
         reconciliationCases: {
           findFirst: vi.fn().mockResolvedValue(null),
@@ -915,9 +1012,7 @@ describe("claim resolution money safety", () => {
     const db = {
       query: {
         disputes: {
-          findFirst: vi
-            .fn()
-            .mockResolvedValue(existingPartialRefundDispute()),
+          findFirst: vi.fn().mockResolvedValue(existingPartialRefundDispute()),
         },
         reconciliationCases: {
           findFirst: vi.fn().mockResolvedValue(null),

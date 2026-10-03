@@ -1,12 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@/server/routers/_app";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { OrderStatus } from "@/types";
 import { trpc } from "@/lib/trpc/client";
-import { DataTable, DataTableColumnHeader } from "@/components/admin/data-table";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { DataTable } from "@/components/admin/data-table";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  QueryErrorState,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,126 +33,294 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { Loader2, MoreHorizontal, XCircle, RotateCcw } from "lucide-react";
 import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
-import type { ColumnDef } from "@tanstack/react-table";
-import type { OrderStatus } from "@/types";
 
-function formatPaymentStatusLabel(paymentStatus: string | null): string {
-  switch (paymentStatus) {
-    case "refund_pending":
-      return "Refund Pending";
-    case "partially_refunded":
-      return "Partially Refunded";
-    case "reconciliation_required":
-      return "Needs Reconciliation";
-    case "succeeded":
-      return "Paid";
-    default:
-      return paymentStatus ?? "Unknown";
-  }
-}
-
-interface Order {
-  id: string;
-  orderNumber: string;
-  buyer: {
-    name: string;
-    businessName: string | null;
-  };
-  seller: {
-    name: string;
-    businessName: string | null;
-  };
-  totalPrice: number;
-  paymentStatus: string | null;
-  status: OrderStatus;
-  createdAt: Date | string;
-}
-
+type Order =
+  inferRouterOutputs<AppRouter>["admin"]["getOrders"]["orders"][number];
+type Action = { kind: "refund" | "cancel"; order: Order };
 const TERMINAL_STATUSES: OrderStatus[] = ["cancelled", "refunded", "delivered"];
+const LIMIT = 25;
+
+function paymentLabel(status: string | null): string {
+  return (
+    (
+      {
+        refund_pending: "Refund pending",
+        partially_refunded: "Partially refunded",
+        reconciliation_required: "Needs reconciliation",
+        succeeded: "Paid",
+      } as Record<string, string>
+    )[status ?? ""] ??
+    status ??
+    "Unknown"
+  );
+}
+
+// Parse operator-entered USD without truncation, exponent acceptance, or rounding.
+function refundCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(trimmed)) return null;
+  const [whole, fraction = ""] = trimmed.split(".");
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
+}
 
 export default function AdminOrdersPage() {
-  const { data: ordersData, isLoading } = trpc.admin.getOrders.useQuery({ page: 1, limit: 50 });
+  const user = useAuthStore((state) => state.user);
+  return user?.role === "admin" ? (
+    <OrdersQueue key={user.id} actorId={user.id} />
+  ) : (
+    <StatePanelLoading label="Checking administrator access" rows={2} />
+  );
+}
+
+function OrdersQueue({ actorId }: { actorId: string }) {
+  const [page, setPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
+  const query = trpc.admin.getOrders.useQuery({
+    page,
+    limit: LIMIT,
+    orderNumber: orderNumber || undefined,
+  });
   const utils = trpc.useUtils();
+  const refund = trpc.admin.refundOrder.useMutation({ retry: false });
+  const cancel = trpc.admin.forceCancelOrder.useMutation({ retry: false });
+  const mounted = useRef(false);
+  const working = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () =>
+    mounted.current &&
+    useAuthStore.getState().user?.id === actorId &&
+    useAuthStore.getState().user?.role === "admin";
+  const [action, setAction] = useState<Action | null>(null);
+  const [reason, setReason] = useState("");
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewRequired, setReviewRequired] = useState(false);
+  const [uncertainOrderIds, setUncertainOrderIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [receipt, setReceipt] = useState<string | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const parsedCents = refundCents(amount);
+  const amountValid =
+    parsedCents !== null &&
+    !!action &&
+    parsedCents <= Math.round(action.order.totalPrice * 100);
+  const stillEligible =
+    !!action &&
+    (action.kind === "refund"
+      ? action.order.paymentStatus === "succeeded"
+      : !TERMINAL_STATUSES.includes(action.order.status));
 
-  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
-  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [cancelReason, setCancelReason] = useState("");
-  const [refundReason, setRefundReason] = useState("");
-  const [refundAmountCents, setRefundAmountCents] = useState<string>("");
+  function openAction(kind: Action["kind"], order: Order) {
+    if (working.current || query.isError || !current()) return;
+    setAction({ kind, order });
+    setReason("");
+    setAmount(order.totalPrice.toFixed(2));
+    setActionError(
+      uncertainOrderIds.has(order.id)
+        ? "The previous result is unconfirmed. Refresh order status before another attempt."
+        : null,
+    );
+    setReviewRequired(uncertainOrderIds.has(order.id));
+  }
 
-  const forceCancelMutation = trpc.admin.forceCancelOrder.useMutation({
-    onSuccess: (data) => {
-      if (data.refundState === "refund_pending") {
-        toast.success("Order cancelled. Refund is pending Stripe confirmation.");
-      } else if (data.refundState === "reconciliation_required") {
-        toast.error("Order cancelled, but the refund needs manual reconciliation.");
-      } else {
-        toast.success("Order force-cancelled successfully");
+  async function refreshQueue(invalidateAll = false) {
+    try {
+      if (!current()) return;
+      if (invalidateAll) {
+        await utils.admin.getOrders.invalidate(undefined, {
+          refetchType: "none",
+        });
+        if (!current()) return;
       }
-      utils.admin.getOrders.invalidate();
-      setCancelDialogOpen(false);
-      setCancelReason("");
-    },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
+      const result = await query.refetch();
+      if (current()) setRefreshFailed(result.isError);
+    } catch {
+      if (current()) setRefreshFailed(true);
+    }
+  }
 
-  const refundMutation = trpc.admin.refundOrder.useMutation({
-    onSuccess: (data) => {
-      if (data.refundState === "refund_pending") {
-        toast.success(
-          `Refund of $${data.amountRefunded.toFixed(2)} is pending Stripe confirmation`,
+  async function refreshSelected() {
+    if (!action || working.current || !current()) return;
+    const selected = action;
+    working.current = true;
+    setBusy(true);
+    try {
+      const result = await utils.client.admin.getOrders.query({
+        page: 1,
+        limit: 100,
+        orderNumber: selected.order.orderNumber,
+      });
+      if (!current()) return;
+      const latest = result.orders.find(
+        (order) => order.id === selected.order.id,
+      );
+      if (!latest)
+        throw new Error(
+          "This order could not be found. Keep this action on hold.",
         );
-      } else if (data.refundState === "reconciliation_required") {
-        toast.error(
-          `Refund of $${data.amountRefunded.toFixed(2)} requires manual reconciliation`,
+      setAction({ ...selected, order: latest });
+      setReviewRequired(false);
+      setUncertainOrderIds((ids) => {
+        const next = new Set(ids);
+        next.delete(selected.order.id);
+        return next;
+      });
+      setActionError(
+        "Order status refreshed. Review its payment status and Stripe refund history before confirming another attempt.",
+      );
+      await refreshQueue(true);
+    } catch (error) {
+      if (current())
+        setActionError(
+          getErrorMessage(
+            error,
+            "Order status is unavailable. Keep this action on hold.",
+          ),
         );
+    } finally {
+      working.current = false;
+      if (current()) setBusy(false);
+    }
+  }
+
+  async function submitAction() {
+    if (
+      !action ||
+      working.current ||
+      query.isError ||
+      reviewRequired ||
+      !stillEligible ||
+      !reason.trim() ||
+      reason.length > 500 ||
+      (action.kind === "refund" && !amountValid) ||
+      !current()
+    )
+      return;
+    const selected = action;
+    const submittedReason = reason.trim();
+    working.current = true;
+    setBusy(true);
+    setActionError(null);
+    try {
+      let message: string;
+      if (selected.kind === "refund") {
+        const result = await refund.mutateAsync({
+          orderId: selected.order.id,
+          amountCents: parsedCents!,
+          reason: submittedReason,
+        });
+        message =
+          result.refundState === "refund_pending"
+            ? `Refund of ${formatCurrency(result.amountRefunded)} submitted; pending Stripe confirmation.`
+            : result.refundState === "reconciliation_required"
+              ? `Refund of ${formatCurrency(result.amountRefunded)} requires manual reconciliation.`
+              : `Refund of ${formatCurrency(result.amountRefunded)} processed.`;
       } else {
-        toast.success(`Refund of $${data.amountRefunded.toFixed(2)} processed`);
+        const result = await cancel.mutateAsync({
+          orderId: selected.order.id,
+          reason: submittedReason,
+        });
+        message =
+          result.refundState === "refund_pending"
+            ? "Cancellation requested; refund pending Stripe confirmation."
+            : result.refundState === "reconciliation_required"
+              ? "Cancellation refund requires manual reconciliation."
+              : "Order cancellation completed.";
       }
-      utils.admin.getOrders.invalidate();
-      setRefundDialogOpen(false);
-      setRefundReason("");
-      setRefundAmountCents("");
-    },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
+      if (!current()) return;
+      setReceipt(`${selected.order.orderNumber}: ${message}`);
+      setAction(null);
+      setReason("");
+      setAmount("");
+      // A failed follow-up read cannot undo an accepted operation or resubmit it.
+      await refreshQueue(true);
+    } catch (error) {
+      if (current()) {
+        setActionError(
+          `${getErrorMessage(error)} The result is not confirmed here. Refresh the order status and review Stripe refund history before another attempt.`,
+        );
+        setReviewRequired(true);
+        setUncertainOrderIds((ids) => new Set(ids).add(selected.order.id));
+      }
+    } finally {
+      working.current = false;
+      if (current()) setBusy(false);
+    }
+  }
+
+  function actions(order: Order) {
+    const canRefund = order.paymentStatus === "succeeded";
+    const canCancel = !TERMINAL_STATUSES.includes(order.status);
+    if (!canRefund && !canCancel)
+      return (
+        <span className="text-sm text-muted-foreground">
+          No available actions
+        </span>
+      );
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className="min-h-11"
+            aria-label={`Actions for ${order.orderNumber}`}
+            disabled={busy || query.isError}
+          >
+            Actions
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canRefund && (
+            <DropdownMenuItem onSelect={() => openAction("refund", order)}>
+              Refund
+            </DropdownMenuItem>
+          )}
+          {canCancel && (
+            <DropdownMenuItem
+              className="text-destructive"
+              onSelect={() => openAction("cancel", order)}
+            >
+              Force cancel
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
 
   const columns: ColumnDef<Order>[] = [
     {
       accessorKey: "orderNumber",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Order #" />
-      ),
+      header: "Order #",
       cell: ({ row }) => (
         <span className="font-mono text-sm">{row.original.orderNumber}</span>
       ),
     },
     {
-      accessorKey: "buyer",
+      id: "buyer",
       header: "Buyer",
       cell: ({ row }) =>
         row.original.buyer.businessName || row.original.buyer.name,
     },
     {
-      accessorKey: "seller",
+      id: "seller",
       header: "Seller",
       cell: ({ row }) =>
         row.original.seller.businessName || row.original.seller.name,
     },
     {
       accessorKey: "totalPrice",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Amount" />
-      ),
+      header: "Amount",
       cell: ({ row }) => formatCurrency(row.original.totalPrice),
     },
     {
@@ -153,207 +331,244 @@ export default function AdminOrdersPage() {
     {
       accessorKey: "paymentStatus",
       header: "Payment",
-      cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">
-          {formatPaymentStatusLabel(row.original.paymentStatus)}
-        </span>
-      ),
+      cell: ({ row }) => paymentLabel(row.original.paymentStatus),
     },
     {
       accessorKey: "createdAt",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Created" />
-      ),
+      header: "Created",
       cell: ({ row }) => formatDate(row.original.createdAt),
     },
     {
       id: "actions",
-      cell: ({ row }) => {
-        const isTerminal = TERMINAL_STATUSES.includes(row.original.status);
-        const canRefund = row.original.paymentStatus === "succeeded";
-        if (isTerminal && !canRefund) return null;
-
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {canRefund && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedOrder(row.original);
-                    setRefundAmountCents(
-                      (Math.round(row.original.totalPrice * 100)).toString()
-                    );
-                    setRefundDialogOpen(true);
-                  }}
-                >
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Refund
-                </DropdownMenuItem>
-              )}
-              {!isTerminal && (
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => {
-                    setSelectedOrder(row.original);
-                    setCancelDialogOpen(true);
-                  }}
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Force Cancel
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        );
-      },
+      enableHiding: false,
+      cell: ({ row }) => actions(row.original),
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-3xl font-bold">Order Management</h1>
-          <p className="text-muted-foreground mt-1">
-            View and monitor all platform orders
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">Order Management</h1>
+        <p className="mt-1 text-muted-foreground">
+          Review orders and manage cancellations and refunds.
+        </p>
       </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (working.current || !current()) return;
+          setPage(1);
+          setOrderNumber(searchDraft.trim());
+        }}
+      >
+        <div className="min-w-0 flex-1 space-y-2">
+          <Label htmlFor="order-search">Search order number</Label>
+          <Input
+            id="order-search"
+            disabled={busy}
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
+          />
         </div>
-      ) : ordersData ? (
-        <DataTable columns={columns} data={ordersData.orders} />
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No orders found</p>
+        <Button type="submit" className="min-h-11" disabled={busy}>
+          Search
+        </Button>
+      </form>
+      {receipt && (
+        <div role="status" className="space-y-2 rounded-md border p-4">
+          <p>{receipt}</p>
+          {refreshFailed && (
+            <>
+              <p>
+                The action was accepted, but the order list could not be
+                refreshed.
+              </p>
+              <Button
+                variant="outline"
+                className="min-h-11"
+                onClick={() => void refreshQueue()}
+                disabled={query.isFetching}
+              >
+                Refresh orders
+              </Button>
+            </>
+          )}
         </div>
       )}
-
-      {/* Force Cancel Order Dialog */}
-      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Force Cancel Order</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will cancel order {selectedOrder?.orderNumber} and notify both
-              the buyer and seller. If payment funds are still held, they will be
-              refunded. Please provide a reason.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="cancelReason">Reason</Label>
-            <Textarea
-              id="cancelReason"
-              placeholder="Why is this order being cancelled?"
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              rows={3}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setCancelReason("")}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={!cancelReason.trim() || forceCancelMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                if (selectedOrder) {
-                  forceCancelMutation.mutate({
-                    orderId: selectedOrder.id,
-                    reason: cancelReason,
-                  });
-                }
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      {query.isError ? (
+        <QueryErrorState
+          title="Orders unavailable"
+          description="Order status could not be checked. Refresh the list before taking action."
+          onRetry={() => void refreshQueue()}
+          isRetrying={query.isFetching}
+        />
+      ) : query.isLoading ? (
+        <StatePanelLoading label="Loading orders" />
+      ) : query.data ? (
+        <DataTable
+          columns={columns}
+          data={query.data.orders}
+          serverPagination={{
+            page,
+            pageSize: LIMIT,
+            total: query.data.total,
+            totalPages: query.data.totalPages,
+            onPageChange: (next) => {
+              if (!working.current && current()) setPage(next);
+            },
+            isFetching: query.isFetching || busy,
+          }}
+          renderMobileRow={(order) => (
+            <article
+              className="min-w-0 space-y-3"
+              aria-label={`Order ${order.orderNumber}`}
             >
-              {forceCancelMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Force Cancel Order
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Refund Order Dialog */}
-      <AlertDialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
-        <AlertDialogContent>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h2 className="break-all font-mono font-semibold">
+                  {order.orderNumber}
+                </h2>
+                <span className="font-semibold">
+                  {formatCurrency(order.totalPrice)}
+                </span>
+              </div>
+              <dl className="space-y-1 text-sm">
+                <div>
+                  <dt className="inline text-muted-foreground">Buyer: </dt>
+                  <dd className="inline break-words">
+                    {order.buyer.businessName || order.buyer.name}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="inline text-muted-foreground">Seller: </dt>
+                  <dd className="inline break-words">
+                    {order.seller.businessName || order.seller.name}
+                  </dd>
+                </div>
+              </dl>
+              <div className="flex flex-wrap items-center gap-2">
+                <OrderStatusBadge status={order.status} />
+                <span className="text-sm">
+                  {paymentLabel(order.paymentStatus)}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {formatDate(order.createdAt)}
+                </span>
+                {actions(order)}
+              </div>
+            </article>
+          )}
+        />
+      ) : null}
+      <AlertDialog
+        open={!!action}
+        onOpenChange={(open) => {
+          if (!open && !working.current) setAction(null);
+        }}
+      >
+        <AlertDialogContent className="max-h-[90dvh] overflow-y-auto">
           <AlertDialogHeader>
-            <AlertDialogTitle>Refund Order</AlertDialogTitle>
+            <AlertDialogTitle>
+              {action?.kind === "refund"
+                ? "Refund order"
+                : "Force cancel order"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Issue a refund for order {selectedOrder?.orderNumber}. The refund
-              will be submitted to Stripe. Buyer and seller confirmation is only
-              sent after Stripe confirms the refund succeeded.
+              {action?.order.orderNumber} ·{" "}
+              {action?.order.buyer.businessName || action?.order.buyer.name}
+              <br />
+              {action?.kind === "refund"
+                ? "Submit this amount to Stripe. Buyer and seller confirmation is sent only after Stripe confirms success. Refund eligibility and the remaining balance are checked before processing."
+                : "Cancel this order and notify the buyer and seller. Paid orders require a refund; a pending refund is not a completed cancellation."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 py-2">
+            {action?.kind === "refund" && (
+              <div className="space-y-2">
+                <Label htmlFor="refundAmount">Refund amount (USD)</Label>
+                <Input
+                  id="refundAmount"
+                  type="text"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  disabled={busy}
+                  aria-invalid={!amountValid}
+                  aria-describedby="refund-amount-help"
+                />
+                <p
+                  id="refund-amount-help"
+                  className="text-sm text-muted-foreground"
+                >
+                  {amountValid
+                    ? `Confirm ${formatCurrency(parsedCents! / 100)} refund.`
+                    : "Enter a positive dollar amount with at most two decimal places, no greater than the order total."}{" "}
+                  Order total: {formatCurrency(action.order.totalPrice)}.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
-              <Label htmlFor="refundAmount">Amount (cents)</Label>
-              <Input
-                id="refundAmount"
-                type="number"
-                placeholder="Amount in cents"
-                value={refundAmountCents}
-                onChange={(e) => setRefundAmountCents(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                {refundAmountCents
-                  ? `$${(parseInt(refundAmountCents) / 100).toFixed(2)}`
-                  : "Enter amount in cents"}
-                {selectedOrder &&
-                  ` (Full amount: $${selectedOrder.totalPrice.toFixed(2)})`}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="refundReason">Reason</Label>
+              <Label htmlFor="order-action-reason">Reason</Label>
               <Textarea
-                id="refundReason"
-                placeholder="Reason for the refund"
-                value={refundReason}
-                onChange={(e) => setRefundReason(e.target.value)}
+                id="order-action-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                maxLength={500}
+                disabled={busy}
                 rows={3}
               />
+              <p className="text-sm text-muted-foreground">
+                The reason may appear in the buyer and seller notification.
+              </p>
             </div>
+            {actionError && (
+              <div role="alert" className="space-y-2 text-sm">
+                <p>{actionError}</p>
+                {reviewRequired && (
+                  <Button
+                    variant="outline"
+                    className="min-h-11"
+                    onClick={() => void refreshSelected()}
+                    disabled={busy}
+                  >
+                    Refresh order status
+                  </Button>
+                )}
+              </div>
+            )}
+            {!stillEligible && action && (
+              <p role="status" className="text-sm">
+                The current order status does not allow this action.
+              </p>
+            )}
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                setRefundReason("");
-                setRefundAmountCents("");
-              }}
-            >
-              Cancel
+            <AlertDialogCancel className="min-h-11" disabled={busy}>
+              Close
             </AlertDialogCancel>
             <AlertDialogAction
+              className="min-h-11"
               disabled={
-                !refundReason.trim() ||
-                !refundAmountCents ||
-                refundMutation.isPending
+                busy ||
+                query.isError ||
+                reviewRequired ||
+                !stillEligible ||
+                !reason.trim() ||
+                reason.length > 500 ||
+                (action?.kind === "refund" && !amountValid)
               }
-              onClick={(e) => {
-                e.preventDefault();
-                if (selectedOrder) {
-                  refundMutation.mutate({
-                    orderId: selectedOrder.id,
-                    amountCents: parseInt(refundAmountCents),
-                    reason: refundReason,
-                  });
-                }
+              onClick={(event) => {
+                event.preventDefault();
+                void submitAction();
               }}
             >
-              {refundMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Process Refund
+              {busy
+                ? "Submitting…"
+                : action?.kind === "refund"
+                  ? "Confirm refund"
+                  : "Confirm cancellation"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

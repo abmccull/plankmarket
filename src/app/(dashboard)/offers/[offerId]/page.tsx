@@ -1,5 +1,6 @@
 "use client";
 
+import { QueryErrorState } from "@/components/ui/state-panel";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -52,7 +53,14 @@ export default function OfferDetailPage() {
   const [showWithdrawDialog, setShowWithdrawDialog] = useState(false);
   const [rejectMessage, setRejectMessage] = useState("");
 
-  const { data: offer, isLoading } = trpc.offer.getOfferById.useQuery({
+  const {
+    data: offer,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+    error,
+  } = trpc.offer.getOfferById.useQuery({
     offerId,
   });
 
@@ -88,12 +96,12 @@ export default function OfferDetailPage() {
 
   const { data: buyerReputation } = trpc.review.getUserReputation.useQuery(
     { userId: offer?.buyerId ?? "" },
-    { enabled: !!offer }
+    { enabled: !!offer },
   );
 
   const { data: sellerReputation } = trpc.review.getUserReputation.useQuery(
     { userId: offer?.sellerId ?? "" },
-    { enabled: !!offer }
+    { enabled: !!offer },
   );
 
   if (isLoading) {
@@ -101,6 +109,23 @@ export default function OfferDetailPage() {
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    );
+  }
+
+  if (
+    isError &&
+    error?.data?.code !== "NOT_FOUND" &&
+    error?.data?.code !== "FORBIDDEN"
+  ) {
+    return (
+      <QueryErrorState
+        title="We couldn't load this offer"
+        onRetry={() => {
+          void refetch();
+        }}
+        isRetrying={isFetching}
+        secondaryAction={{ label: "Back to offers", href: "/offers" }}
+      />
     );
   }
 
@@ -120,12 +145,16 @@ export default function OfferDetailPage() {
 
   const isBuyer = offer.buyerId === user?.id;
   const isSeller = offer.sellerId === user?.id;
+  const orderHref = isBuyer
+    ? `/buyer/orders/${offer.orderId}`
+    : `/seller/orders/${offer.orderId}`;
   const isYourTurn =
     offer.lastActorId &&
     offer.lastActorId !== user?.id &&
     (offer.status === "pending" || offer.status === "countered");
 
-  const canAct = isYourTurn && (offer.status === "pending" || offer.status === "countered");
+  const canAct =
+    isYourTurn && (offer.status === "pending" || offer.status === "countered");
   const canWithdraw =
     isBuyer && (offer.status === "pending" || offer.status === "countered");
 
@@ -223,7 +252,10 @@ export default function OfferDetailPage() {
       {isAcceptedForBuyer && !hasOrder && (
         <div className="rounded-lg border-2 border-green-500 bg-green-50 p-4 dark:bg-green-950/30">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" aria-hidden="true" />
+            <CheckCircle2
+              className="h-5 w-5 text-green-600"
+              aria-hidden="true"
+            />
             <p className="font-semibold text-green-800 dark:text-green-300">
               Offer Accepted!
             </p>
@@ -264,15 +296,13 @@ export default function OfferDetailPage() {
       {hasOrder && (
         <div className="rounded-lg border bg-muted/30 p-4">
           <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            <p className="font-medium">
-              Order has been placed for this offer.
-            </p>
+            <FileText
+              className="h-5 w-5 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <p className="font-medium">Order has been placed for this offer.</p>
           </div>
-          <Link
-            href={`/orders/${offer.orderId}`}
-            className="inline-block mt-2"
-          >
+          <Link href={orderHref} className="inline-block mt-2">
             <Button variant="outline" size="sm">
               View Order
             </Button>
@@ -357,7 +387,9 @@ export default function OfferDetailPage() {
                 </div>
                 <Separator />
                 <div className="flex justify-between items-center">
-                  <span className="text-lg font-medium">Total</span>
+                  <span className="text-lg font-medium">
+                    Merchandise subtotal
+                  </span>
                   <span className="text-2xl font-bold tabular-nums">
                     {formatCurrency(currentTotal)}
                   </span>
@@ -372,7 +404,10 @@ export default function OfferDetailPage() {
               <CardTitle>Negotiation Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              <OfferTimeline events={offer.events} currentUserId={user?.id || ""} />
+              <OfferTimeline
+                events={offer.events}
+                currentUserId={user?.id || ""}
+              />
             </CardContent>
           </Card>
         </div>
@@ -464,21 +499,27 @@ export default function OfferDetailPage() {
                 </Link>
               )}
 
-              {!canAct && !canWithdraw && !(isAcceptedForBuyer && !hasOrder) && (
-                <div className="text-sm text-muted-foreground text-center py-4">
-                  {offer.status === "accepted" && "This offer has been accepted"}
-                  {offer.status === "rejected" && "This offer has been rejected"}
-                  {offer.status === "withdrawn" && "This offer has been withdrawn"}
-                  {offer.status === "expired" && "This offer has expired"}
-                  {(offer.status === "pending" || offer.status === "countered") &&
-                    !isYourTurn &&
-                    "Waiting for the other party to respond"}
-                </div>
-              )}
+              {!canAct &&
+                !canWithdraw &&
+                !(isAcceptedForBuyer && !hasOrder) && (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    {offer.status === "accepted" &&
+                      "This offer has been accepted"}
+                    {offer.status === "rejected" &&
+                      "This offer has been rejected"}
+                    {offer.status === "withdrawn" &&
+                      "This offer has been withdrawn"}
+                    {offer.status === "expired" && "This offer has expired"}
+                    {(offer.status === "pending" ||
+                      offer.status === "countered") &&
+                      !isYourTurn &&
+                      "Waiting for the other party to respond"}
+                  </div>
+                )}
 
               {/* Order link in sidebar */}
               {hasOrder && (
-                <Link href={`/orders/${offer.orderId}`} className="block">
+                <Link href={orderHref} className="block">
                   <Button variant="outline" className="w-full">
                     <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
                     View Order
@@ -496,9 +537,10 @@ export default function OfferDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Accept this offer?</AlertDialogTitle>
             <AlertDialogDescription>
-              You are about to accept this offer for {formatCurrency(currentPrice)}/sq ft
-              ({formatSqFt(offer.quantitySqFt)} total: {formatCurrency(currentTotal)}).
-              This action cannot be undone.
+              You are about to accept this offer for{" "}
+              {formatCurrency(currentPrice)}/sq ft (
+              {formatSqFt(offer.quantitySqFt)} total:{" "}
+              {formatCurrency(currentTotal)}). This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -516,8 +558,8 @@ export default function OfferDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Reject this offer?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to reject this offer? You can optionally provide a
-              reason.
+              Are you sure you want to reject this offer? You can optionally
+              provide a reason.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="py-4">
@@ -541,12 +583,16 @@ export default function OfferDetailPage() {
       </AlertDialog>
 
       {/* Withdraw dialog */}
-      <AlertDialog open={showWithdrawDialog} onOpenChange={setShowWithdrawDialog}>
+      <AlertDialog
+        open={showWithdrawDialog}
+        onOpenChange={setShowWithdrawDialog}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Withdraw this offer?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to withdraw your offer? This action cannot be undone.
+              Are you sure you want to withdraw your offer? This action cannot
+              be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -597,8 +643,6 @@ function ReputationBadge({
   }
 
   return (
-    <p className="text-xs text-muted-foreground mt-0.5">
-      New to Plank Market
-    </p>
+    <p className="text-xs text-muted-foreground mt-0.5">New to Plank Market</p>
   );
 }

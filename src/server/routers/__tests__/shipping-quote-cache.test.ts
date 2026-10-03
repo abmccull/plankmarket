@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { createTRPCContext } from "@/server/trpc";
 
 process.env.SKIP_ENV_VALIDATION = "1";
 process.env.DATABASE_URL ??=
@@ -109,7 +110,7 @@ function createContext(db: Record<string, unknown>) {
     },
     supabase: {},
     clientIp: "127.0.0.1",
-  } as unknown as Parameters<typeof createCaller>[0];
+  } as unknown as Awaited<ReturnType<typeof createTRPCContext>>;
 }
 
 function createListingDb() {
@@ -192,10 +193,13 @@ describe("shipping quote provider cache", () => {
     });
   });
 
-  it("reuses cached Priority1 rates but still mints fresh secure quote tokens", async () => {
+  it.each(["buyer", "seller"] as const)("reuses cached Priority1 rates but still mints fresh secure quote tokens (%s account)", async (role) => {
     const db = createListingDb();
 
-    const caller = createCaller(createContext(db));
+    const context = createContext(db);
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
     const first = await caller.shipping.getQuotes({
       listingId: LISTING_ID,
       destinationZip: "75001",

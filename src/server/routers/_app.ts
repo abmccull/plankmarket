@@ -1,3 +1,6 @@
+import { listingPhotoRouter } from "./listing-photo";
+import { resaleRouter } from "./resale";
+import { sellerActivationRouter } from "./seller-activation";
 import { createTRPCRouter } from "../trpc";
 import { verificationDocumentRouter } from "./verification-document";
 import { authRouter } from "./auth";
@@ -32,6 +35,9 @@ import { reconciliationRouter } from "./reconciliation";
 import { inventoryIntegrationRouter } from "./inventory-integration";
 
 export const appRouter = createTRPCRouter({
+  listingPhoto: listingPhotoRouter,
+  resale: resaleRouter,
+  sellerActivation: sellerActivationRouter,
   auth: authRouter,
   verificationDocument: verificationDocumentRouter,
   listing: listingRouter,

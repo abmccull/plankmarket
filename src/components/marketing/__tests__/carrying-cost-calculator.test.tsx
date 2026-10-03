@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CarryingCostCalculator } from "../carrying-cost-calculator";
 
 describe("CarryingCostCalculator accessibility", () => {
-  it("gives the slider and inventory selector persistent accessible names", () => {
+  it("gives the holding slider and cost assumptions persistent accessible names", () => {
     vi.stubGlobal(
       "ResizeObserver",
       class ResizeObserver {
@@ -18,7 +18,10 @@ describe("CarryingCostCalculator accessibility", () => {
       screen.getByRole("slider", { name: "Months holding" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("combobox", { name: "Inventory type" }),
+      screen.getByLabelText("Monthly storage allocation ($)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Annual capital or opportunity cost (%)"),
     ).toBeInTheDocument();
   });
 });

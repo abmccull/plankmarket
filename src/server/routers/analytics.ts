@@ -12,6 +12,7 @@ import {
   isNotNull,
 } from "drizzle-orm";
 import { z } from "zod";
+import { paidSellerOrder } from "@/server/db/expressions/seller-financials";
 
 // Safe to use sql.raw() here because trunc is always one of "day" | "week" | "month"
 // from our own periodToDateRange function — never user input.
@@ -27,10 +28,9 @@ export const analyticsRouter = createTRPCRouter({
     const { start, prevStart, end, trunc } = periodToDateRange(input.period);
     const userId = ctx.user.id;
 
-    const capturedPaymentCond = inArray(orders.paymentStatus, [
-      "succeeded",
-      "partially_refunded",
-    ]);
+    // Same recorded-proceeds eligibility as the dashboard totals, not bank settlement.
+    // Period comparisons still use confirmation time and remaining proceeds after refunds.
+    const capturedPaymentCond = paidSellerOrder;
 
     // Paid-order cohorts use confirmation time, not reservation creation time.
     const currentPeriodCond = start

@@ -10,8 +10,19 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/stores/auth-store");
 
+vi.mock("@/hooks/use-sign-out", () => ({
+  useSignOut: vi
+    .fn()
+    .mockReturnValue({ signOut: vi.fn(), pending: false, error: null }),
+}));
+
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
+    message: {
+      getUnreadCount: {
+        useQuery: vi.fn().mockReturnValue({ data: { count: 0 } }),
+      },
+    },
     useUtils: vi.fn().mockReturnValue({
       invalidate: vi.fn(),
     }),
@@ -61,7 +72,9 @@ describe("MobileNav", () => {
 
     render(<MobileNav />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(/checking access/i);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /confirming your account/i,
+    );
     expect(screen.queryByText(/sign in/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/browse/i)).not.toBeInTheDocument();
   });
@@ -108,9 +121,17 @@ describe("MobileNav", () => {
 
     render(<MobileNav />);
 
-    expect(screen.getByRole("link", { name: /my orders/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /watchlist/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /my listings/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /purchases/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /watchlist/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /my listings/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /sign in/i }),
+    ).not.toBeInTheDocument();
   });
 });

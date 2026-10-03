@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SellerActivationRoleProvider } from "@/server/services/seller-activation-provider";
 
 vi.mock("server-only", () => ({}));
 
@@ -45,9 +46,23 @@ vi.mock("@/lib/inngest/client", () => ({
 }));
 
 const serviceAdmin = {
+  getUserById: vi.fn(),
   updateUserById: vi.fn(),
   deleteUser: vi.fn(),
 };
+
+// This legacy routing test controls infrastructure. Durable role receipts and
+// admission are exercised by the opt-in actual-PostgreSQL registration proof.
+vi.mock("@/server/services/role-provider-coordinator", () => ({
+  withRoleProviderCoordinator: async <T>(_userId: string, work: () => Promise<T>) => work(),
+}));
+vi.mock("@/server/services/role-provider-write-session", () => ({
+  openRoleProviderWriteSession: async (_db: unknown, _userId: string, provider: SellerActivationRoleProvider) => ({
+    read: () => provider.readUser(AUTH_USER_ID),
+    ensure: (patch: Omit<Parameters<SellerActivationRoleProvider["patchRole"]>[1], "plankmarket_role_write">) =>
+      provider.patchRole(AUTH_USER_ID, { ...patch, plankmarket_role_write: "33333333-3333-4333-8333-333333333333" }),
+  }),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   createServiceClient: vi.fn(async () => ({
@@ -118,7 +133,9 @@ function authedContext(params: {
 describe("core marketplace loops", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    serviceAdmin.updateUserById.mockResolvedValue({ error: null });
+    const providerUser = { data: { user: { id: AUTH_USER_ID, app_metadata: {} } }, error: null };
+    serviceAdmin.getUserById.mockResolvedValue(providerUser);
+    serviceAdmin.updateUserById.mockResolvedValue(providerUser);
     serviceAdmin.deleteUser.mockResolvedValue({ error: null });
   });
 
@@ -214,8 +231,10 @@ describe("core marketplace loops", () => {
       });
     });
 
-    it("rejects a seller creating a buyer payment intent", async () => {
-      const transaction = vi.fn();
+    it("rejects a seller paying for another account's purchase", async () => {
+      const update = vi.fn();
+      const tx = { select: () => ({ from: () => ({ innerJoin: () => ({ where: () => ({ for: vi.fn().mockResolvedValue([{ buyerId: BUYER_ID, sellerId: SELLER_ID }]) }) }) }) }), update };
+      const transaction = vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx));
       const caller = createCaller(
         authedContext({
           role: "seller",
@@ -229,9 +248,10 @@ describe("core marketplace loops", () => {
         }),
       ).rejects.toMatchObject({
         code: "FORBIDDEN",
-        message: "Only buyers can perform this action",
+        message: "You can only pay for your own orders",
       });
-      expect(transaction).not.toHaveBeenCalled();
+      expect(transaction).toHaveBeenCalledOnce();
+      expect(update).not.toHaveBeenCalled();
     });
   });
 

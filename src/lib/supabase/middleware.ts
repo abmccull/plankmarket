@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/env";
 import { MFA_REQUIRED_MESSAGE } from "@/lib/auth/auth-assurance";
 import { resolveRole } from "@/lib/supabase/roles";
+import { canPurchase } from "@/lib/auth/roles";
 import {
   isHighAssuranceRoute,
   isPathWithin,
@@ -171,7 +172,7 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Keep role-specific dashboards aligned with authenticated role.
+  // Selling remains capability-gated; every trading account may enter Buying.
   if (isPathWithin(pathname, "/seller") && user) {
     if (role !== "seller" && role !== "admin") {
       return redirectWithSession(
@@ -182,7 +183,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (isPathWithin(pathname, "/buyer") && user) {
-    if (role !== "buyer" && role !== "admin") {
+    if (!role || !canPurchase(role)) {
       return redirectWithSession(
         new URL("/seller", request.url),
         supabaseResponse,

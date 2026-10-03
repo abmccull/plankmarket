@@ -38,10 +38,17 @@ export async function GET(req: NextRequest) {
   try {
     const result = await runPrivacyRetentionSweep();
     const retentionBlocked =
+      [result.listingPhotoResidue, result.listingPhotoAbandoned].some(queue => queue && (queue.failed > 0 || queue.stale > 0 || queue.budgetExhausted || queue.hasMore)) ||
       result.verificationDraftProviderDeletionFailed > 0 ||
       result.verificationDraftProviderRetentionBlocked > 0 ||
       result.verificationProviderDeletionFailed > 0 ||
-      result.verificationProviderRetentionBlocked > 0;
+      result.verificationProviderRetentionBlocked > 0 ||
+      result.sellerActivationProviderDeletionFailed > 0 ||
+      result.sellerActivationProviderRetentionBlocked > 0 ||
+      (result.verificationResidue !== undefined && (
+        result.verificationResidue.failed > 0 || result.verificationResidue.stale > 0 ||
+        result.verificationResidue.budgetExhausted || result.verificationResidue.hasMore
+      ));
 
     if (retentionBlocked) {
       console.error("Privacy retention sweep left provider-backed records due", {

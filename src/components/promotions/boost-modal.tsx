@@ -12,8 +12,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { StripeProvider } from "@/components/checkout/stripe-provider";
-import { PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { StripeProvider, StripePaymentFields, usePaymentUiState } from "@/components/checkout/stripe-provider";
+import { useStripe, useElements } from "@stripe/react-stripe-js";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Loader2, Rocket, Star, Crown, Check, AlertCircle, ArrowLeft, CheckCircle2 } from "lucide-react";
 import type { PromotionTier } from "@/types";
@@ -80,15 +80,14 @@ function PromotionPaymentForm({
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { isProcessing, startProcessing, finishProcessing } = usePaymentUiState();
+  const [paymentReady, setPaymentReady] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!stripe || !elements) return;
-
-    setIsProcessing(true);
+    if (!stripe || !elements || !paymentReady || !startProcessing()) return;
     setErrorMessage(null);
 
     try {
@@ -108,15 +107,13 @@ function PromotionPaymentForm({
     } catch {
       setErrorMessage("An unexpected error occurred. Please try again.");
     } finally {
-      setIsProcessing(false);
+      finishProcessing();
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-lg border bg-background p-4">
-        <PaymentElement options={{ layout: "tabs" }} />
-      </div>
+      <StripePaymentFields onReadyChange={setPaymentReady} />
 
       {errorMessage && (
         <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 rounded-md p-3">
@@ -129,7 +126,7 @@ function PromotionPaymentForm({
         type="submit"
         className="w-full"
         size="lg"
-        disabled={!stripe || !elements || isProcessing}
+        disabled={!stripe || !elements || !paymentReady || isProcessing}
       >
         {isProcessing ? (
           <>

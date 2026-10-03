@@ -9,8 +9,28 @@ import {
 } from "@/lib/schema-readiness-contract";
 
 describe("marketplace schema readiness contract", () => {
+  it("requires the durable role-write fence and private deletion guard", () => {
+    expect(marketplaceSchemaContract.sensitiveTables).toContain("role_provider_writes");
+    for (const column of ["id", "version", "user_id", "auth_id", "expected_role", "activation_marker", "purpose", "source_id", "issued_at", "confirmed_at"]) {
+      expect(marketplaceSchemaContract.columns).toContainEqual(["role_provider_writes", column]);
+    }
+    for (const index of ["role_provider_writes_pkey", "role_provider_writes_user_id_version_key", "role_provider_one_unconfirmed_user_idx", "role_provider_one_unconfirmed_auth_idx", "role_provider_latest_user_idx", "verification_documents_pending_deletion_idx"]) {
+      expect(marketplaceSchemaContract.indexes).toContain(index);
+    }
+    for (const constraint of ["role_provider_writes_pkey", "role_provider_writes_version_check", "role_provider_writes_user_id_fkey", "role_provider_writes_purpose_check", "role_provider_writes_check", "role_provider_writes_user_id_version_key", "verification_documents_deletion_time_check"]) {
+      expect(marketplaceSchemaContract.constraints).toContain(constraint);
+    }
+    expect(marketplaceSchemaContract.triggers).toContain("role_provider_write_guard");
+    expect(marketplaceSchemaContract.functions).toContain("guard_role_provider_write()");
+    expect(marketplaceSchemaContract.columns).toContainEqual(["verification_documents", "deletion_requested_at"]);
+    expect(marketplaceSchemaContract.triggers).toContain("verification_documents_deletion_intent_guard");
+    expect(marketplaceSchemaContract.functions).toContain("protect_private_verification_deletion()");
+  });
+
   it("binds health and pre-deploy checks through privacy, lineage, and operations artifacts", () => {
-    expect(MARKETPLACE_SCHEMA_VERSION).toBe("0039");
+    expect(MARKETPLACE_SCHEMA_VERSION).toBe("0048");
+    expect(marketplaceSchemaContract.columns).toContainEqual(["user_preferences", "buyer_match_in_app_enabled"]);
+    expect(marketplaceSchemaContract.columns).toContainEqual(["user_preferences", "buyer_match_email_enabled"]);
     expect(marketplaceSchemaContract.extensions).toContain("pg_trgm");
     expect(marketplaceSchemaContract.sensitiveTables).toContain(
       "inventory_adjustments",

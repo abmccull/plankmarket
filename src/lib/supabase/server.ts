@@ -28,10 +28,21 @@ export async function createClient() {
   );
 }
 
-export async function createServiceClient() {
+export async function createServiceClient(options?: { requestTimeoutMs: number }) {
   const { createClient } = await import("@supabase/supabase-js");
   return createClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    options ? {
+      global: {
+        fetch: (input, init) => fetch(input, {
+          ...init,
+          signal: AbortSignal.any([
+            AbortSignal.timeout(options.requestTimeoutMs),
+            ...(init?.signal ? [init.signal] : []),
+          ]),
+        }),
+      },
+    } : undefined,
   );
 }

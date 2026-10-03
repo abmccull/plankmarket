@@ -1,8 +1,5 @@
-import {
-  createTRPCRouter,
-  buyerProcedure,
-  sellerProcedure,
-} from "../trpc";
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
+import { createTRPCRouter, buyerProcedure, sellerProcedure } from "../trpc";
 import { userPreferences } from "../db/schema/user-preferences";
 import { buyerRequests } from "../db/schema/buyer-requests";
 import { listings } from "../db/schema";
@@ -15,8 +12,12 @@ import {
 } from "@/server/security/public-data";
 import { publicActiveListingWhere } from "@/server/security/listing-visibility";
 import zipcodes from "zipcodes";
+import { getPreferenceCompletion } from "@/lib/preferences-completion";
 import { getDirectPurchaseUnitPriceSql } from "@/server/db/expressions/listing-pricing";
-import { getListingBoundingBoxConditions, getListingDistanceMilesSql } from "@/server/db/expressions/listing-geo";
+import {
+  getListingBoundingBoxConditions,
+  getListingDistanceMilesSql,
+} from "@/server/db/expressions/listing-geo";
 
 /**
  * Maximum number of recommendations to return in each direction.
@@ -33,7 +34,7 @@ export const matchingRouter = createTRPCRouter({
       where: eq(userPreferences.userId, ctx.user.id),
     });
 
-    if (!prefs || !prefs.profileComplete) {
+    if (!prefs || !getPreferenceCompletion(prefs, "buyer").profileComplete) {
       return {
         items: [],
         prefsIncomplete: true,
@@ -45,7 +46,10 @@ export const matchingRouter = createTRPCRouter({
     const purchasePrice = getDirectPurchaseUnitPriceSql();
 
     // Filter by preferred material types
-    if (prefs.preferredMaterialTypes && prefs.preferredMaterialTypes.length > 0) {
+    if (
+      prefs.preferredMaterialTypes &&
+      prefs.preferredMaterialTypes.length > 0
+    ) {
       conditions.push(
         inArray(
           listings.materialType,
@@ -57,22 +61,18 @@ export const matchingRouter = createTRPCRouter({
             | "bamboo"
             | "tile"
             | "other"
-          >
-        )
+          >,
+        ),
       );
     }
 
     // Filter by price range
     if (prefs.priceMinPerSqFt !== null && prefs.priceMinPerSqFt !== undefined) {
-      conditions.push(
-        gte(purchasePrice, prefs.priceMinPerSqFt)
-      );
+      conditions.push(gte(purchasePrice, prefs.priceMinPerSqFt));
     }
 
     if (prefs.priceMaxPerSqFt !== null && prefs.priceMaxPerSqFt !== undefined) {
-      conditions.push(
-        lte(purchasePrice, prefs.priceMaxPerSqFt)
-      );
+      conditions.push(lte(purchasePrice, prefs.priceMaxPerSqFt));
     }
 
     // Filter by lot size preference
@@ -85,17 +85,28 @@ export const matchingRouter = createTRPCRouter({
     }
 
     if (prefs.waterproofRequired) {
-      conditions.push(sql`${listings.waterResistance} = 'waterproof' AND ${listings.specificationProvenance} = 'evidence_reviewed' AND ${listings.specificationReviewedAt} IS NOT NULL AND ${listings.specificationEvidenceId} IS NOT NULL`);
+      conditions.push(
+        sql`${listings.waterResistance} = 'waterproof' AND ${listings.specificationProvenance} = 'evidence_reviewed' AND ${listings.specificationReviewedAt} IS NOT NULL AND ${listings.specificationEvidenceId} IS NOT NULL`,
+      );
     }
 
     if (prefs.preferredRadiusMiles && prefs.preferredRadiusMiles > 0) {
-      const origin = prefs.preferredZip ? zipcodes.lookup(prefs.preferredZip) : undefined;
+      const origin = prefs.preferredZip
+        ? zipcodes.lookup(prefs.preferredZip)
+        : undefined;
       if (!origin) {
-        return { items: [], prefsIncomplete: false, limitation: "location_unverified" as const };
+        return {
+          items: [],
+          prefsIncomplete: false,
+          limitation: "location_unverified" as const,
+        };
       }
       conditions.push(
         ...getListingBoundingBoxConditions(origin, prefs.preferredRadiusMiles),
-        lte(getListingDistanceMilesSql(origin.latitude, origin.longitude), prefs.preferredRadiusMiles),
+        lte(
+          getListingDistanceMilesSql(origin.latitude, origin.longitude),
+          prefs.preferredRadiusMiles,
+        ),
       );
     }
 
@@ -111,6 +122,7 @@ export const matchingRouter = createTRPCRouter({
       with: {
         media: {
           columns: publicMediaColumns,
+          where: publicProductPhotoWhere,
           orderBy: (media, { asc }) => [asc(media.sortOrder)],
           limit: 1,
         },
@@ -135,7 +147,7 @@ export const matchingRouter = createTRPCRouter({
       where: eq(userPreferences.userId, ctx.user.id),
     });
 
-    if (!prefs || !prefs.profileComplete) {
+    if (!prefs || !getPreferenceCompletion(prefs, "seller").profileComplete) {
       return {
         items: [],
         prefsIncomplete: true,
@@ -150,8 +162,8 @@ export const matchingRouter = createTRPCRouter({
       conditions.push(
         sql`${buyerRequests.materialTypes} ?| array[${sql.join(
           prefs.typicalMaterialTypes.map((m: string) => sql`${m}`),
-          sql`, `
-        )}]`
+          sql`, `,
+        )}]`,
       );
     }
 
@@ -159,7 +171,7 @@ export const matchingRouter = createTRPCRouter({
     // We filter by minTotalSqFt relative to seller's minLotSqFt if set
     if (prefs.minLotSqFt !== null && prefs.minLotSqFt !== undefined) {
       conditions.push(
-        sql`${buyerRequests.minTotalSqFt} >= ${prefs.minLotSqFt * 0.5}`
+        sql`${buyerRequests.minTotalSqFt} >= ${prefs.minLotSqFt * 0.5}`,
       );
     }
 

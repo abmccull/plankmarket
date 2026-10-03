@@ -846,7 +846,10 @@ export const paymentRouter = createTRPCRouter({
         disabledReason,
       };
     } catch {
-      return { connected: false, onboardingComplete: false };
+      throw new TRPCError({
+        code: "SERVICE_UNAVAILABLE",
+        message: "We could not check your Stripe account status. Please try again.",
+      });
     }
   }),
 

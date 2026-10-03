@@ -341,7 +341,7 @@ describe("nearby inventory discovery", () => {
     const user = userEvent.setup();
     renderBrowse();
     await user.type(screen.getByRole("textbox", { name: "Job ZIP code" }), "84101");
-    await user.click(screen.getByRole("button", { name: "Find nearby" }));
+    await user.click(screen.getByRole("button", { name: "Find lots" }));
     const destination = new URL(mockPush.mock.calls[0][0], "https://example.com");
     expect(destination.searchParams.get("buyerZip")).toBe("84101");
     expect(destination.searchParams.get("sort")).toBe("proximity");
@@ -354,7 +354,59 @@ describe("nearby inventory discovery", () => {
     const user = userEvent.setup();
     renderBrowse();
     await user.type(screen.getByRole("textbox", { name: "Job ZIP code" }), "841");
-    await user.click(screen.getByRole("button", { name: "Find nearby" }));
+    await user.click(screen.getByRole("button", { name: "Find lots" }));
     expect(mockPush).not.toHaveBeenCalled();
+  });
+});
+
+// Quantity-fit interaction acceptance was added before the filter implementation.
+describe("optional quantity conflict filtering", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    currentParams = new URLSearchParams("query=oak&materialType=hardwood&minLotSize=501&buyerZip=80202&page=3");
+    authState = { user: null, isAuthenticated: false, isLoading: false };
+  });
+
+  it("opts in while retaining the job and resetting pagination", async () => {
+    const user = userEvent.setup();
+    renderBrowse();
+    const choice = screen.getByRole("checkbox", { name: "Hide known quantity conflicts" });
+    expect(choice).not.toBeChecked();
+    await user.click(choice);
+    const next = new URL(mockPush.mock.calls[0][0], "https://example.invalid");
+    expect(next.searchParams.get("hideQuantityConflicts")).toBe("true");
+    expect(next.searchParams.get("minLotSize")).toBe("501");
+    expect(next.searchParams.get("buyerZip")).toBe("80202");
+    expect(next.searchParams.get("materialType")).toBe("hardwood");
+    expect(next.searchParams.has("page")).toBe(false);
+  });
+
+  it("removes only the quantity-conflict modifier from its chip", async () => {
+    currentParams.set("hideQuantityConflicts", "true");
+    const user = userEvent.setup();
+    renderBrowse();
+    await user.click(screen.getByRole("button", { name: "Remove quantity conflict filter" }));
+    const next = new URL(mockPush.mock.calls[0][0], "https://example.invalid");
+    expect(next.searchParams.has("hideQuantityConflicts")).toBe(false);
+    expect(next.searchParams.get("minLotSize")).toBe("501");
+    expect(next.searchParams.get("buyerZip")).toBe("80202");
+  });
+
+  it("clears the dependent modifier when the job quantity is cleared", async () => {
+    currentParams.set("hideQuantityConflicts", "true");
+    const user = userEvent.setup();
+    renderBrowse();
+    await user.clear(screen.getByRole("spinbutton", { name: "Sq ft needed" }));
+    await user.click(screen.getByRole("button", { name: "Find lots" }));
+    const next = new URL(mockPush.mock.calls[0][0], "https://example.invalid");
+    expect(next.searchParams.has("hideQuantityConflicts")).toBe(false);
+    expect(next.searchParams.has("minLotSize")).toBe(false);
+    expect(next.searchParams.get("buyerZip")).toBe("80202");
+  });
+
+  it("does not present an inapplicable choice before a positive job quantity", () => {
+    currentParams.delete("minLotSize");
+    renderBrowse();
+    expect(screen.queryByRole("checkbox", { name: "Hide known quantity conflicts" })).not.toBeInTheDocument();
   });
 });

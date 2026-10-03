@@ -6,12 +6,120 @@ import { notifications } from "@/server/db/schema/notifications";
 import { users } from "@/server/db/schema/users";
 import { eq, and, sql } from "drizzle-orm";
 import { sendEmailOrThrow } from "@/lib/email/delivery";
-import { buildEmailIdempotencyKey } from "@/lib/email/delivery-policy";
+import { buildEmailIdempotencyKey, EmailSuppressedError } from "@/lib/email/delivery-policy";
 import { env } from "@/env";
 import { escapeHtml } from "@/lib/utils";
 import { isListingVisibleToBuyers } from "@/lib/listing-freshness";
 import { isListingTerritoryVisibleToViewer } from "@/server/security/listing-visibility";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
+import { listingMatchesSavedSearch, type SavedSearchMatchListing } from "@/lib/saved-search-matching";
+import zipcodes from "zipcodes";
+
+type AlertListing = SavedSearchMatchListing &
+  Pick<typeof listings.$inferSelect, "id" | "slug" | "sellerId" | "territoryMode" | "allowedDestinationStates"> &
+  Parameters<typeof isListingVisibleToBuyers>[0];
+
+async function findMatchingBuyers(listing: AlertListing, userId?: string) {
+  // Buying material preferences belong to any purchasing account.
+  const allBuyerPrefs = await db
+    .select({
+      userId: userPreferences.userId,
+      preferredMaterialTypes: userPreferences.preferredMaterialTypes,
+      priceMinPerSqFt: userPreferences.priceMinPerSqFt,
+      priceMaxPerSqFt: userPreferences.priceMaxPerSqFt,
+      preferredZip: userPreferences.preferredZip,
+      preferredRadiusMiles: userPreferences.preferredRadiusMiles,
+      minLotSizeSqFt: userPreferences.minLotSizeSqFt,
+      maxLotSizeSqFt: userPreferences.maxLotSizeSqFt,
+      waterproofRequired: userPreferences.waterproofRequired,
+      buyerMatchInAppEnabled: userPreferences.buyerMatchInAppEnabled,
+      buyerMatchEmailEnabled: userPreferences.buyerMatchEmailEnabled,
+      buyerEmail: users.email,
+      buyerName: users.name,
+      buyerRole: users.role,
+      buyerVerificationStatus: users.verificationStatus,
+      buyerBusinessState: users.businessState,
+    })
+    .from(userPreferences)
+    .innerJoin(users, eq(userPreferences.userId, users.id))
+    .where(
+      and(
+        eq(users.active, true),
+        userId ? eq(userPreferences.userId, userId) : undefined,
+        // Only accounts that have chosen buying material preferences
+        sql`${userPreferences.preferredMaterialTypes} IS NOT NULL`,
+        // Buyer's preferredMaterialTypes includes the listing's materialType
+        sql`${userPreferences.preferredMaterialTypes} ? ${listing.materialType}`,
+      ),
+    );
+
+  return allBuyerPrefs.filter((pref) => {
+    if (
+      !isListingTerritoryVisibleToViewer(listing, {
+        id: pref.userId,
+        role: pref.buyerRole,
+        verificationStatus: pref.buyerVerificationStatus,
+        businessState: pref.buyerBusinessState,
+      })
+    ) {
+      return false;
+    }
+
+    // A chosen radius requires verifiable geography. Unknown locations must
+    // not silently turn a local preference into nationwide alerts.
+    if (pref.preferredRadiusMiles != null) {
+      if (
+        !Number.isFinite(pref.preferredRadiusMiles) ||
+        pref.preferredRadiusMiles <= 0 ||
+        !pref.preferredZip ||
+        !/^\d{5}$/.test(pref.preferredZip) ||
+        !zipcodes.lookup(pref.preferredZip) ||
+        listing.locationLat == null ||
+        listing.locationLng == null ||
+        !Number.isFinite(listing.locationLat) ||
+        !Number.isFinite(listing.locationLng) ||
+        Math.abs(listing.locationLat) > 90 ||
+        Math.abs(listing.locationLng) > 180
+      ) {
+        return false;
+      }
+    }
+
+    // Reuse catalog matching for direct price, lot size, reviewed evidence
+    // and ZIP-centroid distance, including large finite radii.
+    return listingMatchesSavedSearch(listing, {
+      priceMin: pref.priceMinPerSqFt ?? undefined,
+      priceMax: pref.priceMaxPerSqFt ?? undefined,
+      minLotSize: pref.minLotSizeSqFt ?? undefined,
+      maxLotSize: pref.maxLotSizeSqFt ?? undefined,
+      waterproofRequired: pref.waterproofRequired ? true : undefined,
+      buyerZip: pref.preferredZip ?? undefined,
+      maxDistance: pref.preferredRadiusMiles ?? undefined,
+    });
+  });
+}
+
+type MatchBuyer = Awaited<ReturnType<typeof findMatchingBuyers>>[number];
+
+async function currentChannelEnabled(
+  snapshot: AlertListing,
+  buyer: MatchBuyer,
+  channel: "in_app" | "email",
+): Promise<boolean> {
+  const current = await db.query.listings.findFirst({ where: eq(listings.id, snapshot.id) });
+  if (!current || !isListingVisibleToBuyers(current) || current.sellerId === buyer.userId) return false;
+
+  // Keep the event payload stable for provider retries. A changed advertisement
+  // or recipient belongs to a new event, not the old delivery identity.
+  const advertisedFields = [
+    "title", "slug", "materialType", "totalSqFt", "askPricePerSqFt",
+    "buyNowPrice", "locationCity", "locationState", "locationZip", "condition",
+  ] as const;
+  if (advertisedFields.some((field) => (current[field] ?? null) !== (snapshot[field] ?? null))) return false;
+  const [latest] = await findMatchingBuyers(current, buyer.userId);
+  if (!latest || latest.buyerEmail.trim().toLowerCase() !== buyer.buyerEmail.trim().toLowerCase()) return false;
+  return channel === "in_app" ? latest.buyerMatchInAppEnabled : latest.buyerMatchEmailEnabled;
+}
 
 export const preferenceMatchAlerts = inngest.createFunction(
   {
@@ -38,98 +146,14 @@ export const preferenceMatchAlerts = inngest.createFunction(
     }
     const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
 
-    const matchingBuyers = await step.run("find-matching-buyers", async () => {
-      // Fetch all buyer preferences
-      const allBuyerPrefs = await db
-        .select({
-          userId: userPreferences.userId,
-          preferredMaterialTypes: userPreferences.preferredMaterialTypes,
-          priceMinPerSqFt: userPreferences.priceMinPerSqFt,
-          priceMaxPerSqFt: userPreferences.priceMaxPerSqFt,
-          preferredZip: userPreferences.preferredZip,
-          preferredRadiusMiles: userPreferences.preferredRadiusMiles,
-          buyerEmail: users.email,
-          buyerName: users.name,
-          buyerRole: users.role,
-          buyerVerificationStatus: users.verificationStatus,
-          buyerBusinessState: users.businessState,
-        })
-        .from(userPreferences)
-        .innerJoin(users, eq(userPreferences.userId, users.id))
-        .where(
-          and(
-            eq(userPreferences.role, "buyer"),
-            // Only buyers who have set at least one preferred material type
-            sql`${userPreferences.preferredMaterialTypes} IS NOT NULL`,
-            // Buyer's preferredMaterialTypes includes the listing's materialType
-            sql`${userPreferences.preferredMaterialTypes} ? ${listing.materialType}`
-          )
-        );
-
-      // Apply price range and radius filters in-process
-      const listingPrice = directPurchaseUnitPrice;
-
-      return allBuyerPrefs.filter((pref) => {
-        if (
-          !isListingTerritoryVisibleToViewer(listing, {
-            id: pref.userId,
-            role: pref.buyerRole,
-            verificationStatus: pref.buyerVerificationStatus,
-            businessState: pref.buyerBusinessState,
-          })
-        ) {
-          return false;
-        }
-
-        // Price range filter
-        if (
-          pref.priceMinPerSqFt !== null &&
-          pref.priceMinPerSqFt !== undefined &&
-          listingPrice < pref.priceMinPerSqFt
-        ) {
-          return false;
-        }
-        if (
-          pref.priceMaxPerSqFt !== null &&
-          pref.priceMaxPerSqFt !== undefined &&
-          listingPrice > pref.priceMaxPerSqFt
-        ) {
-          return false;
-        }
-
-        // Radius filter: only apply if buyer has a preferred ZIP and the listing has coordinates
-        // We skip radius filtering if we lack the necessary geo data (latitude/longitude on listing)
-        // because we don't have buyer lat/lng from ZIP alone without a geocoding service.
-        // Sellers provide lat/lng on listings; buyer ZIP-based radius is advisory only here.
-        // Future improvement: geocode buyer ZIP at preference save time and store lat/lng.
-        if (
-          pref.preferredZip &&
-          pref.preferredRadiusMiles &&
-          listing.locationLat !== null &&
-          listing.locationLng !== null &&
-          listing.locationLat !== undefined &&
-          listing.locationLng !== undefined
-        ) {
-          // If listing has a ZIP and buyer has a ZIP, do a rough ZIP prefix match as a fallback
-          // when we don't have buyer lat/lng. This is intentionally permissive.
-          // Full geo-distance matching requires geocoding the buyer ZIP.
-          // Assumption: if preferredRadiusMiles is very large (>= 500) treat as nationwide.
-          if (pref.preferredRadiusMiles >= 500) {
-            return true;
-          }
-          // Without buyer coordinates we cannot compute exact distance; include the buyer
-          // so they don't miss relevant listings. This is the safe/permissive default.
-        }
-
-        return true;
-      });
-    });
+    const matchingBuyers = await step.run("find-matching-buyers", () => findMatchingBuyers(listing));
 
     const notificationsAndEmailsSent = await step.run(
       "create-notifications-and-send-emails",
       async () => {
         let notifCount = 0;
         let emailCount = 0;
+        let suppressedCount = 0;
         const failures: unknown[] = [];
 
         const appUrl = env.NEXT_PUBLIC_APP_URL;
@@ -142,44 +166,54 @@ export const preferenceMatchAlerts = inngest.createFunction(
           }
 
           try {
-            const existingNotification = await db
-              .select({ id: notifications.id })
-              .from(notifications)
-              .where(
-                and(
-                  eq(notifications.userId, buyer.userId),
-                  eq(notifications.type, "listing_match"),
-                  sql`${notifications.data}->>'listingId' = ${listing.id}`,
-                ),
-              )
-              .limit(1);
+            if (await currentChannelEnabled(listing, buyer, "in_app")) {
+              const created = await db.transaction(async (tx) => {
+                await tx.execute(
+                  sql`select pg_advisory_xact_lock(hashtextextended(${`preference-match:${buyer.userId}:${listing.id}`}, 0))`,
+                );
+                const existingNotification = await tx
+                  .select({ id: notifications.id })
+                  .from(notifications)
+                  .where(
+                    and(
+                      eq(notifications.userId, buyer.userId),
+                      eq(notifications.type, "listing_match"),
+                      sql`${notifications.data}->>'listingId' = ${listing.id}`,
+                    ),
+                  )
+                  .limit(1);
 
-            if (existingNotification.length === 0) {
-              await db.insert(notifications).values({
-                userId: buyer.userId,
-                type: "listing_match",
-                title: "New listing matches your preferences",
-                message: `A new ${escapeHtml(listing.materialType.replace("_", " "))} listing "${escapeHtml(listing.title)}" is available for $${directPurchaseUnitPrice.toFixed(2)}/sq ft direct purchase.`,
-                data: {
-                  listingId: listing.id,
-                  listingSlug: listing.slug,
-                  materialType: listing.materialType,
-                  askPricePerSqFt: Number(listing.askPricePerSqFt),
-                  directPurchasePricePerSqFt: directPurchaseUnitPrice,
-                },
+                if (existingNotification.length === 0) {
+                  await tx.insert(notifications).values({
+                    userId: buyer.userId,
+                    type: "listing_match",
+                    title: "New listing matches your preferences",
+                    message: `A new ${escapeHtml(listing.materialType.replace("_", " "))} listing "${escapeHtml(listing.title)}" is available for $${directPurchaseUnitPrice.toFixed(2)}/sq ft direct purchase.`,
+                    data: {
+                      listingId: listing.id,
+                      listingSlug: listing.slug,
+                      materialType: listing.materialType,
+                      askPricePerSqFt: Number(listing.askPricePerSqFt),
+                      directPurchasePricePerSqFt: directPurchaseUnitPrice,
+                    },
+                  });
+                  return true;
+                }
+                return false;
               });
-              notifCount++;
+              if (created) notifCount++;
             }
           } catch (notifError) {
             failures.push(notifError);
             console.error(
               `Failed to create notification for buyer ${buyer.userId}:`,
-              notifError
+              notifError,
             );
           }
 
           try {
-            // Send email notification
+            if (!(await currentChannelEnabled(listing, buyer, "email"))) continue;
+            // Send the frozen event payload after checking current eligibility.
             await sendEmailOrThrow({
               category: "preference_match_alert",
               idempotencyKey: buildEmailIdempotencyKey(
@@ -238,17 +272,23 @@ export const preferenceMatchAlerts = inngest.createFunction(
                 <br/><br/>
                 <p style="color:#888;font-size:12px;">
                   You're receiving this because this listing matches your buyer preferences on PlankMarket.
-                  <a href="${appUrl}/preferences">Manage your preferences</a>.
+                  <a href="${appUrl}/preferences?workspace=buyer">Manage your preferences</a>.
                 </p>
               `,
               },
             });
             emailCount++;
           } catch (emailError) {
+            if (emailError instanceof EmailSuppressedError) {
+              // The delivery ledger already records this terminal channel state.
+              // Keep the in-app alert without retrying a blocked email address.
+              suppressedCount++;
+              continue;
+            }
             failures.push(emailError);
             console.error(
               `Failed to send preference match email to buyer ${buyer.userId}:`,
-              emailError
+              emailError,
             );
           }
         }
@@ -260,8 +300,8 @@ export const preferenceMatchAlerts = inngest.createFunction(
           );
         }
 
-        return { notifCount, emailCount };
-      }
+        return { notifCount, emailCount, suppressedCount };
+      },
     );
 
     return {
@@ -269,6 +309,7 @@ export const preferenceMatchAlerts = inngest.createFunction(
       matchingBuyers: matchingBuyers.length,
       notificationsSent: notificationsAndEmailsSent.notifCount,
       emailsSent: notificationsAndEmailsSent.emailCount,
+      emailsSuppressed: notificationsAndEmailsSent.suppressedCount,
     };
-  }
+  },
 );

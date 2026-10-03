@@ -8,8 +8,8 @@ describe("CSV input preservation", () => {
     expect(parsed.finish).toBeUndefined(); expect(parsed.thickness).toBeUndefined(); expect(parsed.buyNowPrice).toBeUndefined();
   });
   it("preserves buyer search and specification fields", () => {
-    const parsed = csvListingRowSchema.parse({ ...row, brand: "Acme", modelNumber: "SKU123", wearLayer: "20", colorFamily: "gray" });
-    expect(parsed).toMatchObject({ brand: "Acme", modelNumber: "SKU123", wearLayer: 20, colorFamily: "gray" });
+    const parsed = csvListingRowSchema.parse({ ...row, brand: "Acme", modelNumber: "SKU123", wearLayer: "20", wearLayerUnit: "mil", colorFamily: "gray" });
+    expect(parsed).toMatchObject({ brand: "Acme", modelNumber: "SKU123", wearLayer: 20, wearLayerUnit: "mil", colorFamily: "gray" });
   });
   it("warns about unknown columns while preserving otherwise valid rows", async () => {
     const data = { ...row, manufacturerTypo: "Acme" };

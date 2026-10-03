@@ -32,37 +32,40 @@ const inventorySources = [
 ] as const;
 
 export const buyerPreferencesSchema = z.object({
-  preferredZip: z.string().regex(/^\d{5}$/).optional(),
-  preferredRadiusMiles: z.number().int().min(10).max(3000).optional(),
+  preferredZip: z.string().regex(/^\d{5}$/).nullable().optional(),
+  preferredRadiusMiles: z.number().int().min(10).max(3000).nullable().optional(),
   preferredMaterialTypes: z.array(z.enum(materialTypes)).optional(),
   preferredSpecies: z.array(z.string().max(50)).max(20).optional(),
   preferredUseCase: z
     .enum(["residential", "commercial", "multifamily", "flips", "other"])
+    .nullable()
     .optional(),
-  minLotSizeSqFt: z.number().positive().max(1000000).optional(),
-  maxLotSizeSqFt: z.number().positive().max(1000000).optional(),
-  priceMinPerSqFt: z.number().min(0).max(100).optional(),
-  priceMaxPerSqFt: z.number().min(0).max(100).optional(),
-  preferredShippingMode: z.enum(["pickup", "ship", "both"]).optional(),
-  urgency: z.enum(["asap", "2_weeks", "4_weeks", "flexible"]).optional(),
+  minLotSizeSqFt: z.number().positive().max(1000000).nullable().optional(),
+  maxLotSizeSqFt: z.number().positive().max(1000000).nullable().optional(),
+  priceMinPerSqFt: z.number().min(0).max(100).nullable().optional(),
+  priceMaxPerSqFt: z.number().min(0).max(100).nullable().optional(),
+  preferredShippingMode: z.enum(["pickup", "ship", "both"]).nullable().optional(),
+  urgency: z.enum(["asap", "2_weeks", "4_weeks", "flexible"]).nullable().optional(),
   preferredInstallTypes: z.array(z.enum(installTypes)).optional(),
-  minThicknessMm: z.number().min(0).max(50).optional(),
-  minWearLayerMil: z.number().min(0).max(100).optional(),
+  minThicknessMm: z.number().min(0).max(50).nullable().optional(),
+  minWearLayerMil: z.number().min(0).max(100).nullable().optional(),
   preferredCertifications: z.array(z.enum(certifications)).optional(),
   waterproofRequired: z.boolean().optional(),
+  buyerMatchInAppEnabled: z.boolean().optional(),
+  buyerMatchEmailEnabled: z.boolean().optional(),
 });
 
 export const sellerPreferencesSchema = z.object({
-  originZip: z.string().regex(/^\d{5}$/).optional(),
+  originZip: z.string().regex(/^\d{5}$/).nullable().optional(),
   shipCapable: z.boolean().optional(),
-  leadTimeDaysMin: z.number().int().min(0).max(90).optional(),
-  leadTimeDaysMax: z.number().int().min(0).max(90).optional(),
+  leadTimeDaysMin: z.number().int().min(0).max(90).nullable().optional(),
+  leadTimeDaysMax: z.number().int().min(0).max(90).nullable().optional(),
   typicalMaterialTypes: z.array(z.enum(materialTypes)).optional(),
-  minLotSqFt: z.number().positive().max(1000000).optional(),
-  avgLotSqFt: z.number().positive().max(1000000).optional(),
+  minLotSqFt: z.number().positive().max(1000000).nullable().optional(),
+  avgLotSqFt: z.number().positive().max(1000000).nullable().optional(),
   canSplitLots: z.boolean().optional(),
-  preferredBuyerRadiusMiles: z.number().int().min(10).max(3000).optional(),
-  pricingStyle: z.enum(["fixed", "negotiable", "tiered"]).optional(),
+  preferredBuyerRadiusMiles: z.number().int().min(10).max(3000).nullable().optional(),
+  pricingStyle: z.enum(["fixed", "negotiable", "tiered"]).nullable().optional(),
   palletizationCapable: z.boolean().optional(),
   inventorySource: z.array(z.enum(inventorySources)).optional(),
   partialQuantityMarkupPercent: z
@@ -200,9 +203,27 @@ export const upsertPreferencesSchema = z
         analyticsTrackingEnabled: z.boolean().nullable().optional(),
       })
       .merge(sellerPreferencesSchema),
-  ])
+  ]);
+
+/** Validate dependencies only after the owned patch is merged with saved answers. */
+export const mergedPreferencesSchema = upsertPreferencesSchema
   .superRefine((data, ctx) => {
+    if (data.role === "buyer") {
+      if (data.priceMinPerSqFt != null && data.priceMaxPerSqFt != null &&
+          data.priceMinPerSqFt > data.priceMaxPerSqFt) {
+        ctx.addIssue({ code: "custom", path: ["priceMaxPerSqFt"], message: "Maximum price must be at least the minimum price" });
+      }
+      if (data.minLotSizeSqFt != null && data.maxLotSizeSqFt != null &&
+          data.minLotSizeSqFt > data.maxLotSizeSqFt) {
+        ctx.addIssue({ code: "custom", path: ["maxLotSizeSqFt"], message: "Maximum lot size must be at least the minimum lot size" });
+      }
+    }
     if (data.role !== "seller") return;
+
+    if (data.leadTimeDaysMin != null && data.leadTimeDaysMax != null &&
+        data.leadTimeDaysMin > data.leadTimeDaysMax) {
+      ctx.addIssue({ code: "custom", path: ["leadTimeDaysMax"], message: "Maximum lead time must be at least the minimum lead time" });
+    }
 
     if (
       data.automaticMarkdownEnabled &&

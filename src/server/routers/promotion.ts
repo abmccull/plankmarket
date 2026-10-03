@@ -1,3 +1,4 @@
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
 import {
   createTRPCRouter,
   publicProcedure,
@@ -59,7 +60,6 @@ const PRICING: Record<string, Record<number, number>> = {
   premium: { 7: 199, 14: 349, 30: 599 },
 };
 
-
 export const promotionRouter = createTRPCRouter({
   // Return the pricing matrix (no DB query)
   getPricing: publicProcedure.query(() => {
@@ -74,10 +74,10 @@ export const promotionRouter = createTRPCRouter({
       const listing = await ctx.db.query.listings.findFirst({
         where: and(
           eq(listings.id, input.listingId),
-          eq(listings.sellerId, ctx.user.id)
+          eq(listings.sellerId, ctx.user.id),
         ),
         with: {
-          media: { columns: { id: true } },
+          media: { columns: { id: true }, where: publicProductPhotoWhere },
         },
       });
 
@@ -99,8 +99,7 @@ export const promotionRouter = createTRPCRouter({
       if (listing.media.length < 3) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message:
-            "Listing must have at least 3 photos to be promoted",
+          message: "Listing must have at least 3 photos to be promoted",
         });
       }
 
@@ -123,8 +122,7 @@ export const promotionRouter = createTRPCRouter({
       }
 
       // Check listing has been active for 24h+
-      const listingAge =
-        Date.now() - new Date(listing.createdAt).getTime();
+      const listingAge = Date.now() - new Date(listing.createdAt).getTime();
       if (listingAge < 24 * 60 * 60 * 1000) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -134,14 +132,13 @@ export const promotionRouter = createTRPCRouter({
       }
 
       // No existing active promotion on this listing
-      const existingPromotion =
-        await ctx.db.query.listingPromotions.findFirst({
-          where: and(
-            eq(listingPromotions.listingId, input.listingId),
-            eq(listingPromotions.isActive, true),
-            gt(listingPromotions.expiresAt, new Date())
-          ),
-        });
+      const existingPromotion = await ctx.db.query.listingPromotions.findFirst({
+        where: and(
+          eq(listingPromotions.listingId, input.listingId),
+          eq(listingPromotions.isActive, true),
+          gt(listingPromotions.expiresAt, new Date()),
+        ),
+      });
 
       if (existingPromotion) {
         throw new TRPCError({
@@ -160,8 +157,8 @@ export const promotionRouter = createTRPCRouter({
             eq(listings.materialType, listing.materialType),
             eq(listingPromotions.isActive, true),
             gt(listingPromotions.expiresAt, new Date()),
-            eq(listingPromotions.sellerId, ctx.user.id)
-          )
+            eq(listingPromotions.sellerId, ctx.user.id),
+          ),
         );
 
       const [totalPromotedInCategory] = await ctx.db
@@ -172,8 +169,8 @@ export const promotionRouter = createTRPCRouter({
           and(
             eq(listings.materialType, listing.materialType),
             eq(listingPromotions.isActive, true),
-            gt(listingPromotions.expiresAt, new Date())
-          )
+            gt(listingPromotions.expiresAt, new Date()),
+          ),
         );
 
       const sellerCount = promotedInCategory?.count ?? 0;
@@ -210,10 +207,10 @@ export const promotionRouter = createTRPCRouter({
                 AND expires_at > now()
                 AND used_amount < amount
               ORDER BY expires_at ASC
-              FOR UPDATE`
+              FOR UPDATE`,
         );
 
-        const availableCredits = (lockedCredits as unknown) as Array<{
+        const availableCredits = lockedCredits as unknown as Array<{
           id: string;
           amount: number;
           used_amount: number;
@@ -222,7 +219,7 @@ export const promotionRouter = createTRPCRouter({
 
         const totalCredit = availableCredits.reduce(
           (sum, c) => sum + (Number(c.amount) - Number(c.used_amount)),
-          0
+          0,
         );
 
         // FULL CREDIT PATH: credits fully cover the price, skip Stripe
@@ -230,7 +227,8 @@ export const promotionRouter = createTRPCRouter({
           let remaining = price;
           for (const credit of availableCredits) {
             if (remaining <= 0) break;
-            const available = Number(credit.amount) - Number(credit.used_amount);
+            const available =
+              Number(credit.amount) - Number(credit.used_amount);
             const deduct = Math.min(available, remaining);
             await tx
               .update(promotionCredits)
@@ -250,7 +248,7 @@ export const promotionRouter = createTRPCRouter({
               pricePaid: price,
               startsAt: now,
               expiresAt: new Date(
-                now.getTime() + input.durationDays * 24 * 60 * 60 * 1000
+                now.getTime() + input.durationDays * 24 * 60 * 60 * 1000,
               ),
               isActive: true,
               stripePaymentIntentId: null,
@@ -264,7 +262,7 @@ export const promotionRouter = createTRPCRouter({
             .set({
               promotionTier: input.tier,
               promotionExpiresAt: new Date(
-                now.getTime() + input.durationDays * 24 * 60 * 60 * 1000
+                now.getTime() + input.durationDays * 24 * 60 * 60 * 1000,
               ),
               updatedAt: now,
             })
@@ -327,10 +325,10 @@ export const promotionRouter = createTRPCRouter({
                   AND expires_at > now()
                   AND used_amount < amount
                 ORDER BY expires_at ASC
-                FOR UPDATE`
+                FOR UPDATE`,
           );
 
-          const freshCredits = (lockedCredits as unknown) as Array<{
+          const freshCredits = lockedCredits as unknown as Array<{
             id: string;
             amount: number;
             used_amount: number;
@@ -339,7 +337,8 @@ export const promotionRouter = createTRPCRouter({
           let remaining = creditToApply;
           for (const credit of freshCredits) {
             if (remaining <= 0) break;
-            const available = Number(credit.amount) - Number(credit.used_amount);
+            const available =
+              Number(credit.amount) - Number(credit.used_amount);
             const deduct = Math.min(available, remaining);
             await tx
               .update(promotionCredits)
@@ -361,7 +360,7 @@ export const promotionRouter = createTRPCRouter({
           pricePaid: price,
           startsAt: now,
           expiresAt: new Date(
-            now.getTime() + input.durationDays * 24 * 60 * 60 * 1000
+            now.getTime() + input.durationDays * 24 * 60 * 60 * 1000,
           ),
           isActive: false, // Activated on payment success
           stripePaymentIntentId: paymentIntent.id,
@@ -429,7 +428,7 @@ export const promotionRouter = createTRPCRouter({
       z.object({
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const offset = (input.page - 1) * input.limit;
@@ -449,6 +448,7 @@ export const promotionRouter = createTRPCRouter({
               },
               with: {
                 media: {
+                  where: publicProductPhotoWhere,
                   orderBy: (media, { asc }) => [asc(media.sortOrder)],
                   limit: 1,
                 },
@@ -484,16 +484,15 @@ export const promotionRouter = createTRPCRouter({
       const anonymousCacheKey = ctx.user
         ? null
         : buildPublicReadCacheKey("promotion-active", input);
-      const cached = await readPublicReadCache<PublicPromotionSummary>(
-        anonymousCacheKey,
-      );
+      const cached =
+        await readPublicReadCache<PublicPromotionSummary>(anonymousCacheKey);
       if (cached) return cached;
 
       const promotion = await ctx.db.query.listingPromotions.findFirst({
         where: and(
           eq(listingPromotions.listingId, input.listingId),
           eq(listingPromotions.isActive, true),
-          gt(listingPromotions.expiresAt, new Date())
+          gt(listingPromotions.expiresAt, new Date()),
         ),
         columns: {
           id: true,
@@ -517,21 +516,21 @@ export const promotionRouter = createTRPCRouter({
       const anonymousCacheKey = ctx.user
         ? null
         : buildPublicReadCacheKey("promotion-featured", input);
-      const cached = await readPublicReadCache<PublicListingDto[]>(
-        anonymousCacheKey,
-      );
+      const cached =
+        await readPublicReadCache<PublicListingDto[]>(anonymousCacheKey);
       if (cached) return cached;
 
       const featuredListings = await ctx.db.query.listings.findMany({
         where: and(
           publicActiveListingWhere(new Date(), ctx.user),
           inArray(listings.promotionTier, ["featured", "premium"]),
-          gt(listings.promotionExpiresAt, new Date())
+          gt(listings.promotionExpiresAt, new Date()),
         ),
         columns: publicListingCardColumns,
         with: {
           media: {
             columns: publicMediaColumns,
+            where: publicProductPhotoWhere,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
             limit: 1,
           },
@@ -541,7 +540,7 @@ export const promotionRouter = createTRPCRouter({
         },
         orderBy: [
           desc(
-            sql`CASE ${listings.promotionTier} WHEN 'premium' THEN 3 WHEN 'featured' THEN 2 ELSE 1 END`
+            sql`CASE ${listings.promotionTier} WHEN 'premium' THEN 3 WHEN 'featured' THEN 2 ELSE 1 END`,
           ),
           desc(listings.createdAt),
         ],
@@ -558,21 +557,21 @@ export const promotionRouter = createTRPCRouter({
     const anonymousCacheKey = ctx.user
       ? null
       : buildPublicReadCacheKey("promotion-premium-hero", null);
-    const cached = await readPublicReadCache<PublicListingDto[]>(
-      anonymousCacheKey,
-    );
+    const cached =
+      await readPublicReadCache<PublicListingDto[]>(anonymousCacheKey);
     if (cached) return cached;
 
     const premiumListings = await ctx.db.query.listings.findMany({
       where: and(
         publicActiveListingWhere(new Date(), ctx.user),
         eq(listings.promotionTier, "premium"),
-        gt(listings.promotionExpiresAt, new Date())
+        gt(listings.promotionExpiresAt, new Date()),
       ),
       columns: publicListingCardColumns,
       with: {
         media: {
           columns: publicMediaColumns,
+          where: publicProductPhotoWhere,
           orderBy: (media, { asc }) => [asc(media.sortOrder)],
           limit: 3,
         },
@@ -678,7 +677,7 @@ export const promotionRouter = createTRPCRouter({
         activeOnly: z.boolean().default(false),
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const offset = (input.page - 1) * input.limit;

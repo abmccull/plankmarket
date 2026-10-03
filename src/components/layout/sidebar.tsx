@@ -1,237 +1,89 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { LayoutDashboard } from "lucide-react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
-import { UnreadBadge } from "@/components/messaging/unread-badge";
-import { Badge } from "@/components/ui/badge";
-import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  Heart,
-  Search,
-  Settings,
-  Plus,
-  BarChart3,
-  CreditCard,
-  List,
-  MessageSquare,
-  Handshake,
-  ClipboardList,
-  Clock,
-  FileText,
-  FileSpreadsheet,
-  PackageOpen,
-  SlidersHorizontal,
-  TrendingUp,
-  Bot,
-  Users,
-  Shield,
-  Database,
-} from "lucide-react";
-
-interface SidebarItem {
-  title: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
-}
-
-interface SidebarShellStateProps {
-  title: string;
-  description: string;
-}
-
-const sellerItems: SidebarItem[] = [
-  { title: "Dashboard", href: "/seller", icon: LayoutDashboard },
-  { title: "Warehouses", href: "/seller/warehouses", icon: Package },
-  { title: "My Listings", href: "/seller/listings", icon: List },
-  { title: "Create Listing", href: "/seller/listings/new", icon: Plus },
-  { title: "Bulk Upload", href: "/seller/listings/bulk-upload", icon: FileSpreadsheet, badge: "Pro" },
-  { title: "Inventory Feeds", href: "/seller/inventory", icon: Database },
-  { title: "Request Board", href: "/seller/request-board", icon: ClipboardList },
-  { title: "Buyer CRM", href: "/seller/crm", icon: Users, badge: "Pro" },
-  { title: "Follow-ups", href: "/seller/followups", icon: Clock, badge: "Pro" },
-  { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
-  { title: "Offers", href: "/offers", icon: Handshake },
-  { title: "Messages", href: "/messages", icon: MessageSquare },
-  { title: "Orders", href: "/seller/orders", icon: Package },
-  { title: "Samples", href: "/seller/samples", icon: PackageOpen },
-  { title: "Analytics", href: "/seller/analytics", icon: BarChart3 },
-  { title: "Market Intel", href: "/seller/market", icon: TrendingUp, badge: "Pro" },
-  { title: "Payments", href: "/seller/payments", icon: CreditCard },
-  { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
-  { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
-  { title: "Settings", href: "/seller/settings", icon: Settings },
-];
-
-const buyerItems: SidebarItem[] = [
-  { title: "Dashboard", href: "/buyer", icon: LayoutDashboard },
-  { title: "My Orders", href: "/buyer/orders", icon: ShoppingCart },
-  { title: "Offers", href: "/offers", icon: Handshake },
-  { title: "Messages", href: "/messages", icon: MessageSquare },
-  { title: "Samples", href: "/buyer/samples", icon: PackageOpen },
-  { title: "Watchlist", href: "/buyer/watchlist", icon: Heart },
-  { title: "Saved Searches", href: "/buyer/saved-searches", icon: Search },
-  { title: "AI Agent", href: "/settings/agent", icon: Bot, badge: "Pro" },
-  { title: "My Requests", href: "/buyer/requests", icon: FileText },
-  { title: "Preferences", href: "/preferences", icon: SlidersHorizontal },
-  { title: "Subscription", href: "/settings/subscription", icon: CreditCard },
-  { title: "Settings", href: "/buyer/settings", icon: Settings },
-];
-
-function SidebarShellState({ title, description }: SidebarShellStateProps) {
-  return (
-    <aside className="hidden min-h-[calc(100vh-4rem)] w-64 flex-col border-r bg-sidebar lg:flex">
-      <div className="flex flex-1 flex-col gap-4 p-4">
-        <div className="rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 p-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-secondary/20 text-primary">
-              <LayoutDashboard className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-              <p className="text-xs text-muted-foreground">{description}</p>
-            </div>
-          </div>
-        </div>
-        <div
-          role="status"
-          aria-live="polite"
-          className="rounded-xl border border-sidebar-border/70 bg-sidebar-accent/30 p-4"
-        >
-          <p className="text-sm font-medium text-sidebar-foreground">
-            Protected navigation is loading.
-          </p>
-          <p className="mt-1 text-xs leading-5 text-sidebar-foreground">
-            We’ll show your dashboard tools as soon as your account context is confirmed.
-          </p>
-        </div>
-        <div className="space-y-2" aria-hidden="true">
-          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/45" />
-          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/35" />
-          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/35" />
-          <div className="h-10 animate-pulse rounded-lg bg-sidebar-accent/25" />
-        </div>
-      </div>
-    </aside>
-  );
-}
+import { getWorkspaceNavigation } from "@/lib/workspace-navigation";
+import { WorkspaceNavLinks } from "./workspace-nav-links";
+import { WorkspaceSwitcher } from "./workspace-switcher";
+import { useTradingWorkspace } from "@/hooks/use-trading-workspace";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, isLoading } = useAuthStore();
+  const { workspace } = useTradingWorkspace(pathname);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const { user, isLoading, isAuthenticated } = useAuthStore();
+  const ready = Boolean(user && !isLoading && isAuthenticated);
+  const { data: unreadData, isError } = trpc.message.getUnreadCount.useQuery(
+    undefined,
+    {
+      enabled: ready,
+      retry: false,
+      refetchInterval: ready ? 30000 : false,
+    },
+  );
+  const navigation =
+    ready && user ? getWorkspaceNavigation(user.role, pathname, workspace) : null;
 
-  // Keep hook order stable while client auth hydrates. The request stays
-  // disabled until a real dashboard user exists.
-  const { data: unreadData } = trpc.message.getUnreadCount.useQuery(undefined, {
-    enabled: !!user,
-    retry: false,
-    refetchInterval: user ? 30000 : false,
-  });
-
-  if (isLoading) {
-    return (
-      <SidebarShellState
-        title="Checking access"
-        description="Syncing your dashboard session"
-      />
-    );
-  }
-
-  if (!user) {
-    return (
-      <SidebarShellState
-        title="Secure dashboard"
-        description="Returning to sign in"
-      />
-    );
-  }
-
-  // Shared routes like /preferences, /messages, and /offers stay aligned to the
-  // authenticated role. Admins can still inspect buyer or seller contexts.
-  const isAdminUser = user.role === "admin";
-  const isOnSellerRoute = pathname.startsWith("/seller");
-  const isOnBuyerRoute = pathname.startsWith("/buyer");
-  const isSellerContext = isAdminUser ? isOnSellerRoute || !isOnBuyerRoute : user.role === "seller";
-  const items = isSellerContext ? sellerItems : buyerItems;
-
-  const unreadCount = unreadData?.count || 0;
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    const header = document.getElementById("main-content")?.previousElementSibling;
+    if (!sidebar || !(header instanceof HTMLElement) || header.tagName !== "HEADER") {
+      return;
+    }
+    const updateHeaderHeight = () => {
+      sidebar.style.setProperty(
+        "--workspace-header-height",
+        String(header.getBoundingClientRect().height) + "px",
+      );
+    };
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <aside className="hidden lg:flex w-64 flex-col border-r bg-sidebar min-h-[calc(100vh-4rem)]">
-      <div className="flex flex-col gap-1 p-4">
-        <div className="mb-4 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 p-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-white">
-              <LayoutDashboard className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                {isAdminUser
-                  ? "Admin Dashboard"
-                  : isSellerContext
-                    ? "Seller Dashboard"
-                    : "Buyer Dashboard"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {user?.businessName || user?.name}
-              </p>
-            </div>
-          </div>
+    <aside
+      ref={sidebarRef}
+      className="sticky hidden min-h-0 w-64 shrink-0 self-start flex-col border-r bg-sidebar lg:flex"
+      style={{
+        top: "var(--workspace-header-height, 4rem)",
+        maxHeight: "max(0px, calc(100dvh - var(--workspace-header-height, 4rem)))",
+      }}
+    >
+      <div className="flex shrink-0 items-start gap-3 border-b p-5">
+        <LayoutDashboard
+          className="mt-0.5 h-5 w-5 shrink-0 text-primary"
+          aria-hidden="true"
+        />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">
+            {navigation?.title ??
+              (isLoading ? "Checking access" : "Secure dashboard")}
+          </p>
+          <p className="mt-1 break-words text-xs text-muted-foreground">
+            {ready
+              ? user?.businessName || user?.name
+              : "Loading your workspace"}
+          </p>
         </div>
-        {isAdminUser && (
-          <Link
-            href="/admin"
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              pathname.startsWith("/admin")
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-            )}
-          >
-            <Shield className="h-4 w-4" />
-            Admin Panel
-          </Link>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+        {navigation && <div className="mb-4"><WorkspaceSwitcher /></div>}
+        {navigation ? (
+          <WorkspaceNavLinks
+            groups={navigation.groups}
+            pathname={pathname}
+            unreadCount={isError ? undefined : unreadData?.count}
+          />
+        ) : (
+          <p role="status" className="px-3 text-sm text-muted-foreground">
+            {isLoading ? "Confirming your account…" : "Returning to sign in…"}
+          </p>
         )}
-        {items.map((item) => {
-          const isActive =
-            pathname === item.href ||
-            (item.href !== "/seller" &&
-              item.href !== "/buyer" &&
-              pathname.startsWith(`${item.href}/`) &&
-              !items.some((other) => other.href !== item.href &&
-                other.href.startsWith(`${item.href}/`) &&
-                (pathname === other.href || pathname.startsWith(`${other.href}/`))));
-          const isMessagesItem = item.href === "/messages";
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={isActive ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent/50"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.title}
-              {item.badge && (
-                <Badge variant="outline" className="ml-auto border-amber-300 bg-amber-50 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
-                  {item.badge}
-                </Badge>
-              )}
-              {isMessagesItem && unreadCount > 0 && (
-                <UnreadBadge count={unreadCount} className="ml-auto" />
-              )}
-            </Link>
-          );
-        })}
       </div>
     </aside>
   );

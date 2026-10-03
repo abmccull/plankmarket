@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { createTRPCContext } from "@/server/trpc";
 
 vi.mock("server-only", () => ({}));
 
@@ -104,7 +105,7 @@ function callerContext(input: {
     user: input.user ?? null,
     supabase: {},
     clientIp: "127.0.0.1",
-  } as unknown as Parameters<typeof createCaller>[0];
+  } as unknown as Awaited<ReturnType<typeof createTRPCContext>>;
 }
 
 function buyer(overrides: Record<string, unknown> = {}) {
@@ -172,9 +173,12 @@ describe("listingRouter territory visibility", () => {
     });
   });
 
-  it("returns the restricted listing to an allowed verified buyer", async () => {
+  it.each(["buyer", "seller"] as const)("returns the restricted listing to an allowed verified buyer (%s account)", async (role) => {
     const db = dbForListing();
-    const caller = createCaller(callerContext({ db, user: buyer() }));
+    const context = callerContext({ db, user: buyer() });
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
 
     await expect(caller.listing.getById({ id: LISTING_ID })).resolves.toMatchObject(
       {

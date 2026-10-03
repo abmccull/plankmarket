@@ -1,3 +1,4 @@
+import { deletePrivateListingPhoto } from "./listing-photo-cleanup";
 import { UTApi } from "uploadthing/server";
 import { randomUUID } from "crypto";
 import { and, eq, isNull, lt, or } from "drizzle-orm";
@@ -11,6 +12,7 @@ const MEDIA_DELETION_LEASE_MS = 5 * 60 * 1000;
 export type MediaDeletionFailure =
   | "not_found"
   | "evidence_retained"
+  | "listing_attached"
   | "already_processing"
   | "claim_lost"
   | "provider_failed";
@@ -77,16 +79,28 @@ export async function deleteOwnedMediaWithProvider(params: {
   deleteRemote?: (key: string) => Promise<void>;
 }): Promise<void> {
   const database = params.database ?? db;
+const [stored] = await database.select({ storageProvider: media.storageProvider, listingPhotoUploadId: media.listingPhotoUploadId })
+  .from(media).where(and(eq(media.id, params.mediaId), eq(media.uploaderId, params.uploaderId))).limit(1);
+if (!stored) throw new MediaDeletionError("not_found", "Media not found");
+if (stored.storageProvider === "supabase_listing") {
+  if (!stored.listingPhotoUploadId) throw new MediaDeletionError("not_found", "Media not found");
+  let result: "deleted" | "retained" | "not_found";
+  try { result = await deletePrivateListingPhoto({ database, uploadId: stored.listingPhotoUploadId, ownerId: params.uploaderId }); }
+  catch (error) { throw new MediaDeletionError("provider_failed", "Deletion is awaiting confirmation. This photo cannot be reused. Try again.", { cause: error }); }
+  if (result === "retained") throw new MediaDeletionError("evidence_retained", "This photo is retained by a saved draft, listing or transaction.");
+  if (result === "not_found") throw new MediaDeletionError("not_found", "Media not found");
+  return;
+}
+
   const deleteRemote = params.deleteRemote ?? deleteUploadThingFile;
   const claimToken = randomUUID();
-  const claimedAt = new Date();
-  const staleBefore = new Date(claimedAt.getTime() - MEDIA_DELETION_LEASE_MS);
 
   const claimed = await database.transaction(async (tx) => {
     const [record] = await tx
       .select({
         id: media.id,
         key: media.key,
+        listingId: media.listingId,
         deletionClaimToken: media.deletionClaimToken,
         deletionClaimedAt: media.deletionClaimedAt,
       })
@@ -115,6 +129,17 @@ export async function deleteOwnedMediaWithProvider(params: {
       );
     }
 
+    // A previous claim is already an admitted operation, even if it predates
+    // detach-first admission. Keep its recovery path after the lease expires.
+    if (record.listingId && !record.deletionClaimToken) {
+      throw new MediaDeletionError(
+        "listing_attached",
+        "Remove this photo from the listing and save your changes first.",
+      );
+    }
+    const claimedAt = new Date();
+    const staleBefore = new Date(claimedAt.getTime() - MEDIA_DELETION_LEASE_MS);
+
     const [claimedRecord] = await tx
       .update(media)
       .set({ deletionClaimToken: claimToken, deletionClaimedAt: claimedAt })
@@ -133,7 +158,7 @@ export async function deleteOwnedMediaWithProvider(params: {
     if (!claimedRecord) {
       throw new MediaDeletionError(
         "already_processing",
-        "Media deletion is already in progress",
+        "Deletion is awaiting confirmation. Retry in a few minutes.",
       );
     }
 
@@ -145,18 +170,11 @@ export async function deleteOwnedMediaWithProvider(params: {
       await deleteRemote(claimed.key);
     }
   } catch (error) {
-    await database
-      .update(media)
-      .set({ deletionClaimToken: null, deletionClaimedAt: null })
-      .where(
-        and(
-          eq(media.id, params.mediaId),
-          eq(media.deletionClaimToken, claimToken),
-        ),
-      );
+    // A timeout can follow accepted deletion. Keep the claim so an unavailable
+    // object cannot be reattached; a later idempotent retry confirms its state.
     throw new MediaDeletionError(
       "provider_failed",
-      "The remote media object could not be deleted",
+      "Deletion is awaiting confirmation. This photo cannot be reused. Retry in a few minutes.",
       { cause: error },
     );
   }

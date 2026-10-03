@@ -1,10 +1,12 @@
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
+import { resolveCheckoutResale } from "../services/resale-exemption";
 import { checkoutInputFingerprint, findCheckoutReplay, abandonCheckoutAttempt } from "@/server/services/checkout-idempotency";
 import { loadWarehouseOrigin, requireCurrentWarehouseOrigin, type WarehouseOrigin } from "../services/warehouse-origin";
 import { sellerFinancialAggregates } from "@/server/db/expressions/seller-financials";
 import { aggregateCentsToDollars } from "@/lib/financial-display";
 import {
   createTRPCRouter,
-  protectedProcedure,
+  assuredProtectedProcedure,
   buyerProcedure,
   sellerProcedure,
   strictVerifiedBuyerProcedure,
@@ -15,7 +17,7 @@ import {
   updateOrderStatusSchema,
 } from "@/lib/validators/order";
 import { orders, listings, offers, shippingAddresses } from "../db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
@@ -912,7 +914,9 @@ export const orderRouter = createTRPCRouter({
               commercialPolicy: quotedFreightFunding.commercialPolicy,
               quotedFreightFunding,
             });
-            const checkoutTax = await calculateCheckoutTax({
+            const resaleDecision = await resolveCheckoutResale(tx, { buyerId: ctx.user.id, state: destinationState, purpose: input.purchasePurpose ?? "business_use" });
+            const checkoutTax = { resaleDecision, ...await calculateCheckoutTax({
+              resaleDecision,
               checkoutReference:
                 input.selectedQuoteToken ?? input.selectedQuoteId!,
               listingId: listing.id,
@@ -933,7 +937,7 @@ export const orderRouter = createTRPCRouter({
                 state: destinationState,
                 postalCode: input.shippingZip,
               },
-            });
+            }) };
             const feeBreakdown =
               checkoutTax.taxLiability === "platform"
                 ? applyPlatformLiableTaxToOrderFees(
@@ -1039,6 +1043,7 @@ export const orderRouter = createTRPCRouter({
         status: order.status,
         paymentStatus: order.paymentStatus,
         totalPrice: order.totalPrice,
+        resaleApplied: order.resaleDecision?.applied ?? false,
         taxAmount: order.taxAmount,
         taxStatus: order.taxStatus,
         taxLiability: order.taxLiability,
@@ -1154,6 +1159,19 @@ export const orderRouter = createTRPCRouter({
           });
         }
 
+        if (listing.sellerId === ctx.user.id) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "You cannot purchase your own listing",
+          });
+        }
+        if (listing.sellerId !== offer.sellerId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This offer no longer matches the listing seller. Please negotiate a new offer.",
+          });
+        }
+
         // Validate sufficient quantity
         const minimumOrderQtySqFt = getMinimumOrderQuantitySqFt(listing);
 
@@ -1252,7 +1270,9 @@ export const orderRouter = createTRPCRouter({
                 quotedFreightFunding.commercialPolicy,
               quotedFreightFunding,
             });
-            const checkoutTax = await calculateCheckoutTax({
+            const resaleDecision = await resolveCheckoutResale(tx, { buyerId: ctx.user.id, state: destinationState, purpose: input.purchasePurpose ?? "business_use" });
+            const checkoutTax = { resaleDecision, ...await calculateCheckoutTax({
+              resaleDecision,
               checkoutReference:
                 input.selectedQuoteToken ?? input.selectedQuoteId!,
               listingId: listing.id,
@@ -1273,7 +1293,7 @@ export const orderRouter = createTRPCRouter({
                 state: destinationState,
                 postalCode: input.shippingZip,
               },
-            });
+            }) };
             const feeBreakdown =
               checkoutTax.taxLiability === "platform"
                 ? applyPlatformLiableTaxToOrderFees(
@@ -1388,6 +1408,7 @@ export const orderRouter = createTRPCRouter({
         status: order.status,
         paymentStatus: order.paymentStatus,
         totalPrice: order.totalPrice,
+        resaleApplied: order.resaleDecision?.applied ?? false,
         taxAmount: order.taxAmount,
         taxStatus: order.taxStatus,
         taxLiability: order.taxLiability,
@@ -1396,18 +1417,19 @@ export const orderRouter = createTRPCRouter({
     }),
 
   // Get order by ID
-  getById: protectedProcedure
+  getById: assuredProtectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
         where: and(
           eq(orders.id, input.id),
-          // Users can only see their own orders
+          // Participation, rather than account role, determines order access.
           ctx.user.role === "admin"
             ? undefined
-            : ctx.user.role === "seller"
-              ? eq(orders.sellerId, ctx.user.id)
-              : eq(orders.buyerId, ctx.user.id)
+            : or(
+                eq(orders.buyerId, ctx.user.id),
+                eq(orders.sellerId, ctx.user.id),
+              )
         ),
         columns: {
           id: true,
@@ -1425,6 +1447,7 @@ export const orderRouter = createTRPCRouter({
           taxStatus: true,
           taxLiability: true,
           taxJurisdictionSummary: true,
+          resaleDecision: true,
           taxReversalStatus: true,
           totalPrice: true,
           sellerPayout: true,
@@ -1492,6 +1515,7 @@ export const orderRouter = createTRPCRouter({
             },
             with: {
               media: {
+                where: publicProductPhotoWhere,
                 columns: {
                   id: true,
                   url: true,
@@ -1553,7 +1577,11 @@ export const orderRouter = createTRPCRouter({
       }
 
       const isAdmin = ctx.user.role === "admin";
-      const isSeller = ctx.user.id === order.sellerId;
+      const isBuyer = ctx.user.id === order.buyerId;
+      const isSeller = !isBuyer && ctx.user.id === order.sellerId;
+      if (!isAdmin && !isBuyer && !isSeller) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+      }
       const {
         sellerFee,
         sellerStripeFee,
@@ -1582,6 +1610,7 @@ export const orderRouter = createTRPCRouter({
 
       return {
         ...participantOrder,
+        resaleDecision: order.resaleDecision ? { applied: order.resaleDecision.applied, purpose: order.resaleDecision.purpose, reason: order.resaleDecision.reason } : null,
         shippingName: canSeeShippingDestination ? shippingName : null,
         shippingAddress: canSeeShippingDestination ? shippingAddress : null,
         shippingCity: canSeeShippingDestination ? shippingCity : null,
@@ -1592,8 +1621,8 @@ export const orderRouter = createTRPCRouter({
           escrowStatus,
           participantOrder.paymentStatus,
         ),
-        buyer: maskUserForOrder(order.buyer, order.status, isAdmin),
-        seller: maskUserForOrder(order.seller, order.status, isAdmin),
+        buyer: maskUserForOrder({ ...order.buyer, role: "buyer" }, order.status, isAdmin),
+        seller: maskUserForOrder({ ...order.seller, role: "seller" }, order.status, isAdmin),
         sellerFinancials:
           isSeller || isAdmin
             ? {
@@ -1675,6 +1704,7 @@ export const orderRouter = createTRPCRouter({
               },
               with: {
                 media: {
+                where: publicProductPhotoWhere,
                   columns: {
                     id: true,
                     url: true,
@@ -1696,7 +1726,7 @@ export const orderRouter = createTRPCRouter({
               },
             },
           },
-          orderBy: desc(orders.createdAt),
+          orderBy: [desc(orders.createdAt), desc(orders.id)],
           limit: input.limit,
           offset,
         }),
@@ -1711,7 +1741,7 @@ export const orderRouter = createTRPCRouter({
       return {
         items: items.map((item) => ({
           ...item,
-          seller: maskUserForOrder(item.seller, item.status, false),
+          seller: maskUserForOrder({ ...item.seller, role: "seller" }, item.status, false),
         })),
         total,
         page: input.page,
@@ -1777,6 +1807,7 @@ export const orderRouter = createTRPCRouter({
               },
               with: {
                 media: {
+                where: publicProductPhotoWhere,
                   columns: {
                     id: true,
                     url: true,
@@ -1798,7 +1829,7 @@ export const orderRouter = createTRPCRouter({
               },
             },
           },
-          orderBy: desc(orders.createdAt),
+          orderBy: [desc(orders.createdAt), desc(orders.id)],
           limit: input.limit,
           offset,
         }),
@@ -1813,7 +1844,7 @@ export const orderRouter = createTRPCRouter({
       return {
         items: items.map((item) => ({
           ...item,
-          buyer: maskUserForOrder(item.buyer, item.status, false),
+          buyer: maskUserForOrder({ ...item.buyer, role: "buyer" }, item.status, false),
         })),
         total,
         page: input.page,

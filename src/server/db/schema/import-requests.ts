@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, jsonb, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./users";
-export type ListingImportResponse = { batchId: string; count: number; listings: Array<{ id: string; title: string; materialType: "hardwood" | "engineered" | "laminate" | "vinyl_lvp" | "bamboo" | "tile" | "other"; totalSqFt: number; askPricePerSqFt: number }> };
+export type ListingImportResponse = { batchId: string; count: number; listings: Array<{ id: string; title: string; modelNumber?: string | null; materialType: "hardwood" | "engineered" | "laminate" | "vinyl_lvp" | "bamboo" | "tile" | "other"; totalSqFt: number; askPricePerSqFt: number }> };
 export const importRequests = pgTable("import_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
   sellerId: uuid("seller_id").notNull().references(() => users.id, { onDelete: "cascade" }),

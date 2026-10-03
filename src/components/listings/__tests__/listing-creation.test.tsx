@@ -151,6 +151,11 @@ describe("validateStep", () => {
 // --- Store state we control per-test ---
 
 let mockStoreState = {
+  saveError: null as string | null,
+  restoreError: null as string | null,
+  storageReadBlocked: false,
+  defaultsApplied: false,
+  publishedListingId: null as string | null,
   currentStep: 1,
   formData: { allowOffers: true, certifications: [] as string[] },
   uploadedMediaIds: [] as string[],
@@ -161,7 +166,12 @@ let mockStoreState = {
   addMediaId: vi.fn(),
   removeMediaId: vi.fn(),
   setMediaIds: vi.fn(),
-  reset: vi.fn(),
+  reset: vi.fn().mockReturnValue(true),
+  retryRestore: vi.fn().mockReturnValue(true),
+  saveDraft: vi.fn().mockReturnValue(true),
+  continueWithoutSaving: vi.fn(),
+  completePublication: vi.fn(),
+  markDefaultsApplied: vi.fn(),
 };
 
 // --- Mocks ---
@@ -170,12 +180,19 @@ vi.mock("@/lib/stores/listing-form-store", () => ({
   useListingFormStore: Object.assign(() => ({ ...mockStoreState, sellerId: "seller-1" }), { getState: () => ({ ...mockStoreState, sellerId: "seller-1", bindSeller: vi.fn() }) }),
 }));
 
+// These existing cases render a ready form; real account synchronization has separate DB/browser proofs.
+vi.mock("@/hooks/use-account-listing-draft", () => ({
+  useAccountListingDraft: vi.fn(),
+}));
+
 vi.mock("@/lib/stores/auth-store", () => ({
-  useAuthStore: vi.fn(),
+  useAuthStore: Object.assign(vi.fn(), { getState: vi.fn(), subscribe: vi.fn(() => vi.fn()) }),
 }));
 
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
+    warehouse: { list: { useQuery: () => ({ data: { ownerId: "seller-1", warehouses: [], listings: [] }, isFetchedAfterMount: true, isError: false, isFetching: false, refetch: vi.fn() }) } },
+    auth: { getSession: { useQuery: vi.fn() } },
     listing: {
       create: { useMutation: vi.fn() },
       getSellerStats: { useQuery: vi.fn() },
@@ -193,18 +210,20 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), message: vi.fn() },
 }));
 
-vi.mock("@/components/listings/photo-upload", () => ({
-  PhotoUpload: ({
+// Keep these page-render cases at the uploader boundary; private photo behavior has browser proofs.
+vi.mock("@/components/listings/private-photo-upload", () => ({
+  PrivatePhotoUpload: ({
+    account,
+    disabled = false,
     onImagesChange,
-  }: {
-    onImagesChange: (ids: string[]) => void;
-  }) => (
+  }: React.ComponentProps<typeof import("@/components/listings/private-photo-upload").PrivatePhotoUpload>) => (
     <div data-testid="photo-upload">
       <button
         type="button"
+        disabled={disabled || account.photoBlocked || !account.canEdit()}
         onClick={() => onImagesChange(["mock-media-id"])}
       >
         Upload Photo
@@ -226,6 +245,7 @@ vi.mock("@/lib/utils/celebrate", () => ({
 // --- Imports after mocks ---
 
 import { trpc } from "@/lib/trpc/client";
+import { useAccountListingDraft } from "@/hooks/use-account-listing-draft";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useRouter } from "next/navigation";
 import CreateListingPage from "@/app/(dashboard)/seller/listings/new/page";
@@ -235,15 +255,21 @@ import CreateListingPage from "@/app/(dashboard)/seller/listings/new/page";
 function setupMocks(overrides: { currentStep?: number } = {}) {
   const pushFn = vi.fn();
   (useRouter as Mock).mockReturnValue({ push: pushFn });
-  (useAuthStore as unknown as Mock).mockReturnValue({
+  const authState = {
     user: {
       id: "seller-1",
       role: "seller",
       verificationStatus: "verified",
+      stripeOnboardingComplete: true,
     },
-  });
+    isAuthenticated: true,
+    isLoading: false,
+  };
+  (useAuthStore as unknown as Mock).mockReturnValue(authState);
+  (useAuthStore.getState as unknown as Mock).mockReturnValue(authState);
 
   const trpcMock = trpc as unknown as {
+    auth: { getSession: { useQuery: Mock } };
     listing: {
       create: { useMutation: Mock };
       getSellerStats: { useQuery: Mock };
@@ -253,6 +279,14 @@ function setupMocks(overrides: { currentStep?: number } = {}) {
     };
     useUtils: Mock;
   };
+  trpcMock.auth.getSession.useQuery.mockReturnValue({
+    data: { isAuthenticated: true, user: authState.user },
+    isFetchedAfterMount: true,
+    isError: false,
+    isLoading: false,
+    isFetching: false,
+    refetch: vi.fn(),
+  });
   trpcMock.listing.create.useMutation.mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({ id: "new-listing-id" }),
   });
@@ -264,9 +298,41 @@ function setupMocks(overrides: { currentStep?: number } = {}) {
   });
   trpcMock.preferences.get.useQuery.mockReturnValue({ data: undefined });
   trpcMock.useUtils.mockReturnValue({});
+  (useAccountListingDraft as Mock).mockReturnValue({
+    phase: "ready",
+    message: null,
+    generation: 0,
+    resolved: true,
+    mediaWarning: false,
+    unavailableMediaIds: [],
+    remoteState: "editing",
+    saveNow: vi.fn().mockResolvedValue(null),
+    retry: vi.fn(),
+    useAccountVersion: vi.fn(),
+    keepThisVersion: vi.fn(),
+    startNew: vi.fn().mockResolvedValue(false),
+    exportLocal: vi.fn(),
+    canEdit: vi.fn().mockReturnValue(true),
+    removeUnavailablePhotos: vi.fn(),
+    accountDraftId: null,
+    photoState: "idle",
+    photoBlocked: false,
+    beginPhotoBatch: vi.fn().mockResolvedValue(null),
+    isCurrentPhotoBatch: vi.fn().mockReturnValue(false),
+    recordPhotoCompletion: vi.fn().mockReturnValue(false),
+    acceptPhotoCompletion: vi.fn().mockReturnValue(null),
+    endPhotoBatch: vi.fn(),
+    reconcilePhotoBatch: vi.fn().mockResolvedValue(null),
+    reconcilePhotoTransfer: vi.fn().mockResolvedValue(null),
+  } satisfies ReturnType<typeof useAccountListingDraft>);
 
   // Reset store state for each test
   mockStoreState = {
+    saveError: null as string | null,
+    restoreError: null as string | null,
+    storageReadBlocked: false,
+    defaultsApplied: false,
+    publishedListingId: null as string | null,
     currentStep: overrides.currentStep ?? 1,
     formData: { allowOffers: true, certifications: [] },
     uploadedMediaIds: [],
@@ -277,7 +343,12 @@ function setupMocks(overrides: { currentStep?: number } = {}) {
     addMediaId: vi.fn(),
     removeMediaId: vi.fn(),
     setMediaIds: vi.fn(),
-    reset: vi.fn(),
+    reset: vi.fn().mockReturnValue(true),
+    retryRestore: vi.fn().mockReturnValue(true),
+    saveDraft: vi.fn().mockReturnValue(true),
+    continueWithoutSaving: vi.fn(),
+    completePublication: vi.fn(),
+    markDefaultsApplied: vi.fn(),
   };
 
   return { pushFn };
@@ -295,30 +366,27 @@ describe("CreateListingPage", () => {
     render(<CreateListingPage />);
 
     expect(
-      screen.getByRole("heading", { name: "Create New Listing" })
+      screen.getByRole("heading", { name: "Create a listing" })
     ).toBeInTheDocument();
     expect(
-      screen.getByText("List your flooring inventory for buyers to discover")
+      screen.getByText("Prepare your lot. Publish when you’re ready.")
     ).toBeInTheDocument();
   });
 
-  it("renders all 6 step indicators", () => {
+  it("renders all 3 step indicators", () => {
     render(<CreateListingPage />);
 
     // Step descriptions are unique per step and only appear in the step bar
-    expect(screen.getByText("Material and specs")).toBeInTheDocument();
-    expect(screen.getByText("Quantities and location")).toBeInTheDocument();
-    expect(screen.getByText("Set your prices")).toBeInTheDocument();
-    expect(screen.getByText("Condition and certs")).toBeInTheDocument();
-    expect(screen.getByText("Upload images")).toBeInTheDocument();
-    expect(screen.getByText("Review and publish")).toBeInTheDocument();
+    expect(screen.getByText("Identify the material")).toBeInTheDocument();
+    expect(screen.getByText("Set the lot and freight")).toBeInTheDocument();
+    expect(screen.getByText("Confirm your terms")).toBeInTheDocument();
   });
 
-  it("renders Next button on step 1", () => {
+  it("renders the Quantity & price forward button on step 1", () => {
     render(<CreateListingPage />);
 
     expect(
-      screen.getByRole("button", { name: /Next/ })
+      screen.getByRole("button", { name: "Quantity & price" })
     ).toBeInTheDocument();
   });
 
@@ -349,14 +417,13 @@ describe("CreateListingPage", () => {
     expect(screen.getByText("Select material")).toBeInTheDocument();
   });
 
-  it("renders step 4 condition card when currentStep is 4", () => {
-    setupMocks({ currentStep: 4 });
+  it("renders the condition card in step 1", () => {
+    setupMocks({ currentStep: 1 });
 
     render(<CreateListingPage />);
 
-    // CardTitle renders as <div>, not a heading element
     expect(
-      screen.getByText("Condition & Certifications")
+      screen.getByRole("heading", { name: "Condition & Certifications" })
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -367,31 +434,30 @@ describe("CreateListingPage", () => {
     expect(screen.getByText("Select condition")).toBeInTheDocument();
   });
 
-  it("renders photo upload area on step 5", () => {
-    setupMocks({ currentStep: 5 });
+  it("renders photo upload area in step 1", () => {
+    setupMocks({ currentStep: 1 });
 
     render(<CreateListingPage />);
 
-    // "Photos" appears in both step indicator and CardTitle, so check
-    // the unique card description and the upload component instead
+    // Preserve the card description and uploader assertions in the combined first step.
     expect(
       screen.getByText(
-        "Upload up to 20 photos of your flooring product. The first image will be the cover photo."
+        "Show the product, packaging and any damage."
       )
     ).toBeInTheDocument();
     expect(screen.getByTestId("photo-upload")).toBeInTheDocument();
   });
 
-  it("shows Publish Listing button on step 6 instead of Next", () => {
-    setupMocks({ currentStep: 6 });
+  it("shows Publish listing on step 3 instead of a forward-step action", () => {
+    setupMocks({ currentStep: 3 });
 
     render(<CreateListingPage />);
 
     expect(
-      screen.getByRole("button", { name: /Publish Listing/ })
+      screen.getByRole("button", { name: "Publish listing" })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Next/ })
+      screen.queryByRole("button", { name: /^(Quantity & price|Review listing)$/ })
     ).not.toBeInTheDocument();
   });
 

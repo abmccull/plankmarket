@@ -41,6 +41,12 @@ describe("verification draft", () => {
 
   it("accepts a complete saved draft at the final submission gate", () => {
     expect(parseVerificationDraftSubmission(saved).success).toBe(true);
+    const conventional = parseVerificationDraftSubmission({ ...saved, businessWebsite: "example.com", einTaxId: "123456789" });
+    expect(conventional.success).toBe(true);
+    if (conventional.success) {
+      expect(conventional.data.businessWebsite).toBe("https://example.com");
+      expect(conventional.data.einTaxId).toBe("12-3456789");
+    }
   });
 
   it("rejects an incomplete saved draft at the final submission gate", () => {

@@ -1,5 +1,10 @@
+import { withRoleProviderCoordinator } from "../services/role-provider-coordinator";
+import { openRoleProviderWriteSession } from "../services/role-provider-write-session";
+import { sellerActivationRoleProvider } from "../services/seller-activation-provider";
 import { getOrderRecovery } from "@/lib/order-recovery";
-import { createTRPCRouter, adminProcedure } from "../trpc";
+import { createTRPCRouter, adminProcedure, strictAdminProcedure } from "../trpc";
+import { sellerActivationReviewSchema, sellerActivationReconcileSchema } from "@/lib/validators/seller-activation";
+import { getSellerActivationQueue, getSellerActivationForReview, reviewSellerActivation, reconcileSellerActivation } from "../services/seller-activation";
 import {
   users,
   listings,
@@ -31,7 +36,7 @@ import { z } from "zod";
 import { priority1 } from "@/server/services/priority1";
 import { selectPriority1Shipment } from "@/server/services/priority1-selection";
 import { inngest } from "@/lib/inngest/client";
-import { buildListingCreatedEvent } from "@/lib/inngest/events";
+import { restoreArchivedListing, restoreListingInput } from "@/server/services/listing-restoration";
 import { sendVerificationApprovedEmail, sendVerificationRejectedEmail, sendRefundEmail } from "@/lib/email/send";
 import { processOrderRefund } from "@/server/services/refund";
 import { releaseReservedInventory } from "@/server/services/inventory-reservation";
@@ -440,6 +445,9 @@ export const adminRouter = createTRPCRouter({
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
       const listingsList = await ctx.db.query.listings.findMany({
+        extras: {
+          restorationVersion: sql<string>`to_char(${listings.updatedAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as("restoration_version"),
+        },
         where: whereClause,
         orderBy: [desc(listings.createdAt)],
         limit: input.limit,
@@ -591,7 +599,11 @@ export const adminRouter = createTRPCRouter({
         userId: z.string().uuid(),
         submissionId: z.string().uuid().nullable(),
         status: z.enum(["verified", "rejected"]),
-        notes: z.string().optional(),
+        notes: z.string().trim().max(2000).optional(),
+      }).superRefine((value, context) => {
+        if (value.status === "rejected" && !value.notes) {
+          context.addIssue({ code: "custom", path: ["notes"], message: "Describe the specific correction needed before rejecting verification." });
+        }
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -697,6 +709,25 @@ export const adminRouter = createTRPCRouter({
       return updatedUser;
     }),
 
+  getSellerActivationQueue: strictAdminProcedure.input(z.object({
+    status: z.enum(["pending", "approved", "all"]).default("pending"),
+    limit: z.number().int().min(1).max(50).default(25),
+    offset: z.number().int().min(0).max(5000).default(0),
+  })).query(({ ctx, input }) => getSellerActivationQueue(ctx.db, input)),
+
+  getSellerActivation: strictAdminProcedure.input(sellerActivationReconcileSchema)
+    .query(({ ctx, input }) => getSellerActivationForReview(ctx.db, input.id)),
+
+  reviewSellerActivation: strictAdminProcedure.input(sellerActivationReviewSchema)
+    .mutation(({ ctx, input }) => reviewSellerActivation(ctx.db, ctx.user.id, input)),
+
+  reconcileSellerActivation: strictAdminProcedure.input(sellerActivationReconcileSchema)
+    .mutation(async ({ ctx, input }) => {
+      const application = await getSellerActivationForReview(ctx.db, input.id);
+      if (application.ownerId === ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "You cannot activate your own selling application." });
+      return reconcileSellerActivation(ctx.db, application.ownerId, input.id);
+    }),
+
   // Update user details
   updateUser: adminProcedure
     .input(
@@ -711,100 +742,56 @@ export const adminRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // Get the user
-      const user = await ctx.db.query.users.findFirst({
-        where: eq(users.id, input.userId),
+  const update = async () => {
+    // The initial role decision is now inside shared coordination.
+    const user = await ctx.db.query.users.findFirst({ where: eq(users.id, input.userId) });
+    if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+    if (user.role === "buyer" && input.role === "seller") {
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Review the buyer's selling application and activate it from Seller applications." });
+    }
+    const updateData: Record<string, unknown> = { updatedAt: new Date() };
+    if (input.role !== undefined) updateData.role = input.role;
+    if (input.active !== undefined) updateData.active = input.active;
+    const requestedVerificationStatus: VerificationStatus | undefined = input.verificationStatus ??
+      (input.verified === undefined ? undefined : input.verified ? "verified" : "unverified");
+    if (requestedVerificationStatus) Object.assign(updateData, verificationStateUpdate(requestedVerificationStatus));
+
+    const roleSession = input.role === undefined ? null : await openRoleProviderWriteSession(
+      ctx.db, input.userId, await sellerActivationRoleProvider(),
+    );
+    if (roleSession && input.role !== undefined) {
+      // Explicit admin role intent always gets a new receipt, including same-role
+      // input. This also fences an old worker whose advisory connection died.
+      await roleSession.ensure({ role: input.role, plankmarket_seller_activation: null }, "admin_role", ctx.user.id, true);
+    }
+    try {
+      return await ctx.db.transaction(async tx => {
+        const [current] = await tx.select().from(users).where(eq(users.id, input.userId)).for("update");
+        if (!current || current.authId !== user.authId) throw new TRPCError({ code: "CONFLICT", message: "The account changed. Reload before continuing." });
+        if (roleSession) await roleSession.assertCurrent(tx);
+        if (current.role === "buyer" && input.role === "seller") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Review the buyer's selling application before activation." });
+        }
+        const [updated] = await tx.update(users).set(updateData).where(eq(users.id, input.userId)).returning();
+        return updated;
       });
-
-      if (!user) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "User not found",
-        });
-      }
-
-      // Build update object
-      const updateData: Record<string, unknown> = {
-        updatedAt: new Date(),
-      };
-
-      if (input.role !== undefined) {
-        updateData.role = input.role;
-      }
-
-      if (input.active !== undefined) {
-        updateData.active = input.active;
-      }
-
-      const requestedVerificationStatus: VerificationStatus | undefined =
-        input.verificationStatus ??
-        (input.verified === undefined
-          ? undefined
-          : input.verified
-            ? "verified"
-            : "unverified");
-      if (requestedVerificationStatus) {
-        Object.assign(
-          updateData,
-          verificationStateUpdate(requestedVerificationStatus),
-        );
-      }
-
-      let previousAppMetadata: Record<string, unknown> | undefined;
-      if (input.role !== undefined && input.role !== user.role) {
-        const { createServiceClient } = await import("@/lib/supabase/server");
-        const serviceClient = await createServiceClient();
-        const { data: authData, error: getAuthUserError } =
-          await serviceClient.auth.admin.getUserById(user.authId);
-        if (getAuthUserError || !authData.user) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Could not synchronize the user's authorization role.",
-          });
-        }
-        previousAppMetadata = authData.user.app_metadata;
-        const { error: metadataError } =
-          await serviceClient.auth.admin.updateUserById(user.authId, {
-            app_metadata: {
-              ...previousAppMetadata,
-              role: input.role,
-            },
-          });
-        if (metadataError) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Could not synchronize the user's authorization role.",
-          });
+    } catch (error) {
+      if (roleSession) {
+        try {
+          const current = await ctx.db.query.users.findFirst({ where: eq(users.id, input.userId) });
+          if (!current || current.authId !== user.authId) throw new Error("Account identity changed");
+          // Same coordinator, a new durable receipt, current DB authority. If
+          // this repair is uncertain, all subsequent role writers stay blocked.
+          await roleSession.ensure({ role: current.role, plankmarket_seller_activation: null }, "admin_role_repair", ctx.user.id, true);
+        } catch {
+          console.error("Account role repair requires confirmation", { userId: input.userId });
         }
       }
-
-      let updatedUser;
-      try {
-        [updatedUser] = await ctx.db
-          .update(users)
-          .set(updateData)
-          .where(eq(users.id, input.userId))
-          .returning();
-      } catch (error) {
-        if (previousAppMetadata) {
-          const { createServiceClient } = await import("@/lib/supabase/server");
-          const serviceClient = await createServiceClient();
-          await serviceClient.auth.admin
-            .updateUserById(user.authId, {
-              app_metadata: previousAppMetadata,
-            })
-            .catch((rollbackError) => {
-              console.error("Failed to roll back Supabase role metadata", {
-                userId: user.id,
-                rollbackError,
-              });
-            });
-        }
-        throw error;
-      }
-
-      return updatedUser;
-    }),
+      throw error;
+    }
+  };
+  return input.role === undefined ? update() : withRoleProviderCoordinator(input.userId, update);
+}),
 
   // Get finance dashboard statistics
   getFinanceStats: adminProcedure.query(async ({ ctx }) => {
@@ -1404,68 +1391,10 @@ export const adminRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  // Unflag a listing (restore to active)
+  // Restore only the exact archived version reviewed by the administrator.
   unflagListing: adminProcedure
-    .input(z.object({ listingId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const listing = await ctx.db.query.listings.findFirst({
-        where: eq(listings.id, input.listingId),
-      });
-
-      if (!listing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Listing not found",
-        });
-      }
-
-      if (listing.status !== "archived") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Listing is not currently archived/flagged",
-        });
-      }
-
-      const restoredAt = new Date();
-      await ctx.db
-        .update(listings)
-        .set({
-          status: "active",
-          publishedAt: restoredAt,
-          updatedAt: restoredAt,
-        })
-        .where(eq(listings.id, input.listingId));
-
-      // Notify the seller
-      await ctx.db.insert(notifications).values({
-        userId: listing.sellerId,
-        type: "system",
-        title: "Listing Restored",
-        message: `Your listing "${listing.title}" has been reviewed and restored to the marketplace.`,
-        data: { listingId: listing.id },
-        read: false,
-      });
-
-      try {
-        const event = buildListingCreatedEvent({
-          listingId: listing.id,
-          sellerId: listing.sellerId,
-        });
-        await inngest.send({
-          ...event,
-          id: `listing-restored:${listing.id}:${restoredAt.getTime()}`,
-        });
-      } catch {
-        // Daily/weekly digests still discover the refreshed publishedAt value;
-        // an instant-alert provider failure must not undo the admin decision.
-        console.error("Failed to enqueue restored listing alert", {
-          listingId: listing.id,
-          sellerId: listing.sellerId,
-        });
-      }
-
-      return { success: true };
-    }),
+    .input(restoreListingInput)
+    .mutation(({ ctx, input }) => restoreArchivedListing(ctx.db, ctx.user.id, input)),
 
   // Suspend a user
   suspendUser: adminProcedure
@@ -1660,7 +1589,7 @@ export const adminRouter = createTRPCRouter({
             type: "system" as const,
             title: "Order Cancelled by Admin",
             message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
-            data: { orderId: order.id },
+            data: { orderId: order.id, recipientSide: "buyer" },
             read: false,
           },
           {
@@ -1668,7 +1597,7 @@ export const adminRouter = createTRPCRouter({
             type: "system" as const,
             title: "Order Cancelled by Admin",
             message: `Order ${order.orderNumber} has been cancelled by an administrator. Reason: ${input.reason}`,
-            data: { orderId: order.id },
+            data: { orderId: order.id, recipientSide: "seller" },
             read: false,
           },
         ]);

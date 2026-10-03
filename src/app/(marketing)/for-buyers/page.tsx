@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -20,18 +19,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
+import { FREE_LIMITS } from "@/lib/pro";
 
 export const metadata: Metadata = {
   title: "For Buyers - Source Closeout Flooring",
-  description:
-    `Source closeout and surplus flooring with visible seller verification, detailed lot data, freight quotes, and a clear ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} shown before payment.`,
+  description: `Source closeout and surplus flooring with visible seller verification, detailed lot data, freight quotes, and a clear ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} shown before payment.`,
   alternates: {
     canonical: "/for-buyers",
   },
   openGraph: {
     title: "Source closeout flooring with less guesswork",
     description:
-      "Compare detailed surplus flooring lots, review seller verification, request freight quotes, and keep protected transaction actions on-platform.",
+      "Compare surplus flooring lots, review specifications and seller verification, then see the buyer fee and selected freight quote before payment.",
     url: "/for-buyers",
   },
 };
@@ -61,24 +60,23 @@ const BENEFITS = [
 
 const STEPS = [
   {
-    title: "Create an account",
+    title: "Browse and compare",
     description:
-      "Start browsing immediately. Business verification is a separate step required before checkout.",
+      "No account needed to browse. Check the material, quantity, minimum order, condition and seller-provided photos.",
   },
   {
-    title: "Compare the lot",
+    title: "Save a lot or ask a question",
     description:
-      "Review specifications and photos, save a search, or ask the seller a product-specific question.",
+      "Create a buyer account to save searches, message the seller or send an offer. You can start these steps before business approval.",
   },
   {
-    title: "Buy or make an offer",
-    description:
-      `Use the listed price or negotiate through the platform. The ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} and selected freight quote are shown before payment.`,
+    title: "Verify and check out",
+    description: `Business approval is required before checkout. Review your quantity, the ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel}, selected freight and any applicable tax before payment.`,
   },
   {
     title: "Track delivery",
     description:
-      "PlankMarket initiates the seller transfer after confirmed carrier pickup and the configured delay. Track freight and report delivery issues through the order record.",
+      "Follow shipment updates in your order. Inspect the delivery, note visible damage on the paperwork, and report damage or shortages within 48 hours with photos.",
   },
 ] as const;
 
@@ -86,17 +84,15 @@ const FAQS = [
   {
     question: "Can I browse before business verification?",
     answer:
-      "Yes. Account creation and verification are separate. You can browse and save relevant inventory first; verification must be approved before checkout and other protected transaction actions.",
+      "Yes. Browse without an account. Create an account to save searches, message sellers or make offers; business approval is required before checkout.",
   },
   {
     question: "What does it cost to buy?",
-    answer:
-      `PlankMarket charges a ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on the inventory subtotal when a purchase is completed. Freight is quoted separately before payment, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin. Pro is optional and does not replace the transaction fee.`,
+    answer: `PlankMarket charges a ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on the inventory subtotal when a purchase is completed. Freight is quoted separately before payment, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin. Pro is optional and does not replace the transaction fee.`,
   },
   {
     question: "How is payment handled?",
-    answer:
-      "Stripe processes the buyer payment. PlankMarket does not store card details and initiates the seller transfer through Stripe Connect after confirmed carrier pickup and the configured delay.",
+    answer: PUBLIC_COMMERCIAL_COPY.paymentHoldModel,
   },
   {
     question: "What if freight arrives damaged or short?",
@@ -126,7 +122,8 @@ export default function ForBuyersPage() {
               <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
                 <Button asChild size="xl" variant="gold">
                   <Link href="/listings">
-                    Browse inventory <ArrowRight className="ml-2 h-5 w-5" />
+                    Browse inventory{" "}
+                    <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
                   </Link>
                 </Button>
                 <Button asChild size="xl" variant="outline">
@@ -134,32 +131,56 @@ export default function ForBuyersPage() {
                 </Button>
               </div>
               <p className="mt-4 text-sm text-muted-foreground">
-                Free to browse. Business verification is required before checkout.
+                No account needed to browse. Business approval is required
+                before checkout.
               </p>
             </div>
-            <div className="relative hidden h-[390px] overflow-hidden rounded-2xl shadow-elevation-lg lg:block">
-              <Image
-                src="https://images.unsplash.com/photo-1722604828977-395d52c3cd23?w=1000&q=80&fit=crop"
-                alt="Light oak flooring installed in a modern living space"
-                fill
-                className="object-cover"
-                priority
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-primary/30 to-transparent" aria-hidden="true" />
-            </div>
+            <aside
+              className="border-t pt-6 text-left lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0"
+              aria-labelledby="lot-checklist-title"
+            >
+              <h2 id="lot-checklist-title" className="font-display text-2xl">
+                Check the lot before you buy
+              </h2>
+              <ul className="mt-4 space-y-3 text-sm leading-relaxed text-muted-foreground">
+                <li>
+                  Available quantity, minimum order and product specifications
+                </li>
+                <li>Actual flooring, labels, packaging and condition photos</li>
+                <li>
+                  Seller verification, pickup region and freight to your
+                  destination
+                </li>
+              </ul>
+              <Link
+                href="/how-it-works#buyers"
+                className="mt-5 inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4"
+              >
+                See the buying steps
+              </Link>
+            </aside>
           </div>
         </div>
       </section>
 
-      <section className="border-y bg-muted/20" aria-label="Marketplace safeguards">
+      <section
+        className="border-y bg-muted/20"
+        aria-label="Marketplace safeguards"
+      >
         <div className="container mx-auto grid gap-4 px-4 py-6 text-sm sm:grid-cols-3">
           {[
-            "Business verification before transacting",
+            "Business approval before checkout",
             "Structured lot details and photos",
             "Freight milestones in your dashboard",
           ].map((item) => (
-            <div key={item} className="flex items-center gap-2 sm:justify-center">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-700" aria-hidden="true" />
+            <div
+              key={item}
+              className="flex items-center gap-2 sm:justify-center"
+            >
+              <CheckCircle2
+                className="h-4 w-4 shrink-0 text-green-700"
+                aria-hidden="true"
+              />
               <span>{item}</span>
             </div>
           ))}
@@ -174,7 +195,8 @@ export default function ForBuyersPage() {
             </h2>
             <p className="mt-3 text-muted-foreground">
               PlankMarket organizes the evidence and transaction steps that are
-              usually scattered across calls, texts, spreadsheets, and freight portals.
+              usually scattered across calls, texts, spreadsheets, and freight
+              portals.
             </p>
           </div>
           <div className="mx-auto mt-9 grid max-w-5xl gap-5 md:grid-cols-3">
@@ -184,7 +206,9 @@ export default function ForBuyersPage() {
                   <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
                     <Icon className="h-5 w-5 text-primary" aria-hidden="true" />
                   </div>
-                  <CardTitle className="font-display text-xl">{title}</CardTitle>
+                  <CardTitle className="font-display text-xl">
+                    {title}
+                  </CardTitle>
                   <CardDescription className="text-base leading-relaxed">
                     {description}
                   </CardDescription>
@@ -205,7 +229,10 @@ export default function ForBuyersPage() {
           </div>
           <ol className="mx-auto mt-9 grid max-w-5xl gap-4 md:grid-cols-2 lg:grid-cols-4">
             {STEPS.map((item, index) => (
-              <li key={item.title} className="rounded-xl border bg-background p-5">
+              <li
+                key={item.title}
+                className="rounded-xl border bg-background p-5"
+              >
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                   {index + 1}
                 </span>
@@ -223,29 +250,49 @@ export default function ForBuyersPage() {
         <div className="container mx-auto grid max-w-5xl gap-8 px-4 lg:grid-cols-[.85fr_1.15fr]">
           <Card className="h-fit border-primary/30">
             <CardHeader>
-              <Badge className="w-fit" variant="outline">Transparent pricing</Badge>
-              <CardTitle className="font-display text-3xl">Buyer total shown before payment</CardTitle>
+              <Badge className="w-fit" variant="outline">
+                Transparent pricing
+              </Badge>
+              <CardTitle className="font-display text-3xl">
+                Buyer total shown before payment
+              </CardTitle>
               <CardDescription className="text-base">
-                A {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} applies to the inventory subtotal only when a purchase is completed.
+                A {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} applies to
+                the inventory subtotal only when a purchase is completed.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <p className="text-sm font-semibold">Illustrative order</p>
               <dl className="space-y-2 rounded-lg bg-muted/40 p-4 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt>Inventory subtotal</dt><dd>$10,000</dd>
+                  <dt>Inventory subtotal</dt>
+                  <dd>
+                    {PUBLIC_COMMERCIAL_COPY.exampleOrder.inventorySubtotal}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt>Buyer fee ({PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeePercent}%)</dt><dd>$500</dd>
+                  <dt>
+                    Buyer fee (
+                    {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeePercent}%)
+                  </dt>
+                  <dd>{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerFee}</dd>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <dt>Example quoted freight</dt>
+                  <dd>{PUBLIC_COMMERCIAL_COPY.exampleOrder.quotedFreight}</dd>
                 </div>
                 <div className="flex justify-between gap-4 border-t pt-2 font-semibold">
-                  <dt>Before freight</dt><dd>$10,500</dd>
+                  <dt>Before applicable tax</dt>
+                  <dd>{PUBLIC_COMMERCIAL_COPY.exampleOrder.buyerTotal}</dd>
                 </div>
               </dl>
               <p className="text-sm text-muted-foreground">
-                Freight is quoted separately before payment, and the displayed
+                Your actual freight depends on the selected quote. The displayed
                 freight charge may include carrier charges plus PlankMarket
-                shipping service margin. Pro adds optional sourcing and
-                automation tools; no subscription is required to browse.
+                shipping service margin. Free includes{" "}
+                {FREE_LIMITS.savedSearches} saved searches with email and in-app
+                alerts. Pro adds unlimited saved searches; no subscription is
+                required to buy.
               </p>
               <Button asChild variant="outline" className="w-full">
                 <Link href="/pricing">Review all pricing</Link>
@@ -255,7 +302,10 @@ export default function ForBuyersPage() {
 
           <div>
             <div className="flex items-center gap-3">
-              <ShieldCheck className="h-7 w-7 text-primary" aria-hidden="true" />
+              <ShieldCheck
+                className="h-7 w-7 text-primary"
+                aria-hidden="true"
+              />
               <h2 className="font-display text-3xl">Buyer questions</h2>
             </div>
             <div className="mt-5 divide-y rounded-xl border">
@@ -281,11 +331,13 @@ export default function ForBuyersPage() {
             Find the next lot before the next round of calls.
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-primary-foreground/80">
-            Browse first, then create a buyer account to save searches and prepare for verification.
+            Browse first, then create a buyer account to save searches and
+            prepare for verification.
           </p>
           <Button asChild size="xl" variant="gold" className="mt-7">
             <Link href="/listings">
-              Browse inventory <ArrowRight className="ml-2 h-5 w-5" />
+              Browse inventory{" "}
+              <ArrowRight className="ml-2 h-5 w-5" aria-hidden="true" />
             </Link>
           </Button>
         </div>

@@ -1,4 +1,5 @@
 import "server-only";
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
 
 import { TRPCError } from "@trpc/server";
 import { asc, eq, sql } from "drizzle-orm";
@@ -35,6 +36,7 @@ export async function getPublicListingByRouteParam(
       },
       media: {
         columns: publicMediaColumns,
+        where: publicProductPhotoWhere,
         orderBy: (media, { asc: orderAsc }) => [orderAsc(media.sortOrder)],
       },
     },

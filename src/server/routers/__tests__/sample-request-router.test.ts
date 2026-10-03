@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { createTRPCContext } from "@/server/trpc";
+import { notifications } from "@/server/db/schema";
 
 process.env.SKIP_ENV_VALIDATION = "1";
 process.env.DATABASE_URL ??= "postgresql://postgres:postgres@localhost:5432/plankmarket_test";
@@ -65,7 +67,7 @@ function createCallerContext(overrides: Record<string, unknown> = {}) {
     supabase: {},
     clientIp: "127.0.0.1",
     ...overrides,
-  } as Parameters<typeof createCaller>[0];
+  } as Awaited<ReturnType<typeof createTRPCContext>>;
 }
 
 describe("sampleRequestRouter", () => {
@@ -79,7 +81,7 @@ describe("sampleRequestRouter", () => {
     vi.clearAllMocks();
   });
 
-  it("returns the existing open request instead of creating a duplicate", async () => {
+  it.each(["buyer", "seller"] as const)("returns the existing open request instead of creating a duplicate (%s account)", async (role) => {
     const existingRequest = {
       id: SAMPLE_ID,
       listingId: LISTING_ID,
@@ -152,7 +154,10 @@ describe("sampleRequestRouter", () => {
       ),
     };
 
-    const caller = createCaller(createCallerContext({ db }));
+    const context = createCallerContext({ db });
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
     const result = await caller.sampleRequest.create({
       listingId: LISTING_ID,
       buyerMessage: "Please pull the current wear layer.",
@@ -169,7 +174,7 @@ describe("sampleRequestRouter", () => {
     expect(db.transaction).toHaveBeenCalled();
   });
 
-  it("rejects sample requests outside the seller territory", async () => {
+  it.each(["buyer", "seller"] as const)("rejects sample requests outside the seller territory (%s account)", async (role) => {
     const db = {
       query: {
         listings: {
@@ -189,7 +194,10 @@ describe("sampleRequestRouter", () => {
       transaction: vi.fn(),
     };
 
-    const caller = createCaller(createCallerContext({ db }));
+    const context = createCallerContext({ db });
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
 
     await expect(
       caller.sampleRequest.create({
@@ -210,7 +218,7 @@ describe("sampleRequestRouter", () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it("creates a sample request when the destination is inside the seller territory", async () => {
+  it.each(["buyer", "seller"] as const)("creates a sample request and addresses the selling side (%s account)", async (role) => {
     const createdRequest = {
       id: SAMPLE_ID,
       listingId: LISTING_ID,
@@ -239,6 +247,7 @@ describe("sampleRequestRouter", () => {
       createdAt: new Date("2026-07-30T12:00:00.000Z"),
       updatedAt: new Date("2026-07-30T12:00:00.000Z"),
     };
+    const notificationValues = vi.fn().mockResolvedValue(undefined);
     const insert = vi
       .fn()
       .mockReturnValueOnce({
@@ -247,7 +256,7 @@ describe("sampleRequestRouter", () => {
         }),
       })
       .mockReturnValueOnce({
-        values: vi.fn().mockResolvedValue(undefined),
+        values: notificationValues,
       });
     const db = {
       query: {
@@ -277,7 +286,10 @@ describe("sampleRequestRouter", () => {
       ),
     };
 
-    const caller = createCaller(createCallerContext({ db }));
+    const context = createCallerContext({ db });
+    context.user!.role = role;
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("Buying must not require payout MFA"));
+    const caller = createCaller(context);
     const result = await caller.sampleRequest.create({
       listingId: LISTING_ID,
       buyerMessage: "Please send a sample.",
@@ -294,6 +306,20 @@ describe("sampleRequestRouter", () => {
     expect(result.request.shippingAddress?.state).toBe("CO");
     expect(db.transaction).toHaveBeenCalled();
     expect(insert).toHaveBeenCalledTimes(2);
+    expect(insert).toHaveBeenNthCalledWith(2, notifications);
+    expect(notificationValues).toHaveBeenCalledTimes(1);
+    expect(notificationValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: SELLER_ID,
+        data: expect.objectContaining({
+          type: "sample_request_created",
+          sampleRequestId: SAMPLE_ID,
+          listingId: LISTING_ID,
+          recipientSide: "seller",
+        }),
+      }),
+    );
+    expect(context.getAuthAssurance).not.toHaveBeenCalled();
   });
 
   it("masks the buyer shipping address for sellers until approval", async () => {
@@ -392,13 +418,58 @@ describe("sampleRequestRouter", () => {
     expect(result[1].shippingAddress?.address1).toBe("123 Main St");
   });
 
-  it("treats repeated terminal actions as idempotent noops", async () => {
+  it.each([
+    {
+      label: "repeated terminal action is a notification-free noop",
+      accountRole: "buyer",
+      actorId: BUYER_ID,
+      initialStatus: "delivered",
+      action: "deliver",
+      expectedKind: "noop",
+      expectedStatus: "delivered",
+      recipientId: null,
+      recipientSide: null,
+    },
+    {
+      label: "buyer cancellation addresses the selling side",
+      accountRole: "buyer",
+      actorId: BUYER_ID,
+      initialStatus: "requested",
+      action: "cancel",
+      expectedKind: "transition",
+      expectedStatus: "cancelled",
+      recipientId: SELLER_ID,
+      recipientSide: "seller",
+    },
+    {
+      label: "seller-account buyer cancellation addresses the selling side",
+      accountRole: "seller",
+      actorId: BUYER_ID,
+      initialStatus: "requested",
+      action: "cancel",
+      expectedKind: "transition",
+      expectedStatus: "cancelled",
+      recipientId: SELLER_ID,
+      recipientSide: "seller",
+    },
+    {
+      label: "seller approval addresses the buying side",
+      accountRole: "seller",
+      actorId: SELLER_ID,
+      initialStatus: "requested",
+      action: "approve",
+      expectedKind: "transition",
+      expectedStatus: "approved",
+      recipientId: BUYER_ID,
+      recipientSide: "buyer",
+    },
+  ] as const)("$label", async (scenario) => {
     const deliveredRequest = {
       id: SAMPLE_ID,
       listingId: LISTING_ID,
       buyerId: BUYER_ID,
       sellerId: SELLER_ID,
-      status: "delivered" as const,
+      status: scenario.initialStatus,
       buyerMessage: null,
       shippingName: "Buyer Name",
       shippingAddress1: "123 Main St",
@@ -408,13 +479,19 @@ describe("sampleRequestRouter", () => {
       shippingZip: "80202",
       shippingPhone: null,
       buyerConsentedToShareAddressAt: new Date("2026-07-30T12:00:00.000Z"),
-      carrier: "UPS",
-      trackingNumber: "1Z999",
-      approvedAt: new Date("2026-07-30T13:00:00.000Z"),
+      carrier: scenario.initialStatus === "delivered" ? "UPS" : null,
+      trackingNumber: scenario.initialStatus === "delivered" ? "1Z999" : null,
+      approvedAt: scenario.initialStatus === "delivered"
+        ? new Date("2026-07-30T13:00:00.000Z")
+        : null,
       declinedAt: null,
       cancelledAt: null,
-      shippedAt: new Date("2026-07-30T15:00:00.000Z"),
-      deliveredAt: new Date("2026-07-30T17:00:00.000Z"),
+      shippedAt: scenario.initialStatus === "delivered"
+        ? new Date("2026-07-30T15:00:00.000Z")
+        : null,
+      deliveredAt: scenario.initialStatus === "delivered"
+        ? new Date("2026-07-30T17:00:00.000Z")
+        : null,
       lastActionReason: "Buyer confirmed delivery",
       auditLog: [],
       piiPurgedAt: null,
@@ -427,6 +504,8 @@ describe("sampleRequestRouter", () => {
       },
     };
 
+    const notificationValues = vi.fn().mockResolvedValue(undefined);
+    const insertNotification = vi.fn().mockReturnValue({ values: notificationValues });
     const db = {
       transaction: vi.fn(async (callback) =>
         callback({
@@ -448,11 +527,12 @@ describe("sampleRequestRouter", () => {
             createUpdateChain([
               {
                 ...deliveredRequest,
-                auditLog: [{ actorId: "buyer-1", idempotent: true }],
+                status: scenario.expectedStatus,
+                auditLog: [{ actorId: scenario.actorId, idempotent: scenario.expectedKind === "noop" }],
               },
             ]),
           ),
-          insert: vi.fn(),
+          insert: insertNotification,
         }),
       ),
     };
@@ -461,8 +541,8 @@ describe("sampleRequestRouter", () => {
       createCallerContext({
         db,
         user: {
-          id: BUYER_ID,
-          role: "buyer",
+          id: scenario.actorId,
+          role: scenario.accountRole,
           active: true,
           verificationStatus: "verified",
           businessName: null,
@@ -472,13 +552,35 @@ describe("sampleRequestRouter", () => {
     );
     const result = await caller.sampleRequest.act({
       requestId: SAMPLE_ID,
-      action: "deliver",
-      reason: "Carrier marked the sample delivered again",
+      action: scenario.action,
+      reason: "Sample action recorded by the participant",
     });
 
-    expect(result.result.kind).toBe("noop");
-    expect(result.request.status).toBe("delivered");
+    expect(result.result.kind).toBe(scenario.expectedKind);
+    expect(result.request.status).toBe(scenario.expectedStatus);
     expect(db.transaction).toHaveBeenCalled();
-    expect(result.request.auditLog).toEqual([{ idempotent: true }]);
+    expect(result.request.auditLog).toEqual([
+      { idempotent: scenario.expectedKind === "noop" },
+    ]);
+    if (scenario.recipientSide === null) {
+      expect(insertNotification).not.toHaveBeenCalled();
+      expect(notificationValues).not.toHaveBeenCalled();
+    } else {
+      expect(insertNotification).toHaveBeenCalledTimes(1);
+      expect(insertNotification).toHaveBeenCalledWith(notifications);
+      expect(notificationValues).toHaveBeenCalledTimes(1);
+      expect(notificationValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: scenario.recipientId,
+          data: expect.objectContaining({
+            type: "sample_request_updated",
+            sampleRequestId: SAMPLE_ID,
+            listingId: LISTING_ID,
+            action: scenario.action,
+            recipientSide: scenario.recipientSide,
+          }),
+        }),
+      );
+    }
   });
 });

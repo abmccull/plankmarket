@@ -1,14 +1,6 @@
 import { getRefundEligibility } from "@/lib/refund-eligibility";
 import { TRPCError } from "@trpc/server";
-import {
-  and,
-  desc,
-  eq,
-  inArray,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { inngest } from "@/lib/inngest/client";
 import { isAllowedEvidenceMimeType } from "@/server/security/evidence-files";
@@ -32,7 +24,8 @@ import {
   adminProcedure,
   createTRPCRouter,
   protectedProcedure,
-  strictProtectedProcedure,
+  assuredProtectedProcedure,
+  strictAssuredProtectedProcedure,
 } from "../trpc";
 
 export const BUYER_CLAIM_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -101,10 +94,7 @@ const evidenceTypeSchema = z.enum([
   "other",
 ]);
 
-const REASON_LABELS: Record<
-  z.infer<typeof disputeReasonCodeSchema>,
-  string
-> = {
+const REASON_LABELS: Record<z.infer<typeof disputeReasonCodeSchema>, string> = {
   freight_damage: "Freight damage",
   quantity_shortage: "Quantity shortage",
   wrong_item: "Wrong material received",
@@ -209,7 +199,7 @@ export function evaluateBuyerClaimEligibility(params: {
 }
 
 export const disputeRouter = createTRPCRouter({
-  getOrderClaimState: protectedProcedure
+  getOrderClaimState: assuredProtectedProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
@@ -255,7 +245,7 @@ export const disputeRouter = createTRPCRouter({
           },
         },
       });
-      if (!order) {
+      if (!order || (ctx.user.role !== "admin" && order.buyerId !== ctx.user.id && order.sellerId !== ctx.user.id)) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Order not found",
@@ -267,7 +257,9 @@ export const disputeRouter = createTRPCRouter({
         shipmentDeliveredAt: order.shipment?.deliveredAt ?? null,
       });
       const canSeeFreightDocuments = canViewFreightDocuments({
-        viewerRole: ctx.user.role,
+        viewerRole: ctx.user.role === "admin"
+          ? "admin"
+          : order.buyerId === ctx.user.id ? "buyer" : "seller",
         orderStatus: order.status,
       });
       return {
@@ -278,9 +270,11 @@ export const disputeRouter = createTRPCRouter({
         }),
         existingDispute: order.dispute ?? null,
         carrierDocuments: {
-          bolUrl: canSeeFreightDocuments ? order.shipment?.bolUrl ?? null : null,
+          bolUrl: canSeeFreightDocuments
+            ? (order.shipment?.bolUrl ?? null)
+            : null,
           deliveryReceiptUrl: canSeeFreightDocuments
-            ? order.shipment?.deliveryReceiptUrl ?? null
+            ? (order.shipment?.deliveryReceiptUrl ?? null)
             : null,
         },
         canCreate:
@@ -289,7 +283,7 @@ export const disputeRouter = createTRPCRouter({
       };
     }),
 
-  create: strictProtectedProcedure
+  create: strictAssuredProtectedProcedure
     .input(
       z.object({
         orderId: z.string().uuid(),
@@ -308,12 +302,6 @@ export const disputeRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (ctx.user.role !== "buyer" && ctx.user.role !== "admin") {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Only the buyer or an administrator can open an order claim",
-        });
-      }
       if (
         ctx.user.role !== "admin" &&
         input.reportingWindowOverrideReason !== undefined
@@ -442,14 +430,15 @@ export const disputeRouter = createTRPCRouter({
               eq(media.uploaderId, ctx.user.id),
               isNull(media.listingId),
               isNull(media.buyerRequestId),
+              isNull(media.deletionClaimToken),
             ),
           )
+          .orderBy(asc(media.id))
           .for("update");
         if (
           uploadedEvidence.length !== mediaIds.length ||
           uploadedEvidence.some(
-            (item) =>
-              !isAllowedEvidenceMimeType(item.mimeType),
+            (item) => !isAllowedEvidenceMimeType(item.mimeType),
           )
         ) {
           throw new TRPCError({
@@ -517,7 +506,7 @@ export const disputeRouter = createTRPCRouter({
       });
     }),
 
-  addEvidence: strictProtectedProcedure
+  addEvidence: strictAssuredProtectedProcedure
     .input(
       z.object({
         disputeId: z.string().uuid(),
@@ -586,14 +575,15 @@ export const disputeRouter = createTRPCRouter({
               eq(media.uploaderId, ctx.user.id),
               isNull(media.listingId),
               isNull(media.buyerRequestId),
+              isNull(media.deletionClaimToken),
             ),
           )
+          .orderBy(asc(media.id))
           .for("update");
         if (
           uploadedEvidence.length !== mediaIds.length ||
           uploadedEvidence.some(
-            (item) =>
-              !isAllowedEvidenceMimeType(item.mimeType),
+            (item) => !isAllowedEvidenceMimeType(item.mimeType),
           )
         ) {
           throw new TRPCError({
@@ -613,8 +603,7 @@ export const disputeRouter = createTRPCRouter({
               mediaId: item.id,
               uploaderId: ctx.user.id,
               evidenceType: evidenceById.get(item.id)!.evidenceType,
-              description:
-                evidenceById.get(item.id)!.description ?? null,
+              description: evidenceById.get(item.id)!.description ?? null,
             })),
           )
           .returning();
@@ -626,7 +615,7 @@ export const disputeRouter = createTRPCRouter({
       });
     }),
 
-  addMessage: strictProtectedProcedure
+  addMessage: strictAssuredProtectedProcedure
     .input(
       z.object({
         disputeId: z.string().uuid(),
@@ -771,7 +760,7 @@ export const disputeRouter = createTRPCRouter({
       };
     }),
 
-  getDispute: protectedProcedure
+  getDispute: assuredProtectedProcedure
     .input(z.object({ disputeId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const dispute = await ctx.db.query.disputes.findFirst({
@@ -914,7 +903,10 @@ export const disputeRouter = createTRPCRouter({
       ]);
       const count = countRows[0]?.count ?? 0;
       return {
-        disputes: items.map((item) => ({ ...item, refundEligibility: getRefundEligibility(item.order) })),
+        disputes: items.map((item) => ({
+          ...item,
+          refundEligibility: getRefundEligibility(item.order),
+        })),
         total: count,
         page: input.page,
         limit: input.limit,
@@ -1106,15 +1098,15 @@ export const disputeRouter = createTRPCRouter({
               source: "system",
               severity: "high",
               title: `Claim refund needs review: ${dispute.order.orderNumber}`,
-              summary: "The claim remains open because its refund did not complete.",
+              summary:
+                "The claim remains open because its refund did not complete.",
               orderId: dispute.orderId,
               disputeId: dispute.id,
               amountCents: refundedAmountCents,
               actorId: ctx.user.id,
               details: {
                 ...refundIntentDetails,
-                errorName:
-                  error instanceof Error ? error.name : "UnknownError",
+                errorName: error instanceof Error ? error.name : "UnknownError",
                 errorMessage,
               },
             });
@@ -1225,12 +1217,10 @@ export const disputeRouter = createTRPCRouter({
               "The order refund total changed before the claim could be closed. Reconciliation review is required.",
             ].includes(error.message)
           ) {
-            const refundSnapshot = finalOrderRefundSnapshot as
-              | {
-                  paymentStatus: string | null;
-                  refundedAmountCents: number;
-                }
-              | null;
+            const refundSnapshot = finalOrderRefundSnapshot as {
+              paymentStatus: string | null;
+              refundedAmountCents: number;
+            } | null;
             await openReconciliationCase(ctx.db, {
               caseKey: disputeRefundCaseKey,
               type: "dispute_resolution",
@@ -1291,18 +1281,18 @@ export const disputeRouter = createTRPCRouter({
         const state = payoutState[0];
         const payoutEligible = Boolean(
           state &&
-            state.paymentStatus === "succeeded" &&
-            state.escrowStatus === "held" &&
-            ["shipped", "delivered"].includes(state.orderStatus) &&
-            hasPersistedProviderPickupEvidence({
-              selectedQuoteId: state.selectedQuoteId,
-              shipmentQuoteId: state.shipmentQuoteId,
-              priority1ShipmentId: state.priority1ShipmentId,
-              shipmentStatus: state.shipmentStatus,
-              shipmentIsDryRun: state.shipmentIsDryRun,
-              shipmentTrackingEvents: state.trackingEvents,
-              orderShippedAt: state.shippedAt,
-            }),
+          state.paymentStatus === "succeeded" &&
+          state.escrowStatus === "held" &&
+          ["shipped", "delivered"].includes(state.orderStatus) &&
+          hasPersistedProviderPickupEvidence({
+            selectedQuoteId: state.selectedQuoteId,
+            shipmentQuoteId: state.shipmentQuoteId,
+            priority1ShipmentId: state.priority1ShipmentId,
+            shipmentStatus: state.shipmentStatus,
+            shipmentIsDryRun: state.shipmentIsDryRun,
+            shipmentTrackingEvents: state.trackingEvents,
+            orderShippedAt: state.shippedAt,
+          }),
         );
         if (payoutEligible && state) {
           try {
@@ -1338,8 +1328,7 @@ export const disputeRouter = createTRPCRouter({
               disputeId: dispute.id,
               actorId: ctx.user.id,
               details: {
-                errorName:
-                  error instanceof Error ? error.name : "UnknownError",
+                errorName: error instanceof Error ? error.name : "UnknownError",
               },
             });
           }

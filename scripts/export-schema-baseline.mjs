@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { parse } from "dotenv";
 import postgres from "postgres";
+import { prepareSchemaRestore } from "./lib/schema-restore.mjs";
 
 const args = process.argv.slice(2);
 const file = args[args.indexOf("--file") + 1];
@@ -49,12 +50,20 @@ try {
 const schemaPath = resolve(directory, "schema.sql");
 const normalized = readFileSync(schemaPath, "utf8").replace(/\r\n/g, "\n");
 writeFileSync(schemaPath, normalized);
+const restoreSql = prepareSchemaRestore(normalized, extensions);
+writeFileSync(resolve(directory, "restore.sql"), restoreSql);
 writeFileSync(resolve(directory, "provenance.json"), JSON.stringify({
   observedAt: new Date().toISOString(), host: url.hostname, database: url.pathname.slice(1),
   schemas: ["public", "auth", "extensions"], containsTableData: false,
   projectReference: databaseProject ?? null,
   hashNormalization: "UTF-8 LF",
   sha256: createHash("sha256").update(normalized).digest("hex"),
+  restoreArtifact: {
+    path: "restore.sql",
+    sha256: createHash("sha256").update(restoreSql).digest("hex"),
+    dependencies: "allowlisted captured extensions with exact versions; original schema.sql retained",
+    scope: "fresh local restore; original owners/data/storage and hosted recovery not established",
+  },
   extensions,
   localCompatibilityRoles: ["anon", "authenticated", "dashboard_user", "service_role", "supabase_admin", "supabase_auth_admin", "supabase_functions_admin"],
   ledger, status: "exported; restoration and security comparison still required",

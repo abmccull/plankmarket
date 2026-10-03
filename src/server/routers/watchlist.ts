@@ -1,7 +1,5 @@
-import {
-  createTRPCRouter,
-  buyerProcedure,
-} from "../trpc";
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
+import { createTRPCRouter, buyerProcedure } from "../trpc";
 import { watchlist, listings, offers, orders } from "../db/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
@@ -44,12 +42,15 @@ export const watchlistRouter = createTRPCRouter({
             .where(eq(listings.id, input.listingId));
         }
 
-        return item ?? (await tx.query.watchlist.findFirst({
-          where: and(
-            eq(watchlist.userId, ctx.user.id),
-            eq(watchlist.listingId, input.listingId)
-          ),
-        }))!;
+        return (
+          item ??
+          (await tx.query.watchlist.findFirst({
+            where: and(
+              eq(watchlist.userId, ctx.user.id),
+              eq(watchlist.listingId, input.listingId),
+            ),
+          }))!
+        );
       });
     }),
 
@@ -63,8 +64,8 @@ export const watchlistRouter = createTRPCRouter({
           .where(
             and(
               eq(watchlist.userId, ctx.user.id),
-              eq(watchlist.listingId, input.listingId)
-            )
+              eq(watchlist.listingId, input.listingId),
+            ),
           )
           .returning();
 
@@ -89,7 +90,7 @@ export const watchlistRouter = createTRPCRouter({
       const item = await ctx.db.query.watchlist.findFirst({
         where: and(
           eq(watchlist.userId, ctx.user.id),
-          eq(watchlist.listingId, input.listingId)
+          eq(watchlist.listingId, input.listingId),
         ),
       });
 
@@ -102,7 +103,7 @@ export const watchlistRouter = createTRPCRouter({
       z.object({
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const offset = (input.page - 1) * input.limit;
@@ -116,6 +117,7 @@ export const watchlistRouter = createTRPCRouter({
               with: {
                 media: {
                   columns: publicMediaColumns,
+                  where: publicProductPhotoWhere,
                   orderBy: (media, { asc }) => [asc(media.sortOrder)],
                   limit: 1,
                 },
@@ -125,7 +127,7 @@ export const watchlistRouter = createTRPCRouter({
               },
             },
           },
-          orderBy: desc(watchlist.createdAt),
+          orderBy: [desc(watchlist.createdAt), desc(watchlist.id)],
           limit: input.limit,
           offset,
         }),
@@ -140,34 +142,35 @@ export const watchlistRouter = createTRPCRouter({
       const listingIds = items.map((i) => i.listingId);
 
       // Fetch buyer's offers and orders for these listings in parallel
-      const [buyerOffers, buyerOrders] = listingIds.length > 0
-        ? await Promise.all([
-            ctx.db
-              .select({
-                listingId: offers.listingId,
-                status: offers.status,
-              })
-              .from(offers)
-              .where(
-                and(
-                  eq(offers.buyerId, ctx.user.id),
-                  inArray(offers.listingId, listingIds)
-                )
-              ),
-            ctx.db
-              .select({
-                listingId: orders.listingId,
-                status: orders.status,
-              })
-              .from(orders)
-              .where(
-                and(
-                  eq(orders.buyerId, ctx.user.id),
-                  inArray(orders.listingId, listingIds)
-                )
-              ),
-          ])
-        : [[], []];
+      const [buyerOffers, buyerOrders] =
+        listingIds.length > 0
+          ? await Promise.all([
+              ctx.db
+                .select({
+                  listingId: offers.listingId,
+                  status: offers.status,
+                })
+                .from(offers)
+                .where(
+                  and(
+                    eq(offers.buyerId, ctx.user.id),
+                    inArray(offers.listingId, listingIds),
+                  ),
+                ),
+              ctx.db
+                .select({
+                  listingId: orders.listingId,
+                  status: orders.status,
+                })
+                .from(orders)
+                .where(
+                  and(
+                    eq(orders.buyerId, ctx.user.id),
+                    inArray(orders.listingId, listingIds),
+                  ),
+                ),
+            ])
+          : [[], []];
 
       // Group by listing ID
       const offersByListing = new Map<string, typeof buyerOffers>();
@@ -197,16 +200,14 @@ export const watchlistRouter = createTRPCRouter({
           buyerStatus = "shipped";
         } else if (
           listingOrders.some((o) =>
-            ["pending", "confirmed", "processing"].includes(o.status)
+            ["pending", "confirmed", "processing"].includes(o.status),
           )
         ) {
           buyerStatus = "order_pending";
         } else if (listingOffers.some((o) => o.status === "accepted")) {
           buyerStatus = "offer_accepted";
         } else if (
-          listingOffers.some((o) =>
-            ["pending", "countered"].includes(o.status)
-          )
+          listingOffers.some((o) => ["pending", "countered"].includes(o.status))
         ) {
           buyerStatus = "offer_pending";
         } else if (item.listing.status === "sold") {

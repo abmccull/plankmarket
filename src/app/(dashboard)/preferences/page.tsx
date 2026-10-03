@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useTradingWorkspace } from "@/hooks/use-trading-workspace";
+import { canCreateListings } from "@/lib/auth/roles";
+import { getPreferenceCompletion, type PreferenceWorkspace } from "@/lib/preferences-completion";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@/server/routers/_app";
+import { QueryErrorState } from "@/components/ui/state-panel";
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import {
   Card,
-  CardContent,
+  CardContent as BaseCardContent,
   CardDescription,
-  CardHeader,
+  CardHeader as BaseCardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +26,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
-  SelectTrigger,
+  SelectTrigger as BaseSelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
@@ -36,6 +44,7 @@ import { celebrateMilestone } from "@/lib/utils/celebrate";
 import { OnboardingTip } from "@/components/ui/onboarding-tip";
 import { US_STATE_CODES } from "@/lib/selling-territory";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import {
   AutomaticMarkdownPreview,
   ChoiceCard,
@@ -45,6 +54,46 @@ import {
   StateBadgeSelector,
   type FreightUiMode,
 } from "@/components/marketplace/seller-commercial-fields";
+
+// Keep decorative gutters from consuming the form when text is enlarged.
+function CardHeader({
+  className,
+  ...props
+}: React.ComponentProps<typeof BaseCardHeader>) {
+  return (
+    <BaseCardHeader
+      {...props}
+      className={cn("p-[min(1.5rem,24px)]", className)}
+    />
+  );
+}
+
+function CardContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof BaseCardContent>) {
+  return (
+    <BaseCardContent
+      {...props}
+      className={cn("p-[min(1.5rem,24px)] pt-0", className)}
+    />
+  );
+}
+
+function SelectTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof BaseSelectTrigger>) {
+  return (
+    <BaseSelectTrigger
+      {...props}
+      className={cn(
+        "h-auto min-h-9 gap-[min(0.5rem,8px)] whitespace-normal [&>span]:line-clamp-none [&>span]:text-left [&>svg]:shrink-0",
+        className,
+      )}
+    />
+  );
+}
 
 // ─── Constants (aligned to validator schema) ──────────────────────────────────
 
@@ -138,7 +187,7 @@ function MultiSelectBadges<T extends string>({
     onChange(
       selected.includes(value)
         ? selected.filter((v) => v !== value)
-        : [...selected, value]
+        : [...selected, value],
     );
   };
   return (
@@ -186,6 +235,7 @@ function StepProgress({
       <div
         className="h-2 rounded-full bg-muted overflow-hidden"
         role="progressbar"
+        aria-label="Preferences setup progress"
         aria-valuenow={pct}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -211,7 +261,7 @@ function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       {children}
     </div>
@@ -229,6 +279,8 @@ type BuyerPrefs = {
   minThicknessMm: string;
   minWearLayerMil: string;
   waterproofRequired: boolean;
+  buyerMatchInAppEnabled: boolean;
+  buyerMatchEmailEnabled: boolean;
   preferredSpecies: string;
   preferredCertifications: Certification[];
   priceMinPerSqFt: string;
@@ -247,6 +299,8 @@ const defaultBuyerPrefs: BuyerPrefs = {
   minThicknessMm: "",
   minWearLayerMil: "",
   waterproofRequired: false,
+  buyerMatchInAppEnabled: true,
+  buyerMatchEmailEnabled: false,
   preferredSpecies: "",
   preferredCertifications: [],
   priceMinPerSqFt: "",
@@ -367,7 +421,7 @@ function BuyerStep2({
             }
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField id="buyer-thickness" label="Min Thickness (mm)">
             <Input
               id="buyer-thickness"
@@ -449,7 +503,7 @@ function BuyerStep3({
         <CardDescription>Set your price range and timeline</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField id="buyer-price-min" label="Min Price / sqft ($)">
             <Input
               id="buyer-price-min"
@@ -477,7 +531,7 @@ function BuyerStep3({
             />
           </FormField>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField id="buyer-lot-min" label="Min Lot Size (sqft)">
             <Input
               id="buyer-lot-min"
@@ -525,6 +579,42 @@ function BuyerStep3({
             </SelectContent>
           </Select>
         </FormField>
+        <fieldset className="space-y-4 border-t pt-4">
+          <legend className="px-1 text-sm font-semibold">New inventory matches</legend>
+          <p className="text-sm text-muted-foreground">
+            Choose how to receive new lots that match these Buying preferences.
+            {" "}<Link href="/buyer/saved-searches" className="underline underline-offset-4">
+              Saved searches
+            </Link> have their own alert settings.
+          </p>
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="buyer-match-in-app" className="leading-relaxed">
+              Show matches in notifications
+            </Label>
+            <Switch
+              id="buyer-match-in-app"
+              checked={prefs.buyerMatchInAppEnabled}
+              onCheckedChange={(enabled) => setPrefs((p) => ({ ...p, buyerMatchInAppEnabled: enabled }))}
+              className="shrink-0"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="buyer-match-email" className="leading-relaxed">
+              Email me as new matches arrive
+            </Label>
+            <Switch
+              id="buyer-match-email"
+              checked={prefs.buyerMatchEmailEnabled}
+              onCheckedChange={(enabled) => setPrefs((p) => ({ ...p, buyerMatchEmailEnabled: enabled }))}
+              className="shrink-0"
+            />
+          </div>
+          {!prefs.buyerMatchInAppEnabled && !prefs.buyerMatchEmailEnabled && (
+            <p className="text-sm text-muted-foreground">
+              Match alerts are off. These preferences still personalize your recommendations.
+            </p>
+          )}
+        </fieldset>
       </CardContent>
     </Card>
   );
@@ -677,7 +767,7 @@ function SellerStep1({
           />
           <Label htmlFor="seller-ship">I can ship nationwide</Label>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField id="seller-lead-min" label="Lead Time Min (days)">
             <Input
               id="seller-lead-min"
@@ -780,9 +870,7 @@ function SellerStep2({
           <MultiSelectBadges
             options={INVENTORY_SOURCES}
             selected={prefs.inventorySource}
-            onChange={(v) =>
-              setPrefs((p) => ({ ...p, inventorySource: v }))
-            }
+            onChange={(v) => setPrefs((p) => ({ ...p, inventorySource: v }))}
           />
         </div>
       </CardContent>
@@ -801,12 +889,8 @@ function SellerStep3({
   const partialMarkupPercent = Number(prefs.partialQuantityMarkupPercent || 0);
   const partialPreviewPrice =
     Math.round(sampleListPrice * (1 + partialMarkupPercent / 100) * 100) / 100;
-  const markdownFloorPercent = Number(
-    prefs.automaticMarkdownFloorPercent || 0,
-  );
-  const markdownIntervalDays = Number(
-    prefs.automaticMarkdownIntervalDays || 0,
-  );
+  const markdownFloorPercent = Number(prefs.automaticMarkdownFloorPercent || 0);
+  const markdownIntervalDays = Number(prefs.automaticMarkdownIntervalDays || 0);
 
   return (
     <Card>
@@ -866,7 +950,10 @@ function SellerStep3({
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 rounded-2xl border bg-card p-4">
             <div className="space-y-1">
-              <Label htmlFor="seller-default-offers" className="text-sm font-medium">
+              <Label
+                htmlFor="seller-default-offers"
+                className="text-sm font-medium"
+              >
                 Allow offers by default
               </Label>
               <p className="text-sm text-muted-foreground">
@@ -1086,8 +1173,7 @@ function SellerStep4({
               "Default to buyer-funded shipping quotes.",
             freightStateHelperText:
               "Outside these states, new listings fall back to buyer-paid freight.",
-            freightDropChargeLabel:
-              "Default buyer drop charge (optional)",
+            freightDropChargeLabel: "Default buyer drop charge (optional)",
             freightDropChargeDescription:
               "The buyer pays this amount toward freight. The remaining freight quote becomes the seller shipping contribution.",
           }}
@@ -1213,10 +1299,7 @@ function ActiveListingApplyPanel({
           >
             {isPreviewLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2
-                  className="h-4 w-4 animate-spin"
-                  aria-hidden="true"
-                />
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 Checking active listings and open activity…
               </div>
             ) : previewError ? (
@@ -1235,8 +1318,7 @@ function ActiveListingApplyPanel({
                     </div>
                     <div className="text-sm text-muted-foreground">
                       active listing
-                      {preview.changedListingCount === 1 ? "" : "s"} will
-                      update
+                      {preview.changedListingCount === 1 ? "" : "s"} will update
                     </div>
                   </div>
                   <div className="rounded-xl border bg-background p-3">
@@ -1278,8 +1360,8 @@ function ActiveListingApplyPanel({
                     <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                       {preview.warnings.pendingOrCounteredOfferCount > 0 ? (
                         <li>
-                          {preview.warnings.pendingOrCounteredOfferCount} pending
-                          or countered offer
+                          {preview.warnings.pendingOrCounteredOfferCount}{" "}
+                          pending or countered offer
                           {preview.warnings.pendingOrCounteredOfferCount === 1
                             ? ""
                             : "s"}{" "}
@@ -1298,7 +1380,9 @@ function ActiveListingApplyPanel({
                       {preview.warnings.activeOrderCount > 0 ? (
                         <li>
                           {preview.warnings.activeOrderCount} active order
-                          {preview.warnings.activeOrderCount === 1 ? "" : "s"}{" "}
+                          {preview.warnings.activeOrderCount === 1
+                            ? ""
+                            : "s"}{" "}
                           across {preview.warnings.listingsWithActiveOrders}{" "}
                           listing
                           {preview.warnings.listingsWithActiveOrders === 1
@@ -1379,13 +1463,13 @@ function PrivacyCard({
       <CardHeader>
         <CardTitle>Privacy</CardTitle>
         <CardDescription>
-          Product analytics stay off until you opt in. PostHog is configured
-          for pseudonymous IDs, masked inputs, and no session recording.
+          Product analytics stay off until you opt in. PostHog is configured for
+          pseudonymous IDs, masked inputs, and no session recording.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
-          <div className="space-y-1">
+        <div className="flex flex-col items-start gap-[min(1rem,16px)] rounded-2xl border p-[min(1rem,16px)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1 space-y-1">
             <Label htmlFor="analytics-tracking-enabled">
               Allow product analytics
             </Label>
@@ -1398,9 +1482,7 @@ function PrivacyCard({
           <Switch
             id="analytics-tracking-enabled"
             checked={analyticsTrackingEnabled === true}
-            onCheckedChange={(checked) =>
-              setAnalyticsTrackingEnabled(checked)
-            }
+            onCheckedChange={(checked) => setAnalyticsTrackingEnabled(checked)}
           />
         </div>
         <p className="text-xs text-muted-foreground">
@@ -1416,132 +1498,311 @@ function PrivacyCard({
   );
 }
 
+type SavedPreferences = inferRouterOutputs<AppRouter>["preferences"]["get"];
+type PreferencesDraft = {
+  buyer: BuyerPrefs;
+  seller: SellerPrefs;
+  analytics: boolean | null;
+  dirty: Record<PreferenceWorkspace, boolean>;
+  analyticsDirty: boolean;
+};
+
+type PreferenceContextState = {
+  step: number;
+  mode: "wizard" | "dashboard";
+  isSaving: boolean;
+  isRefreshing: boolean;
+  readFailed: boolean;
+  requiresReview: boolean;
+  notice: string | null;
+  problem: string | null;
+};
+
+const newContextState = (): PreferenceContextState => ({
+  step: 1,
+  mode: "wizard",
+  isSaving: false,
+  isRefreshing: false,
+  readFailed: false,
+  requiresReview: false,
+  notice: null,
+  problem: null,
+});
+
+const nullableNumber = (value: string) => value.trim() === "" ? null : Number(value);
+
+function draftFromPreferences(
+  existingPrefs: SavedPreferences,
+): PreferencesDraft {
+  return {
+    buyer: existingPrefs
+      ? {
+          ...defaultBuyerPrefs,
+          preferredZip: existingPrefs.preferredZip ?? "",
+          preferredRadiusMiles: existingPrefs.preferredRadiusMiles ?? 100,
+          preferredShippingMode:
+            (existingPrefs.preferredShippingMode as BuyerPrefs["preferredShippingMode"]) ??
+            "both",
+          preferredMaterialTypes:
+            (existingPrefs.preferredMaterialTypes as MaterialType[]) ?? [],
+          preferredInstallTypes:
+            (existingPrefs.preferredInstallTypes as InstallType[]) ?? [],
+          minThicknessMm: existingPrefs.minThicknessMm?.toString() ?? "",
+          minWearLayerMil: existingPrefs.minWearLayerMil?.toString() ?? "",
+          waterproofRequired: existingPrefs.waterproofRequired ?? false,
+          buyerMatchInAppEnabled: existingPrefs.buyerMatchInAppEnabled ?? true,
+          buyerMatchEmailEnabled: existingPrefs.buyerMatchEmailEnabled ?? false,
+          preferredSpecies: existingPrefs.preferredSpecies?.join(", ") ?? "",
+          preferredCertifications:
+            (existingPrefs.preferredCertifications as Certification[]) ?? [],
+          priceMinPerSqFt: existingPrefs.priceMinPerSqFt?.toString() ?? "",
+          priceMaxPerSqFt: existingPrefs.priceMaxPerSqFt?.toString() ?? "",
+          minLotSizeSqFt: existingPrefs.minLotSizeSqFt?.toString() ?? "",
+          maxLotSizeSqFt: existingPrefs.maxLotSizeSqFt?.toString() ?? "",
+          urgency:
+            (existingPrefs.urgency as BuyerPrefs["urgency"]) ?? "flexible",
+        }
+      : { ...defaultBuyerPrefs },
+    seller: existingPrefs
+      ? {
+          ...defaultSellerPrefs,
+          originZip: existingPrefs.originZip ?? "",
+          shipCapable: existingPrefs.shipCapable ?? false,
+          leadTimeDaysMin: existingPrefs.leadTimeDaysMin?.toString() ?? "",
+          leadTimeDaysMax: existingPrefs.leadTimeDaysMax?.toString() ?? "",
+          palletizationCapable: existingPrefs.palletizationCapable ?? false,
+          typicalMaterialTypes:
+            (existingPrefs.typicalMaterialTypes as MaterialType[]) ?? [],
+          avgLotSqFt: existingPrefs.avgLotSqFt?.toString() ?? "",
+          canSplitLots: existingPrefs.canSplitLots ?? false,
+          inventorySource:
+            (existingPrefs.inventorySource as InventorySource[]) ?? [],
+          pricingStyle:
+            (existingPrefs.pricingStyle as SellerPrefs["pricingStyle"]) ??
+            "fixed",
+          preferredBuyerRadiusMiles:
+            existingPrefs.preferredBuyerRadiusMiles ?? 250,
+          partialQuantityMarkupPercent:
+            existingPrefs.partialQuantityMarkupPercent?.toString() ?? "",
+          automaticMarkdownEnabled:
+            existingPrefs.automaticMarkdownEnabled ?? false,
+          automaticMarkdownFloorPercent:
+            existingPrefs.automaticMarkdownFloorPercent?.toString() ?? "",
+          automaticMarkdownIntervalDays:
+            existingPrefs.automaticMarkdownIntervalDays?.toString() ?? "",
+          defaultAllowOffers: existingPrefs.defaultAllowOffers ?? true,
+          allowSampleRequests: existingPrefs.allowSampleRequests ?? false,
+          sellingTerritoryMode:
+            (existingPrefs.sellingTerritoryMode as SellerPrefs["sellingTerritoryMode"]) ??
+            "unrestricted",
+          allowedDestinationStates:
+            (existingPrefs.allowedDestinationStates as SellerPrefs["allowedDestinationStates"]) ??
+            [],
+          freightMode: getFreightUiMode({
+            freightPaymentMode:
+              (existingPrefs.freightPaymentMode as
+                | "buyer_pays"
+                | "seller_pays"
+                | null) ?? null,
+            sellerFreightStates:
+              (existingPrefs.sellerFreightStates as SellerPrefs["sellerFreightStates"]) ??
+              [],
+          }),
+          sellerFreightStates:
+            (existingPrefs.sellerFreightStates as SellerPrefs["sellerFreightStates"]) ??
+            [],
+          freightDropCharge: existingPrefs.freightDropCharge?.toString() ?? "",
+          taxRegisteredStates:
+            (existingPrefs.taxRegisteredStates as SellerPrefs["taxRegisteredStates"]) ??
+            [],
+        }
+      : { ...defaultSellerPrefs },
+    analytics: existingPrefs?.analyticsTrackingEnabled ?? null,
+    dirty: { buyer: false, seller: false },
+    analyticsDirty: false,
+  };
+}
+
+function mergeSavedDraft(
+  current: PreferencesDraft | null,
+  saved: SavedPreferences,
+  committedRole?: PreferenceWorkspace,
+  analyticsCommitted = false,
+): PreferencesDraft {
+  const incoming = draftFromPreferences(saved);
+  if (!current) return incoming;
+  return {
+    buyer: current.dirty.buyer && committedRole !== "buyer" ? current.buyer : incoming.buyer,
+    seller: current.dirty.seller && committedRole !== "seller" ? current.seller : incoming.seller,
+    analytics: current.analyticsDirty && !analyticsCommitted ? current.analytics : incoming.analytics,
+    dirty: {
+      buyer: committedRole === "buyer" ? false : current.dirty.buyer,
+      seller: committedRole === "seller" ? false : current.dirty.seller,
+    },
+    analyticsDirty: current.analyticsDirty && !analyticsCommitted,
+  };
+}
+
 export default function PreferencesPage() {
   const { user } = useAuthStore();
-  const role = (user?.role ?? "buyer") as "buyer" | "seller";
+  const pathname = usePathname();
+  const { workspace, ready } = useTradingWorkspace(pathname);
+  if (!user?.id || !ready) return <p role="status">Loading your account…</p>;
+  return (
+    <PreferencesWorkspace
+      key={user.id}
+      ownerId={user.id}
+      role={workspace}
+      allowSelling={canCreateListings(user.role)}
+    />
+  );
+}
 
-  const [step, setStep] = useState(1);
-  const [mode, setMode] = useState<"wizard" | "dashboard">("wizard");
-  const [buyerPrefs, setBuyerPrefs] = useState<BuyerPrefs>(defaultBuyerPrefs);
-  const [sellerPrefs, setSellerPrefs] =
-    useState<SellerPrefs>(defaultSellerPrefs);
-  const [analyticsTrackingEnabled, setAnalyticsTrackingEnabled] =
-    useState<boolean | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+function PreferencesWorkspace({
+  ownerId,
+  role,
+  allowSelling,
+}: {
+  ownerId: string;
+  role: PreferenceWorkspace;
+  allowSelling: boolean;
+}) {
+  const preferencesQuery = trpc.preferences.get.useQuery(undefined, {
+    retry: false,
+  });
+  const existingPrefs = preferencesQuery.data;
+  const [observed, setObserved] = useState<SavedPreferences | undefined>(
+    undefined,
+  );
+  const [draft, setDraft] = useState<PreferencesDraft | null>(null);
+  const [contexts, setContexts] = useState<Record<PreferenceWorkspace, PreferenceContextState>>(
+    () => ({ buyer: newContextState(), seller: newContextState() }),
+  );
+  const { step, mode, isSaving, isRefreshing, readFailed, requiresReview, notice, problem } = contexts[role];
+  // Every async callback retains the setter for the context that started it.
+  const contextSetter = <K extends keyof PreferenceContextState>(field: K) =>
+    (update: React.SetStateAction<PreferenceContextState[K]>) => {
+      setContexts((current) => ({
+        ...current,
+        [role]: {
+          ...current[role],
+          [field]: typeof update === "function"
+            ? (update as (value: PreferenceContextState[K]) => PreferenceContextState[K])(current[role][field])
+            : update,
+        },
+      }));
+    };
+  const setStep = contextSetter("step");
+  const setMode = contextSetter("mode");
+  const setIsSaving = contextSetter("isSaving");
+  const setIsRefreshing = contextSetter("isRefreshing");
+  const setReadFailed = contextSetter("readFailed");
+  const setRequiresReview = contextSetter("requiresReview");
+  const setNotice = contextSetter("notice");
+  const setProblem = contextSetter("problem");
+  const busy = Object.values(contexts).some((context) => context.isSaving || context.isRefreshing);
   const [applyToActiveListings, setApplyToActiveListings] = useState(false);
   const [applyToActiveListingsConfirmed, setApplyToActiveListingsConfirmed] =
     useState(false);
   const [lastApplySummary, setLastApplySummary] =
     useState<ActiveListingApplySummary | null>(null);
-
-  // Load existing prefs and hydrate form state
-  const { data: existingPrefs, isLoading } = trpc.preferences.get.useQuery();
-
-  // Switch to dashboard mode when existing preferences are loaded
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const currentRole = useRef(role);
+  currentRole.current = role;
   useEffect(() => {
-    if (existingPrefs) {
-      setMode("dashboard");
-    }
-    setAnalyticsTrackingEnabled(existingPrefs?.analyticsTrackingEnabled ?? null);
-  }, [existingPrefs]);
-
-  useEffect(() => {
-    if (!existingPrefs) return;
-    if (role === "buyer") {
-      setBuyerPrefs((p) => ({
-        ...p,
-        preferredZip: existingPrefs.preferredZip ?? "",
-        preferredRadiusMiles: existingPrefs.preferredRadiusMiles ?? 100,
-        preferredShippingMode:
-          (existingPrefs.preferredShippingMode as BuyerPrefs["preferredShippingMode"]) ??
-          "both",
-        preferredMaterialTypes:
-          (existingPrefs.preferredMaterialTypes as MaterialType[]) ?? [],
-        preferredInstallTypes:
-          (existingPrefs.preferredInstallTypes as InstallType[]) ?? [],
-        minThicknessMm: existingPrefs.minThicknessMm?.toString() ?? "",
-        minWearLayerMil: existingPrefs.minWearLayerMil?.toString() ?? "",
-        waterproofRequired: existingPrefs.waterproofRequired ?? false,
-        preferredSpecies: existingPrefs.preferredSpecies?.join(", ") ?? "",
-        preferredCertifications:
-          (existingPrefs.preferredCertifications as Certification[]) ?? [],
-        priceMinPerSqFt: existingPrefs.priceMinPerSqFt?.toString() ?? "",
-        priceMaxPerSqFt: existingPrefs.priceMaxPerSqFt?.toString() ?? "",
-        minLotSizeSqFt: existingPrefs.minLotSizeSqFt?.toString() ?? "",
-        maxLotSizeSqFt: existingPrefs.maxLotSizeSqFt?.toString() ?? "",
-        urgency:
-          (existingPrefs.urgency as BuyerPrefs["urgency"]) ?? "flexible",
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const isCurrent = () =>
+    mounted.current && useAuthStore.getState().user?.id === ownerId;
+  const foreignRead = existingPrefs != null && existingPrefs.userId !== ownerId;
+  // Seed only a successful owned read. Dirty snapshots are never replaced by refetches.
+  if (
+    preferencesQuery.isSuccess &&
+    existingPrefs !== undefined &&
+    !foreignRead &&
+    observed !== existingPrefs
+  ) {
+    setObserved(existingPrefs);
+    setDraft((current) => mergeSavedDraft(current, existingPrefs));
+    setContexts((current) => ({
+      buyer: draft?.dirty.buyer ? current.buyer : {
+        ...current.buyer,
+        mode: getPreferenceCompletion(existingPrefs, "buyer").profileComplete ? "dashboard" : "wizard",
+      },
+      seller: draft?.dirty.seller ? current.seller : {
+        ...current.seller,
+        mode: getPreferenceCompletion(existingPrefs, "seller").profileComplete ? "dashboard" : "wizard",
+      },
+    }));
+  }
+  const buyerPrefs = draft?.buyer ?? defaultBuyerPrefs;
+  const sellerPrefs = draft?.seller ?? defaultSellerPrefs;
+  const analyticsTrackingEnabled = draft?.analytics ?? null;
+  const readUnavailable = preferencesQuery.isError || readFailed || foreignRead;
+  const controlsBlocked =
+    !draft ||
+    busy ||
+    preferencesQuery.isFetching ||
+    readUnavailable ||
+    requiresReview;
+  const changeDraft = <K extends "buyer" | "seller" | "analytics">(
+    key: K,
+    update: React.SetStateAction<PreferencesDraft[K]>,
+  ) => {
+    if (!isCurrent() || controlsBlocked || pending.current) return;
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            [key]:
+              typeof update === "function"
+                ? (
+                    update as (
+                      value: PreferencesDraft[K],
+                    ) => PreferencesDraft[K]
+                  )(current[key])
+                : update,
+            dirty: key === "analytics" ? current.dirty : { ...current.dirty, [key]: true },
+            analyticsDirty: key === "analytics" ? true : current.analyticsDirty,
+          }
+        : current,
+    );
+    if (key === "analytics") {
+      setContexts((current) => ({
+        buyer: { ...current.buyer, notice: null },
+        seller: { ...current.seller, notice: null },
       }));
     } else {
-      setSellerPrefs((p) => ({
-        ...p,
-        originZip: existingPrefs.originZip ?? "",
-        shipCapable: existingPrefs.shipCapable ?? false,
-        leadTimeDaysMin: existingPrefs.leadTimeDaysMin?.toString() ?? "",
-        leadTimeDaysMax: existingPrefs.leadTimeDaysMax?.toString() ?? "",
-        palletizationCapable: existingPrefs.palletizationCapable ?? false,
-        typicalMaterialTypes:
-          (existingPrefs.typicalMaterialTypes as MaterialType[]) ?? [],
-        avgLotSqFt: existingPrefs.avgLotSqFt?.toString() ?? "",
-        canSplitLots: existingPrefs.canSplitLots ?? false,
-        inventorySource:
-          (existingPrefs.inventorySource as InventorySource[]) ?? [],
-        pricingStyle:
-          (existingPrefs.pricingStyle as SellerPrefs["pricingStyle"]) ??
-          "fixed",
-        preferredBuyerRadiusMiles:
-          existingPrefs.preferredBuyerRadiusMiles ?? 250,
-        partialQuantityMarkupPercent:
-          existingPrefs.partialQuantityMarkupPercent?.toString() ?? "",
-        automaticMarkdownEnabled:
-          existingPrefs.automaticMarkdownEnabled ?? false,
-        automaticMarkdownFloorPercent:
-          existingPrefs.automaticMarkdownFloorPercent?.toString() ?? "",
-        automaticMarkdownIntervalDays:
-          existingPrefs.automaticMarkdownIntervalDays?.toString() ?? "",
-        defaultAllowOffers: existingPrefs.defaultAllowOffers ?? true,
-        allowSampleRequests: existingPrefs.allowSampleRequests ?? false,
-        sellingTerritoryMode:
-          (existingPrefs.sellingTerritoryMode as
-            SellerPrefs["sellingTerritoryMode"]) ?? "unrestricted",
-        allowedDestinationStates:
-          (existingPrefs.allowedDestinationStates as SellerPrefs["allowedDestinationStates"]) ??
-          [],
-        freightMode: getFreightUiMode({
-          freightPaymentMode:
-            (existingPrefs.freightPaymentMode as "buyer_pays" | "seller_pays" | null) ??
-            null,
-          sellerFreightStates:
-            (existingPrefs.sellerFreightStates as SellerPrefs["sellerFreightStates"]) ??
-            [],
-        }),
-        sellerFreightStates:
-          (existingPrefs.sellerFreightStates as SellerPrefs["sellerFreightStates"]) ??
-          [],
-        freightDropCharge: existingPrefs.freightDropCharge?.toString() ?? "",
-        taxRegisteredStates:
-          (existingPrefs.taxRegisteredStates as SellerPrefs["taxRegisteredStates"]) ??
-          [],
-      }));
+      setNotice(null);
     }
-  }, [existingPrefs, role]);
+  };
+  const setBuyerPrefs: React.Dispatch<React.SetStateAction<BuyerPrefs>> = (
+    update,
+  ) => changeDraft("buyer", update);
+  const setSellerPrefs: React.Dispatch<React.SetStateAction<SellerPrefs>> = (
+    update,
+  ) => changeDraft("seller", update);
+  const setAnalyticsTrackingEnabled: React.Dispatch<
+    React.SetStateAction<boolean | null>
+  > = (update) => changeDraft("analytics", update);
 
   const utils = trpc.useUtils();
   const upsertMutation = trpc.preferences.upsert.useMutation();
   const sellerCommercialDefaults =
     getSellerCommercialDefaultsInput(sellerPrefs);
-  const sellerCommercialDefaultsKey = JSON.stringify(
-    sellerCommercialDefaults,
-  );
+  const sellerCommercialDefaultsKey = JSON.stringify(sellerCommercialDefaults);
   const activeListingPreview =
     trpc.preferences.previewActiveListingDefaultsApply.useQuery(
       sellerCommercialDefaults,
       {
         enabled:
-          role === "seller" &&
-          mode === "dashboard" &&
-          applyToActiveListings,
+          role === "seller" && mode === "dashboard" && applyToActiveListings,
         retry: false,
+        staleTime: 0,
       },
     );
   const applyActiveListingDefaultsMutation =
@@ -1551,6 +1812,11 @@ export default function PreferencesPage() {
     setApplyToActiveListingsConfirmed(false);
     setLastApplySummary(null);
   }, [sellerCommercialDefaultsKey]);
+
+  useEffect(() => {
+    setApplyToActiveListings(false);
+    setApplyToActiveListingsConfirmed(false);
+  }, [role]);
 
   const buyerStepLabels = [
     "Location & Shipping",
@@ -1566,16 +1832,52 @@ export default function PreferencesPage() {
   const stepLabels = role === "buyer" ? buyerStepLabels : sellerStepLabels;
   const totalSteps = stepLabels.length;
 
+  const readSavedPreferences = async () => {
+    if (!isCurrent()) return;
+    await utils.preferences.get.cancel();
+    if (!isCurrent()) return;
+    const saved = await utils.client.preferences.get.query();
+    if (!isCurrent()) return;
+    if (saved && saved.userId !== ownerId)
+      throw new Error("Preferences belonged to a different account.");
+    await utils.preferences.get.cancel();
+    if (!isCurrent()) return;
+    utils.preferences.get.setData(undefined, saved);
+    setReadFailed(false);
+    setRequiresReview(false);
+    setProblem(null);
+    return saved;
+  };
+  const refreshSavedPreferences = async () => {
+    if (pending.current || !isCurrent()) return;
+    pending.current = true;
+    setIsRefreshing(true);
+    try {
+      await readSavedPreferences();
+    } catch {
+      if (isCurrent()) setReadFailed(true);
+    } finally {
+      if (isCurrent()) {
+        pending.current = false;
+        setIsRefreshing(false);
+      }
+    }
+  };
+  const knownRejection = (error: unknown) => {
+    const code = (error as { data?: { code?: string } })?.data?.code;
+    return (
+      code === "BAD_REQUEST" || code === "FORBIDDEN" || code === "UNAUTHORIZED"
+    );
+  };
+
   const handleSave = async () => {
+    if (pending.current || controlsBlocked || !isCurrent()) return;
     const shouldApplyToActiveListings =
-      role === "seller" &&
-      mode === "dashboard" &&
-      applyToActiveListings;
+      role === "seller" && mode === "dashboard" && applyToActiveListings;
+    const analyticsSubmitted = draft?.analyticsDirty === true;
+    const analyticsPatch = analyticsSubmitted ? { analyticsTrackingEnabled } : {};
     if (shouldApplyToActiveListings) {
-      if (
-        activeListingPreview.isLoading ||
-        activeListingPreview.isFetching
-      ) {
+      if (activeListingPreview.isLoading || activeListingPreview.isFetching) {
         toast.error("Wait for the active-listing preview to finish.");
         return;
       }
@@ -1590,58 +1892,41 @@ export default function PreferencesPage() {
         activeListingPreview.data.changedListingCount > 0 &&
         !applyToActiveListingsConfirmed
       ) {
-        toast.error(
-          "Confirm the active-listing changes shown in the preview.",
-        );
+        toast.error("Confirm the active-listing changes shown in the preview.");
         return;
       }
     }
 
+    pending.current = true;
     setIsSaving(true);
+    setProblem(null);
     let preferencesSaved = false;
+    let savedPreferences: Exclude<SavedPreferences, null> | null = null;
+    let applySummary: ActiveListingApplySummary | null = null;
+    let applyAttempted = false;
     try {
+      await utils.preferences.get.cancel();
+      if (!isCurrent()) return;
       if (role === "buyer") {
-        await upsertMutation.mutateAsync({
+        savedPreferences = await upsertMutation.mutateAsync({
           role: "buyer",
-          analyticsTrackingEnabled,
-          preferredZip: buyerPrefs.preferredZip || undefined,
+          ...analyticsPatch,
+          preferredZip: buyerPrefs.preferredZip.trim() || null,
           preferredRadiusMiles: buyerPrefs.preferredRadiusMiles,
           preferredShippingMode: buyerPrefs.preferredShippingMode,
-          preferredMaterialTypes: buyerPrefs.preferredMaterialTypes.length
-            ? buyerPrefs.preferredMaterialTypes
-            : undefined,
-          preferredInstallTypes: buyerPrefs.preferredInstallTypes.length
-            ? buyerPrefs.preferredInstallTypes
-            : undefined,
-          minThicknessMm: buyerPrefs.minThicknessMm
-            ? Number(buyerPrefs.minThicknessMm)
-            : undefined,
-          minWearLayerMil: buyerPrefs.minWearLayerMil
-            ? Number(buyerPrefs.minWearLayerMil)
-            : undefined,
-          waterproofRequired: buyerPrefs.waterproofRequired || undefined,
-          preferredSpecies: buyerPrefs.preferredSpecies
-            ? buyerPrefs.preferredSpecies
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : undefined,
-          preferredCertifications:
-            buyerPrefs.preferredCertifications.length
-              ? buyerPrefs.preferredCertifications
-              : undefined,
-          priceMinPerSqFt: buyerPrefs.priceMinPerSqFt
-            ? Number(buyerPrefs.priceMinPerSqFt)
-            : undefined,
-          priceMaxPerSqFt: buyerPrefs.priceMaxPerSqFt
-            ? Number(buyerPrefs.priceMaxPerSqFt)
-            : undefined,
-          minLotSizeSqFt: buyerPrefs.minLotSizeSqFt
-            ? Number(buyerPrefs.minLotSizeSqFt)
-            : undefined,
-          maxLotSizeSqFt: buyerPrefs.maxLotSizeSqFt
-            ? Number(buyerPrefs.maxLotSizeSqFt)
-            : undefined,
+          preferredMaterialTypes: buyerPrefs.preferredMaterialTypes,
+          preferredInstallTypes: buyerPrefs.preferredInstallTypes,
+          minThicknessMm: nullableNumber(buyerPrefs.minThicknessMm),
+          minWearLayerMil: nullableNumber(buyerPrefs.minWearLayerMil),
+          waterproofRequired: buyerPrefs.waterproofRequired,
+          buyerMatchInAppEnabled: buyerPrefs.buyerMatchInAppEnabled,
+          buyerMatchEmailEnabled: buyerPrefs.buyerMatchEmailEnabled,
+          preferredSpecies: buyerPrefs.preferredSpecies.split(",").map((value) => value.trim()).filter(Boolean),
+          preferredCertifications: buyerPrefs.preferredCertifications,
+          priceMinPerSqFt: nullableNumber(buyerPrefs.priceMinPerSqFt),
+          priceMaxPerSqFt: nullableNumber(buyerPrefs.priceMaxPerSqFt),
+          minLotSizeSqFt: nullableNumber(buyerPrefs.minLotSizeSqFt),
+          maxLotSizeSqFt: nullableNumber(buyerPrefs.maxLotSizeSqFt),
           urgency: buyerPrefs.urgency,
         });
       } else {
@@ -1649,28 +1934,18 @@ export default function PreferencesPage() {
           sellerPrefs.freightMode,
           sellerPrefs.sellerFreightStates,
         );
-        await upsertMutation.mutateAsync({
+        savedPreferences = await upsertMutation.mutateAsync({
           role: "seller",
-          analyticsTrackingEnabled,
-          originZip: sellerPrefs.originZip || undefined,
+          ...analyticsPatch,
+          originZip: sellerPrefs.originZip.trim() || null,
           shipCapable: sellerPrefs.shipCapable,
-          leadTimeDaysMin: sellerPrefs.leadTimeDaysMin
-            ? Number(sellerPrefs.leadTimeDaysMin)
-            : undefined,
-          leadTimeDaysMax: sellerPrefs.leadTimeDaysMax
-            ? Number(sellerPrefs.leadTimeDaysMax)
-            : undefined,
+          leadTimeDaysMin: nullableNumber(sellerPrefs.leadTimeDaysMin),
+          leadTimeDaysMax: nullableNumber(sellerPrefs.leadTimeDaysMax),
           palletizationCapable: sellerPrefs.palletizationCapable,
-          typicalMaterialTypes: sellerPrefs.typicalMaterialTypes.length
-            ? sellerPrefs.typicalMaterialTypes
-            : undefined,
-          avgLotSqFt: sellerPrefs.avgLotSqFt
-            ? Number(sellerPrefs.avgLotSqFt)
-            : undefined,
+          typicalMaterialTypes: sellerPrefs.typicalMaterialTypes,
+          avgLotSqFt: nullableNumber(sellerPrefs.avgLotSqFt),
           canSplitLots: sellerPrefs.canSplitLots,
-          inventorySource: sellerPrefs.inventorySource.length
-            ? sellerPrefs.inventorySource
-            : undefined,
+          inventorySource: sellerPrefs.inventorySource,
           pricingStyle: sellerPrefs.pricingStyle,
           preferredBuyerRadiusMiles: sellerPrefs.preferredBuyerRadiusMiles,
           partialQuantityMarkupPercent:
@@ -1697,58 +1972,86 @@ export default function PreferencesPage() {
         });
       }
       preferencesSaved = true;
-
-      let applySummary: ActiveListingApplySummary | null = null;
+      if (!isCurrent()) return;
+      if (!savedPreferences || savedPreferences.userId !== ownerId)
+        throw new Error(
+          "Saved preferences could not be matched to your account.",
+        );
+      setNotice("Preferences saved.");
+      await utils.preferences.get.cancel();
+      if (!isCurrent()) return;
+      utils.preferences.get.setData(undefined, savedPreferences);
+      const ownedSavedPreferences = savedPreferences;
+      setDraft((current) => mergeSavedDraft(current, ownedSavedPreferences, role, analyticsSubmitted));
+      setObserved(savedPreferences);
+      if (mode === "wizard") {
+        if (currentRole.current === role) {
+          celebrateMilestone(
+            "Preferences Saved!",
+            "You'll now see personalized recommendations based on your preferences.",
+          );
+        }
+        setMode("dashboard");
+      }
       if (shouldApplyToActiveListings) {
-        applySummary =
-          await applyActiveListingDefaultsMutation.mutateAsync({
-            defaults: sellerCommercialDefaults,
-            confirmed: true,
-          });
+        applyAttempted = true;
+        applySummary = await applyActiveListingDefaultsMutation.mutateAsync({
+          defaults: sellerCommercialDefaults,
+          confirmed: true,
+        });
+        if (!isCurrent()) return;
         setLastApplySummary(applySummary);
         setApplyToActiveListings(false);
         setApplyToActiveListingsConfirmed(false);
-        await utils.listing.invalidate();
-      }
-
-      // Invalidate so the query refetches on next visit
-      await Promise.all([
-        utils.preferences.get.invalidate(),
-        utils.auth.getOnboardingProgress.invalidate(),
-      ]);
-
-      if (mode === "wizard") {
-        celebrateMilestone("Preferences Saved!", "You'll now see personalized recommendations based on your preferences.");
-        setMode("dashboard");
-      } else if (applySummary) {
-        toast.success(
-          `Defaults saved. ${applySummary.changedListingCount} active listing${
-            applySummary.changedListingCount === 1 ? "" : "s"
-          } updated${
-            applySummary.skippedAcceptedOfferListingCount > 0
-              ? `; ${applySummary.skippedAcceptedOfferListingCount} protected listing${
-                  applySummary.skippedAcceptedOfferListingCount === 1
-                    ? ""
-                    : "s"
-                } skipped`
-              : ""
-          }.`,
-        );
-      } else {
-        toast.success("Preferences saved");
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Failed to save preferences. Please try again.";
-      toast.error(
-        preferencesSaved && shouldApplyToActiveListings
-          ? `Defaults were saved for future listings, but active listings were not changed. ${msg}`
-          : msg,
+      if (!isCurrent()) return;
+      const message =
+        err instanceof Error ? err.message : "Preferences could not be saved.";
+      const rejected = knownRejection(err);
+      setProblem(
+        applyAttempted
+          ? rejected
+            ? "Preferences saved. Active-listing changes were rejected. " +
+              message
+            : "Active-listing update result unconfirmed. Refresh saved preferences, then review a new active-listing preview before another attempt."
+          : preferencesSaved
+            ? "Preferences saved. Saved details could not be confirmed. Refresh saved preferences before continuing."
+            : rejected
+              ? message
+              : "Save result unconfirmed. Refresh saved preferences before trying again.",
       );
-    } finally {
+      if (!rejected) setRequiresReview(true);
+      if (preferencesSaved) {
+        setApplyToActiveListings(false);
+        setApplyToActiveListingsConfirmed(false);
+      }
+      pending.current = false;
       setIsSaving(false);
+      return;
+    }
+    // A failed follow-up read cannot undo an acknowledged upsert/apply.
+    try {
+      await readSavedPreferences();
+      if (!isCurrent()) return;
+      try {
+        await Promise.all([
+          utils.auth.getOnboardingProgress.invalidate(),
+          ...(applySummary ? [utils.listing.invalidate()] : []),
+        ]);
+      } catch {
+        if (isCurrent())
+          setProblem(
+            "Preferences saved. Related pages could not be refreshed; reload those pages to see their latest state.",
+          );
+      }
+    } catch {
+      if (isCurrent()) setReadFailed(true);
+    } finally {
+      if (isCurrent()) {
+        pending.current = false;
+        setIsSaving(false);
+      }
     }
   };
 
@@ -1770,18 +2073,54 @@ export default function PreferencesPage() {
     return <SellerStep4 prefs={sellerPrefs} setPrefs={setSellerPrefs} />;
   };
 
-  if (isLoading) {
+  const workspaceControl = allowSelling ? (
+    <div role="group" aria-label="Preference workspace" className="grid grid-cols-2 gap-1 rounded-md border p-1">
+      {(["buyer", "seller"] as const).map((context) => (
+        <Link
+          key={context}
+          href={`/preferences?workspace=${context}`}
+          scroll={false}
+          aria-current={role === context ? "true" : undefined}
+          aria-disabled={busy ? "true" : undefined}
+          onNavigate={(event) => { if (busy) event.preventDefault(); }}
+          className={cn(
+            "flex min-h-11 items-center justify-center rounded-sm px-3 py-2 text-center text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            role === context ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            busy && "cursor-wait opacity-60",
+          )}
+        >
+          {context === "buyer" ? "Buying" : "Selling"}
+        </Link>
+      ))}
+    </div>
+  ) : null;
+
+  if (
+    !draft &&
+    (readUnavailable || (preferencesQuery.isSuccess && !foreignRead))
+  ) {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
+        {workspaceControl}
+        <QueryErrorState
+          title="Preferences unavailable"
+          description="We could not load your saved preferences. Try again before editing or saving defaults."
+          onRetry={() => void refreshSavedPreferences()}
+          isRetrying={isRefreshing || preferencesQuery.isFetching}
+        />
+      </div>
+    );
+  }
+  if (!draft) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        {workspaceControl}
         <div>
           <Skeleton className="h-9 w-48" />
           <Skeleton className="h-5 w-72 mt-2" />
         </div>
         {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-lg border bg-card p-6 space-y-4"
-          >
+          <div key={i} className="rounded-lg border bg-card p-6 space-y-4">
             <Skeleton className="h-6 w-40" />
             <Skeleton className="h-4 w-64" />
             <div className="space-y-3">
@@ -1794,9 +2133,39 @@ export default function PreferencesPage() {
     );
   }
 
+  const recovery = (
+    <div className="space-y-3">
+      {notice ? (
+        <p role="status" className="text-sm font-medium">
+          {notice}
+        </p>
+      ) : null}
+      {readUnavailable ? (
+        <p role="alert" className="text-sm text-destructive">
+          Saved preferences could not be loaded.
+        </p>
+      ) : null}
+      {problem ? (
+        <p role="alert" className="text-sm text-destructive">
+          {problem}
+        </p>
+      ) : null}
+      <Button
+        variant="outline"
+        onClick={() => void refreshSavedPreferences()}
+        disabled={busy || preferencesQuery.isFetching}
+        className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center"
+      >
+        Refresh saved preferences
+      </Button>
+    </div>
+  );
+
   // ─── Dashboard mode: all cards stacked, single save ──────────────────────────
   if (mode === "dashboard") {
-    const updatedAt = (existingPrefs as Record<string, unknown>)?.updatedAt as string | undefined;
+    const updatedAt = (existingPrefs as Record<string, unknown>)?.updatedAt as
+      | string
+      | undefined;
     const activeApplyBlocked =
       role === "seller" &&
       applyToActiveListings &&
@@ -1809,94 +2178,109 @@ export default function PreferencesPage() {
 
     return (
       <div className="max-w-2xl mx-auto space-y-6">
+        {workspaceControl}
         <div>
           <h1 className="text-3xl font-bold">Your Preferences</h1>
           <p className="text-muted-foreground mt-1">
             {updatedAt ? (
-              <>Last updated {new Date(updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</>
+              <>
+                Last updated{" "}
+                {new Date(updatedAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </>
             ) : (
-              <>Edit your {role === "buyer" ? "buyer request" : "listing"} preferences below.</>
+              <>
+                Edit your {role === "buyer" ? "buyer request" : "listing"}{" "}
+                preferences below.
+              </>
             )}
           </p>
         </div>
 
-        {role === "buyer" ? (
-          <div className="space-y-6">
-            <BuyerStep1 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
-            <BuyerStep2 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
-            <BuyerStep3 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
-            <PrivacyCard
-              analyticsTrackingEnabled={analyticsTrackingEnabled}
-              setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
-            />
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <SellerStep1 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
-            <SellerStep2 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
-            <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
-            <SellerStep4 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
-            <PrivacyCard
-              analyticsTrackingEnabled={analyticsTrackingEnabled}
-              setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
-            />
-            <ActiveListingApplyPanel
-              enabled={applyToActiveListings}
-              onEnabledChange={(enabled) => {
-                setApplyToActiveListings(enabled);
-                setApplyToActiveListingsConfirmed(false);
-                setLastApplySummary(null);
-              }}
-              confirmed={applyToActiveListingsConfirmed}
-              onConfirmedChange={setApplyToActiveListingsConfirmed}
-              preview={activeListingPreview.data}
-              isPreviewLoading={
-                activeListingPreview.isLoading ||
-                activeListingPreview.isFetching
-              }
-              previewError={activeListingPreview.error?.message ?? null}
-            />
-            {lastApplySummary ? (
-              <div
-                className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm"
-                role="status"
-              >
-                <div className="font-medium">Active listings updated</div>
-                <p className="mt-1 text-muted-foreground">
-                  {lastApplySummary.changedListingCount} listing
-                  {lastApplySummary.changedListingCount === 1 ? "" : "s"}{" "}
-                  updated, {lastApplySummary.unchangedListingCount} already
-                  matched, and{" "}
-                  {lastApplySummary.skippedAcceptedOfferListingCount} protected
-                  listing
-                  {lastApplySummary.skippedAcceptedOfferListingCount === 1
-                    ? ""
-                    : "s"}{" "}
-                  skipped.
-                </p>
-              </div>
-            ) : null}
-          </div>
-        )}
-
-        <div className="flex justify-end pt-2">
-          <Button
-            onClick={handleSave}
-            disabled={isSaving || activeApplyBlocked}
-          >
-            {isSaving ? (
-              <Loader2
-                className="mr-2 h-4 w-4 animate-spin"
-                aria-hidden="true"
+        {recovery}
+        <fieldset disabled={controlsBlocked} className="min-w-0 space-y-6">
+          {role === "buyer" ? (
+            <div className="space-y-6">
+              <BuyerStep1 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+              <BuyerStep2 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+              <BuyerStep3 prefs={buyerPrefs} setPrefs={setBuyerPrefs} />
+              <PrivacyCard
+                analyticsTrackingEnabled={analyticsTrackingEnabled}
+                setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
               />
-            ) : (
-              <Save className="mr-2 h-4 w-4" aria-hidden="true" />
-            )}
-            {applyToActiveListings
-              ? "Save & Apply Confirmed Changes"
-              : "Save Changes"}
-          </Button>
-        </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <SellerStep1 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+              <SellerStep2 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+              <SellerStep3 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+              <SellerStep4 prefs={sellerPrefs} setPrefs={setSellerPrefs} />
+              <PrivacyCard
+                analyticsTrackingEnabled={analyticsTrackingEnabled}
+                setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
+              />
+              <ActiveListingApplyPanel
+                enabled={applyToActiveListings}
+                onEnabledChange={(enabled) => {
+                  setApplyToActiveListings(enabled);
+                  setApplyToActiveListingsConfirmed(false);
+                  setLastApplySummary(null);
+                }}
+                confirmed={applyToActiveListingsConfirmed}
+                onConfirmedChange={setApplyToActiveListingsConfirmed}
+                preview={activeListingPreview.data}
+                isPreviewLoading={
+                  activeListingPreview.isLoading ||
+                  activeListingPreview.isFetching
+                }
+                previewError={activeListingPreview.error?.message ?? null}
+              />
+              {lastApplySummary ? (
+                <div
+                  className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm"
+                  role="status"
+                >
+                  <div className="font-medium">Active listings updated</div>
+                  <p className="mt-1 text-muted-foreground">
+                    {lastApplySummary.changedListingCount} listing
+                    {lastApplySummary.changedListingCount === 1 ? "" : "s"}{" "}
+                    updated, {lastApplySummary.unchangedListingCount} already
+                    matched, and{" "}
+                    {lastApplySummary.skippedAcceptedOfferListingCount}{" "}
+                    protected listing
+                    {lastApplySummary.skippedAcceptedOfferListingCount === 1
+                      ? ""
+                      : "s"}{" "}
+                    skipped.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <Button
+              onClick={handleSave}
+              disabled={controlsBlocked || activeApplyBlocked}
+              className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center"
+            >
+              {isSaving ? (
+                <Loader2
+                  className="mr-2 h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Save className="mr-2 h-4 w-4" aria-hidden="true" />
+              )}
+              {applyToActiveListings
+                ? "Save & Apply Confirmed Changes"
+                : "Save Changes"}
+            </Button>
+          </div>
+        </fieldset>
       </div>
     );
   }
@@ -1904,6 +2288,7 @@ export default function PreferencesPage() {
   // ─── Wizard mode: step-by-step for first-time users ──────────────────────────
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {workspaceControl}
       <div>
         <h1 className="text-3xl font-bold">Preferences</h1>
         <p className="text-muted-foreground mt-1">
@@ -1912,57 +2297,61 @@ export default function PreferencesPage() {
         </p>
       </div>
 
-      <StepProgress
-        current={step}
-        total={totalSteps}
-        labels={stepLabels}
-      />
+      {recovery}
+      <fieldset disabled={controlsBlocked} className="min-w-0 space-y-6">
+        <StepProgress current={step} total={totalSteps} labels={stepLabels} />
 
-      {step === 1 && (
-        <OnboardingTip id="preferences-tip">
-          Setting preferences unlocks personalized recommendations and alerts for listings matching your needs.
-        </OnboardingTip>
-      )}
-
-      {role === "buyer" ? renderBuyerStep() : renderSellerStep()}
-      <PrivacyCard
-        analyticsTrackingEnabled={analyticsTrackingEnabled}
-        setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
-      />
-
-      <div className="flex items-center justify-between pt-2">
-        <Button
-          variant="outline"
-          onClick={() => setStep((s) => s - 1)}
-          disabled={step === 1}
-          aria-label="Go to previous step"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
-          Back
-        </Button>
-
-        {step < totalSteps ? (
-          <Button
-            onClick={() => setStep((s) => s + 1)}
-            aria-label="Go to next step"
-          >
-            Next
-            <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-          </Button>
-        ) : (
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <Loader2
-                className="mr-2 h-4 w-4 animate-spin"
-                aria-hidden="true"
-              />
-            ) : (
-              <Check className="mr-2 h-4 w-4" aria-hidden="true" />
-            )}
-            Save Preferences
-          </Button>
+        {step === 1 && (
+          <OnboardingTip id="preferences-tip">
+            Setting preferences unlocks personalized recommendations and alerts
+            for listings matching your needs.
+          </OnboardingTip>
         )}
-      </div>
+
+        {role === "buyer" ? renderBuyerStep() : renderSellerStep()}
+        <PrivacyCard
+          analyticsTrackingEnabled={analyticsTrackingEnabled}
+          setAnalyticsTrackingEnabled={setAnalyticsTrackingEnabled}
+        />
+
+        <div className="flex items-center justify-between pt-2">
+          <Button
+            variant="outline"
+            onClick={() => setStep((s) => s - 1)}
+            disabled={step === 1}
+            aria-label="Go to previous step"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+            Back
+          </Button>
+
+          {step < totalSteps ? (
+            <Button
+              onClick={() => setStep((s) => s + 1)}
+              aria-label="Go to next step"
+            >
+              Next
+              <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSave}
+              disabled={controlsBlocked}
+              className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center"
+            >
+              {isSaving ? (
+                <Loader2
+                  className="mr-2 h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Check className="mr-2 h-4 w-4" aria-hidden="true" />
+              )}
+              Save Preferences
+            </Button>
+          )}
+        </div>
+      </fieldset>
     </div>
   );
 }

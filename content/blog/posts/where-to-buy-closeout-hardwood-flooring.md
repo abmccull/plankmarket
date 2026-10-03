@@ -16,8 +16,6 @@ description: >-
   projects.
 ---
 
-# Where to Buy Closeout Hardwood Flooring
-
 Closeout hardwood flooring is how contractors make margin on flooring-heavy projects.
 
 The product is the same. The specs are the same. But the price is 25-40% below wholesale because someone needs it gone. If you know where to look and move fast, closeout sourcing can be a competitive advantage.

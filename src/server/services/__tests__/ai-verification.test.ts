@@ -13,6 +13,8 @@ const {
 describe("AI verification privacy minimization", () => {
   const originalEgressFlag =
     process.env.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS;
+  const originalApprovalReference =
+    process.env.VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE;
 
   afterEach(() => {
     if (originalEgressFlag === undefined) {
@@ -20,6 +22,12 @@ describe("AI verification privacy minimization", () => {
     } else {
       process.env.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS =
         originalEgressFlag;
+    }
+    if (originalApprovalReference === undefined) {
+      delete process.env.VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE;
+    } else {
+      process.env.VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE =
+        originalApprovalReference;
     }
   });
 
@@ -65,6 +73,8 @@ describe("AI verification privacy minimization", () => {
     expect(isVerificationDocumentEgressEnabled()).toBe(false);
 
     process.env.ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS = "true";
+    expect(isVerificationDocumentEgressEnabled()).toBe(false);
+    process.env.VERIFICATION_DOCUMENT_EGRESS_APPROVAL_REFERENCE = "privacy-review";
 
     expect(isVerificationDocumentEgressEnabled()).toBe(true);
     expect(

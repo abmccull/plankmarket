@@ -1,4 +1,5 @@
 import type { SearchFilters } from "@/types";
+import { MAX_PUBLIC_FILTER_NUMBER } from "@/lib/validators/listing";
 import {
   WIDTH_OPTIONS,
   THICKNESS_OPTIONS,
@@ -197,6 +198,7 @@ export function getFilterBadges(
     });
   }
 
+  if (filters.hideQuantityConflicts === true) badges.push({ key: "hideQuantityConflicts", label: "Quantity conflicts hidden" });
   if (filters.waterproofRequired === true) badges.push({ key: "waterproofRequired", label: "Evidence-reviewed waterproof" });
   if (filters.sellerVerified === true) {
     badges.push({ key: "sellerVerified", label: "Verified sellers" });
@@ -260,6 +262,8 @@ export function filtersToSearchParams(filters: SearchFilters): string {
   if (filters.maxDistance !== undefined)
     params.set("maxDistance", String(filters.maxDistance));
   if (filters.buyerZip) params.set("buyerZip", filters.buyerZip);
+  if (filters.hideQuantityConflicts === true && filters.minLotSize !== undefined && Number.isFinite(filters.minLotSize) && filters.minLotSize > 0 && filters.minLotSize <= MAX_PUBLIC_FILTER_NUMBER)
+    params.set("hideQuantityConflicts", "true");
   if (filters.waterproofRequired === true) params.set("waterproofRequired", "true");
   if (filters.sellerVerified === true)
     params.set("sellerVerified", "true");
@@ -310,6 +314,10 @@ function parsePositiveBoolean(value: string | null): true | undefined {
  */
 export function searchParamsToFilters(searchParams: URLSearchParams): SearchFilters {
   const sort = searchParams.get("sort");
+  const rawMinimum = searchParams.getAll("minLotSize").length === 1
+    ? parseOptionalNumber(searchParams.get("minLotSize")) : undefined;
+  const minLotSize = rawMinimum !== undefined && rawMinimum >= 0 && rawMinimum <= MAX_PUBLIC_FILTER_NUMBER
+    ? rawMinimum : undefined;
 
   return {
     query: searchParams.get("query") || undefined,
@@ -325,8 +333,12 @@ export function searchParamsToFilters(searchParams: URLSearchParams): SearchFilt
     wearLayer: parseCsvNumbers(searchParams.get("wearLayer")),
     priceMin: parseOptionalNumber(searchParams.get("priceMin")),
     priceMax: parseOptionalNumber(searchParams.get("priceMax")),
-    minLotSize: parseOptionalNumber(searchParams.get("minLotSize")),
+    minLotSize,
     maxLotSize: parseOptionalNumber(searchParams.get("maxLotSize")),
+    ...(searchParams.getAll("minLotSize").length === 1 && minLotSize !== undefined && minLotSize > 0 && minLotSize <= MAX_PUBLIC_FILTER_NUMBER &&
+      searchParams.getAll("hideQuantityConflicts").length === 1 &&
+      searchParams.get("hideQuantityConflicts")?.trim().toLowerCase() === "true"
+      ? { hideQuantityConflicts: true as const } : {}),
     maxDistance: parseOptionalNumber(searchParams.get("maxDistance")),
     buyerZip: searchParams.get("buyerZip") || undefined,
     ...(parsePositiveBoolean(searchParams.get("waterproofRequired")) ? { waterproofRequired: true } : {}),

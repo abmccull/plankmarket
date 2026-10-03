@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { withPurchaseIntent, type PurchaseIntent } from "@/lib/marketplace/purchase-intent";
+import { ListingImage as Image } from "@/components/listings/listing-image";
 import { Card, CardContent } from "@/components/ui/card";
 import { PromotionBadge } from "./promotion-badge";
 import { formatCurrency, formatSqFt } from "@/lib/utils";
@@ -9,6 +10,7 @@ import { ChevronLeft, ChevronRight, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRef } from "react";
 import type { PromotionTier } from "@/types";
+import { SellerPaymentSetup, type SellerPaymentSetupStatus } from "@/components/listings/seller-payment-setup";
 
 interface SponsoredListing {
   id: string;
@@ -21,14 +23,16 @@ interface SponsoredListing {
   seller?: {
     verified: boolean;
     role: string;
+    paymentSetupStatus?: SellerPaymentSetupStatus;
   } | null;
 }
 
 interface SponsoredCarouselProps {
   listings: SponsoredListing[];
+  purchaseIntent?: PurchaseIntent;
 }
 
-export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
+export function SponsoredCarousel({ listings, purchaseIntent }: SponsoredCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   if (!listings || listings.length === 0) return null;
@@ -75,7 +79,7 @@ export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
         {listings.map((listing) => (
           <Link
             key={listing.id}
-            href={`/listings/${listing.slug || listing.id}`}
+            href={withPurchaseIntent(`/listings/${listing.slug || listing.id}`, purchaseIntent)}
             className="shrink-0 w-[220px]"
           >
             <Card className="overflow-hidden hover:shadow-md transition-shadow border-primary/20">
@@ -108,6 +112,7 @@ export function SponsoredCarousel({ listings }: SponsoredCarouselProps) {
                     {formatSqFt(listing.totalSqFt)}
                   </span>
                 </div>
+                <SellerPaymentSetup status={listing.seller?.paymentSetupStatus} className="mt-3" />
               </CardContent>
             </Card>
           </Link>

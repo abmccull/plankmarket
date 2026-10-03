@@ -5,6 +5,11 @@ import { trpc } from "@/lib/trpc/client";
 
 const mockPush = vi.fn();
 
+vi.mock("@/lib/stores/auth-store", () => ({
+  useAuthStore: (selector: (state: { user: { id: string } }) => unknown) =>
+    selector({ user: { id: "seller-test" } }),
+}));
+
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
     payment: {
@@ -79,7 +84,7 @@ describe("StripeOnboardingBanner", () => {
     expect(
       screen.queryByText("Set up payments to start receiving orders"),
     ).not.toBeInTheDocument();
-    expect(sessionStorage.getItem("stripe-onboarding-banner-dismissed")).toBe(
+    expect(sessionStorage.getItem("stripe-onboarding-banner-dismissed:seller-test")).toBe(
       "true",
     );
   });

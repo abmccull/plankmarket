@@ -97,9 +97,11 @@ const badgeClass = (isActive: boolean | undefined) =>
       : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
   }`;
 
+export type FilterUpdates = Partial<SearchFilters> | ((current: SearchFilters) => Partial<SearchFilters>);
+
 interface FacetedFiltersProps {
   filters: SearchFilters;
-  onFiltersChange: (updates: Partial<SearchFilters>) => void;
+  onFiltersChange: (updates: FilterUpdates) => void;
   onClearFilters: () => void;
 }
 
@@ -115,6 +117,7 @@ export function FacetedFilters({
     Key extends keyof SearchFilters,
     Value extends string | number,
   >(
+    filters: SearchFilters,
     key: Key,
     value: Value,
   ) => {
@@ -127,88 +130,89 @@ export function FacetedFilters({
   };
 
   const toggleMaterial = (value: MaterialType) => {
-    const updatedMaterialType = updateArrayFilter("materialType", value) as
-      | SearchFilters["materialType"]
-      | undefined;
-    const allowedWearLayerValues = new Set(
-      getWearLayerOptions(updatedMaterialType).map((option) => option.value),
-    );
-    const nextWearLayer = filters.wearLayer?.filter((layer) =>
-      allowedWearLayerValues.has(layer),
-    );
-
-    onFiltersChange({
-      materialType: updatedMaterialType,
-      wearLayer: nextWearLayer?.length ? nextWearLayer : undefined,
+    onFiltersChange((current) => {
+      const updatedMaterialType = updateArrayFilter(current, "materialType", value) as
+        | SearchFilters["materialType"]
+        | undefined;
+      const allowedWearLayerValues = new Set(
+        getWearLayerOptions(updatedMaterialType).map((option) => option.value),
+      );
+      const nextWearLayer = current.wearLayer?.filter((layer) =>
+        allowedWearLayerValues.has(layer),
+      );
+      return {
+        materialType: updatedMaterialType,
+        wearLayer: nextWearLayer?.length ? nextWearLayer : undefined,
+      };
     });
   };
 
   const toggleCondition = (value: ConditionType) => {
-    onFiltersChange({
-      condition: updateArrayFilter("condition", value) as
+    onFiltersChange((current) => ({
+      condition: updateArrayFilter(current, "condition", value) as
         | SearchFilters["condition"]
         | undefined,
-    });
+    }));
   };
 
   const toggleSpecies = (value: Species) => {
-    onFiltersChange({
-      species: updateArrayFilter("species", value) as
+    onFiltersChange((current) => ({
+      species: updateArrayFilter(current, "species", value) as
         | SearchFilters["species"]
         | undefined,
-    });
+    }));
   };
 
   const toggleColorFamily = (value: ColorFamily) => {
-    onFiltersChange({
-      colorFamily: updateArrayFilter("colorFamily", value) as
+    onFiltersChange((current) => ({
+      colorFamily: updateArrayFilter(current, "colorFamily", value) as
         | SearchFilters["colorFamily"]
         | undefined,
-    });
+    }));
   };
 
   const toggleFinish = (value: FinishType) => {
-    onFiltersChange({
-      finishType: updateArrayFilter("finishType", value) as
+    onFiltersChange((current) => ({
+      finishType: updateArrayFilter(current, "finishType", value) as
         | SearchFilters["finishType"]
         | undefined,
-    });
+    }));
   };
 
   const toggleState = (value: string) => {
-    onFiltersChange({
-      state: updateArrayFilter("state", value) as SearchFilters["state"] | undefined,
-    });
+    onFiltersChange((current) => ({
+      state: updateArrayFilter(current, "state", value) as SearchFilters["state"] | undefined,
+    }));
   };
 
   const toggleCertification = (value: Certification) => {
-    onFiltersChange({
-      certifications: updateArrayFilter("certifications", value) as
+    onFiltersChange((current) => ({
+      certifications: updateArrayFilter(current, "certifications", value) as
         | SearchFilters["certifications"]
         | undefined,
-    });
+    }));
   };
 
   const toggleWidth = (value: number) => {
-    onFiltersChange({
-      width: updateArrayFilter("width", value) as SearchFilters["width"] | undefined,
-    });
+    onFiltersChange((current) => ({
+      width: updateArrayFilter(current, "width", value) as SearchFilters["width"] | undefined,
+    }));
   };
 
   const toggleThickness = (value: number) => {
-    onFiltersChange({
-      thickness: updateArrayFilter("thickness", value) as
+    onFiltersChange((current) => ({
+      thickness: updateArrayFilter(current, "thickness", value) as
         | SearchFilters["thickness"]
         | undefined,
-    });
+    }));
   };
 
   const toggleWearLayer = (value: number) => {
-    onFiltersChange({
-      wearLayer: updateArrayFilter("wearLayer", value) as
+    onFiltersChange((current) => ({
+      wearLayer: updateArrayFilter(current, "wearLayer", value) as
         | SearchFilters["wearLayer"]
         | undefined,
-    });
+    }));
   };
 
   const wearLayerOptions = getWearLayerOptions(filters.materialType);
@@ -328,15 +332,15 @@ export function FacetedFilters({
           Buying confidence
         </Label>
         <div className="flex flex-wrap gap-1.5" aria-label="Buying confidence filters">
-          <button type="button" aria-pressed={filters.waterproofRequired === true} onClick={() => onFiltersChange({ waterproofRequired: filters.waterproofRequired === true ? undefined : true })} className={badgeClass(filters.waterproofRequired === true)}>Evidence-reviewed waterproof</button>
+          <button type="button" aria-pressed={filters.waterproofRequired === true} onClick={() => onFiltersChange((current) => ({ waterproofRequired: current.waterproofRequired === true ? undefined : true }))} className={badgeClass(filters.waterproofRequired === true)}>Evidence-reviewed waterproof</button>
           <button
             type="button"
             aria-pressed={filters.sellerVerified === true}
             onClick={() =>
-              onFiltersChange({
+              onFiltersChange((current) => ({
                 sellerVerified:
-                  filters.sellerVerified === true ? undefined : true,
-              })
+                  current.sellerVerified === true ? undefined : true,
+              }))
             }
             className={badgeClass(filters.sellerVerified === true)}
           >
@@ -346,9 +350,9 @@ export function FacetedFilters({
             type="button"
             aria-pressed={filters.freightReady === true}
             onClick={() =>
-              onFiltersChange({
-                freightReady: filters.freightReady === true ? undefined : true,
-              })
+              onFiltersChange((current) => ({
+                freightReady: current.freightReady === true ? undefined : true,
+              }))
             }
             className={badgeClass(filters.freightReady === true)}
           >
@@ -369,9 +373,9 @@ export function FacetedFilters({
             type="button"
             aria-pressed={filters.fullLotOnly === true}
             onClick={() =>
-              onFiltersChange({
-                fullLotOnly: filters.fullLotOnly === true ? undefined : true,
-              })
+              onFiltersChange((current) => ({
+                fullLotOnly: current.fullLotOnly === true ? undefined : true,
+              }))
             }
             className={badgeClass(filters.fullLotOnly === true)}
           >
@@ -381,9 +385,9 @@ export function FacetedFilters({
             type="button"
             aria-pressed={filters.fullLotOnly === false}
             onClick={() =>
-              onFiltersChange({
-                fullLotOnly: filters.fullLotOnly === false ? undefined : false,
-              })
+              onFiltersChange((current) => ({
+                fullLotOnly: current.fullLotOnly === false ? undefined : false,
+              }))
             }
             className={badgeClass(filters.fullLotOnly === false)}
           >
@@ -405,6 +409,7 @@ export function FacetedFilters({
             placeholder="Min"
             step="0.01"
             value={filters.priceMin ?? ""}
+            aria-label="Minimum price per square foot"
             onChange={(e) =>
               onFiltersChange({
                 priceMin: e.target.value
@@ -419,6 +424,7 @@ export function FacetedFilters({
             placeholder="Max"
             step="0.01"
             value={filters.priceMax ?? ""}
+            aria-label="Maximum price per square foot"
             onChange={(e) =>
               onFiltersChange({
                 priceMax: e.target.value
@@ -436,13 +442,14 @@ export function FacetedFilters({
       {/* Lot Size */}
       <div>
         <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-          Lot Size (Sq Ft)
+          Available lot size (sq ft)
         </Label>
         <div className="grid grid-cols-2 gap-2">
           <Input
             type="number"
             placeholder="Min"
             value={filters.minLotSize ?? ""}
+            aria-label="Minimum lot size in square feet"
             onChange={(e) =>
               onFiltersChange({
                 minLotSize: e.target.value
@@ -456,6 +463,7 @@ export function FacetedFilters({
             type="number"
             placeholder="Max"
             value={filters.maxLotSize ?? ""}
+            aria-label="Maximum lot size in square feet"
             onChange={(e) =>
               onFiltersChange({
                 maxLotSize: e.target.value

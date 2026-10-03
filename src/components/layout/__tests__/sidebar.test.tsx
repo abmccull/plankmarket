@@ -41,7 +41,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      /protected navigation is loading/i,
+      /confirming your account/i,
     );
     expect(screen.queryByText(/seller dashboard/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/buyer dashboard/i)).not.toBeInTheDocument();
@@ -62,9 +62,11 @@ describe("Sidebar", () => {
 
     expect(screen.getByText(/secure dashboard/i)).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(
-      /protected navigation is loading/i,
+      /returning to sign in/i,
     );
-    expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /dashboard/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the authenticated seller role on shared routes", () => {
@@ -91,8 +93,12 @@ describe("Sidebar", () => {
 
     render(<Sidebar />);
 
-    expect(screen.getByText(/seller dashboard/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /my listings/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /watchlist/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/seller workspace/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /my listings/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /watchlist/i }),
+    ).not.toBeInTheDocument();
   });
 });

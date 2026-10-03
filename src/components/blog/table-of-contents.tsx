@@ -1,23 +1,20 @@
-type Heading = { id: string; text: string; level: number };
+import type { ArticleHeading } from "@/lib/blog";
 
-export function TableOfContents({ headings }: { headings: Heading[] }) {
+export function TableOfContents({ headings }: { headings: ArticleHeading[] }) {
   if (headings.length === 0) return null;
 
   return (
-    <nav className="sticky top-24" aria-label="Table of contents">
-      <h4 className="font-display text-sm text-muted-foreground mb-3 uppercase tracking-wide">
-        On this page
-      </h4>
-      <ul className="space-y-1.5 text-sm border-l border-border">
-        {headings.map((h) => (
-          <li key={h.id}>
+    <nav aria-label="Table of contents">
+      <ul className="space-y-1 text-sm border-l border-border">
+        {headings.map((heading) => (
+          <li key={heading.id}>
             <a
-              href={`#${h.id}`}
-              className={`block py-0.5 text-muted-foreground hover:text-foreground transition-colors ${
-                h.level === 2 ? "pl-4" : "pl-7"
+              href={`#${encodeURIComponent(heading.id)}`}
+              className={`block min-h-11 py-3 text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors ${
+                heading.level === 2 ? "pl-4" : "pl-7"
               }`}
             >
-              {h.text}
+              {heading.text}
             </a>
           </li>
         ))}

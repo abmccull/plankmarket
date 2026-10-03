@@ -197,6 +197,7 @@ export function parseListingSearchParams(
 ): ParsedListingSearchParams {
   const parsedSort = sortSchema.safeParse(singleValue(params.sort));
   const limit = parsePositiveInteger(params.limit, 24, 250);
+  const minLotSize = parseOptionalNumber(params.minLotSize);
   const maxPage = Math.max(
     1,
     Math.floor(MAX_PUBLIC_LISTING_RESULT_WINDOW / limit),
@@ -219,8 +220,10 @@ export function parseListingSearchParams(
     condition: parseEnumArray(params.condition, conditionSchema),
     state: parseStringArray(params.state),
     certifications: parseStringArray(params.certifications),
-    minLotSize: parseOptionalNumber(params.minLotSize),
+    minLotSize,
     maxLotSize: parseOptionalNumber(params.maxLotSize),
+    ...(minLotSize !== undefined && minLotSize > 0 && parsePositiveBoolean(params.hideQuantityConflicts)
+      ? { hideQuantityConflicts: true as const } : {}),
     maxDistance: parseOptionalNumber(
       params.maxDistance,
       Number.EPSILON,

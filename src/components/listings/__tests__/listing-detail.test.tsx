@@ -188,8 +188,8 @@ describe("ListingDetailClient", () => {
     expect(screen.getByText(/Direct purchase lot:/)).toHaveTextContent(
       "Direct purchase lot: $2,500.00"
     );
-    expect(screen.getByText("Known now")).toBeInTheDocument();
-    expect(screen.getByText("Calculated later")).toBeInTheDocument();
+    expect(screen.getByText("Available").parentElement).toHaveTextContent("1,000 sq ft");
+    expect(screen.getByText("Freight quote is calculated after destination details are entered at checkout.")).toBeInTheDocument();
   });
 
   it("shows Buy Now button when buyNowPrice is set", () => {
@@ -330,7 +330,7 @@ describe("ListingDetailClient", () => {
       />,
     );
 
-    expect(screen.getAllByText("Blocked").length).toBeGreaterThan(0);
+    expect(screen.getByText("Contact seller for freight")).toBeInTheDocument();
     expect(
       screen.getByText("Inventory reconfirmation is overdue"),
     ).toBeInTheDocument();
@@ -362,5 +362,29 @@ describe("ListingDetailClient", () => {
     expect(watchlistButton).toBeInTheDocument();
     // When watchlistStatus is undefined, aria-pressed is not rendered
     expect(watchlistButton).not.toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+
+describe("ListingDetailClient seller purchasing and ownership preview", () => {
+  beforeEach(() => { vi.clearAllMocks(); setupMocks({ user: { id: "purchasing-seller", role: "seller" } }); });
+  it("another seller can request a sample from a listing that allows it", () => {
+    render(<ListingDetailClient listing={createListing()} />);
+    expect(screen.getByRole("button", { name: /request sample/i })).toBeInTheDocument();
+  });
+  it("View as Buyer does not activate self purchase, offer, contact or sample actions", async () => {
+    setupMocks({ user: { id: "seller-456", role: "seller" } });
+    render(<ListingDetailClient listing={createListing({ buyNowPrice: 2.5, allowOffers: true })} />);
+    const user = (await import("@testing-library/user-event")).default.setup();
+    await user.click(screen.getByRole("button", { name: "View as Buyer" }));
+    expect(Array.from(document.querySelectorAll("a[href]")).filter((link) => link.getAttribute("href")?.includes("/checkout"))).toHaveLength(0);
+    for (const name of [/make an offer/i, /make offer/i, /contact.*seller/i, /request sample/i]) {
+      for (const control of screen.queryAllByRole("button", { name })) {
+        expect(control).toBeDisabled(); await user.click(control);
+      }
+    }
+    const message = vi.mocked(trpc.message.getOrCreateConversation.useMutation).mock.results.at(-1)?.value;
+    expect(message?.mutateAsync).not.toHaveBeenCalled();
+    expect(vi.mocked(useRouter).mock.results.at(-1)?.value.push).not.toHaveBeenCalled();
   });
 });

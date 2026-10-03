@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 import posthog, { type PostHog } from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
@@ -41,12 +41,11 @@ function AnalyticsConsentBanner({
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-3xl space-y-1">
-          <p id="analytics-consent-title" className="text-sm font-semibold">
+          <p id="analytics-consent-title" className="sr-only">
             Help improve PlankMarket
           </p>
           <p className="text-sm text-muted-foreground">
-            Optional analytics use masked inputs and pseudonymous IDs. Change
-            this later in account preferences.
+            Optional analytics use masked inputs and pseudonymous IDs.
           </p>
           {saveFailed ? (
             <p className="text-sm font-medium text-destructive" role="alert">
@@ -84,6 +83,7 @@ export function PostHogAnalyticsProvider({
   children: React.ReactNode;
 }) {
   const user = useAuthStore((state) => state.user);
+  const [failedConsentOwner, setFailedConsentOwner] = useState<string | null>(null);
   const activePosthogClient = useRef<PostHog | null>(null);
   const browserConsent = useSyncExternalStore(
     subscribeAnalyticsConsent,
@@ -141,22 +141,20 @@ export function PostHogAnalyticsProvider({
       <AnalyticsConsentBanner
         consent={consent}
         onDecision={(nextValue) => {
+          const decisionOwner = user?.id ?? "browser";
+          setFailedConsentOwner(null);
           void persistConsent(nextValue).catch(() => {
-            // The mutation exposes its error state in the banner. Keep the
-            // prior consent value so analytics never starts after a failed save.
+            // A failed account or browser save never implies consent.
+            setFailedConsentOwner(decisionOwner);
           });
         }}
         isSaving={setAnalyticsConsent.isPending}
-        saveFailed={setAnalyticsConsent.isError === true}
+        saveFailed={failedConsentOwner === (user?.id ?? "browser")}
       />
       {children}
       {consent === "granted" ? <VercelAnalytics /> : null}
     </AnalyticsConsentContext.Provider>
   );
-
-  if (consent !== "granted") {
-    return content;
-  }
 
   return <PostHogProvider client={posthog}>{content}</PostHogProvider>;
 }

@@ -24,7 +24,7 @@ type ListingTerritory = {
 
 type TerritoryViewerScope =
   | { kind: "all" }
-  | { kind: "owner"; viewerId: string }
+  | { kind: "owner"; viewerId: string; destinationState?: string }
   | { kind: "buyer_state"; destinationState: string }
   | { kind: "unrestricted_only" };
 
@@ -34,7 +34,7 @@ const US_STATE_CODE_PATTERN =
 /**
  * Resolve the only server-trusted territory identity currently available.
  *
- * A buyer's business state is trusted only while their business verification
+ * A purchasing account's state is trusted only while its business verification
  * remains approved. Changing a verified business state resets verification,
  * so a buyer cannot self-edit this field to enumerate another territory.
  */
@@ -46,7 +46,14 @@ export function resolveTerritoryViewerScope(
   }
 
   if (viewer?.role === "seller") {
-    return { kind: "owner", viewerId: viewer.id };
+    const destinationState = viewer.verificationStatus === "verified"
+      ? normalizeUsStateCode(viewer.businessState)
+      : null;
+    return {
+      kind: "owner",
+      viewerId: viewer.id,
+      ...(destinationState ? { destinationState } : {}),
+    };
   }
 
   if (viewer?.role === "buyer" && viewer.verificationStatus === "verified") {
@@ -87,7 +94,8 @@ export function isListingTerritoryVisibleToViewer(
 
   if (
     listing.territoryMode !== "allowed_states" ||
-    scope.kind !== "buyer_state"
+    (scope.kind !== "buyer_state" && scope.kind !== "owner") ||
+    !scope.destinationState
   ) {
     return false;
   }
@@ -136,7 +144,13 @@ export function listingTerritoryVisibleWhere(
   }
 
   if (scope.kind === "owner") {
-    return or(unrestricted, eq(listings.sellerId, scope.viewerId))!;
+    return or(
+      unrestricted,
+      eq(listings.sellerId, scope.viewerId),
+      scope.destinationState
+        ? validRestrictedTerritoryWhere(scope.destinationState)
+        : undefined,
+    )!;
   }
 
   if (scope.kind === "buyer_state") {

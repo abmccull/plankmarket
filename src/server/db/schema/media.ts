@@ -14,6 +14,8 @@ import { sql } from "drizzle-orm";
 import { listings } from "./listings";
 import { buyerRequests } from "./buyer-requests";
 import { users } from "./users";
+import { listingPhotoUploads } from "./listing-photo-uploads";
+import type { PgTableExtraConfigValue } from "drizzle-orm/pg-core";
 
 export const media = pgTable(
   "media",
@@ -27,6 +29,8 @@ export const media = pgTable(
       onDelete: "cascade",
     }),
     url: text("url").notNull(),
+    storageProvider: text("storage_provider").$type<"uploadthing" | "supabase_listing">().notNull().default("uploadthing"),
+    listingPhotoUploadId: uuid("listing_photo_upload_id"),
     key: varchar("key", { length: 500 }),
     fileName: varchar("file_name", { length: 255 }),
     fileSize: integer("file_size"),
@@ -41,7 +45,11 @@ export const media = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [
+  (table): PgTableExtraConfigValue[] => [
+    // Canonical 0047 owns the DEFERRABLE reciprocal foreign key.
+    foreignKey({ name: "media_listing_photo_upload_fk", columns: [table.listingPhotoUploadId], foreignColumns: [listingPhotoUploads.id] }).onDelete("restrict"),
+    uniqueIndex("media_listing_photo_upload_unique").on(table.listingPhotoUploadId).where(sql`${table.listingPhotoUploadId} is not null`),
+    check("media_storage_provider_check", sql`(${table.storageProvider}='uploadthing' and ${table.listingPhotoUploadId} is null) or (${table.storageProvider}='supabase_listing' and ${table.listingPhotoUploadId} is not null and ${table.key} is null and ${table.buyerRequestId} is null and ${table.url}='/api/listing-photos/'||${table.id}::text)`),
     index("media_listing_id_idx").on(table.listingId),
     index("media_sort_order_idx").on(table.listingId, table.sortOrder),
     index("media_buyer_request_id_idx").on(table.buyerRequestId),

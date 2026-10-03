@@ -145,20 +145,17 @@ describe("payment.nudgeSellerToOnboard", () => {
     vi.clearAllMocks();
   });
 
-  it("keeps the action buyer-scoped under the strict checkout limiter", async () => {
-    const db = createDb();
+  it("allows a verified seller with legitimate buying interest to nudge under the strict checkout limiter", async () => {
+    const db = createDb({ watchlist: { id: "watch-1" } });
     const caller = createCaller(createContext({ db, role: "seller" }));
 
     await expect(
       caller.payment.nudgeSellerToOnboard({
         listingId: LISTING_ID,
       }),
-    ).rejects.toMatchObject({
-      code: "FORBIDDEN",
-      message: "Only buyers can perform this action",
-    });
+    ).resolves.toEqual({ notified: true });
 
-    expect(db.query.listings.findFirst).not.toHaveBeenCalled();
+    expect(db.query.listings.findFirst).toHaveBeenCalledOnce();
   });
 
   it("rejects mismatched seller ids instead of letting buyers target another tenant", async () => {

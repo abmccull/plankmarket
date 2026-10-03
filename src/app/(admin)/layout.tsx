@@ -35,7 +35,7 @@ export default function AdminLayout({
   return (
     <div className="flex flex-1">
       <AdminSidebar />
-      <div className="min-w-0 flex-1 p-6 lg:p-8">{children}</div>
+      <div className="min-w-0 flex-1 py-6 px-[min(1.5rem,24px)] lg:py-8 lg:px-[min(2rem,32px)] [&_h1]:[overflow-wrap:anywhere]">{children}</div>
     </div>
   );
 }

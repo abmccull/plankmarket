@@ -68,7 +68,7 @@ export function ReviewCard({
         </div>
 
         {/* Title */}
-        {title && <h4 className="font-semibold mb-2">{title}</h4>}
+        {title && <h3 className="font-semibold mb-2">{title}</h3>}
 
         {/* Comment */}
         <p className="text-sm text-muted-foreground mb-4">{comment}</p>

@@ -1,15 +1,35 @@
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
 import { createClient } from "@/lib/supabase/server";
+import { MFA_REQUIRED_MESSAGE } from "@/lib/auth/auth-assurance";
+import { canCreateListings, canPurchase } from "@/lib/auth/roles";
 import { db } from "@/server/db";
-import { listings, media, orders, users } from "@/server/db/schema";
-import { and, eq, sql } from "drizzle-orm";
-import { isTrustedUploadThingFileUrl } from "@/server/security/uploadthing";
+import { listings, orders, users } from "@/server/db/schema";
+import { and, eq, or } from "drizzle-orm";
 import { inspectEvidenceUpload } from "@/server/security/evidence-files";
-import { deleteUploadThingFile } from "@/server/services/uploadthing-files";
+import { persistTrustedUpload } from "@/server/services/trusted-upload";
 import { z } from "zod";
 
 const f = createUploadthing();
+
+async function requireAdminUploadAssurance(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+) {
+  let currentLevel: string | null | undefined;
+  try {
+    const assurance = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assurance.error) throw assurance.error;
+    currentLevel = assurance.data?.currentLevel;
+  } catch {
+    throw new UploadThingError({
+      code: "FORBIDDEN",
+      message: "We could not validate your security session. Please try again.",
+    });
+  }
+  if (currentLevel !== "aal2") {
+    throw new UploadThingError({ code: "FORBIDDEN", message: MFA_REQUIRED_MESSAGE });
+  }
+}
 
 async function requireUploadAccount(
   allowedRole: "buyer" | "seller",
@@ -43,23 +63,24 @@ async function requireUploadAccount(
     });
   }
 
-  if (dbUser.role !== allowedRole && dbUser.role !== "admin") {
+  const allowed = allowedRole === "buyer"
+    ? canPurchase(dbUser.role)
+    : canCreateListings(dbUser.role);
+  if (!allowed) {
     throw new UploadThingError({
       code: "FORBIDDEN",
       message: `Only ${allowedRole} accounts can use this uploader`,
     });
   }
 
-  if (
-    dbUser.role !== "admin" &&
-    dbUser.verificationStatus !== "verified"
-  ) {
+  if (dbUser.role !== "admin" && dbUser.verificationStatus !== "verified") {
     throw new UploadThingError({
       code: "FORBIDDEN",
       message: "Business verification is required before uploading images",
     });
   }
 
+  if (dbUser.role === "admin") await requireAdminUploadAssurance(supabase);
   return { userId: dbUser.id };
 }
 
@@ -97,113 +118,8 @@ async function requireOrderParticipantUploadAccount(): Promise<{
       message: "This account cannot upload claim evidence",
     });
   }
+  if (dbUser.role === "admin") await requireAdminUploadAssurance(supabase);
   return { userId: dbUser.id, role: dbUser.role };
-}
-
-async function persistTrustedUpload(params: {
-  userId: string;
-  file: {
-    url: string;
-    key: string;
-    name: string;
-    size: number;
-    type: string;
-  };
-  listingId?: string;
-  mimeTypeOverride?: string;
-}) {
-  const { userId, file, listingId, mimeTypeOverride } = params;
-  if (!isTrustedUploadThingFileUrl(file.url, file.key)) {
-    throw new UploadThingError({
-      code: "UPLOAD_FAILED",
-      message: "Upload callback returned an invalid file location",
-    });
-  }
-
-  // Callback retries are expected. Reuse an existing trusted record, but never
-  // transfer it between accounts.
-  const existing = await db.query.media.findFirst({
-    where: eq(media.key, file.key),
-  });
-  if (existing) {
-    if (existing.uploaderId !== userId) {
-      throw new UploadThingError({
-        code: "FORBIDDEN",
-        message: "Upload ownership mismatch",
-      });
-    }
-    if (listingId && existing.listingId && existing.listingId !== listingId) {
-      throw new UploadThingError({
-        code: "FORBIDDEN",
-        message: "Upload is already attached to another listing",
-      });
-    }
-    if (listingId && !existing.listingId) {
-      const [attached] = await db
-        .update(media)
-        .set({ listingId })
-        .where(and(eq(media.id, existing.id), eq(media.uploaderId, userId)))
-        .returning();
-      return attached ?? existing;
-    }
-    return existing;
-  }
-
-  const [record] = await db
-    .insert(media)
-    .values({
-      uploaderId: userId,
-      listingId: listingId ?? null,
-      url: file.url,
-      key: file.key,
-      fileName: file.name,
-      fileSize: file.size,
-      mimeType: mimeTypeOverride ?? file.type,
-      sortOrder: 0,
-    })
-    .onConflictDoNothing({
-      target: media.key,
-      where: sql`${media.key} is not null`,
-    })
-    .returning();
-
-  if (!record) {
-    const concurrentRecord = await db.query.media.findFirst({
-      where: eq(media.key, file.key),
-    });
-    if (!concurrentRecord || concurrentRecord.uploaderId !== userId) {
-      throw new UploadThingError({
-        code: "FORBIDDEN",
-        message: "Upload ownership mismatch",
-      });
-    }
-    if (
-      listingId &&
-      concurrentRecord.listingId &&
-      concurrentRecord.listingId !== listingId
-    ) {
-      throw new UploadThingError({
-        code: "FORBIDDEN",
-        message: "Upload is already attached to another listing",
-      });
-    }
-    if (listingId && !concurrentRecord.listingId) {
-      const [attached] = await db
-        .update(media)
-        .set({ listingId })
-        .where(
-          and(
-            eq(media.id, concurrentRecord.id),
-            eq(media.uploaderId, userId),
-          ),
-        )
-        .returning();
-      return attached ?? concurrentRecord;
-    }
-    return concurrentRecord;
-  }
-
-  return record;
 }
 
 async function validateUploadThingCallbackFile(params: {
@@ -225,7 +141,9 @@ async function validateUploadThingCallbackFile(params: {
     }
     return mimeType;
   } catch (error) {
-    await deleteUploadThingFile(params.file.key).catch(() => undefined);
+    // A signed callback can be a retry for a retained object. Inspection failure
+    // does not authorize physical deletion or establish that the file is unused.
+    console.warn("Upload content validation failed", { key: params.file.key });
     throw new UploadThingError({
       code: "BAD_REQUEST",
       message:
@@ -339,9 +257,10 @@ export const ourFileRouter = {
           eq(orders.id, input.orderId),
           account.role === "admin"
             ? undefined
-            : account.role === "buyer"
-              ? eq(orders.buyerId, account.userId)
-              : eq(orders.sellerId, account.userId),
+            : or(
+                eq(orders.buyerId, account.userId),
+                eq(orders.sellerId, account.userId),
+              ),
         ),
         columns: { id: true },
       });
