@@ -1,3 +1,4 @@
+import { useResolvedAnalyticsConsent } from "../consent-context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   posthogClient: {
     opt_in_capturing: vi.fn(),
     reset: vi.fn(),
+    identify: vi.fn(),
     opt_out_capturing: vi.fn(),
   },
 }));
@@ -60,6 +62,8 @@ describe("PostHogAnalyticsProvider", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    for (const mock of Object.values(mocks.posthogClient)) mock.mockReset();
+    mocks.initPostHog.mockReset();
     window.localStorage.clear();
     currentUser = null;
     currentPreference = undefined;
@@ -75,7 +79,7 @@ describe("PostHogAnalyticsProvider", () => {
       data:
         currentPreference === undefined
           ? undefined
-          : { analyticsTrackingEnabled: currentPreference },
+          : { userId: currentUser?.id, analyticsTrackingEnabled: currentPreference },
       refetch: mocks.refetch,
     }));
     mocks.usePreferencesMutation.mockReturnValue({
@@ -83,6 +87,68 @@ describe("PostHogAnalyticsProvider", () => {
       isPending: false,
       isError: false,
     });
+  });
+
+  it("gates child tracking until the current account identity is ready", () => {
+    const seen: unknown[] = [];
+    function Probe() { seen.push(useResolvedAnalyticsConsent()); return <div>child</div>; }
+    currentUser = { id: "buyer-a", role: "buyer" }; currentPreference = true;
+    const { rerender } = render(<PostHogAnalyticsProvider><Probe /></PostHogAnalyticsProvider>);
+    expect(seen[0]).not.toBe("granted");
+    expect(seen.at(-1)).toBe("granted");
+    seen.length = 0;
+    currentUser = { id: "seller-b", role: "seller" };
+    rerender(<PostHogAnalyticsProvider><Probe /></PostHogAnalyticsProvider>);
+    expect(seen[0]).not.toBe("granted");
+    expect(seen.at(-1)).toBe("granted");
+  });
+
+  it.each(["initialization", "identify"])("keeps children usable when %s fails", failing => {
+    currentUser = { id: "buyer-a", role: "buyer" }; currentPreference = true;
+    const error = new Error("Synthetic SDK failure");
+    if (failing === "initialization") mocks.initPostHog.mockImplementation(() => { throw error; });
+    else mocks.posthogClient.identify.mockImplementation(() => { throw error; });
+    expect(() => render(<PostHogAnalyticsProvider><div>Essential checkout</div></PostHogAnalyticsProvider>)).not.toThrow();
+    expect(screen.getByText("Essential checkout")).toBeInTheDocument();
+    expect(screen.queryByTestId("vercel-analytics")).not.toBeInTheDocument();
+    if (failing === "identify") expect(mocks.posthogClient.opt_out_capturing).toHaveBeenCalled();
+  });
+  it.each(["reset", "opt_out_capturing"] as const)("isolates revocation %s failure and attempts both operations", failing => {
+    currentUser = { id: "buyer-a", role: "buyer" }; currentPreference = true;
+    const { rerender } = render(<PostHogAnalyticsProvider><div>Essential checkout</div></PostHogAnalyticsProvider>);
+    mocks.posthogClient[failing].mockImplementation(() => { throw new Error("Synthetic revocation failure"); });
+    currentPreference = false;
+    expect(() => rerender(<PostHogAnalyticsProvider><div>Essential checkout</div></PostHogAnalyticsProvider>)).not.toThrow();
+    expect(mocks.posthogClient.reset).toHaveBeenCalled();
+    expect(mocks.posthogClient.opt_out_capturing).toHaveBeenCalled();
+    expect(screen.getByText("Essential checkout")).toBeInTheDocument();
+    expect(screen.queryByTestId("vercel-analytics")).not.toBeInTheDocument();
+  });
+
+  it("does not use another account's cached analytics consent", () => {
+    currentUser = { id: "buyer-b", role: "buyer" };
+    mocks.usePreferencesQuery.mockReturnValue({ isFetched: true, data: { userId: "buyer-a", analyticsTrackingEnabled: true }, refetch: mocks.refetch });
+    render(<PostHogAnalyticsProvider><div>child</div></PostHogAnalyticsProvider>);
+    expect(mocks.initPostHog).not.toHaveBeenCalled();
+    expect(mocks.posthogClient.identify).not.toHaveBeenCalled();
+  });
+
+  it("identifies consenting accounts and resets identity across account switches", () => {
+    currentUser = { id: "buyer-a", role: "buyer" }; currentPreference = true;
+    const { rerender } = render(<PostHogAnalyticsProvider><div>child</div></PostHogAnalyticsProvider>);
+    expect(mocks.posthogClient.identify).toHaveBeenCalledWith("buyer-a");
+    expect(mocks.posthogClient.identify).toHaveBeenCalledTimes(1);
+    rerender(<PostHogAnalyticsProvider><div>child</div></PostHogAnalyticsProvider>);
+    expect(mocks.posthogClient.identify).toHaveBeenCalledTimes(1);
+    currentUser = { id: "seller-b", role: "seller" };
+    rerender(<PostHogAnalyticsProvider><div>child</div></PostHogAnalyticsProvider>);
+    expect(mocks.posthogClient.reset).toHaveBeenCalledTimes(1);
+    expect(mocks.posthogClient.identify).toHaveBeenLastCalledWith("seller-b");
+    expect(mocks.posthogClient.reset.mock.invocationCallOrder[0]).toBeLessThan(mocks.posthogClient.identify.mock.invocationCallOrder[1]);
+    currentPreference = false;
+    rerender(<PostHogAnalyticsProvider><div>child</div></PostHogAnalyticsProvider>);
+    expect(mocks.posthogClient.opt_out_capturing).toHaveBeenCalledTimes(1);
+    expect(mocks.posthogClient.identify).toHaveBeenCalledTimes(2);
   });
 
   it("does not initialize analytics before consent", () => {
