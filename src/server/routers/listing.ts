@@ -1677,6 +1677,7 @@ export const listingRouter = createTRPCRouter({
       const total = countResult[0]?.count ?? 0;
 
       return {
+        ownerId: ctx.user.id,
         items,
         total,
         page: input.page,

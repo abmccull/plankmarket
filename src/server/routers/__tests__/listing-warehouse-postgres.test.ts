@@ -203,6 +203,28 @@ describe.skipIf(process.env.LISTING_WAREHOUSE_DB_PROOF !== "1")("listing warehou
     expect(bridge.captures).toHaveLength(start + 3);
   }));
 
+  it("binds owned and empty inventory responses to the authenticated SQL seller", async () => rollback("inventory response owner", async executor => {
+    const seller = await seed(executor), foreign = await seed(executor), empty = await seed(executor);
+    const owned = await publish(seller, selected(seller));
+    await publish(foreign, selected(foreign));
+    const result = await seller.c.listing.getMyListings({ page: 1, limit: 20 });
+    expect(result.ownerId).toBe(seller.user.id);
+    expect(result.items.map(row => row.id)).toEqual([owned.id]);
+    expect(result.items.every(row => row.sellerId === result.ownerId)).toBe(true);
+    expect(result.total).toBe(1);
+    const blank = await empty.c.listing.getMyListings({ page: 1, limit: 20 });
+    expect(blank).toMatchObject({ ownerId: empty.user.id, items: [], total: 0, hasMore: false });
+  }));
+
+  it.each(["unverified", "pending", "rejected"])("preserves %s inventory-read authorization while allowing private preparation", async status => rollback("inventory read " + status, async executor => {
+    const f = await seed(executor, "seller", status);
+    await expect(f.c.listing.getMyListings({ page: 1, limit: 20 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const saved = await draft(f);
+    expect(saved.id).toBeTruthy();
+    expect((await f.c.listing.getFormDraft({}))?.snapshot.formData.title).toBe(f.form.title);
+    expect((await state(executor, f)).listings).toHaveLength(0);
+  }));
+
   it("creates the owned warehouse listing and resolves its actual pickup origin", async () => rollback("owned warehouse publication", async executor => {
     const f = await seed(executor), result = await publish(f, selected(f));
     expect(result).toMatchObject({ warehouseId: f.warehouse.id, sellerId: f.user.id, locationCity: "Houston", locationState: "TX", locationZip: "77002", totalSqFt: 1200, palletWeight: 1400, askPricePerSqFt: 2.75 });

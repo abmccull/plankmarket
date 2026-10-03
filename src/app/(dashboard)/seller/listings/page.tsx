@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { ListingImage as Image } from "@/components/listings/listing-image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -40,6 +40,7 @@ import { BoostModal } from "@/components/promotions/boost-modal";
 import { PromotionBadge } from "@/components/promotions/promotion-badge";
 import { FEATURES } from "@/lib/feature-flags";
 import { toast } from "sonner";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import type { ListingStatus, PromotionTier } from "@/types";
 
 const FILTERS = [
@@ -60,7 +61,14 @@ type ListingAction = {
   updatedAt: Date;
 };
 
-function SellerInventoryContent() {
+function SellerInventoryContent({ ownerId }: { ownerId: string }) {
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const isCurrent = () => {
+    const current = useAuthStore.getState();
+    return mounted.current && !current.isLoading && current.user?.id === ownerId &&
+      (current.user.role === "admin" || (current.user.role === "seller" && current.user.verificationStatus === "verified"));
+  };
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -93,6 +101,7 @@ function SellerInventoryContent() {
     limit: 20,
   });
   const updateParams = (changes: Record<string, string | null>) => {
+    if (!isCurrent()) return;
     const next = new URLSearchParams(params.toString());
     for (const [key, value] of Object.entries(changes)) {
       if (value) next.set(key, value);
@@ -101,15 +110,18 @@ function SellerInventoryContent() {
     const search = next.toString();
     router.push(search ? `${pathname}?${search}` : pathname, { scroll: false });
   };
+  const data = query.data?.ownerId === ownerId && query.data.items.every((listing) => listing.sellerId === ownerId) ? query.data : undefined;
   const refresh = async () => {
+    if (!isCurrent()) return;
     await Promise.all([
       utils.listing.getMyListings.invalidate(),
       utils.listing.getSellerStats.invalidate(),
     ]);
-    setAction(null);
+    if (isCurrent()) setAction(null);
   };
   const publish = trpc.listing.publishBulk.useMutation({
     onSuccess: async (result) => {
+      if (!isCurrent()) return;
       if (result.publishedCount > 0) toast.success("Listing published");
       else if (result.alreadyPublishedIds.length)
         toast.success("Listing is already published");
@@ -125,26 +137,29 @@ function SellerInventoryContent() {
       await refresh();
     },
     onError: async (error) => {
+      if (!isCurrent()) return;
       toast.error(error.message);
       if (error.data?.code === "CONFLICT") {
         await utils.listing.getMyListings.invalidate();
-        setAction(null);
+        if (isCurrent()) setAction(null);
       }
     },
   });
   const reconfirm = trpc.listing.reconfirm.useMutation({
     onSuccess: async () => {
+      if (!isCurrent()) return;
       toast.success("Availability confirmed");
       await refresh();
     },
     onError: async (error) => {
+      if (!isCurrent()) return;
       toast.error(error.message);
       await utils.listing.getMyListings.invalidate();
-      if (error.data?.code === "CONFLICT") setAction(null);
+      if (isCurrent() && error.data?.code === "CONFLICT") setAction(null);
     },
   });
   const acting = publish.isPending || reconfirm.isPending;
-  const totalPages = Math.max(1, query.data?.totalPages ?? 1);
+  const totalPages = Math.max(1, data?.totalPages ?? 1);
   const hasFilters = filter !== "all" || !!queryText;
 
   return (
@@ -230,14 +245,14 @@ function SellerInventoryContent() {
 
       {query.isLoading ? (
         <StatePanelLoading label="Loading your listings" rows={4} />
-      ) : query.isError || !query.data ? (
+      ) : query.isError || !data ? (
         <QueryErrorState
           title="Your listings could not load"
           description="Your inventory has not changed. Try again to see the latest availability."
-          onRetry={() => void query.refetch()}
+          onRetry={() => { if (isCurrent()) void query.refetch(); }}
           isRetrying={query.isFetching}
         />
-      ) : query.data.items.length === 0 ? (
+      ) : data.items.length === 0 ? (
         <StatePanel
           icon={Package}
           title={
@@ -275,14 +290,14 @@ function SellerInventoryContent() {
             aria-live="polite"
             className="text-sm text-muted-foreground"
           >
-            {query.data.total} listing{query.data.total === 1 ? "" : "s"}
+            {data.total} listing{data.total === 1 ? "" : "s"}
             {query.isFetching ? " · Updating…" : ""}
           </p>
           <ul
             className="divide-y rounded-lg border bg-card"
             aria-label="Your inventory"
           >
-            {query.data.items.map((listing) => {
+            {data.items.map((listing) => {
               const freshness = getListingFreshnessStatus(listing);
               const needsConfirmation =
                 listing.status === "active" && freshness !== "fresh";
@@ -379,6 +394,7 @@ function SellerInventoryContent() {
                         disabled={acting}
                         className="min-h-11"
                         onClick={() => {
+                          if (!isCurrent()) return;
                           publish.reset();
                           reconfirm.reset();
                           setAction({
@@ -399,6 +415,7 @@ function SellerInventoryContent() {
                         disabled={acting}
                         className="min-h-11"
                         onClick={() => {
+                          if (!isCurrent()) return;
                           publish.reset();
                           reconfirm.reset();
                           setAction({
@@ -432,12 +449,13 @@ function SellerInventoryContent() {
                         <Button
                           variant="ghost"
                           className="min-h-11"
-                          onClick={() =>
+                          onClick={() => {
+                            if (!isCurrent()) return;
                             setBoostListing({
                               id: listing.id,
                               title: listing.title,
-                            })
-                          }
+                            });
+                          }}
                         >
                           <Rocket className="mr-2 h-4 w-4" aria-hidden="true" />
                           Boost
@@ -467,7 +485,7 @@ function SellerInventoryContent() {
               </Button>
               <Button
                 variant="outline"
-                disabled={!query.data.hasMore || query.isFetching}
+                disabled={!data.hasMore || query.isFetching}
                 onClick={() => updateParams({ page: String(page + 1) })}
               >
                 Next
@@ -519,7 +537,7 @@ function SellerInventoryContent() {
             <Button
               disabled={acting}
               onClick={() => {
-                if (!action) return;
+                if (!action || !isCurrent() || !data?.items.some((listing) => listing.id === action.id)) return;
                 if (action.kind === "publish")
                   publish.mutate({
                     listingIds: [action.id],
@@ -555,5 +573,19 @@ function SellerInventoryContent() {
 }
 
 export default function SellerListingsPage() {
-  return <Suspense fallback={<StatePanelLoading label="Loading your inventory" rows={4} />}><SellerInventoryContent /></Suspense>;
+  const { user, isLoading } = useAuthStore();
+  if (isLoading || !user) return <StatePanelLoading label="Checking your inventory account" rows={4} />;
+  if (!["seller", "admin"].includes(user.role)) return <StatePanel icon={Package} title="Selling setup needed" description="Activate selling on your business account to manage inventory." primaryAction={{ label: "Set up selling", href: "/settings/selling" }} />;
+  if (user.role !== "admin" && user.verificationStatus !== "verified") {
+    return <div className="space-y-6">
+      <h1 className="text-3xl font-bold">My Listings</h1>
+      <StatePanel icon={Package} tone="info"
+        title={user.verificationStatus === "pending" ? "Business review in progress" : user.verificationStatus === "rejected" ? "Update your business verification" : "Prepare your first listing"}
+        description="You can save listing details and photos privately while completing business verification. Business approval is required to publish and manage live inventory."
+        primaryAction={{ label: "Prepare listing draft", href: "/seller/listings/new" }}
+        secondaryAction={{ label: user.verificationStatus === "pending" ? "View review status" : "Review business verification", href: "/seller/verification" }}
+      />
+    </div>;
+  }
+  return <Suspense fallback={<StatePanelLoading label="Loading your inventory" rows={4} />}><SellerInventoryContent key={`${user.id}:${user.role}:${user.verificationStatus}`} ownerId={user.id} /></Suspense>;
 }
