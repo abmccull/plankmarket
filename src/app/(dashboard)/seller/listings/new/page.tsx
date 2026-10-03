@@ -1316,7 +1316,7 @@ function SellerListingDraft({ account, onPublished }: { account: ReturnType<type
                 </div>
               </div>
 
-              <ListingOptionalSection section="packaging" title={watchedValues.moqUnit === "pallets" ? "Packaging quantities — required for pallet minimums" : "Packaging quantities"} description={watchedValues.moqUnit === "pallets" ? "Enter actual square feet per box and boxes per pallet so buyers can order the correct amount." : "Optional box quantities help buyers plan the lot."} hasErrors={Boolean(errors.sqFtPerBox || errors.boxesPerPallet)}>
+              <ListingOptionalSection section="packaging" title={watchedValues.moqUnit === "pallets" ? "Packaging quantities - required for pallet minimums" : "Packaging quantities"} description={watchedValues.moqUnit === "pallets" ? "Enter actual square feet per box and boxes per pallet so buyers can order the correct amount." : "Optional box quantities help buyers plan the lot."} hasErrors={Boolean(errors.sqFtPerBox || errors.boxesPerPallet)}>
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="sqFtPerBox">Sq Ft Per Box</Label>

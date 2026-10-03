@@ -1,4 +1,5 @@
 "use client";
+import { useCheckoutStartedAnalytics } from "@/lib/analytics/use-checkout-started";
 import { ResaleCheckout } from "@/components/checkout/resale-checkout";
 import { freightReviewServicesFromParams } from "@/lib/marketplace/freight-review-context";
 
@@ -128,6 +129,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const listingId = params.id as string;
+  const recordCheckoutStarted = useCheckoutStartedAnalytics();
   const offerId = searchParams.get("offerId");
   const purchaseIntent = purchaseIntentFromParams(searchParams);
   const reviewedFreightServices = freightReviewServicesFromParams(searchParams);
@@ -485,6 +487,12 @@ export default function CheckoutPage() {
       return;
     }
 
+    recordCheckoutStarted(attemptKey, {
+      listing_id: listingId,
+      seller_id: listing?.sellerId ?? "",
+      quantity_sqft: quantitySqFt,
+      lot_value: subtotal,
+    });
     // Always re-select freight after address step so totals match destination.
     setSelectedQuote(null);
     setCurrentStep("shipping");
