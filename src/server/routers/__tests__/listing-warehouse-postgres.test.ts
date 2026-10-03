@@ -14,7 +14,8 @@ import type { createTRPCContext } from "@/server/trpc";
 import type { ListingFormInput } from "@/lib/validators/listing";
 import type { ShippingBookingSnapshot } from "@/server/services/shipping-workflow";
 
-const bridge = vi.hoisted(() => ({ db: null as unknown, events: [] as unknown[] }));
+type ObserverHandler = (input: { event: { data: Record<string, string> }; step: { run: (name: string, fn: () => Promise<unknown>) => Promise<unknown> } }) => Promise<unknown>;
+const bridge = vi.hoisted(() => ({ db: null as unknown, events: [] as unknown[], captures: [] as Record<string, unknown>[], handlers: {} as Record<string, ObserverHandler> }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/db", () => ({ db: new Proxy({}, { get(_target, key) {
   if (!bridge.db) throw new Error("No admitted test transaction");
@@ -25,10 +26,12 @@ vi.mock("@/lib/supabase/server", () => ({ createClient: () => { throw new Error(
 vi.mock("@/lib/redis/client", () => ({ getRedisClient: () => ({}), redis: { get: vi.fn(), set: vi.fn() } }));
 vi.mock("@upstash/ratelimit", () => ({ Ratelimit: class { static slidingWindow() { return {}; } async limit() { return { success: true }; } } }));
 vi.mock("@/server/services/content-moderation", () => ({ checkViolationStatus: vi.fn() }));
-vi.mock("@/lib/inngest/client", () => ({ inngest: { send: async (event: unknown) => { bridge.events.push(event); return { ids: ["synthetic-accepted-event"] }; } } }));
+vi.mock("@/lib/analytics/posthog-server", () => ({ getPostHogServer: () => ({ captureAcknowledged: async (message: Record<string, unknown>) => { bridge.captures.push(message); } }) }));
+vi.mock("@/lib/inngest/client", () => ({ inngest: { createFunction: (options: { id: string }, _trigger: unknown, handler: ObserverHandler) => { bridge.handlers[options.id] = handler; return { id: options.id }; }, send: async (event: unknown) => { bridge.events.push(event); return { ids: ["synthetic-accepted-event"] }; } } }));
 vi.mock("@/server/services/priority1", () => ({ priority1: { getSuggestedClass: () => { throw new Error("Carrier access forbidden"); } } }));
 
 const { createCallerFactory, createTRPCRouter } = await import("@/server/trpc");
+await import("@/lib/inngest/functions/marketplace-funnel");
 const { listingRouter } = await import("@/server/routers/listing");
 const { warehouseRouter } = await import("@/server/routers/warehouse");
 const { loadWarehouseOrigin, requireCurrentWarehouseOrigin } = await import("@/server/services/warehouse-origin");
@@ -37,7 +40,7 @@ const createCaller = createCallerFactory(createTRPCRouter({ listing: listingRout
 type User = typeof schema.users.$inferSelect;
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const TARGET = "postgresql://postgres@127.0.0.1:55439/plankmarket_bootstrap_design_20260929";
-const SOURCE = ["src/lib/marketplace/minimum-order-quantity.ts", "src/server/routers/listing.ts", "src/server/routers/warehouse.ts", "src/server/services/listing-warehouse-selection.ts", "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-form-drafts.ts", "src/server/services/warehouse-origin.ts", "src/lib/validators/listing.ts", "src/lib/validators/listing-draft.ts", "src/lib/stores/listing-form-store.ts", "src/server/routers/__tests__/listing-warehouse-postgres.test.ts"];
+const SOURCE = ["src/lib/inngest/functions/marketplace-funnel.ts", "src/lib/analytics/posthog-acknowledged.ts", "src/lib/marketplace/minimum-order-quantity.ts", "src/server/routers/listing.ts", "src/server/routers/warehouse.ts", "src/server/services/listing-warehouse-selection.ts", "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-form-drafts.ts", "src/server/services/warehouse-origin.ts", "src/lib/validators/listing.ts", "src/lib/validators/listing-draft.ts", "src/lib/stores/listing-form-store.ts", "src/server/routers/__tests__/listing-warehouse-postgres.test.ts"];
 const sources = () => SOURCE.map(file => ({ path: file, sha256: fs.existsSync(file) ? createHash("sha256").update(fs.readFileSync(file)).digest("hex") : null }));
 function caller(db: Database, user: User) {
   return createCaller({ db, user, authUser: { id: user.authId, email_confirmed_at: "2026-09-01" }, supabase: {}, clientIp: "127.0.0.1", getAuthAssurance: vi.fn().mockRejectedValue(new Error("Ordinary seller requires no payout MFA")) } as unknown as Awaited<ReturnType<typeof createTRPCContext>>);
@@ -129,6 +132,75 @@ describe.skipIf(process.env.LISTING_WAREHOUSE_DB_PROOF !== "1")("listing warehou
       await expect(f.c.listing.update({ id: created.id, data: { [field]: null } })).rejects.toMatchObject({ code: "BAD_REQUEST" });
       expect(await state(executor, f)).toEqual(before);
     }
+  }));
+
+  it("observes durable publication with real SQL consent and no business mutation", async () => rollback("publication analytics observer", async executor => {
+    const f = await seed(executor);
+    const created = await publish(f, selected(f));
+    await executor.insert(schema.userPreferences).values({ userId: f.user.id, role: "seller", analyticsTrackingEnabled: true }).onConflictDoUpdate({ target: schema.userPreferences.userId, set: { analyticsTrackingEnabled: true } });
+    const before = await state(executor, f);
+    const start = bridge.captures.length;
+    const input = { event: { data: { listingId: created.id, sellerId: f.user.id } }, step: { run: async (_name: string, fn: () => Promise<unknown>) => fn() } };
+    await bridge.handlers["analytics-listing-published"](input);
+    await bridge.handlers["analytics-listing-published"](input);
+    expect(bridge.captures).toHaveLength(start + 2);
+    expect(bridge.captures[start]).toMatchObject({ distinctId: f.user.id, event: "listing_published" });
+    expect(bridge.captures[start + 1]).toEqual(bridge.captures[start]);
+    expect(await state(executor, f)).toEqual(before);
+    await executor.update(schema.userPreferences).set({ analyticsTrackingEnabled: false }).where(eq(schema.userPreferences.userId, f.user.id));
+    const denied = await state(executor, f);
+    await bridge.handlers["analytics-listing-published"](input);
+    expect(bridge.captures).toHaveLength(start + 2);
+    expect(await state(executor, f)).toEqual(denied);
+    await bridge.handlers["analytics-listing-published"]({ ...input, event: { data: { listingId: created.id, sellerId: randomUUID() } } });
+    expect(bridge.captures).toHaveLength(start + 2);
+  }));
+
+  // Synthetic persisted payment states prove SQL selection and consent, not Stripe acceptance.
+  it("observes confirmed payment SQL state without changing the order or inventory", async () => rollback("payment analytics observer", async executor => {
+    const seller = await seed(executor), buyer = await seed(executor, "buyer");
+    const listing = await publish(seller, selected(seller));
+    await executor.insert(schema.userPreferences).values({ userId: buyer.user.id, role: "buyer", analyticsTrackingEnabled: true });
+    const [order] = await executor.insert(schema.orders).values({
+      orderNumber: `SQL-${randomUUID().slice(0, 8)}`, buyerId: buyer.user.id,
+      sellerId: seller.user.id, listingId: listing.id, quantitySqFt: 200,
+      pricePerSqFt: 2.75, subtotal: 550, buyerFee: 0, sellerFee: 0,
+      totalPrice: 550, originalSellerPayout: 550, sellerPayout: 550,
+      stripePaymentIntentId: "pi_synthetic_sql_only", paymentStatus: "pending",
+    }).returning();
+    const input = { event: { data: { orderId: order.id } }, step: { run: async (_name: string, fn: () => Promise<unknown>) => fn() } };
+    const start = bridge.captures.length;
+    const snapshot = async () => ({ order: await executor.select().from(schema.orders).where(eq(schema.orders.id, order.id)), seller: await state(executor, seller), buyer: await state(executor, buyer) });
+    const pending = await snapshot();
+    await bridge.handlers["analytics-payment-completed"](input);
+    expect(bridge.captures).toHaveLength(start);
+    expect(await snapshot()).toEqual(pending);
+    const confirmedAt = new Date("2026-09-29T10:00:00.000Z");
+    await executor.update(schema.orders).set({ paymentStatus: "succeeded", status: "confirmed", confirmedAt, escrowStatus: "held" }).where(eq(schema.orders.id, order.id));
+    const confirmed = await snapshot();
+    await bridge.handlers["analytics-payment-completed"](input);
+    await bridge.handlers["analytics-payment-completed"](input);
+    expect(bridge.captures).toHaveLength(start + 2);
+    expect(bridge.captures[start]).toMatchObject({ distinctId: buyer.user.id, event: "payment_completed", timestamp: confirmedAt, properties: { amount: 550, quantity_sqft: 200, measurement: "confirmed_checkout_gross" } });
+    expect(bridge.captures[start + 1]).toEqual(bridge.captures[start]);
+    expect(await snapshot()).toEqual(confirmed);
+    await executor.update(schema.userPreferences).set({ analyticsTrackingEnabled: false }).where(eq(schema.userPreferences.userId, buyer.user.id));
+    await bridge.handlers["analytics-payment-completed"](input);
+    expect(bridge.captures).toHaveLength(start + 2);
+    await executor.update(schema.userPreferences).set({ analyticsTrackingEnabled: true }).where(eq(schema.userPreferences.userId, buyer.user.id));
+    await executor.update(schema.orders).set({ paymentStatus: "refunded", status: "refunded", escrowStatus: "refunded", refundedAmount: 550 }).where(eq(schema.orders.id, order.id));
+    const refunded = await snapshot();
+    await bridge.handlers["analytics-payment-completed"](input);
+    expect(bridge.captures).toHaveLength(start + 3);
+    expect(bridge.captures[start + 2]).toEqual(bridge.captures[start]);
+    expect(await snapshot()).toEqual(refunded);
+    await executor.update(schema.orders).set({ confirmedAt: null }).where(eq(schema.orders.id, order.id));
+    const unconfirmed = await snapshot();
+    await bridge.handlers["analytics-payment-completed"](input);
+    expect(bridge.captures).toHaveLength(start + 3);
+    expect(await snapshot()).toEqual(unconfirmed);
+    await bridge.handlers["analytics-payment-completed"]({ ...input, event: { data: { orderId: randomUUID() } } });
+    expect(bridge.captures).toHaveLength(start + 3);
   }));
 
   it("creates the owned warehouse listing and resolves its actual pickup origin", async () => rollback("owned warehouse publication", async executor => {

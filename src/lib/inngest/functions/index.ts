@@ -1,3 +1,4 @@
+import { listingPublishedAnalytics, paymentCompletedAnalytics } from "./marketplace-funnel";
 import {
   instantSavedSearchAlertPage,
   instantSavedSearchAlerts,
@@ -51,6 +52,8 @@ import {
 } from "./automatic-listing-markdown";
 
 export const functions = [
+  listingPublishedAnalytics,
+  paymentCompletedAnalytics,
   instantSavedSearchAlerts,
   instantSavedSearchAlertPage,
   savedSearchDigestScheduler,
