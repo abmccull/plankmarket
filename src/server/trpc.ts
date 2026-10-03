@@ -667,10 +667,12 @@ const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {
 export const verifiedBuyerProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceRateLimit)
+  .use(enforceAuthAssurance)
   .use(enforceVerifiedBuyer);
 export const strictVerifiedBuyerProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceStrictRateLimit)
+  .use(enforceAuthAssurance)
   .use(enforceVerifiedBuyer);
 
 // Admin-only middleware
