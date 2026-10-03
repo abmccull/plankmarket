@@ -1,12 +1,21 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- Real-server integration runner with isolated local provider doubles. */
-/* Accepted integration proof. Failure modes/contracts: tmp/marketplace-excellence/inventory-proof-contract.md.
- * Real database and router handlers, local provider doubles. No live fixtures.
- * node --conditions=react-server scripts/verify-inventory.cjs --disposable-local --accepted-proposal
+/* eslint-disable @typescript-eslint/no-require-imports -- Retained local fixture runner with isolated provider doubles. */
+/* Not a standalone release check. Prerequisites: scripts/LOCAL_PROOF_RUNNERS.md.
+ * node scripts/verify-inventory.cjs --help
  */
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const usage = `Retained local inventory fixture runner; not standalone release acceptance.
+Read scripts/LOCAL_PROOF_RUNNERS.md before execution.
+Usage: node --conditions=react-server scripts/verify-inventory.cjs --disposable-local --accepted-proposal
+Requires an explicitly prepared disposable database, provider doubles, authorized browser inspection,
+and database-proof.json, phase-b-fixtures.json, browser-sessions.json under tmp/design-review-20260929.
+These private fixture files are not distributed with the repository. No automatic setup is performed.`;
+if (process.argv.includes("--help")) {
+  console.log(usage);
+  process.exit(0);
+}
 assert(
   process.argv.includes("--disposable-local"),
   "Requires --disposable-local",
@@ -19,6 +28,11 @@ const root = process.cwd();
 const target =
   "postgresql://postgres@127.0.0.1:55439/plankmarket_bootstrap_design_20260929";
 const fixturesDir = path.join(root, "tmp/design-review-20260929");
+const missingFixtures = ["database-proof.json", "phase-b-fixtures.json", "browser-sessions.json"]
+  .filter((name) => !fs.existsSync(path.join(fixturesDir, name)));
+if (missingFixtures.length) {
+  throw new Error(`${usage}\nMissing local fixture files: ${missingFixtures.join(", ")}`);
+}
 const fixture = JSON.parse(
   fs.readFileSync(path.join(fixturesDir, "database-proof.json")),
 );
