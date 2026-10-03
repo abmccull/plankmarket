@@ -4,22 +4,24 @@ import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const registerSchema = z.object({
   // Account info
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().trim().email("Please enter a valid email address"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(72, "Password must be at most 72 characters"),
-  name: z.string().min(2, "Name must be at least 2 characters").max(255),
+  name: z.string().trim().min(2, "Name must be at least 2 characters").max(255),
   role: z.enum(["buyer", "seller"]),
-  businessName: z.string().min(2, "Business name is required").max(255),
+  businessName: z.string().trim().min(2, "Business name is required").max(255),
   phone: z
     .string()
+    .trim()
     .refine((val) => !val || isValidPhoneNumber(val, "US"), {
       message: "Please enter a valid phone number",
     })
     .optional(),
   zipCode: z
     .string()
+    .trim()
     .length(5, "ZIP code must be 5 digits")
     .regex(/^\d{5}$/, "Invalid ZIP code"),
 });

@@ -242,7 +242,6 @@ function RegisterForm() {
               autoComplete="postal-code"
               placeholder="75001"
               inputMode="numeric"
-              maxLength={5}
               {...register("zipCode")}
               aria-describedby={errors.zipCode ? "zipCode-error" : undefined}
               aria-invalid={!!errors.zipCode}

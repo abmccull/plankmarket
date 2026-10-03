@@ -230,6 +230,35 @@ describe("RegisterForm", () => {
     });
   });
 
+  it("rejects whitespace-only names before creating an account", async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
+    await user.clear(screen.getByLabelText(/full name/i));
+    await user.type(screen.getByLabelText(/full name/i), "   ");
+    await user.clear(screen.getByLabelText(/business name/i));
+    await user.type(screen.getByLabelText(/business name/i), "   ");
+    fireEvent.submit(screen.getByRole("button", { name: /create buyer account/i }).closest("form")!);
+    await waitFor(() => expect(screen.getByText(/business name is required/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/full name/i)).toHaveAttribute("aria-invalid", "true");
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("normalizes pasted account fields while preserving the password", async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    for (const [label, value] of [
+      [/full name/i, "  Jane Doe  "], [/business name/i, "  Doe Lumber Co  "],
+      [/business email/i, "  jane@example.com  "], [/zip code/i, " 97201 "],
+      [/phone/i, " +1 503 555 0101 "], [/^password$/i, " secureP@ss1 "],
+    ] as const) await user.type(screen.getByLabelText(label), value);
+    fireEvent.submit(screen.getByRole("button", { name: /create buyer account/i }).closest("form")!);
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Jane Doe", businessName: "Doe Lumber Co", email: "jane@example.com",
+      zipCode: "97201", phone: "+1 503 555 0101", password: " secureP@ss1 ",
+    })));
+  });
+
   // 8. Shows loading state during submission
   it("disables submit button while loading", async () => {
     // Make mutation hang indefinitely so we can observe loading state
