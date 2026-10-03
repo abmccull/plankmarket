@@ -1,3 +1,4 @@
+import { resolveMinimumOrderSqFt } from "@/lib/marketplace/minimum-order-quantity";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -101,19 +102,14 @@ function getMinimumOrderQuantitySqFt(listing: {
   sqFtPerBox: number | null;
   boxesPerPallet: number | null;
 }): number {
-  if (!listing.moq || listing.moq <= 0) {
-    return 0;
+  const minimum = resolveMinimumOrderSqFt(listing);
+  if (minimum === null) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "The seller must complete pallet packaging details before this listing can be purchased or offered on.",
+    });
   }
-
-  if (listing.moqUnit === "pallets") {
-    return (
-      listing.moq *
-      (listing.sqFtPerBox ?? 20) *
-      (listing.boxesPerPallet ?? 30)
-    );
-  }
-
-  return listing.moq;
+  return minimum;
 }
 
 /**

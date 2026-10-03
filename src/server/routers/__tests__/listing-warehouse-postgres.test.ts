@@ -37,7 +37,7 @@ const createCaller = createCallerFactory(createTRPCRouter({ listing: listingRout
 type User = typeof schema.users.$inferSelect;
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const TARGET = "postgresql://postgres@127.0.0.1:55439/plankmarket_bootstrap_design_20260929";
-const SOURCE = ["src/server/routers/listing.ts", "src/server/routers/warehouse.ts", "src/server/services/listing-warehouse-selection.ts", "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-form-drafts.ts", "src/server/services/warehouse-origin.ts", "src/lib/validators/listing.ts", "src/lib/validators/listing-draft.ts", "src/lib/stores/listing-form-store.ts", "src/server/routers/__tests__/listing-warehouse-postgres.test.ts"];
+const SOURCE = ["src/lib/marketplace/minimum-order-quantity.ts", "src/server/routers/listing.ts", "src/server/routers/warehouse.ts", "src/server/services/listing-warehouse-selection.ts", "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-form-drafts.ts", "src/server/services/warehouse-origin.ts", "src/lib/validators/listing.ts", "src/lib/validators/listing-draft.ts", "src/lib/stores/listing-form-store.ts", "src/server/routers/__tests__/listing-warehouse-postgres.test.ts"];
 const sources = () => SOURCE.map(file => ({ path: file, sha256: fs.existsSync(file) ? createHash("sha256").update(fs.readFileSync(file)).digest("hex") : null }));
 function caller(db: Database, user: User) {
   return createCaller({ db, user, authUser: { id: user.authId, email_confirmed_at: "2026-09-01" }, supabase: {}, clientIp: "127.0.0.1", getAuthAssurance: vi.fn().mockRejectedValue(new Error("Ordinary seller requires no payout MFA")) } as unknown as Awaited<ReturnType<typeof createTRPCContext>>);
@@ -102,6 +102,34 @@ describe.skipIf(process.env.LISTING_WAREHOUSE_DB_PROOF !== "1")("listing warehou
     (proof.cases as unknown[]).push({ label, passed: passed && !failed, rolledBack, simulatedEvents: bridge.events.length, error: failed instanceof Error ? failed.message : failed ? "unknown" : null }); note();
     expect(rolledBack).toBe(true); if (failed) throw failed;
   }
+
+  it.each(["sqFtPerBox", "boxesPerPallet"] as const)("blocks missing %s across SQL listing boundaries", async missing => rollback(`pallet ${missing}`, async executor => {
+    const f = await seed(executor);
+    const terms = { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40, [missing]: undefined };
+    const before = await state(executor, f);
+    await expect(publish(f, { ...selected(f), ...terms })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(await state(executor, f)).toEqual(before);
+    const requestId = randomUUID();
+    await expect(f.c.listing.bulkCreate({ requestId, rows: [{ ...f.form, ...terms }] } as Parameters<Fixture["c"]["listing"]["bulkCreate"]>[0])).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(await state(executor, f)).toEqual(before);
+    expect(await executor.select().from(schema.importRequests).where(eq(schema.importRequests.requestId, requestId))).toHaveLength(0);
+    const [persisted] = await executor.insert(schema.listings).values({ ...f.form, ...terms, sellerId: f.user.id, status: "draft" } as typeof schema.listings.$inferInsert).returning();
+    await executor.update(schema.media).set({ listingId: persisted.id }).where(eq(schema.media.id, f.photo.id));
+    const draftState = await state(executor, f);
+    await expect(f.c.listing.publishBulk({ listingIds: [persisted.id] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(await state(executor, f)).toEqual(draftState);
+  }));
+
+  it("allows measured pallets and prevents clearing packaging in SQL", async () => rollback("measured pallet edit", async executor => {
+    const f = await seed(executor);
+    const created = await publish(f, { ...selected(f), moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 });
+    expect(created).toMatchObject({ moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 });
+    const before = await state(executor, f);
+    for (const field of ["sqFtPerBox", "boxesPerPallet"] as const) {
+      await expect(f.c.listing.update({ id: created.id, data: { [field]: null } })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(await state(executor, f)).toEqual(before);
+    }
+  }));
 
   it("creates the owned warehouse listing and resolves its actual pickup origin", async () => rollback("owned warehouse publication", async executor => {
     const f = await seed(executor), result = await publish(f, selected(f));

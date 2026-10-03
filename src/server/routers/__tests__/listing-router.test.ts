@@ -474,3 +474,44 @@ describe("CSV import replay", () => {
     expect(tx.update).not.toHaveBeenCalled();
   });
 });
+
+describe("pallet minimum business boundaries", () => {
+  const lot = {
+    title: "Verified oak inventory lot", materialType: "engineered", totalSqFt: 2000,
+    totalPallets: 3, moq: 1, moqUnit: "pallets", palletWeight: 1200,
+    palletLength: 48, palletWidth: 40, palletHeight: 60, locationZip: "75001",
+    askPricePerSqFt: 2.49, condition: "closeout",
+  };
+  it.each(["create", "publication", "csv"])("rejects missing measurements at %s", async (boundary) => {
+    const { listingCreationSchema, listingFormSchema, csvListingRowSchema } = await import("@/lib/validators/listing");
+    const schema = boundary === "create" ? listingCreationSchema : boundary === "publication" ? listingFormSchema : csvListingRowSchema;
+    const result = schema.safeParse(lot);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.map(issue => issue.path[0])).toEqual(expect.arrayContaining(["sqFtPerBox", "boxesPerPallet"]));
+    expect(schema.safeParse({ ...lot, sqFtPerBox: 24, boxesPerPallet: 40 }).success).toBe(true);
+  });
+  it.each([
+    { data: { sqFtPerBox: null }, existing: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 } },
+    { data: { boxesPerPallet: null }, existing: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 } },
+    { data: { moqUnit: "pallets" }, existing: { moq: 1, moqUnit: "sqft", sqFtPerBox: null, boxesPerPallet: null } },
+  ])("rejects unsafe merged packaging update $data", async ({ data, existing }) => {
+    const tx = {
+      select: vi.fn(() => ({ from: () => ({ where: () => ({ for: async () => [{ id: "22222222-2222-4222-8222-222222222222", sellerId: "11111111-1111-4111-8111-111111111111", ...existing }] }) }) })),
+      update: vi.fn(),
+    };
+    const db = { transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)) };
+    await expect(createCaller(createCallerContext({ db })).listing.update({ id: "22222222-2222-4222-8222-222222222222", data })).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringContaining("pallet") });
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("pallet minimum arithmetic boundaries", () => {
+  it.each([
+    { moq: 1e308, sqFtPerBox: 1e308, boxesPerPallet: 40 },
+    { moq: 1e-300, sqFtPerBox: 1e-300, boxesPerPallet: 1 },
+  ])("rejects unrepresentable pallet minimum $moq", async (terms) => {
+    const { listingPalletMinimumSchema, csvListingRowSchema } = await import("@/lib/validators/listing");
+    expect(listingPalletMinimumSchema.safeParse({ ...terms, moqUnit: "pallets" }).success).toBe(false);
+    expect(csvListingRowSchema.safeParse({ ...terms, moqUnit: "pallets", title: "Verified oak inventory lot", materialType: "engineered", totalSqFt: 2000, totalPallets: 3, palletWeight: 1200, palletLength: 48, palletWidth: 40, palletHeight: 60, locationZip: "75001", askPricePerSqFt: 2.49, condition: "closeout" }).success).toBe(false);
+  });
+});

@@ -65,6 +65,7 @@ const TARGET = "postgresql://postgres@127.0.0.1:55439/plankmarket_bootstrap_desi
 const PARENT_NAME = "plankmarket_bootstrap_design_20260929";
 const CAS_SCRIPT = "if redis.call('get', KEYS[1]) == ARGV[1] and redis.call('get', KEYS[2]) == ARGV[2] then redis.call('del', KEYS[1]); redis.call('del', KEYS[2]); return 1 else return 0 end";
 const SOURCE = [
+  "src/lib/marketplace/minimum-order-quantity.ts",
   "src/server/routers/order.ts", "src/server/routers/warehouse.ts", "src/server/routers/listing.ts",
   "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-warehouse-selection.ts",
   "src/server/services/seller-payout-readiness.ts", "src/server/services/stripe-connect-policy.ts",
@@ -190,7 +191,7 @@ function quoteTransport(pair: { quoteKey: string; snapshotKey: string; quoteValu
     restoreCount: () => operations.filter(o => o.kind === "restore").length };
 }
 
-async function seed(db: Database, checkoutMode: CheckoutMode) {
+async function seed(db: Database, checkoutMode: CheckoutMode, quantitySqFt = 200, measuredPallet = false) {
   async function user(role: "seller" | "buyer") {
     const id = randomUUID();
     const [saved] = await db.insert(schema.users).values({ id, authId: randomUUID(),
@@ -209,16 +210,15 @@ async function seed(db: Database, checkoutMode: CheckoutMode) {
   const [replacementWarehouse] = await db.insert(schema.warehouses).values({ ...warehouseData, label: "Replacement dock", address: "300 Warehouse Road", isDefault: false }).returning();
   const [listing] = await db.insert(schema.listings).values({ sellerId: seller.id, warehouseId: originalWarehouse.id,
     title: "Synthetic checkout concurrency flooring", materialType: "engineered", condition: "new_overstock", status: "active",
-    totalSqFt: 1200, totalPallets: 2, sqFtPerBox: 20, boxesPerPallet: 30, moq: 100, moqUnit: "sqft",
+    totalSqFt: 1200, totalPallets: 2, sqFtPerBox: measuredPallet ? 24 : 20, boxesPerPallet: measuredPallet ? 40 : 30, moq: measuredPallet ? 1 : 100, moqUnit: measuredPallet ? "pallets" : "sqft",
     palletWeight: 1400, palletLength: 48, palletWidth: 40, palletHeight: 44, freightClass: "70",
     locationCity: "Houston", locationState: "TX", locationZip: "77002", locationLat: geo.latitude, locationLng: geo.longitude,
     askPricePerSqFt: 2.75, buyNowPrice: 2.75, allowOffers: true, fullLotOnly: false, certifications: [],
     territoryMode: "unrestricted", freightPaymentMode: "buyer_pays", sellerFreightStates: [],
     lastConfirmedAt: new Date(), confirmationDueAt: new Date(Date.now() + 86400000 * 7),
   }).returning();
-  const quantitySqFt = 200;
   const offer = checkoutMode === "offer" ? (await db.insert(schema.offers).values({ listingId: listing.id, buyerId: buyer.id,
-    sellerId: seller.id, offerPricePerSqFt: 2.5, quantitySqFt, totalPrice: 500, status: "accepted",
+    sellerId: seller.id, offerPricePerSqFt: 2.5, quantitySqFt, totalPrice: quantitySqFt * 2.5, status: "accepted",
     expiresAt: new Date(Date.now() + 86400000),
   }).returning())[0] : null;
   const origin = await loadWarehouseOrigin(db, listing);
@@ -371,6 +371,51 @@ describe.skipIf(process.env.CHECKOUT_WAREHOUSE_LOCK_PROOF !== "1")("checkout / w
     write(); vi.unstubAllGlobals(); if (admin) await admin.end({ timeout: 2 });
     expect(cleanupErrors).toEqual([]);
   }, 60000);
+
+  it.each([
+    ["direct", "missing-area"], ["offer", "missing-area"],
+    ["direct", "missing-boxes"], ["offer", "missing-boxes"],
+    ["direct", "actual-minimum"], ["offer", "actual-minimum"],
+  ] as const)("%s checkout rejects %s pallet minimum before reservation", async (checkoutMode, scenario) => {
+    const f = await seed(dbA, checkoutMode);
+    await dbA.update(schema.listings).set({
+      moq: 1, moqUnit: "pallets",
+      sqFtPerBox: scenario === "missing-area" ? null : 24,
+      boxesPerPallet: scenario === "missing-boxes" ? null : 40,
+    }).where(eq(schema.listings.id, f.listing.id));
+    const before = await state(dbA, f);
+    await expect(checkout(dbA, f)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: scenario === "actual-minimum" ? "Minimum order quantity is 960 sq ft" :
+        "The seller must complete pallet packaging details before this listing can be purchased or offered on.",
+    });
+    expect(await state(dbA, f)).toEqual(before);
+    expect(before.orders).toHaveLength(0);
+    expect(f.transport.consumedCount()).toBe(0);
+    expect(boundary.redisEval).not.toHaveBeenCalled();
+    expect(boundary.unexpected).toEqual([]);
+    const receipts = (evidence.palletMinimumCases ??= []) as unknown[];
+    receipts.push({ checkoutMode, scenario, listingId: f.listing.id, persistedStateUnchanged: true, quoteNotConsumed: true, passed: true });
+    write();
+  }, 45000);
+
+  it.each(["direct", "offer"] as const)("%s purchases exactly the measured 960 sq ft pallet minimum", async checkoutMode => {
+    const f = await seed(dbA, checkoutMode, 960, true);
+    const purchased = await checkout(dbA, f);
+    const after = await state(dbA, f);
+    expect(after.orders).toHaveLength(1);
+    expect(after.orders[0]).toMatchObject({ id: purchased.id, quantitySqFt: 960 });
+    expect(after.listing.totalSqFt).toBe(240);
+    expect(f.transport.consumedCount()).toBe(1);
+    const replay = await checkout(dbA, f);
+    expect(replay.id).toBe(purchased.id);
+    expect(await state(dbA, f)).toEqual(after);
+    expect(f.transport.consumedCount()).toBe(1);
+    expect(boundary.unexpected).toEqual([]);
+    const receipts = (evidence.palletMinimumCases ??= []) as unknown[];
+    receipts.push({ checkoutMode, scenario: "exact-minimum-success-and-replay", listingId: f.listing.id, orderId: purchased.id, quantitySqFt: 960, remainingSqFt: 240, passed: true });
+    write();
+  }, 45000);
 
   const cases: Array<[CheckoutMode, MutationMode, First]> = [];
   for (const c of ["direct", "offer"] as const) for (const m of ["edit", "assign"] as const) for (const first of ["checkout", "warehouse"] as const) cases.push([c, m, first]);

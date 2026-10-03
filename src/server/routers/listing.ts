@@ -1,3 +1,4 @@
+import { listingPalletMinimumSchema } from "@/lib/validators/listing";
 import { advanceListingDraftSchema, listingDraftReferenceSchema, saveListingDraftSchema } from "@/lib/validators/listing-draft";
 import { advanceListingFormDraft, assertDraftSeller, consumeListingFormDraft, getListingFormDraft, prepareListingDraftPublication, saveListingFormDraft } from "@/server/services/listing-form-drafts";
 import { getReusableProductDetails } from "@/lib/marketplace/reusable-listing-product";
@@ -573,6 +574,8 @@ export const listingRouter = createTRPCRouter({
         // Completed replay has returned above. New ambiguous imports fail before
         // any listing insert; throwing also rolls back the import-request claim.
         for (const row of input.rows) {
+          const packaging = listingPalletMinimumSchema.safeParse(row);
+          if (!packaging.success) throw new TRPCError({ code: "BAD_REQUEST", message: packaging.error.issues.map(issue => issue.message).join(" ") });
           resolveValidatedSellingRuleFields(row, sellerDefaults);
           try {
             normalizeCsvWearLayer(row.wearLayer, row.wearLayerUnit, row.materialType);
@@ -831,6 +834,11 @@ export const listingRouter = createTRPCRouter({
             message:
               "Change pickup location from Warehouses so shipping quotes stay consistent.",
           });
+        }
+
+        if (["moq", "moqUnit", "sqFtPerBox", "boxesPerPallet"].some(key => hasOwnKey(updateData, key))) {
+          const packaging = listingPalletMinimumSchema.safeParse({ ...lockedListing, ...updateData });
+          if (!packaging.success) throw new TRPCError({ code: "BAD_REQUEST", message: packaging.error.issues.map(issue => issue.message).join(" ") });
         }
 
         const quantityChanged =

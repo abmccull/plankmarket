@@ -1,3 +1,4 @@
+import { resolveMinimumOrderSqFt } from "@/lib/marketplace/minimum-order-quantity";
 import { z } from "zod";
 import { normalizeCsvWearLayer } from "@/lib/csv/wear-layer";
 import { productSpecificationFields } from "@/lib/product-specifications";
@@ -435,6 +436,28 @@ const listingFormSchemaBase = z.object({
     .optional(),
 });
 
+export function applyPalletMinimumValidation(data: {
+  moq?: number | null; moqUnit?: "pallets" | "sqft" | null;
+  sqFtPerBox?: number | null; boxesPerPallet?: number | null;
+}, ctx: z.RefinementCtx) {
+  if (data.moqUnit !== "pallets" || !data.moq || resolveMinimumOrderSqFt(data) !== null) return;
+  if (data.sqFtPerBox == null || !Number.isFinite(data.sqFtPerBox) || data.sqFtPerBox <= 0) {
+    ctx.addIssue({ code: "custom", path: ["sqFtPerBox"], message: "Enter actual square feet per box for a pallet minimum." });
+  }
+  if (data.boxesPerPallet == null || !Number.isInteger(data.boxesPerPallet) || data.boxesPerPallet <= 0) {
+    ctx.addIssue({ code: "custom", path: ["boxesPerPallet"], message: "Enter the actual whole number of boxes per pallet for a pallet minimum." });
+  }
+  if (data.sqFtPerBox != null && Number.isFinite(data.sqFtPerBox) && data.sqFtPerBox > 0 &&
+      data.boxesPerPallet != null && Number.isInteger(data.boxesPerPallet) && data.boxesPerPallet > 0) {
+    ctx.addIssue({ code: "custom", path: ["moq"], message: "These pallet measurements cannot establish a valid minimum order quantity." });
+  }
+}
+
+export const listingPalletMinimumSchema = z.object({
+  moq: z.number().nullish(), moqUnit: z.enum(["pallets", "sqft"]).nullish(),
+  sqFtPerBox: z.number().nullish(), boxesPerPallet: z.number().nullish(),
+}).superRefine(applyPalletMinimumValidation);
+
 export const listingSellingRulesSchema = z
   .object(sellingRuleFieldValidators)
   .superRefine(applySellingRuleCrossFieldValidation);
@@ -450,11 +473,11 @@ export const listingProductReuseSchema = listingFormSchemaBase.pick({
   sqFtPerBox: true, installationMethod: true, waterResistance: true, certifications: true,
 }).extend({ certifications: z.array(z.string().max(100)).max(100).default([]) });
 
-export const listingFormSchema = listingFormSchemaBase.superRefine(applySellingRuleCrossFieldValidation);
+export const listingFormSchema = listingFormSchemaBase.superRefine(applySellingRuleCrossFieldValidation).superRefine(applyPalletMinimumValidation);
 export const listingCreationSchema = listingFormSchemaBase.extend({
   warehouseId: z.string().uuid().optional(),
   warehouseRevision: z.number().int().positive().optional(),
-}).superRefine(applySellingRuleCrossFieldValidation).superRefine((data, ctx) => {
+}).superRefine(applySellingRuleCrossFieldValidation).superRefine(applyPalletMinimumValidation).superRefine((data, ctx) => {
   if ((data.warehouseId !== undefined) !== (data.warehouseRevision !== undefined)) {
     ctx.addIssue({ code: "custom", path: ["warehouseId"], message: "Choose a current pickup warehouse or use a manual location." });
   }
@@ -848,7 +871,7 @@ export const csvListingTransportSchema = z.preprocess((input) => {
 
 // The browser rejects ambiguous rows before preview. The server also applies this
 // contract to new claims after allowing a matching completed legacy replay.
-export const csvListingRowSchema = csvListingTransportSchema.superRefine((row, ctx) => {
+export const csvListingRowSchema = csvListingTransportSchema.superRefine(applyPalletMinimumValidation).superRefine((row, ctx) => {
   try {
     normalizeCsvWearLayer(row.wearLayer, row.wearLayerUnit, row.materialType);
   } catch (error) {

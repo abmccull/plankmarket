@@ -1,3 +1,4 @@
+import { resolveMinimumOrderSqFt } from "@/lib/marketplace/minimum-order-quantity";
 import { publicProductPhotoWhere } from "@/server/services/listing-media";
 import { resolveCheckoutResale } from "../services/resale-exemption";
 import { checkoutInputFingerprint, findCheckoutReplay, abandonCheckoutAttempt } from "@/server/services/checkout-idempotency";
@@ -86,19 +87,14 @@ function getMinimumOrderQuantitySqFt(listing: {
   sqFtPerBox: number | null;
   boxesPerPallet: number | null;
 }): number {
-  if (!listing.moq || listing.moq <= 0) {
-    return 0;
+  const minimum = resolveMinimumOrderSqFt(listing);
+  if (minimum === null) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "The seller must complete pallet packaging details before this listing can be purchased or offered on.",
+    });
   }
-
-  if (listing.moqUnit === "pallets") {
-    return (
-      listing.moq *
-      (listing.sqFtPerBox ?? 20) *
-      (listing.boxesPerPallet ?? 30)
-    );
-  }
-
-  return listing.moq;
+  return minimum;
 }
 
 async function enforcePendingOrderLimit(
@@ -799,9 +795,7 @@ export const orderRouter = createTRPCRouter({
         }
 
         // Validate quantity — convert MOQ to sq ft if specified in pallets
-        const moqSqFt = listing.moqUnit === "pallets" && listing.moq
-          ? listing.moq * (listing.sqFtPerBox ?? 20) * (listing.boxesPerPallet ?? 30)
-          : (listing.moq ?? 0);
+        const moqSqFt = getMinimumOrderQuantitySqFt(listing);
 
         if (moqSqFt > 0 && input.quantitySqFt < moqSqFt) {
           throw new TRPCError({

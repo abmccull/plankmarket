@@ -1,3 +1,4 @@
+import { resolveMinimumOrderSqFt } from "./minimum-order-quantity";
 import { calculateOrderFees } from "@/lib/fees";
 import { getDirectPurchaseUnitPrice, resolveListingUnitPrice } from "@/lib/listing-pricing";
 import { parsePurchaseIntent } from "./purchase-intent";
@@ -27,14 +28,12 @@ const fitsBoxes = (quantity: number, boxSize: number) => {
 
 /** Null means unknown; a pallet minimum must never use guessed packaging. */
 export function getKnownMinimumOrderSqFt(listing: Pick<QuantityPreviewListing, "moq" | "moqUnit" | "purchaseTerms">): number | null {
-  if (listing.moq == null || listing.moq === 0) return 0;
-  if (!positive(listing.moq)) return null;
-  if (listing.moqUnit === "sqft") return listing.moq;
-  if (listing.moqUnit !== "pallets") return null;
-  const terms = listing.purchaseTerms;
-  if (!positive(terms?.sqFtPerBox) || !positive(terms?.boxesPerPallet)) return null;
-  const minimum = listing.moq * terms.sqFtPerBox * terms.boxesPerPallet;
-  return positive(minimum) ? minimum : null;
+  return resolveMinimumOrderSqFt({
+    moq: listing.moq,
+    moqUnit: listing.moqUnit,
+    sqFtPerBox: listing.purchaseTerms?.sqFtPerBox,
+    boxesPerPallet: listing.purchaseTerms?.boxesPerPallet,
+  });
 }
 
 /** A comparison suggestion, never a reservation, quote or authorization to buy. */
