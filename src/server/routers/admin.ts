@@ -1,3 +1,4 @@
+import { getRegistrationCohort } from "../services/registration-cohort";
 import { withRoleProviderCoordinator } from "../services/role-provider-coordinator";
 import { openRoleProviderWriteSession } from "../services/role-provider-write-session";
 import { sellerActivationRoleProvider } from "../services/seller-activation-provider";
@@ -215,6 +216,19 @@ export const adminRouter = createTRPCRouter({
       },
     };
   }),
+
+  // Aggregate operational signup coverage; legacy/uncertain profiles remain unknown.
+  getRegistrationCohort: adminProcedure
+    .input(z.object({ windowDays: z.number().int().min(1).max(365).default(30) }).default({ windowDays: 30 }))
+    .query(async ({ ctx, input }) => {
+      const end = new Date();
+      const start = new Date(end.getTime() - input.windowDays * 86400000);
+      return {
+        windowDays: input.windowDays, periodStart: start, periodEnd: end,
+        measurement: "profile_creation_cohort_provider_confirmed" as const,
+        ...await getRegistrationCohort(ctx.db, start, end),
+      };
+    }),
 
   // Database-backed marketplace liquidity and operating health.
   getMarketplaceHealth: adminProcedure.query(async ({ ctx }) => {

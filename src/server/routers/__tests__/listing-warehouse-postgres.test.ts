@@ -40,7 +40,7 @@ const createCaller = createCallerFactory(createTRPCRouter({ listing: listingRout
 type User = typeof schema.users.$inferSelect;
 type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 const TARGET = "postgresql://postgres@127.0.0.1:55439/plankmarket_bootstrap_design_20260929";
-const SOURCE = ["src/lib/inngest/functions/marketplace-funnel.ts", "src/lib/analytics/posthog-acknowledged.ts", "src/lib/marketplace/minimum-order-quantity.ts", "src/server/routers/listing.ts", "src/server/routers/warehouse.ts", "src/server/services/listing-warehouse-selection.ts", "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-form-drafts.ts", "src/server/services/warehouse-origin.ts", "src/lib/validators/listing.ts", "src/lib/validators/listing-draft.ts", "src/lib/stores/listing-form-store.ts", "src/server/routers/__tests__/listing-warehouse-postgres.test.ts"];
+const SOURCE = ["src/server/services/registration-cohort.ts", "src/server/routers/admin.ts", "src/lib/inngest/functions/marketplace-funnel.ts", "src/lib/analytics/posthog-acknowledged.ts", "src/lib/marketplace/minimum-order-quantity.ts", "src/server/routers/listing.ts", "src/server/routers/warehouse.ts", "src/server/services/listing-warehouse-selection.ts", "src/server/services/warehouse-mutation-lock.ts", "src/server/services/listing-form-drafts.ts", "src/server/services/warehouse-origin.ts", "src/lib/validators/listing.ts", "src/lib/validators/listing-draft.ts", "src/lib/stores/listing-form-store.ts", "src/server/routers/__tests__/listing-warehouse-postgres.test.ts"];
 const sources = () => SOURCE.map(file => ({ path: file, sha256: fs.existsSync(file) ? createHash("sha256").update(fs.readFileSync(file)).digest("hex") : null }));
 function caller(db: Database, user: User) {
   return createCaller({ db, user, authUser: { id: user.authId, email_confirmed_at: "2026-09-01" }, supabase: {}, clientIp: "127.0.0.1", getAuthAssurance: vi.fn().mockRejectedValue(new Error("Ordinary seller requires no payout MFA")) } as unknown as Awaited<ReturnType<typeof createTRPCContext>>);
@@ -105,6 +105,35 @@ describe.skipIf(process.env.LISTING_WAREHOUSE_DB_PROOF !== "1")("listing warehou
     (proof.cases as unknown[]).push({ label, passed: passed && !failed, rolledBack, simulatedEvents: bridge.events.length, error: failed instanceof Error ? failed.message : failed ? "unknown" : null }); note();
     expect(rolledBack).toBe(true); if (failed) throw failed;
   }
+
+  it("measures registration receipts without duplicate or foreign completion", async () => rollback("registration cohort", async executor => {
+    const { getRegistrationCohort } = await import("@/server/services/registration-cohort");
+    const start = new Date("2026-01-01T00:00:00Z"), end = new Date("2026-02-01T00:00:00Z");
+    expect(await getRegistrationCohort(executor, start, end)).toMatchObject({ profilesCreated: 0, receiptConfirmed: 0, completionUnknown: 0, originalBuyers: 0, originalSellers: 0 });
+    const create = async (role: "buyer" | "seller" | "admin", when = start) => {
+      const id = randomUUID();
+      const [user] = await executor.insert(schema.users).values({ id, authId: randomUUID(), email: `${id}@example.invalid`, name: "Synthetic cohort", role, createdAt: when }).returning();
+      return user;
+    };
+    const buyer = await create("seller"), legacy = await create("buyer"), pending = await create("seller"), foreign = await create("buyer");
+    await create("admin"); await create("buyer", end); await create("seller", new Date(start.getTime() - 1));
+    const receipt = async (user: User, version: number, purpose: "registration" | "seller_activation", expectedRole: "buyer" | "seller", confirmed = true) => {
+      const id = randomUUID();
+      await executor.insert(schema.roleProviderWrites).values({ id, version, userId: user.id, authId: user.authId, purpose, expectedRole, issuedAt: start });
+      if (confirmed) await executor.update(schema.roleProviderWrites).set({ confirmedAt: new Date(start.getTime() + version * 1000) }).where(eq(schema.roleProviderWrites.id, id));
+    };
+    await receipt(buyer, 1, "registration", "buyer"); await receipt(buyer, 2, "registration", "seller"); await receipt(buyer, 3, "seller_activation", "seller");
+    await receipt(pending, 1, "registration", "seller", false);
+    await receipt(foreign, 1, "registration", "buyer");
+    await executor.update(schema.users).set({ authId: randomUUID() }).where(eq(schema.users.id, foreign.id));
+    const late = await create("seller");
+    await receipt(late, 1, "registration", "seller", false);
+    await executor.update(schema.roleProviderWrites).set({ confirmedAt: end }).where(eq(schema.roleProviderWrites.userId, late.id));
+    const before = await executor.select().from(schema.roleProviderWrites);
+    expect(await getRegistrationCohort(executor, start, end)).toMatchObject({ profilesCreated: 5, receiptConfirmed: 1, completionUnknown: 4, originalBuyers: 1, originalSellers: 0 });
+    expect(await executor.select().from(schema.roleProviderWrites)).toEqual(before);
+    expect(legacy.id).toBeTruthy();
+  }));
 
   it.each(["sqFtPerBox", "boxesPerPallet"] as const)("blocks missing %s across SQL listing boundaries", async missing => rollback(`pallet ${missing}`, async executor => {
     const f = await seed(executor);
