@@ -9,7 +9,10 @@ describe("quantity conflict filter continuity", () => {
   it("retains the modifier through save/open/share serialization", () => {
     const parsed = parseListingSearchParams({ minLotSize: "501", buyerZip: "80202", materialType: "engineered", hideQuantityConflicts: "true" });
     expect(parsed).toMatchObject({ minLotSize: 501, hideQuantityConflicts: true });
-    const restored = searchParamsToFilters(new URLSearchParams(filtersToSearchParams(parsed)));
+    const restored = searchParamsToFilters(new URLSearchParams(filtersToSearchParams({
+      minLotSize: parsed.minLotSize, buyerZip: parsed.buyerZip,
+      materialType: parsed.materialType, hideQuantityConflicts: parsed.hideQuantityConflicts,
+    })));
     expect(restored).toMatchObject({ minLotSize: 501, buyerZip: "80202", hideQuantityConflicts: true });
     expect(buildShareableSearchParams(restored).get("hideQuantityConflicts")).toBe("true");
     expect(getFilterBadges(restored)).toContainEqual({ key: "hideQuantityConflicts", label: "Quantity conflicts hidden" });

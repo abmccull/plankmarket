@@ -494,7 +494,7 @@ describe("pallet minimum business boundaries", () => {
     { data: { sqFtPerBox: null }, existing: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 } },
     { data: { boxesPerPallet: null }, existing: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 } },
     { data: { moqUnit: "pallets" }, existing: { moq: 1, moqUnit: "sqft", sqFtPerBox: null, boxesPerPallet: null } },
-  ])("rejects unsafe merged packaging update $data", async ({ data, existing }) => {
+  ] as const)("rejects unsafe merged packaging update $data", async ({ data, existing }) => {
     const tx = {
       select: vi.fn(() => ({ from: () => ({ where: () => ({ for: async () => [{ id: "22222222-2222-4222-8222-222222222222", sellerId: "11111111-1111-4111-8111-111111111111", ...existing }] }) }) })),
       update: vi.fn(),
