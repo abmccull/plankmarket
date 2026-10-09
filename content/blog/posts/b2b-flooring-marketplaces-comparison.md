@@ -147,7 +147,8 @@ Built specifically for B2B flooring trades.
 - Flooring-only focus
 - Verified network (no consumer buyers)
 - Full specifications required
-- Transparent fees (2% seller, 3% buyer)
+- Transparent fees: 5% seller fee plus 2.9% + $0.30 Stripe processing on the inventory subtotal; 5% buyer fee on the inventory subtotal. Freight is quoted separately before payment. See [Pricing & Fees](/pricing) for details.
+- Free supports up to 10 active listings; optional Pro adds unlimited listings and bulk CSV upload.
 
 **Cons:**
 - Newer platform

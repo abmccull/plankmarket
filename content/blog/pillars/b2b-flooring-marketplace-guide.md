@@ -91,7 +91,8 @@ Built specifically for B2B flooring trades.
 - Flooring-only focus
 - Verified buyers and sellers (EIN, document review)
 - Full specifications on every listing
-- 2% seller fee, 3% buyer fee (transaction-based)
+- 5% seller fee plus 2.9% + $0.30 Stripe processing on the inventory subtotal; 5% buyer fee on the inventory subtotal. Freight is quoted separately before payment. See [Pricing & Fees](/pricing) for details.
+- Free supports up to 10 active listings; optional Pro adds unlimited listings and bulk CSV upload.
 - Transparent pricing
 
 → [See how PlankMarket works](/how-it-works)
@@ -290,14 +291,14 @@ Reputation compounds. Good sellers get better buyer engagement.
 - **Aggregated selection** — Find products you wouldn't find otherwise
 - **Price transparency** — Know you're getting fair pricing
 - **Verified sellers** — Reduced risk of problems
-- **Platform fees (buyer side)** — 2-3% typical, offset by better pricing
+- **Platform fees (buyer side)** — PlankMarket charges a 5% buyer fee on the inventory subtotal. Freight is quoted separately before payment.
 
 The fee is typically worthwhile for the selection, transparency, and verification.
 
 ### For Sellers
 
 - **Reach** — Access buyers beyond your network
-- **Lower fees vs. brokers** — 2-5% vs. 15-25% broker commission
+- **Marketplace fees** — Compare the platform's charges with broker commissions. PlankMarket sellers pay a 5% seller fee plus 2.9% + $0.30 Stripe processing on the inventory subtotal.
 - **Speed** — Faster liquidation than waiting for right buyer
 - **Separation from primary channel** — Closeout sales don't compete with regular sales
 
