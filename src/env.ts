@@ -77,7 +77,7 @@ export const env = createEnv({
     ),
     PRIORITY1_DRY_RUN: isLiveProduction
       ? z.literal("false").default("false")
-      : z.enum(["true", "false"]).default("false"),
+      : z.enum(["true", "false"]).default(process.env.VERCEL_ENV === "preview" ? "true" : "false"),
     CRON_SECRET: productionRequired(z.string().min(32)),
     NODE_ENV: z
       .enum(["development", "test", "production"])
