@@ -4,7 +4,7 @@ import { expect, test, type Page } from "playwright/test";
 const publicRoutes = [
   {
     path: "/",
-    heading: /Your Closeout Inventory Is Losing Value Right Now/i,
+    heading: /Buy closeout flooring\.\s*Sell your surplus\./i,
   },
   {
     path: "/listings",
