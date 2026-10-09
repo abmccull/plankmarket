@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Analytics as VercelAnalytics } from "@vercel/analytics/react";
 import posthog, { type PostHog } from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
@@ -41,12 +41,11 @@ function AnalyticsConsentBanner({
     >
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="max-w-3xl space-y-1">
-          <p id="analytics-consent-title" className="text-sm font-semibold">
+          <p id="analytics-consent-title" className="sr-only">
             Help improve PlankMarket
           </p>
           <p className="text-sm text-muted-foreground">
-            Optional analytics use masked inputs and pseudonymous IDs. Change
-            this later in account preferences.
+            Optional analytics use masked inputs and pseudonymous IDs.
           </p>
           {saveFailed ? (
             <p className="text-sm font-medium text-destructive" role="alert">
@@ -84,7 +83,12 @@ export function PostHogAnalyticsProvider({
   children: React.ReactNode;
 }) {
   const user = useAuthStore((state) => state.user);
+  const [failedConsentOwner, setFailedConsentOwner] = useState<string | null>(null);
   const activePosthogClient = useRef<PostHog | null>(null);
+  const activeAnalyticsOwner = useRef<string | null>(null);
+  const uncertainAnalyticsIdentity = useRef(false);
+  const [analyticsFailureOwner, setAnalyticsFailureOwner] = useState<string | null>(null);
+  const [analyticsReadyOwner, setAnalyticsReadyOwner] = useState<string | null>(null);
   const browserConsent = useSyncExternalStore(
     subscribeAnalyticsConsent,
     readAnalyticsConsent,
@@ -97,7 +101,7 @@ export function PostHogAnalyticsProvider({
     trpc.preferences.setAnalyticsConsent.useMutation();
 
   const consent = user
-    ? preferencesQuery.isFetched
+    ? preferencesQuery.isFetched && preferencesQuery.data?.userId === user.id
       ? resolveAnalyticsConsentFlag(
           preferencesQuery.data?.analyticsTrackingEnabled,
         )
@@ -105,24 +109,44 @@ export function PostHogAnalyticsProvider({
     : browserConsent;
 
   useEffect(() => {
+    const disable = (client: PostHog) => {
+      // Either SDK operation can fail; revocation must attempt both independently.
+      try { client.opt_out_capturing(); } catch { uncertainAnalyticsIdentity.current = true; }
+      try { client.reset(); } catch { uncertainAnalyticsIdentity.current = true; }
+    };
     if (consent !== "granted") {
       const client = activePosthogClient.current;
-      if (client) {
-        client.reset();
-        client.opt_out_capturing();
-        activePosthogClient.current = null;
-      }
+      activePosthogClient.current = null;
+      activeAnalyticsOwner.current = null;
+      setAnalyticsFailureOwner(null);
+      setAnalyticsReadyOwner(null);
+      if (client) disable(client);
       return;
     }
 
-    if (activePosthogClient.current) {
-      return;
+    const owner = user?.id ?? null;
+    let client = activePosthogClient.current;
+    try {
+      client ??= initPostHog();
+      if (activePosthogClient.current && activeAnalyticsOwner.current === owner && !uncertainAnalyticsIdentity.current) return;
+      if (uncertainAnalyticsIdentity.current || (activeAnalyticsOwner.current !== null && activeAnalyticsOwner.current !== owner)) client.reset();
+      client.opt_in_capturing();
+      if (owner) client.identify(owner);
+      uncertainAnalyticsIdentity.current = false;
+      activeAnalyticsOwner.current = owner;
+      activePosthogClient.current = client;
+      setAnalyticsReadyOwner(owner ?? "browser");
+      setAnalyticsFailureOwner(null);
+    } catch {
+      // Optional analytics must not interrupt account or checkout flows.
+      uncertainAnalyticsIdentity.current = true;
+      activePosthogClient.current = null;
+      activeAnalyticsOwner.current = null;
+      setAnalyticsReadyOwner(null);
+      setAnalyticsFailureOwner(owner ?? "browser");
+      if (client) disable(client);
     }
-
-    const client = initPostHog();
-    client.opt_in_capturing();
-    activePosthogClient.current = client;
-  }, [consent]);
+  }, [consent, user?.id]);
 
   const persistConsent = async (nextValue: AnalyticsConsentState) => {
     if (!user) {
@@ -136,27 +160,29 @@ export function PostHogAnalyticsProvider({
     await preferencesQuery.refetch();
   };
 
+  const analyticsOwner = user?.id ?? "browser";
+  const trackingConsent = consent === "granted" &&
+    (analyticsFailureOwner === analyticsOwner || analyticsReadyOwner !== analyticsOwner) ? null : consent;
+
   const content = (
-    <AnalyticsConsentContext.Provider value={consent}>
+    <AnalyticsConsentContext.Provider value={trackingConsent}>
       <AnalyticsConsentBanner
         consent={consent}
         onDecision={(nextValue) => {
+          const decisionOwner = user?.id ?? "browser";
+          setFailedConsentOwner(null);
           void persistConsent(nextValue).catch(() => {
-            // The mutation exposes its error state in the banner. Keep the
-            // prior consent value so analytics never starts after a failed save.
+            // A failed account or browser save never implies consent.
+            setFailedConsentOwner(decisionOwner);
           });
         }}
         isSaving={setAnalyticsConsent.isPending}
-        saveFailed={setAnalyticsConsent.isError === true}
+        saveFailed={failedConsentOwner === (user?.id ?? "browser")}
       />
       {children}
-      {consent === "granted" ? <VercelAnalytics /> : null}
+      {trackingConsent === "granted" ? <VercelAnalytics /> : null}
     </AnalyticsConsentContext.Provider>
   );
-
-  if (consent !== "granted") {
-    return content;
-  }
 
   return <PostHogProvider client={posthog}>{content}</PostHogProvider>;
 }

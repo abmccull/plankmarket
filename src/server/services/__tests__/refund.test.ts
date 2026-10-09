@@ -1,4 +1,5 @@
 import type { Database } from "@/server/db";
+import { notifications } from "@/server/db/schema";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const providerMocks = vi.hoisted(() => ({
@@ -129,6 +130,7 @@ function createMockDatabase(
   const currentOrder = { ...order };
   const updateSets: Array<Record<string, unknown>> = [];
   const insertedValues: unknown[] = [];
+  const notificationValues: unknown[] = [];
   const tx = {
     select: vi.fn((selection: Record<string, unknown>) => {
       if ("orderNumber" in selection) {
@@ -173,9 +175,10 @@ function createMockDatabase(
         return { where: vi.fn().mockResolvedValue([]) };
       }),
     })),
-    insert: vi.fn(() => ({
+    insert: vi.fn((table: unknown) => ({
       values: vi.fn((values: unknown) => {
         insertedValues.push(values);
+        if (table === notifications) notificationValues.push(values);
         return Promise.resolve([]);
       }),
     })),
@@ -193,7 +196,31 @@ function createMockDatabase(
     update: tx.update,
   } as unknown as Database;
 
-  return { db, tx, updateSets, insertedValues };
+  return { db, tx, updateSets, insertedValues, notificationValues };
+}
+
+function expectRefundRecipientSides(
+  notificationValues: unknown[],
+  order: Pick<MockRefundOrder, "id" | "buyerId" | "sellerId">,
+) {
+  expect(notificationValues).toEqual([
+    [
+      expect.objectContaining({
+        userId: order.buyerId,
+        data: expect.objectContaining({
+          orderId: order.id,
+          recipientSide: "buyer",
+        }),
+      }),
+      expect.objectContaining({
+        userId: order.sellerId,
+        data: expect.objectContaining({
+          orderId: order.id,
+          recipientSide: "seller",
+        }),
+      }),
+    ],
+  ]);
 }
 
 function matchingTransfer(
@@ -348,7 +375,7 @@ describe("direct partial refund transfer recovery", () => {
       id: "trr_partial",
       amount: 1_875,
     });
-    const { db, updateSets } = createMockDatabase(baseOrder);
+    const { db, updateSets, notificationValues } = createMockDatabase(baseOrder);
 
     await expect(
       processOrderRefund({
@@ -392,6 +419,7 @@ describe("direct partial refund transfer recovery", () => {
         transferReversedAmount: 18.75,
       }),
     );
+    expectRefundRecipientSides(notificationValues, baseOrder);
   });
 
   it("recovers and persists an orphan transfer before issuing a partial refund", async () => {
@@ -663,7 +691,7 @@ describe("direct partial refund transfer recovery", () => {
   );
 
   it("replays a succeeded refund lifecycle idempotently before a later charge webhook", async () => {
-    const { db } = createMockDatabase({
+    const { db, notificationValues } = createMockDatabase({
       ...baseOrder,
       paymentStatus: "refund_pending",
     });
@@ -711,6 +739,7 @@ describe("direct partial refund transfer recovery", () => {
       state: "succeeded",
       updated: false,
     });
+    expectRefundRecipientSides(notificationValues, baseOrder);
   });
 
   it("prefers the provider charge refunded total over stale metadata drift", async () => {

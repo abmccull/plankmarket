@@ -1,3 +1,4 @@
+import { resolveMinimumOrderSqFt } from "@/lib/marketplace/minimum-order-quantity";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -64,14 +65,16 @@ async function canRevealOfferIdentity(
 
 function shapeOfferParties<
   T extends {
+    buyerId: string;
+    sellerId: string;
     buyer: Parameters<typeof toConversationParty>[0];
     seller: Parameters<typeof toConversationParty>[0];
   },
 >(offer: T, revealIdentity: boolean) {
   return {
     ...offer,
-    buyer: toConversationParty(offer.buyer, revealIdentity),
-    seller: toConversationParty(offer.seller, revealIdentity),
+    buyer: toConversationParty(offer.buyer, revealIdentity, offer),
+    seller: toConversationParty(offer.seller, revealIdentity, offer),
   };
 }
 
@@ -99,19 +102,14 @@ function getMinimumOrderQuantitySqFt(listing: {
   sqFtPerBox: number | null;
   boxesPerPallet: number | null;
 }): number {
-  if (!listing.moq || listing.moq <= 0) {
-    return 0;
+  const minimum = resolveMinimumOrderSqFt(listing);
+  if (minimum === null) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "The seller must complete pallet packaging details before this listing can be purchased or offered on.",
+    });
   }
-
-  if (listing.moqUnit === "pallets") {
-    return (
-      listing.moq *
-      (listing.sqFtPerBox ?? 20) *
-      (listing.boxesPerPallet ?? 30)
-    );
-  }
-
-  return listing.moq;
+  return minimum;
 }
 
 /**
@@ -996,7 +994,7 @@ export const offerRouter = createTRPCRouter({
         ...shapedOffer,
         events: offer.events.map((event) => ({
           ...event,
-          actor: toConversationParty(event.actor, revealIdentity),
+          actor: toConversationParty(event.actor, revealIdentity, offer),
         })),
       };
     }),
@@ -1047,7 +1045,7 @@ export const offerRouter = createTRPCRouter({
       const revealIdentity = await canRevealOfferIdentity(ctx.db, offer.orderId);
       return events.map((event) => ({
         ...event,
-        actor: toConversationParty(event.actor, revealIdentity),
+        actor: toConversationParty(event.actor, revealIdentity, offer),
       }));
     }),
 
@@ -1097,7 +1095,7 @@ export const offerRouter = createTRPCRouter({
 
       const offersList = await ctx.db.query.offers.findMany({
         where: whereClause,
-        orderBy: [desc(offers.updatedAt)],
+        orderBy: [desc(offers.updatedAt), desc(offers.id)],
         limit: input.limit,
         offset,
         with: {

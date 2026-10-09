@@ -41,5 +41,5 @@ try {
     }).join("\n");
     await tx.unsafe(source.replace("CREATE SCHEMA public;", `CREATE SCHEMA public;\n${extensions}`));
   });
-  console.log("Verified schema baseline restored into the empty local database. Run db:check:target next; hosted Auth and provider acceptance remain separate.");
+  console.log("Verified historical baseline restored into the empty local database. Apply only reviewed forward migrations newer than that export, then run db:check:target for the current release contract. Hosted Auth and provider acceptance remain separate; bootstrap does not auto-apply forward migrations.");
 } finally { await db.end(); }

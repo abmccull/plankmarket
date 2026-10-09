@@ -1,4 +1,5 @@
 import { cache, Suspense } from "react";
+import { parsePurchaseIntent, withPurchaseIntent, type PurchaseIntent } from "@/lib/marketplace/purchase-intent";
 import {
   notFound,
   redirect,
@@ -23,6 +24,7 @@ import { ImageGallery } from "@/components/listings/image-gallery";
 import { TransactionTimelineExplainer } from "@/components/marketplace/transaction-timeline";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
+import { formatListingWearLayer } from "@/lib/product-specifications";
 import {
   getPublicListingByRouteParam,
   recordPublicListingView,
@@ -75,6 +77,7 @@ const finishLabels: Record<string, string> = {
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ jobSqFt?: string | string[]; jobZip?: string | string[] }>;
 }
 
 function isNotFoundError(error: unknown): boolean {
@@ -131,7 +134,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 }
 
-async function ListingContent({ id }: { id: string }) {
+async function ListingContent({ id, purchaseIntent }: { id: string; purchaseIntent: PurchaseIntent }) {
   let listingView;
   try {
     listingView = await getListingViewModel(id);
@@ -151,7 +154,7 @@ async function ListingContent({ id }: { id: string }) {
 
   const { listing, requestedById, viewerIdentifier } = listingView;
   if (requestedById && listing.slug) {
-    redirect(`/listings/${listing.slug}`, RedirectType.replace);
+    redirect(withPurchaseIntent(`/listings/${listing.slug}`, purchaseIntent), RedirectType.replace);
   }
 
   // View tracking is intentionally separate from the pure listing read so
@@ -209,7 +212,7 @@ async function ListingContent({ id }: { id: string }) {
           ]}
         />
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content - 2 columns (SERVER RENDERED) */}
           <div className="lg:col-span-2 space-y-6">
             {/* Image Gallery */}
@@ -217,7 +220,7 @@ async function ListingContent({ id }: { id: string }) {
 
             {/* Title and badges */}
             <div>
-              <h1 className="text-3xl font-bold">{listing.title}</h1>
+              <h1 className="text-3xl font-bold break-words">{listing.title}</h1>
               <div className="flex items-center gap-2 mt-3 flex-wrap">
                 <Badge>{materialLabel}</Badge>
                 <Badge variant="outline">{conditionLabel}</Badge>
@@ -231,6 +234,13 @@ async function ListingContent({ id }: { id: string }) {
                 listing={listing}
               />
             </div>
+          </div>
+
+          <div className="lg:col-start-3 lg:row-start-1 lg:row-span-2">
+            <ListingDetailClient listing={listing} purchaseIntent={purchaseIntent} />
+          </div>
+
+          <div className="space-y-6 lg:col-span-2">
 
             {/* Description */}
             {listing.description && (
@@ -241,19 +251,6 @@ async function ListingContent({ id }: { id: string }) {
                 </p>
               </div>
             )}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-xl">Listing evidence</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Public evidence from this listing and seller account, separated
-                  into what is known now and what must be calculated later.
-                </p>
-              </CardHeader>
-              <CardContent>
-                <ListingEvidence listing={listing} />
-              </CardContent>
-            </Card>
 
             {/* Product Specifications */}
             <Card>
@@ -274,6 +271,10 @@ async function ListingContent({ id }: { id: string }) {
                   {listing.thickness && (
                     <SpecItem label="Thickness" value={`${listing.thickness}"`} />
                   )}
+                  <SpecItem
+                    label="Wear Layer"
+                    value={formatListingWearLayer(listing.wearLayer, listing.materialType)}
+                  />
                   {listing.width && <SpecItem label="Width" value={`${listing.width}"`} />}
                   {listing.length && <SpecItem label="Length" value={`${listing.length}"`} />}
                   {listing.color && <SpecItem label="Color" value={listing.color} />}
@@ -362,8 +363,6 @@ async function ListingContent({ id }: { id: string }) {
             </section>
           </div>
 
-          {/* Sidebar - CLIENT ISLAND for interactive purchase actions */}
-          <ListingDetailClient listing={listing} />
         </div>
       </div>
     </>
@@ -411,12 +410,13 @@ function SpecItem({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default async function ListingDetailPage({ params }: PageProps) {
-  const { id } = await params;
+export default async function ListingDetailPage({ params, searchParams }: PageProps) {
+  const [{ id }, intentParams] = await Promise.all([params, searchParams]);
+  const purchaseIntent = parsePurchaseIntent({ quantitySqFt: intentParams.jobSqFt, zip: intentParams.jobZip });
 
   return (
     <Suspense fallback={<ListingDetailSkeleton />}>
-      <ListingContent id={id} />
+      <ListingContent id={id} purchaseIntent={purchaseIntent} />
     </Suspense>
   );
 }

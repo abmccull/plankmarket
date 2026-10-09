@@ -21,8 +21,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { QueryErrorState } from "@/components/ui/state-panel";
 import {
   Loader2,
   FileText,
@@ -65,62 +66,128 @@ function formatDate(date: Date | string) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BuyerRequestsPage() {
+  const { user } = useAuthStore();
+  return (
+    <BuyerRequests key={user?.id ?? "anonymous"} actorId={user?.id ?? null} />
+  );
+}
+function BuyerRequests({ actorId }: { actorId: string | null }) {
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.buyerRequest.getMyRequests.useQuery({
-    page: 1,
-    limit: 20,
-  });
+  const [page, setPage] = useState(1);
+  const query = trpc.buyerRequest.getMyRequests.useQuery(
+    { page, limit: 20 },
+    { enabled: !!actorId },
+  );
+  const { data, isLoading, isError, isFetching } = query;
+  const pendingRef = useRef(false),
+    mountedRef = useRef(true);
+  const [actionPending, setActionPending] = useState(false);
+  const [actionError, setActionError] = useState(false);
+  const [notice, setNotice] = useState("");
+  const isCurrent = () =>
+    mountedRef.current && useAuthStore.getState().user?.id === actorId;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (data && !isError && page > Math.max(1, data.totalPages))
+      setPage(Math.max(1, data.totalPages));
+  }, [data, isError, page]);
+  const refresh = async () => {
+    const result = await query.refetch();
+    if (isCurrent() && !result.error) setActionError(false);
+  };
 
   const [confirmAction, setConfirmAction] = useState<{
     type: "close" | "delete";
     requestId: string;
   } | null>(null);
 
-  const closeMutation = trpc.buyerRequest.close.useMutation({
-    onSuccess: () => {
-      toast.success("Request closed");
+  const closeMutation = trpc.buyerRequest.close.useMutation();
+  const deleteMutation = trpc.buyerRequest.delete.useMutation();
+  const performAction = async () => {
+    if (
+      !confirmAction ||
+      pendingRef.current ||
+      isError ||
+      actionError ||
+      !isCurrent()
+    )
+      return;
+    const action = confirmAction;
+    pendingRef.current = true;
+    setActionPending(true);
+    setNotice("");
+    try {
+      if (action.type === "close")
+        await closeMutation.mutateAsync({ requestId: action.requestId });
+      else await deleteMutation.mutateAsync({ requestId: action.requestId });
+      if (!isCurrent()) return;
       setConfirmAction(null);
-      utils.buyerRequest.getMyRequests.invalidate();
-    },
-    onError: () => toast.error("Failed to close request"),
-  });
-
-  const deleteMutation = trpc.buyerRequest.delete.useMutation({
-    onSuccess: () => {
-      toast.success("Request deleted");
-      setConfirmAction(null);
-      utils.buyerRequest.getMyRequests.invalidate();
-    },
-    onError: () => toast.error("Failed to delete request"),
-  });
+      setNotice(
+        action.type === "close" ? "Request closed." : "Request deleted.",
+      );
+      void utils.buyerRequest.getMyRequests.invalidate().catch(() => {});
+    } catch {
+      if (isCurrent()) {
+        setActionError(true);
+        setConfirmAction(null);
+      }
+    } finally {
+      pendingRef.current = false;
+      if (isCurrent()) setActionPending(false);
+    }
+  };
 
   const requests = data?.items ?? [];
-  const isPending = closeMutation.isPending || deleteMutation.isPending;
+  const isPending = actionPending;
+  const actionsDisabled = isPending || isError || actionError;
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">My Requests</h1>
           <p className="text-muted-foreground mt-1">
             Post what you need and let sellers come to you
           </p>
         </div>
-        <Link href="/buyer/requests/new">
-          <Button>
+        <Button asChild className="h-auto min-h-11 whitespace-normal">
+          <Link href="/buyer/requests/new">
             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
             New Request
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
+      {notice && <p role="status">{notice}</p>}
+      {(isError || actionError) && (
+        <QueryErrorState
+          title={
+            actionError
+              ? "Request update not confirmed"
+              : "We couldn't load your requests"
+          }
+          description={
+            actionError
+              ? "Refresh the current request list before trying again. The previous action may have completed."
+              : "Previously loaded requests may appear below. Refresh before changing a request."
+          }
+          onRetry={() => void refresh()}
+          isRetrying={isFetching}
+        />
+      )}
       {/* List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : requests.length === 0 ? (
+      ) : !data && isError ? null : requests.length === 0 &&
+        data?.total === 0 ? (
         <div className="text-center py-16 border rounded-lg bg-muted/20">
           <FileText
             className="mx-auto h-12 w-12 text-muted-foreground mb-4"
@@ -128,14 +195,14 @@ export default function BuyerRequestsPage() {
           />
           <h3 className="text-lg font-semibold">No requests yet</h3>
           <p className="text-muted-foreground mt-1 mb-4">
-            Post what you&apos;re looking for and sellers will respond!
+            Post the material and quantity you need so sellers can review it.
           </p>
-          <Link href="/buyer/requests/new">
-            <Button>
+          <Button asChild className="min-h-11">
+            <Link href="/buyer/requests/new">
               <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
               Post a Request
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       ) : (
         <div className="space-y-3">
@@ -147,18 +214,16 @@ export default function BuyerRequestsPage() {
               <div key={req.id} className="relative">
                 <Link href={`/buyer/requests/${req.id}`}>
                   <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-4">
+                    <CardContent className="p-4 pr-16">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
                         <div className="flex-1 min-w-0 space-y-2">
                           {/* Title + status */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h2 className="font-semibold truncate">
+                            <h2 className="font-semibold break-words [overflow-wrap:anywhere]">
                               {req.title}
                             </h2>
                             <Badge
-                              variant={
-                                STATUS_VARIANT[req.status] ?? "outline"
-                              }
+                              variant={STATUS_VARIANT[req.status] ?? "outline"}
                               className="capitalize"
                             >
                               {req.status}
@@ -193,9 +258,7 @@ export default function BuyerRequestsPage() {
                               </span>
                             ) : null}
                             {req.priceMaxPerSqFt && (
-                              <span>
-                                Up to ${req.priceMaxPerSqFt}/sqft
-                              </span>
+                              <span>Up to ${req.priceMaxPerSqFt}/sqft</span>
                             )}
                             {req.destinationZip && (
                               <span className="flex items-center gap-1">
@@ -208,10 +271,7 @@ export default function BuyerRequestsPage() {
                             )}
                             {req.urgency && (
                               <span className="flex items-center gap-1">
-                                <Clock
-                                  className="h-3 w-3"
-                                  aria-hidden="true"
-                                />
+                                <Clock className="h-3 w-3" aria-hidden="true" />
                                 {URGENCY_LABEL[req.urgency] ?? req.urgency}
                               </span>
                             )}
@@ -219,7 +279,7 @@ export default function BuyerRequestsPage() {
                         </div>
 
                         {/* Right side metadata */}
-                        <div className="flex flex-col items-end gap-2 shrink-0 text-sm text-muted-foreground">
+                        <div className="flex flex-wrap sm:flex-col sm:items-end gap-2 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <MessageSquare
                               className="h-3.5 w-3.5"
@@ -246,12 +306,13 @@ export default function BuyerRequestsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-11 w-11"
+                        disabled={actionsDisabled}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
                         }}
-                        aria-label="Request actions"
+                        aria-label={`Actions for ${req.title}`}
                       >
                         <MoreVertical className="h-4 w-4" />
                       </Button>
@@ -259,9 +320,8 @@ export default function BuyerRequestsPage() {
                     <DropdownMenuContent align="end">
                       {isEditable && (
                         <DropdownMenuItem
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
+                          disabled={actionsDisabled}
+                          onSelect={() => {
                             setConfirmAction({
                               type: "close",
                               requestId: req.id,
@@ -273,9 +333,8 @@ export default function BuyerRequestsPage() {
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
+                        disabled={actionsDisabled}
+                        onSelect={() => {
                           setConfirmAction({
                             type: "delete",
                             requestId: req.id,
@@ -295,16 +354,39 @@ export default function BuyerRequestsPage() {
         </div>
       )}
 
-      {data && data.total > requests.length && (
-        <p className="text-sm text-muted-foreground text-center">
-          Showing {requests.length} of {data.total} requests
-        </p>
+      {data && data.totalPages > 1 && (
+        <nav
+          aria-label="Request pages"
+          className="flex flex-wrap items-center justify-between gap-3"
+        >
+          <Button
+            variant="outline"
+            className="min-h-11"
+            disabled={page <= 1 || isFetching || isPending}
+            onClick={() => setPage((value) => value - 1)}
+          >
+            Previous requests
+          </Button>
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            Page {page} of {data.totalPages} · {data.total} requests
+          </p>
+          <Button
+            variant="outline"
+            className="min-h-11"
+            disabled={page >= data.totalPages || isFetching || isPending}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            Next requests
+          </Button>
+        </nav>
       )}
 
       {/* Confirmation dialog */}
       <AlertDialog
         open={!!confirmAction}
-        onOpenChange={(open) => !open && setConfirmAction(null)}
+        onOpenChange={(open) =>
+          !open && !pendingRef.current && setConfirmAction(null)
+        }
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -328,13 +410,9 @@ export default function BuyerRequestsPage() {
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   : undefined
               }
-              onClick={() => {
-                if (!confirmAction) return;
-                if (confirmAction.type === "close") {
-                  closeMutation.mutate({ requestId: confirmAction.requestId });
-                } else {
-                  deleteMutation.mutate({ requestId: confirmAction.requestId });
-                }
+              onClick={(event) => {
+                event.preventDefault();
+                void performAction();
               }}
             >
               {isPending && (

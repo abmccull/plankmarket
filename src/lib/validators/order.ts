@@ -2,6 +2,7 @@ import { z } from "zod";
 import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const createOrderSchema = z.object({
+  purchasePurpose: z.enum(["business_use", "resale"]).optional(),
   requestId: z.string().uuid("A checkout request ID is required"),
   listingId: z.string().uuid(),
   quantitySqFt: z.number().positive("Quantity must be positive"),
@@ -39,6 +40,7 @@ export const updateOrderStatusSchema = z.object({
 });
 
 export const createOrderFromOfferSchema = z.object({
+  purchasePurpose: z.enum(["business_use", "resale"]).optional(),
   requestId: z.string().uuid("A checkout request ID is required"),
   offerId: z.string().uuid(),
   shippingName: z.string().min(2, "Shipping name is required"),

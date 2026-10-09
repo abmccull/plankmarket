@@ -4,22 +4,24 @@ import { isValidPhoneNumber } from "libphonenumber-js";
 
 export const registerSchema = z.object({
   // Account info
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().trim().email("Please enter a valid email address"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
     .max(72, "Password must be at most 72 characters"),
-  name: z.string().min(2, "Name must be at least 2 characters").max(255),
+  name: z.string().trim().min(2, "Name must be at least 2 characters").max(255),
   role: z.enum(["buyer", "seller"]),
-  businessName: z.string().min(2, "Business name is required").max(255),
+  businessName: z.string().trim().min(2, "Business name is required").max(255),
   phone: z
     .string()
+    .trim()
     .refine((val) => !val || isValidPhoneNumber(val, "US"), {
       message: "Please enter a valid phone number",
     })
     .optional(),
   zipCode: z
     .string()
+    .trim()
     .length(5, "ZIP code must be 5 digits")
     .regex(/^\d{5}$/, "Invalid ZIP code"),
 });
@@ -27,12 +29,24 @@ export const registerSchema = z.object({
 export const submitVerificationSchema = z.object({
   einTaxId: z
     .string()
-    .regex(/^\d{2}-\d{7}$/, "EIN must be in XX-XXXXXXX format"),
+    .trim()
+    .transform((value) => value.replace(/^(\d{2})(\d{7})$/, "$1-$2"))
+    .pipe(z.string().regex(/^\d{2}-\d{7}$/, "Enter a 9-digit EIN, such as 12-3456789")),
   businessWebsite: z
     .string()
-    .url("Please enter a valid URL")
-    .optional()
-    .or(z.literal("")),
+    .trim()
+    .transform((value) => value && !/^[a-z][a-z\d+.-]*:/i.test(value) ? `https://${value}` : value)
+    .refine((value) => {
+      if (!value) return true;
+      if (/\s/.test(value)) return false;
+      try {
+        const website = new URL(value);
+        return (website.protocol === "https:" || website.protocol === "http:") && Boolean(website.hostname) && !/%/.test(website.hostname);
+      } catch {
+        return false;
+      }
+    }, "Enter a valid business website, such as example.com")
+    .optional(),
   verificationDocUrl: z.string().refine(value => Boolean(verificationDocumentId(value)) || z.url().safeParse(value).success, "Upload a supporting document"),
   businessAddress: z.string().min(1, "Business address is required").max(500),
   businessCity: z.string().min(1, "City is required").max(100),
@@ -40,12 +54,26 @@ export const submitVerificationSchema = z.object({
   businessZip: z.string().min(5, "ZIP code is required").max(10),
 });
 
+/** Keep role-dependent final requirements aligned in the editor and server. */
+export function getVerificationSubmissionSchema(role: string) {
+  return submitVerificationSchema.superRefine((input, context) => {
+    if (role === "seller" && !input.businessWebsite) {
+      context.addIssue({
+        code: "custom",
+        path: ["businessWebsite"],
+        message: "Business website is required for seller verification",
+      });
+    }
+  });
+}
+
 /**
  * Drafts deliberately accept incomplete values so a user can stop mid-step.
  * The strict submitVerificationSchema remains the final submission gate.
  */
 export const saveVerificationDraftSchema = z.object({
-  expectedUpdatedAt: z.date().nullable().optional(),
+  expectedOwnerId: z.string().uuid(),
+  expectedUpdatedAt: z.date().nullable(),
   currentStep: z.number().int().min(1).max(3),
   businessWebsite: z.string().max(2048).optional(),
   einTaxId: z.string().max(11).optional(),
@@ -54,6 +82,11 @@ export const saveVerificationDraftSchema = z.object({
   businessCity: z.string().max(100).optional(),
   businessState: z.string().max(2).optional(),
   businessZip: z.string().max(10).optional(),
+});
+
+export const submitVerificationDraftSchema = z.object({
+  expectedOwnerId: z.string().uuid(),
+  expectedUpdatedAt: z.date(),
 });
 
 export const loginSchema = z.object({

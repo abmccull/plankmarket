@@ -1,5 +1,6 @@
 "use client";
 
+import { QueryErrorState } from "@/components/ui/state-panel";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,19 +15,28 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, XCircle, AlertTriangle, Shield } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Shield,
+} from "lucide-react";
 import { getErrorMessage } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 
 export default function ModerationPage() {
-  const [filter, setFilter] = useState<"unreviewed" | "reviewed" | "all">("unreviewed");
+  const [filter, setFilter] = useState<"unreviewed" | "reviewed" | "all">(
+    "unreviewed",
+  );
   const [page, setPage] = useState(1);
 
-  const { data, isLoading, refetch } = trpc.admin.getContentViolations.useQuery({
-    reviewed: filter === "all" ? undefined : filter === "reviewed",
-    page,
-    limit: 20,
-  });
+  const { data, isLoading, isError, isFetching, refetch } =
+    trpc.admin.getContentViolations.useQuery({
+      reviewed: filter === "all" ? undefined : filter === "reviewed",
+      page,
+      limit: 20,
+    });
 
   const reviewMutation = trpc.admin.reviewContentViolation.useMutation({
     onSuccess: () => {
@@ -50,8 +60,14 @@ export default function ModerationPage() {
             Review flagged content violations
           </p>
         </div>
-        <Select value={filter} onValueChange={(v) => { setFilter(v as typeof filter); setPage(1); }}>
-          <SelectTrigger className="w-[180px]">
+        <Select
+          value={filter}
+          onValueChange={(v) => {
+            setFilter(v as typeof filter);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-[180px]" aria-label="Review status">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -62,7 +78,16 @@ export default function ModerationPage() {
         </Select>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <QueryErrorState
+          title="We couldn't load flagged content"
+          description="The moderation queue could not be checked. Try again to see current items."
+          onRetry={() => {
+            void refetch();
+          }}
+          isRetrying={isFetching}
+        />
+      ) : isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
@@ -145,7 +170,11 @@ function ViolationCard({
   isReviewing: boolean;
 }) {
   const [notes, setNotes] = useState("");
-  const detections = violation.detections as Array<{ type: string; match: string; level: string }>;
+  const detections = violation.detections as Array<{
+    type: string;
+    match: string;
+    level: string;
+  }>;
 
   return (
     <Card>
@@ -157,7 +186,9 @@ function ViolationCard({
             </CardTitle>
             <p className="text-xs text-muted-foreground">
               {violation.user.email} &middot; {violation.user.role} &middot;{" "}
-              {formatDistanceToNow(new Date(violation.createdAt), { addSuffix: true })}
+              {formatDistanceToNow(new Date(violation.createdAt), {
+                addSuffix: true,
+              })}
             </p>
           </div>
           <div className="flex items-center gap-2">

@@ -3,6 +3,7 @@ import { db } from "@/server/db";
 import { users, userPreferences, listings, savedSearches } from "@/server/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { sendOnboardingNudgeEmail } from "@/lib/email/send";
+import { getPreferenceCompletion } from "@/lib/preferences-completion";
 
 interface UserRegisteredEvent {
   data: {
@@ -68,7 +69,7 @@ export const onboardingDrip = inngest.createFunction(
           .select({ count: sql<number>`count(*)::int` })
           .from(savedSearches)
           .where(eq(savedSearches.userId, userId));
-        return !prefs?.profileComplete && (searchCount?.count ?? 0) === 0;
+        return !getPreferenceCompletion(prefs, "buyer").profileComplete && (searchCount?.count ?? 0) === 0;
       }
     });
 
@@ -111,7 +112,7 @@ export const onboardingDrip = inngest.createFunction(
           .from(savedSearches)
           .where(eq(savedSearches.userId, userId));
         // Skip if they have prefs AND saved searches
-        return !(prefs?.profileComplete && (searchCount?.count ?? 0) > 0);
+        return !(getPreferenceCompletion(prefs, "buyer").profileComplete && (searchCount?.count ?? 0) > 0);
       }
     });
 

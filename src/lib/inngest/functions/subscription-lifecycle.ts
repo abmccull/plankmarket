@@ -1,8 +1,7 @@
 import { inngest } from "../client";
 import { db } from "@/server/db";
-import { agentConfigs } from "@/server/db/schema/agent-configs";
 import { notifications } from "@/server/db/schema/notifications";
-import { eq } from "drizzle-orm";
+import { applyVerifiedProExpiry } from "@/server/services/subscription-lifecycle-identity";
 
 interface SubscriptionEvent {
   data: {
@@ -60,29 +59,8 @@ export const proExpired = inngest.createFunction(
   { id: "pro-expired", name: "Pro Expired" },
   { event: "subscription/expired" },
   async ({ event, step }) => {
-    const { userId } = event.data as SubscriptionEvent["data"];
-
-    await step.run("disable-agent", async () => {
-      await db
-        .update(agentConfigs)
-        .set({
-          offerAutoEnabled: false,
-          monitorEnabled: false,
-          repricingEnabled: false,
-          updatedAt: new Date(),
-        })
-        .where(eq(agentConfigs.userId, userId));
-    });
-
-    await step.run("notify-pro-expired", async () => {
-      await db.insert(notifications).values({
-        userId,
-        type: "system",
-        title: "PlankMarket Pro ended",
-        message:
-          "Your Pro subscription has ended and agent automation is now disabled. Your marketplace account and saved data remain available.",
-        data: { subscriptionEvent: "expired" },
-      });
-    });
-  }
+    return step.run("apply-verified-pro-expiry-v1", () =>
+      applyVerifiedProExpiry(db, event),
+    );
+  },
 );

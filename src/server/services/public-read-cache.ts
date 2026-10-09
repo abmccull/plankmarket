@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import superjson from "superjson";
 import { redis } from "@/lib/redis/client";
 
-const PUBLIC_READ_CACHE_VERSION = "v2";
+const PUBLIC_READ_CACHE_VERSION = "v4";
 
 export function buildPublicReadCacheKey(
   namespace: string,
@@ -22,7 +22,9 @@ export async function readPublicReadCache<T>(
 ): Promise<T | null> {
   if (!key) return null;
   try {
-    const cached = await redis.get<string | ReturnType<typeof superjson.serialize>>(key);
+    const cached = await redis.get<
+      string | ReturnType<typeof superjson.serialize>
+    >(key);
     if (!cached) return null;
     // Upstash automatically decodes JSON strings by default. Preserve
     // SuperJSON's Date metadata whether the client returned text or an object.

@@ -106,6 +106,7 @@ vi.mock("@/lib/trpc/client", () => ({
     },
     order: {
       getSellerOrderStats: { useQuery: () => sellerQueries.orderStats },
+      getSellerOrders: { useQuery: () => ({ data: { items: [], total: 0 }, isLoading: false, isError: false, isFetching: false, refetch: orderStatsRefetch }) },
     },
     analytics: {
       overview: { useQuery: () => sellerQueries.analytics },

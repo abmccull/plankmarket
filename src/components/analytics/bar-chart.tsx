@@ -16,13 +16,14 @@ interface BarChartProps {
   color?: string;
   height?: number;
   layout?: "horizontal" | "vertical";
+  valueDomain?: [number, number];
   formatValue?: (value: number) => string;
   onBarClick?: (name: string) => void;
 }
 
 const COLORS = [
-  "hsl(var(--primary))",
-  "hsl(var(--secondary))",
+  "var(--primary)",
+  "var(--secondary)",
   "hsl(142 76% 36%)",   // emerald
   "hsl(38 92% 50%)",    // amber
   "hsl(217 91% 60%)",   // blue
@@ -35,6 +36,7 @@ export function BarChart({
   color,
   height = 300,
   layout = "vertical",
+  valueDomain,
   formatValue = (v) => v.toLocaleString(),
   onBarClick,
 }: BarChartProps) {
@@ -54,7 +56,7 @@ export function BarChart({
       <ResponsiveContainer width="100%" height={height}>
         <RechartsBarChart data={data} layout="vertical" margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
-          <XAxis type="number" tickFormatter={formatValue} tick={{ fontSize: 12 }} />
+          <XAxis type="number" domain={valueDomain} tickFormatter={formatValue} tick={{ fontSize: 12 }} />
           <YAxis
             type="category"
             dataKey="name"
@@ -64,8 +66,8 @@ export function BarChart({
           <Tooltip
             formatter={(value) => [formatValue(Number(value ?? 0)), "Value"]}
             contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
+              backgroundColor: "var(--card)",
+              border: "1px solid var(--border)",
               borderRadius: "8px",
               fontSize: "12px",
             }}
@@ -90,12 +92,12 @@ export function BarChart({
       <RechartsBarChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
         <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-        <YAxis tickFormatter={formatValue} tick={{ fontSize: 12 }} width={60} />
+        <YAxis domain={valueDomain} tickFormatter={formatValue} tick={{ fontSize: 12 }} width={60} />
         <Tooltip
           formatter={(value) => [formatValue(Number(value ?? 0)), "Value"]}
           contentStyle={{
-            backgroundColor: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
             borderRadius: "8px",
             fontSize: "12px",
           }}

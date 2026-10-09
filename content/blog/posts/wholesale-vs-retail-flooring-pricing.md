@@ -14,8 +14,6 @@ description: >-
   clarifies where value exists and where you're overpaying.
 ---
 
-# Wholesale vs Retail Flooring Pricing: What's the Real Difference?
-
 The flooring supply chain has multiple pricing tiers. Understanding them clarifies where value exists and where you're overpaying.
 
 This is a straightforward breakdown of how flooring pricing works from manufacturer to end user.

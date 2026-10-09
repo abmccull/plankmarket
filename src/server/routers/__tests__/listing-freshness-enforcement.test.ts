@@ -1,18 +1,39 @@
 // Origin persistence has dedicated ownership tests; retain the real snapshot validator here.
 vi.mock("@/server/services/warehouse-origin", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/server/services/warehouse-origin")>(),
+  ...(await importOriginal<
+    typeof import("@/server/services/warehouse-origin")
+  >()),
   loadWarehouseOrigin: vi.fn(async () => ({
-    identity: "fixture-origin", revision: "fixture-revision",
+    identity: "fixture-origin",
+    revision: "fixture-revision",
     location: {
-      address: {addressLine1: "100 Seller Way", city: "Denver", state: "CO", postalCode: "80202", country: "US"},
-      contact: {companyName: "Seller Co", contactName: "Seller Rep", phoneNumber: "3035551212", email: "seller@example.com"},
+      address: {
+        addressLine1: "100 Seller Way",
+        city: "Denver",
+        state: "CO",
+        postalCode: "80202",
+        country: "US",
+      },
+      contact: {
+        companyName: "Seller Co",
+        contactName: "Seller Rep",
+        phoneNumber: "3035551212",
+        email: "seller@example.com",
+      },
     },
-    pickupStart: "08:00", pickupEnd: "17:00", hasLoadingDock: true, hasForklift: false,
-    latitude: null, longitude: null, coordinateSource: "zip_centroid",
+    pickupStart: "08:00",
+    pickupEnd: "17:00",
+    hasLoadingDock: true,
+    hasForklift: false,
+    latitude: null,
+    longitude: null,
+    coordinateSource: "zip_centroid",
   })),
 }));
 vi.mock("@/server/services/checkout-idempotency", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/server/services/checkout-idempotency")>(),
+  ...(await importOriginal<
+    typeof import("@/server/services/checkout-idempotency")
+  >()),
   findCheckoutReplay: vi.fn(async () => undefined),
 }));
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -361,8 +382,9 @@ describe("listing freshness enforcement on buyer write paths", () => {
       }),
     };
     const db = {
-      transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) =>
-        callback(tx),
+      transaction: vi.fn(
+        async (callback: (value: typeof tx) => Promise<unknown>) =>
+          callback(tx),
       ),
     };
 
@@ -427,8 +449,9 @@ describe("listing freshness enforcement on buyer write paths", () => {
         })),
     };
     const db = {
-      transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) =>
-        callback(tx),
+      transaction: vi.fn(
+        async (callback: (value: typeof tx) => Promise<unknown>) =>
+          callback(tx),
       ),
     };
 
@@ -489,8 +512,8 @@ describe("listing freshness enforcement on buyer write paths", () => {
       transitDays: 3,
       quoteExpiresAt: "2099-07-30T20:00:00.000Z",
       originIdentity: "fixture-origin",
-    originRevision: "fixture-revision",
-    originLocation: {
+      originRevision: "fixture-revision",
+      originLocation: {
         address: {
           addressLine1: "100 Seller Way",
           city: "Denver",
@@ -533,7 +556,9 @@ describe("listing freshness enforcement on buyer write paths", () => {
       },
     });
 
-    redisGetMock.mockResolvedValueOnce(quoteJson).mockResolvedValueOnce(snapshotJson);
+    redisGetMock
+      .mockResolvedValueOnce(quoteJson)
+      .mockResolvedValueOnce(snapshotJson);
     redisEvalMock.mockResolvedValueOnce(1);
 
     const offer = {
@@ -583,7 +608,30 @@ describe("listing freshness enforcement on buyer write paths", () => {
             }),
           }),
         }))
-        .mockImplementationOnce(() => createSellerReadinessSelect()),
+        .mockImplementationOnce(() => createSellerReadinessSelect())
+        // The real resale resolver locks the buyer identity and state rule.
+        // A business-use purchase has no certificate lookup or exemption.
+        .mockImplementationOnce(() => ({
+          from: () => ({
+            where: () => ({
+              for: vi.fn().mockResolvedValue([
+                {
+                  id: BUYER_ID,
+                  businessName: null,
+                  businessAddress: null,
+                  businessCity: null,
+                  businessState: null,
+                  businessZip: null,
+                },
+              ]),
+            }),
+          }),
+        }))
+        .mockImplementationOnce(() => ({
+          from: () => ({
+            where: () => ({ for: vi.fn().mockResolvedValue([]) }),
+          }),
+        })),
       insert: vi.fn().mockImplementation((table) => {
         if (table === undefined) {
           throw new Error("Unexpected insert target");
@@ -608,8 +656,9 @@ describe("listing freshness enforcement on buyer write paths", () => {
     };
 
     const db = {
-      transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) =>
-        callback(tx),
+      transaction: vi.fn(
+        async (callback: (value: typeof tx) => Promise<unknown>) =>
+          callback(tx),
       ),
     };
 
@@ -653,7 +702,10 @@ describe("listing freshness enforcement on buyer write paths", () => {
       sellerFreightContribution: 0,
       carrierRate: 400,
     });
-    expect((insertedOrderValues?.shippingBookingSnapshot as { quoteId?: number })?.quoteId).toBe(123);
+    expect(
+      (insertedOrderValues?.shippingBookingSnapshot as { quoteId?: number })
+        ?.quoteId,
+    ).toBe(123);
   });
 
   it("rejects buy-now checkout when locked listing freight terms drift from the quote", async () => {

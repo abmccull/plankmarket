@@ -1,3 +1,4 @@
+import { listingPublishedAnalytics, paymentCompletedAnalytics } from "./marketplace-funnel";
 import {
   instantSavedSearchAlertPage,
   instantSavedSearchAlerts,
@@ -5,6 +6,10 @@ import {
   savedSearchAlerts,
 } from "./saved-search-alerts";
 import { listingExpiryWarning } from "./listing-expiry-warning";
+import {
+  listingPublicationRecovery,
+  listingPublicationRecoveryPage,
+} from "./listing-publication-recovery";
 import { abandonedCheckout } from "./abandoned-checkout";
 import { escrowAutoRelease } from "./escrow-auto-release";
 import { shipmentDispatch } from "./shipment-dispatch";
@@ -27,7 +32,10 @@ import {
   followupReminderScheduler,
 } from "./followup-reminders";
 import { onboardingDrip } from "./onboarding-drip";
-import { firstListingCongrats, firstPurchaseCongrats } from "./milestone-emails";
+import {
+  firstListingCongrats,
+  firstPurchaseCongrats,
+} from "./milestone-emails";
 import { offerAccepted } from "./offer-accepted";
 import { offerResponseDeadline } from "./offer-response-deadline";
 import {
@@ -44,11 +52,15 @@ import {
 } from "./automatic-listing-markdown";
 
 export const functions = [
+  listingPublishedAnalytics,
+  paymentCompletedAnalytics,
   instantSavedSearchAlerts,
   instantSavedSearchAlertPage,
   savedSearchDigestScheduler,
   savedSearchAlerts,
   listingExpiryWarning,
+  listingPublicationRecovery,
+  listingPublicationRecoveryPage,
   abandonedCheckout,
   escrowAutoRelease,
   shipmentDispatch,

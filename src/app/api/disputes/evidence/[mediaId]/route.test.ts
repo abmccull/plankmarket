@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MFA_REQUIRED_MESSAGE } from "@/lib/auth/auth-assurance";
 
 const MEDIA_ID = "66666666-6666-4666-8666-666666666666";
 const BUYER_ID = "11111111-1111-4111-8111-111111111111";
@@ -6,6 +7,7 @@ const SELLER_ID = "22222222-2222-4222-8222-222222222222";
 
 const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
+  getAssurance: vi.fn(),
   findViewer: vi.fn(),
   findEvidence: vi.fn(),
 }));
@@ -14,6 +16,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: {
       getUser: mocks.getUser,
+      mfa: { getAuthenticatorAssuranceLevel: mocks.getAssurance },
     },
   })),
 }));
@@ -36,8 +39,9 @@ const originalFetch = global.fetch;
 
 describe("GET /api/disputes/evidence/[mediaId]", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    global.fetch = originalFetch;
+    vi.resetAllMocks();
+    global.fetch = vi.fn().mockResolvedValue(new Response("synthetic evidence")) as typeof fetch;
+    mocks.getAssurance.mockResolvedValue({ data: { currentLevel: "aal2" }, error: null });
 
     mocks.getUser.mockResolvedValue({
       data: {
@@ -69,6 +73,48 @@ describe("GET /api/disputes/evidence/[mediaId]", () => {
         },
       },
     });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it.each(["aal1", "missing", "error", "rejected"])("blocks admin evidence access when assurance is %s", async (state) => {
+    mocks.findViewer.mockResolvedValue({ id: "admin-test", role: "admin", active: true });
+    if (state === "rejected") mocks.getAssurance.mockRejectedValueOnce(new Error("Auth unavailable"));
+    else mocks.getAssurance.mockResolvedValueOnce({ data: state === "missing" ? null : { currentLevel: state === "aal1" ? "aal1" : "aal2" }, error: state === "error" ? new Error("Auth unavailable") : null });
+    const response = await GET(new Request("http://localhost/api/disputes/evidence/test"), { params: Promise.resolve({ mediaId: MEDIA_ID }) });
+    expect(response.status).toBe(state === "error" || state === "rejected" ? 503 : 403);
+    if (state === "aal1") expect(await response.json()).toEqual({ error: MFA_REQUIRED_MESSAGE });
+    expect(mocks.getAssurance).toHaveBeenCalledTimes(1);
+    expect(mocks.findEvidence).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["buyer", "seller", "admin"])("allows authorized %s evidence access with the appropriate assurance", async (role) => {
+    mocks.findViewer.mockResolvedValue({ id: role === "buyer" ? BUYER_ID : role === "seller" ? SELLER_ID : "admin-test", role, active: true });
+    if (role !== "admin") mocks.getAssurance.mockRejectedValueOnce(new Error("Participant access must not require MFA"));
+    const response = await GET(new Request("http://localhost/api/disputes/evidence/test"), { params: Promise.resolve({ mediaId: MEDIA_ID }) });
+    expect(response.status).toBe(200);
+    expect(mocks.getAssurance).toHaveBeenCalledTimes(role === "admin" ? 1 : 0);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("cache-control")).toContain("private, no-store");
+  });
+
+  it.each(["buyer", "seller"])("rejects unrelated %s evidence access", async (role) => {
+    mocks.findViewer.mockResolvedValue({ id: "unrelated-user", role, active: true });
+    const response = await GET(new Request("http://localhost/api/disputes/evidence/test"), { params: Promise.resolve({ mediaId: MEDIA_ID }) });
+    expect(response.status).toBe(403);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mocks.getAssurance).not.toHaveBeenCalled();
+  });
+
+  it("rejects inactive accounts before any evidence lookup", async () => {
+    mocks.findViewer.mockResolvedValue({ id: "admin-test", role: "admin", active: false });
+    const response = await GET(new Request("http://localhost/api/disputes/evidence/test"), { params: Promise.resolve({ mediaId: MEDIA_ID }) });
+    expect(response.status).toBe(401);
+    expect(mocks.findEvidence).not.toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("streams evidence through the protected proxy without following redirects", async () => {

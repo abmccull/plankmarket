@@ -2,12 +2,12 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { trpc } from "@/lib/trpc/client";
 import { celebrateMilestone } from "@/lib/utils/celebrate";
-import { VerificationPendingBanner } from "./verification-pending-banner";
 
 interface VerificationGateProps {
   children: React.ReactNode;
@@ -66,14 +66,15 @@ function DashboardAccessState({
 
 export function VerificationGate({ children }: VerificationGateProps) {
   const { user, isLoading, setUser } = useAuthStore();
+  const pathname = usePathname();
 
-  const { data: sessionData } = trpc.auth.getSession.useQuery(undefined, {
+  const { data: sessionData, isError: reviewReadFailed } = trpc.auth.getSession.useQuery(undefined, {
     refetchInterval: user?.verificationStatus === "pending" ? 5000 : false,
     enabled: user?.verificationStatus === "pending",
   });
 
   useEffect(() => {
-    if (!sessionData?.user || !user) return;
+    if (reviewReadFailed || !sessionData?.user || !user || sessionData.user.id !== user.id || useAuthStore.getState().user?.id !== user.id) return;
     if (sessionData.user.verificationStatus === user.verificationStatus) return;
 
     if (
@@ -86,7 +87,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
       );
     }
     setUser(sessionData.user);
-  }, [sessionData, user, setUser]);
+  }, [sessionData, user, setUser, reviewReadFailed]);
 
   if (isLoading) {
     return (
@@ -110,8 +111,12 @@ export function VerificationGate({ children }: VerificationGateProps) {
     return <>{children}</>;
   }
 
-  const ctaHref =
-    user.role === "seller" ? "/seller/verification" : "/buyer/settings";
+  const ctaHref = user.role === "seller" ? "/seller/verification" : "/buyer/verification";
+  if (pathname === ctaHref || pathname.startsWith(`${ctaHref}/`)) return <>{children}</>;
+  // Supplemental selling setup owns its prerequisite copy; backend gates still apply.
+  if (pathname === "/settings/selling") return <>{children}</>;
+  // The listing form owns its draft-saving verification action and current readiness.
+  if (user.role === "seller" && pathname === "/seller/listings/new") return <>{children}</>;
   const ctaText =
     user.role === "seller"
       ? "Submit Seller Verification"
@@ -120,18 +125,18 @@ export function VerificationGate({ children }: VerificationGateProps) {
   return (
     <>
       {user.verificationStatus === "pending" ? (
-        <VerificationPendingBanner />
+        <div role={reviewReadFailed ? "alert" : "status"} className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border p-4 text-sm"><p>{reviewReadFailed ? "We couldn’t refresh your business review status. Open verification to check again." : "Your business verification is under review."}</p><Button asChild variant="outline"><Link href={ctaHref}>View review status</Link></Button></div>
       ) : (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>
               {user.verificationStatus === "rejected"
-                ? "Verification Rejected"
+                ? "A verification detail needs updating"
                 : "Verification Required for Transactions"}
             </CardTitle>
             <CardDescription>
               {user.role === "seller"
-                ? "You can explore the platform now. Verification approval is required before creating listings."
+                ? "Save listing details and photos privately to your account before approval. Business approval is required to publish."
                 : "You can browse and message now. Verification approval is required before checkout."}
             </CardDescription>
           </CardHeader>

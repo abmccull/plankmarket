@@ -2,15 +2,17 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import Image from "next/image";
+import { withPurchaseIntent, type PurchaseIntent } from "@/lib/marketplace/purchase-intent";
+import { ListingImage as Image } from "@/components/listings/listing-image";
 import { trpc } from "@/lib/trpc/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatSqFt } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { ArrowRight, ChevronLeft, ChevronRight, Package } from "lucide-react";
+import { SellerPaymentSetup } from "@/components/listings/seller-payment-setup";
 
-export function PremiumHeroBanner() {
+export function PremiumHeroBanner({ purchaseIntent }: { purchaseIntent?: PurchaseIntent } = {}) {
   const { data: premiumListings } = trpc.promotion.getPremiumHero.useQuery();
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -85,7 +87,7 @@ export function PremiumHeroBanner() {
                 by {listing.seller.displayName}
               </p>
             )}
-            <Link href={`/listings/${listing.slug || listing.id}`}>
+            <Link href={withPurchaseIntent(`/listings/${listing.slug || listing.id}`, purchaseIntent)}>
               <Button
                 size="lg"
                 className="bg-white text-primary hover:bg-white/90"
@@ -94,6 +96,7 @@ export function PremiumHeroBanner() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
+            <SellerPaymentSetup status={listing.seller?.paymentSetupStatus} className="mt-4 text-white" />
           </div>
         </div>
 

@@ -35,6 +35,7 @@ export function celebrateMilestone(title: string, description: string) {
     .then((confettiModule) => {
       const confetti = confettiModule.default;
       confetti({
+        disableForReducedMotion: true,
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 },

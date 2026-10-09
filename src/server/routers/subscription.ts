@@ -1,16 +1,16 @@
-import { createTRPCRouter, protectedProcedure, strictProtectedProcedure } from "../trpc";
+import {
+  createTRPCRouter,
+  protectedProcedure,
+  strictProtectedProcedure,
+} from "../trpc";
 import { users, promotionCredits } from "../db/schema";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { env } from "@/env";
 import { stripe } from "@/lib/stripe";
 
-/** Stripe Price IDs for Pro subscription (not secrets — publishable IDs). */
-const STRIPE_PRO_PRICES = {
-  monthly: "price_1T98IpRFBoUcNSX5RayPGieP",
-  annual: "price_1T98IqRFBoUcNSX5nVfBQCBW",
-} as const;
+import { createProCheckoutSession } from "../services/subscription-checkout";
 
 export const subscriptionRouter = createTRPCRouter({
   /**
@@ -24,6 +24,7 @@ export const subscriptionRouter = createTRPCRouter({
         proStartedAt: true,
         proExpiresAt: true,
         stripeSubscriptionId: true,
+        stripeCustomerId: true,
       },
     });
 
@@ -34,7 +35,7 @@ export const subscriptionRouter = createTRPCRouter({
       })
       .from(promotionCredits)
       .where(
-        sql`${promotionCredits.userId} = ${ctx.user.id} AND ${promotionCredits.expiresAt} > now()`
+        sql`${promotionCredits.userId} = ${ctx.user.id} AND ${promotionCredits.expiresAt} > now()`,
       );
 
     return {
@@ -42,6 +43,7 @@ export const subscriptionRouter = createTRPCRouter({
       proStartedAt: user?.proStartedAt ?? null,
       proExpiresAt: user?.proExpiresAt ?? null,
       stripeSubscriptionId: user?.stripeSubscriptionId ?? null,
+      hasBillingAccount: Boolean(user?.stripeCustomerId),
       availableCredit: Number(creditResult?.availableCredit ?? 0),
     };
   }),
@@ -53,72 +55,14 @@ export const subscriptionRouter = createTRPCRouter({
     .input(
       z.object({
         interval: z.enum(["monthly", "annual"]),
-      })
+      }),
     )
-    .mutation(async ({ ctx, input }) => {
-      // Block if already subscribed
-      if (ctx.user.proStatus === "active") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Already subscribed",
-        });
-      }
-
-      // Resolve the correct price ID
-      const priceId = STRIPE_PRO_PRICES[input.interval];
-
-      // Ensure user has a Stripe customer ID (atomic to prevent duplicates)
-      let stripeCustomerId = ctx.user.stripeCustomerId;
-
-      if (!stripeCustomerId) {
-        const customer = await stripe.customers.create({
-          email: ctx.user.email,
-          metadata: { userId: ctx.user.id },
-        });
-
-        // Atomically set customer ID only if still null (prevents race condition)
-        const [updated] = await ctx.db
-          .update(users)
-          .set({
-            stripeCustomerId: customer.id,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(users.id, ctx.user.id),
-              isNull(users.stripeCustomerId)
-            )
-          )
-          .returning({ stripeCustomerId: users.stripeCustomerId });
-
-        if (updated) {
-          stripeCustomerId = customer.id;
-        } else {
-          // Another request already set it — re-read the winning value
-          const freshUser = await ctx.db.query.users.findFirst({
-            where: eq(users.id, ctx.user.id),
-            columns: { stripeCustomerId: true },
-          });
-          stripeCustomerId = freshUser?.stripeCustomerId ?? customer.id;
-          // Clean up the orphaned Stripe customer
-          await stripe.customers.del(customer.id).catch(() => {});
-        }
-      }
-
-      // Create checkout session
-      const session = await stripe.checkout.sessions.create({
-        mode: "subscription",
-        customer: stripeCustomerId,
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${env.NEXT_PUBLIC_APP_URL}/pro/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${env.NEXT_PUBLIC_APP_URL}/pro`,
-        subscription_data: {
-          metadata: { userId: ctx.user.id },
-        },
-      });
-
-      return { url: session.url };
-    }),
+    .mutation(async ({ ctx, input }) =>
+      createProCheckoutSession(ctx.db, ctx.user.id, input.interval, {
+        provider: stripe,
+        appUrl: env.NEXT_PUBLIC_APP_URL,
+      }),
+    ),
 
   /**
    * Create a Stripe Billing Portal session for managing the subscription.

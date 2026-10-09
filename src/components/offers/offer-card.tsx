@@ -26,8 +26,8 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
   const currentTotal = currentPrice * offer.quantitySqFt;
 
   return (
-    <Link href={`/offers/${offer.id}`}>
-      <Card className="p-4 hover:bg-muted/30 transition-colors relative">
+    <Link href={`/offers/${offer.id}`} className="block min-w-0">
+      <Card className="relative p-[min(1rem,16px)] transition-colors hover:bg-muted/30">
         {isYourTurn && (
           <div className="absolute -top-2 -right-2">
             <Badge className="bg-primary text-primary-foreground shadow-md">
@@ -39,10 +39,12 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
 
         <div className="space-y-3">
           {/* Header */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold truncate">{offer.listing.title}</h3>
-              <p className="text-sm text-muted-foreground">
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between">
+            <div className="min-w-0 w-full sm:flex-1">
+              <h2 className="font-semibold break-words [overflow-wrap:anywhere]">
+                {offer.listing.title}
+              </h2>
+              <p className="text-sm text-muted-foreground break-words [overflow-wrap:anywhere]">
                 {userRole === "buyer" ? "Seller" : "Buyer"}: {otherPartyName}
               </p>
             </div>
@@ -50,21 +52,21 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
           </div>
 
           {/* Price info */}
-          <div className="flex items-center justify-between text-sm">
+          <div className="grid grid-cols-1 gap-3 text-sm [overflow-wrap:anywhere] min-[480px]:grid-cols-3">
             <div>
               <p className="text-muted-foreground">Current price</p>
               <p className="font-semibold tabular-nums">
                 {formatCurrency(currentPrice)}/sq ft
               </p>
             </div>
-            <div className="text-right">
+            <div className="min-w-0 min-[480px]:text-right">
               <p className="text-muted-foreground">Quantity</p>
               <p className="font-medium tabular-nums">
                 {formatSqFt(offer.quantitySqFt)}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-muted-foreground">Total</p>
+            <div className="min-w-0 min-[480px]:text-right">
+              <p className="text-muted-foreground">Merchandise subtotal</p>
               <p className="font-semibold tabular-nums">
                 {formatCurrency(currentTotal)}
               </p>
@@ -72,8 +74,20 @@ export function OfferCard({ offer, currentUserId, userRole }: OfferCardProps) {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs text-muted-foreground">
             <span>Round {offer.currentRound}</span>
+            {offer.expiresAt &&
+              (offer.status === "pending" || offer.status === "countered") && (
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Response deadline:{" "}
+                  <time dateTime={new Date(offer.expiresAt).toISOString()}>
+                    {new Date(offer.expiresAt).toLocaleString("en-US", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  </time>
+                </span>
+              )}
             <div className="flex items-center gap-2">
               <span>{formatRelativeTime(offer.updatedAt)}</span>
               <ArrowRight className="h-3 w-3" />

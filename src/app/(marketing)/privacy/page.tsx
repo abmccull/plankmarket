@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -44,7 +43,7 @@ export default function PrivacyPolicyPage() {
       content: (
         <div className="space-y-4">
           <div>
-            <h4 className="font-semibold text-sm mb-2">Information You Provide</h4>
+            <h3 className="font-semibold text-sm mb-2">Information You Provide</h3>
             <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Registration info (name, email, business information, phone number)</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Verification data you submit (EIN/tax ID, business website, business address details, and document URLs)</li>
@@ -55,7 +54,7 @@ export default function PrivacyPolicyPage() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold text-sm mb-2">Automatically Collected Information</h4>
+            <h3 className="font-semibold text-sm mb-2">Automatically Collected Information</h3>
             <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Device information (IP address, browser type, operating system)</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Usage data (pages viewed, time spent, click patterns)</li>
@@ -64,7 +63,7 @@ export default function PrivacyPolicyPage() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold text-sm mb-2">Payment Information</h4>
+            <h3 className="font-semibold text-sm mb-2">Payment Information</h3>
             <p className="text-sm text-muted-foreground">
               Payment information is processed by our third-party payment processor. We do not store complete credit card numbers or sensitive payment data on our servers. We may store limited payment information such as the last four digits and expiration date for reference purposes.
             </p>
@@ -101,13 +100,13 @@ export default function PrivacyPolicyPage() {
       content: (
         <div className="space-y-4">
           <div>
-            <h4 className="font-semibold text-sm mb-2">With Other Users</h4>
+            <h3 className="font-semibold text-sm mb-2">With Other Users</h3>
             <p className="text-sm text-muted-foreground">
               When you create a listing or make a purchase, certain information (such as your business name and location) may be visible to other users to facilitate transactions.
             </p>
           </div>
           <div>
-            <h4 className="font-semibold text-sm mb-2">With Service Providers</h4>
+            <h3 className="font-semibold text-sm mb-2">With Service Providers</h3>
             <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Payment processing and fraud detection</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Identity and business verification support services</li>
@@ -118,7 +117,7 @@ export default function PrivacyPolicyPage() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold text-sm mb-2">For Legal Reasons</h4>
+            <h3 className="font-semibold text-sm mb-2">For Legal Reasons</h3>
             <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Comply with legal obligations or respond to lawful requests</li>
               <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Protect the rights, property, or safety of PlankMarket or others</li>
@@ -127,7 +126,7 @@ export default function PrivacyPolicyPage() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold text-sm mb-2">Business Transfers</h4>
+            <h3 className="font-semibold text-sm mb-2">Business Transfers</h3>
             <p className="text-sm text-muted-foreground">
               In the event of a merger, acquisition, or sale of assets, your information may be transferred to the acquiring entity. We will notify you of any such change.
             </p>
@@ -186,7 +185,7 @@ export default function PrivacyPolicyPage() {
             },
           ].map((item) => (
             <div key={item.subtitle}>
-              <h4 className="font-semibold text-sm mb-1">{item.subtitle}</h4>
+              <h3 className="font-semibold text-sm mb-1">{item.subtitle}</h3>
               <p className="text-sm text-muted-foreground">{item.text}</p>
             </div>
           ))}
@@ -316,11 +315,11 @@ export default function PrivacyPolicyPage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-[40px] sm:py-16">
         <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
-        <div className="container mx-auto px-4 relative z-10">
+        <div className="container mx-auto px-[16px] relative z-10">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Legal
@@ -339,21 +338,40 @@ export default function PrivacyPolicyPage() {
       </section>
 
       {/* Sections */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
+      <section className="py-10 sm:py-16">
+        <div className="container mx-auto px-[16px]">
           <div className="max-w-3xl mx-auto space-y-4">
+            <details className="mb-6 border-y border-border py-2">
+              <summary id="privacy-contents" className="min-h-11 cursor-pointer scroll-mt-28 py-3 font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                On this page
+              </summary>
+              <nav aria-label="Privacy policy sections">
+                <ol className="grid gap-x-4 pb-3 sm:grid-cols-2">
+                  {sections.map((section) => (
+                    <li key={section.number} className="min-w-0">
+                      <a href={"#privacy-section-" + section.number} className="block min-h-11 py-3 text-sm text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                        {section.number}. {section.title}
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            </details>
             {sections.map((section) => (
               <Card key={section.number}>
-                <CardHeader className="flex-row items-start gap-4 pb-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
+                <CardHeader className="flex-row items-start gap-[12px] space-y-0 p-[16px] pb-[12px]">
+                  <div aria-hidden="true" className="hidden h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-primary/10 sm:flex">
                     <section.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <CardTitle className="text-lg font-display pt-1.5">
+                  <h2 id={"privacy-section-" + section.number} tabIndex={-1} className="min-w-0 scroll-mt-28 font-display text-lg leading-snug">
                     {section.number}. {section.title}
-                  </CardTitle>
+                  </h2>
                 </CardHeader>
-                <CardContent className="pl-[4.5rem]">
+                <CardContent className="px-[16px] pb-[16px] pt-0">
                   {section.content}
+                  <a href="#privacy-contents" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                    Return to contents
+                  </a>
                 </CardContent>
               </Card>
             ))}
@@ -363,7 +381,7 @@ export default function PrivacyPolicyPage() {
 
       {/* CTA */}
       <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-[16px]">
           <div className="max-w-3xl mx-auto text-center">
             <Separator className="mb-8" />
             <div className="flex items-center justify-center gap-2 mb-4">
@@ -374,16 +392,16 @@ export default function PrivacyPolicyPage() {
               Please also review our other policies that govern your use of PlankMarket.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/terms">
-                <Button variant="outline">
+              <Button asChild variant="outline" className="h-auto min-h-11 whitespace-normal">
+                <Link href="/terms">
                   Terms of Service <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/contact">
-                <Button variant="outline">
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-auto min-h-11 whitespace-normal">
+                <Link href="/contact">
                   Contact Us <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </div>
         </div>

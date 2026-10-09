@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildOfferResponseDeadlineEvent } from "@/lib/offer-lifecycle";
 
-type CapturedHandler = (
-  input: Record<string, unknown>,
-) => Promise<unknown>;
+type CapturedHandler = (input: Record<string, unknown>) => Promise<unknown>;
 
 const mocks = vi.hoisted(() => ({
   handler: null as CapturedHandler | null,
@@ -58,6 +56,8 @@ function createOffer(overrides: Record<string, unknown> = {}) {
     expiresAt: new Date("2026-07-31T18:00:00.000Z"),
     listing: {
       id: LISTING_ID,
+      sellerId: SELLER_ID,
+      status: "active",
       title: "White Oak Closeout",
       askPricePerSqFt: 2.5,
     },
@@ -67,8 +67,8 @@ function createOffer(overrides: Record<string, unknown> = {}) {
 
 function createStep() {
   return {
-    run: vi.fn(
-      async (_name: string, callback: () => Promise<unknown>) => callback(),
+    run: vi.fn(async (_name: string, callback: () => Promise<unknown>) =>
+      callback(),
     ),
     sendEvent: vi.fn().mockResolvedValue(undefined),
   };
@@ -77,10 +77,12 @@ function createStep() {
 function createTransaction(
   returningValue: unknown[],
   currentOffer: Record<string, unknown> | null = null,
+  recoveredAction?: "accepted" | "countered",
 ) {
   let updatedValues: Record<string, unknown> | undefined;
   const insertedValues: Record<string, unknown>[] = [];
   const tx = {
+    execute: vi.fn().mockResolvedValue([{ id: SELLER_ID }]),
     update: vi.fn(() => ({
       set: vi.fn((values: Record<string, unknown>) => {
         updatedValues = values;
@@ -99,14 +101,38 @@ function createTransaction(
     })),
     query: {
       offers: {
-        findFirst: vi.fn().mockResolvedValue(currentOffer),
+        findFirst: vi.fn(
+          async () => currentOffer ?? (await mocks.db.query.offers.findFirst()),
+        ),
+      },
+      agentConfigs: { findFirst: mocks.db.query.agentConfigs.findFirst },
+      users: { findFirst: mocks.db.query.users.findFirst },
+      agentActions: {
+        findFirst: vi.fn().mockResolvedValue(
+          recoveredAction
+            ? {
+                details: {
+                  result: {
+                    action: recoveredAction,
+                    expiresAt: EXPECTED_DEADLINE.toISOString(),
+                    offerId: OFFER_ID,
+                    buyerId: BUYER_ID,
+                    sellerId: SELLER_ID,
+                    listingId: LISTING_ID,
+                    listingTitle: "White Oak Closeout",
+                    offerPrice: 2.5,
+                    quantity: 400,
+                  },
+                },
+              }
+            : null,
+        ),
       },
     },
   };
 
   mocks.db.transaction.mockImplementation(
-    async (callback: (value: typeof tx) => Promise<unknown>) =>
-      callback(tx),
+    async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx),
   );
 
   return {
@@ -123,6 +149,9 @@ describe("agent offer lifecycle", () => {
     vi.setSystemTime(NOW);
     mocks.isPro.mockReturnValue(true);
     mocks.db.query.users.findFirst.mockResolvedValue({
+      active: true,
+      role: "seller",
+      verificationStatus: "verified",
       proStatus: "active",
       proExpiresAt: new Date("2026-12-31T00:00:00.000Z"),
     });
@@ -169,24 +198,21 @@ describe("agent offer lifecycle", () => {
         }),
       ]),
     );
-    expect(step.sendEvent).toHaveBeenCalledWith(
-      "emit-offer-accepted",
-      {
-        id: `offer-accepted:${OFFER_ID}`,
-        name: "offer/accepted",
-        data: {
-          offerId: OFFER_ID,
-          buyerId: BUYER_ID,
-          sellerId: SELLER_ID,
-          listingId: LISTING_ID,
-          listingTitle: "White Oak Closeout",
-          acceptedPrice: "$2.50/sq ft",
-          quantity: "400 sq ft",
-          estimatedTotal: "$1000.00",
-          expiresAt: EXPECTED_DEADLINE.toISOString(),
-        },
+    expect(step.sendEvent).toHaveBeenCalledWith("emit-offer-accepted", {
+      id: `offer-accepted:${OFFER_ID}`,
+      name: "offer/accepted",
+      data: {
+        offerId: OFFER_ID,
+        buyerId: BUYER_ID,
+        sellerId: SELLER_ID,
+        listingId: LISTING_ID,
+        listingTitle: "White Oak Closeout",
+        acceptedPrice: "$2.50/sq ft",
+        quantity: "400 sq ft",
+        estimatedTotal: "$1000.00",
+        expiresAt: EXPECTED_DEADLINE.toISOString(),
       },
-    );
+    });
   });
 
   it("auto-countering starts and schedules a fresh 48-hour response window", async () => {
@@ -195,6 +221,8 @@ describe("agent offer lifecycle", () => {
         offerPricePerSqFt: 2.7,
         listing: {
           id: LISTING_ID,
+          sellerId: SELLER_ID,
+          status: "active",
           title: "White Oak Closeout",
           askPricePerSqFt: 3,
         },
@@ -277,10 +305,14 @@ describe("agent offer lifecycle", () => {
       offerCounterMessage: null,
       offerRejectMessage: null,
     });
-    const transaction = createTransaction([], {
-      status: "accepted",
-      expiresAt: EXPECTED_DEADLINE,
-    });
+    const transaction = createTransaction(
+      [],
+      {
+        status: "accepted",
+        expiresAt: EXPECTED_DEADLINE,
+      },
+      "accepted",
+    );
     const step = createStep();
 
     await mocks.handler!({
@@ -308,6 +340,8 @@ describe("agent offer lifecycle", () => {
         offerPricePerSqFt: 2.7,
         listing: {
           id: LISTING_ID,
+          sellerId: SELLER_ID,
+          status: "active",
           title: "White Oak Closeout",
           askPricePerSqFt: 3,
         },
@@ -321,12 +355,16 @@ describe("agent offer lifecycle", () => {
       offerCounterMessage: null,
       offerRejectMessage: null,
     });
-    const transaction = createTransaction([], {
-      status: "countered",
-      lastActorId: SELLER_ID,
-      currentRound: 2,
-      expiresAt: EXPECTED_DEADLINE,
-    });
+    const transaction = createTransaction(
+      [],
+      {
+        status: "countered",
+        lastActorId: SELLER_ID,
+        currentRound: 2,
+        expiresAt: EXPECTED_DEADLINE,
+      },
+      "countered",
+    );
     const step = createStep();
 
     await mocks.handler!({

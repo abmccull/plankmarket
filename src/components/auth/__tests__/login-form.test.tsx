@@ -1,6 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { trpc } from "@/lib/trpc/client";
@@ -24,6 +23,7 @@ vi.mock("@/lib/supabase/client", () => ({
 vi.mock("@/lib/stores/auth-store", () => ({
   useAuthStore: Object.assign(vi.fn(), {
     getState: vi.fn(() => ({ setUser: vi.fn() })),
+    subscribe: vi.fn(() => () => {}),
   }),
 }));
 
@@ -68,7 +68,7 @@ describe("LoginPage", () => {
     } as unknown as ReturnType<typeof useSearchParams>);
 
     vi.mocked(trpc.useUtils).mockReturnValue({
-      auth: { getSession: { fetch: mockFetch } },
+      auth: { getSession: { fetch: mockFetch, invalidate: vi.fn() } },
     } as unknown as ReturnType<typeof trpc.useUtils>);
 
     vi.mocked(createClient).mockReturnValue({
@@ -171,7 +171,7 @@ describe("LoginPage", () => {
     mockSignInWithPassword.mockResolvedValue({ error: null });
     mockFetch.mockResolvedValue({
       isAuthenticated: true,
-      user: { id: "u1", role: "buyer", name: "Test Buyer" },
+      user: { id: "u1", role: "buyer", name: "Test Buyer", email: "buyer@example.com" },
     });
 
     render(<LoginPage />);
@@ -197,8 +197,9 @@ describe("LoginPage", () => {
         id: "u1",
         role: "buyer",
         name: "Test Buyer",
+        email: "buyer@example.com",
       });
-      expect(toast.success).toHaveBeenCalledWith("Signed in successfully");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
       expect(mockPush).toHaveBeenCalledWith("/buyer");
       expect(mockRefresh).toHaveBeenCalled();
     });
@@ -231,9 +232,9 @@ describe("LoginPage", () => {
   });
 
   // -----------------------------------------------------------------------
-  // 7. Shows error toast on invalid credentials
+  // 7. Shows a persistent inline error on invalid credentials
   // -----------------------------------------------------------------------
-  it("shows error toast on invalid credentials", async () => {
+  it("shows a persistent inline error on invalid credentials", async () => {
     const user = userEvent.setup();
 
     // Supabase returns a plain object (not an Error instance).
@@ -253,7 +254,7 @@ describe("LoginPage", () => {
     await user.click(submitButton);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong. Please try again.");
     });
 
     expect(mockPush).not.toHaveBeenCalled();

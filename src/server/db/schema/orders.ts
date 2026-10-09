@@ -115,6 +115,7 @@ export const orders = pgTable(
       .$type<TaxJurisdictionEvidence[]>()
       .default([])
       .notNull(),
+    resaleDecision: jsonb("resale_decision").$type<import("@/lib/resale-exemption").ResaleDecision>(),
     taxCalculationEvidence: jsonb("tax_calculation_evidence")
       .$type<TaxCalculationEvidence>(),
     taxCalculatedAt: timestamp("tax_calculated_at", { withTimezone: true }),

@@ -353,6 +353,7 @@ export const sampleRequestRouter = createTRPCRouter({
             message: `A buyer requested a sample for "${listing.title}".`,
             data: {
               type: "sample_request_created",
+              recipientSide: "seller",
               sampleRequestId: created.id,
               listingId: listing.id,
             },
@@ -576,6 +577,7 @@ export const sampleRequestRouter = createTRPCRouter({
             message: notificationMessage,
             data: {
               type: "sample_request_updated",
+              recipientSide: counterpartUserId === request.buyerId ? "buyer" : "seller",
               sampleRequestId: request.id,
               listingId: request.listingId,
               action: input.action,

@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "tmp/**",
+    // Immutable audit artifacts copied for evidence, not application sources.
+    "docs/journey-*/**",
+    "docs/design-review-2026-09-29/excellence-*/provenance/**",
+    "docs/design-review-2026-09-29/excellence-*/artifacts/**",
     "next-env.d.ts",
   ]),
 ]);

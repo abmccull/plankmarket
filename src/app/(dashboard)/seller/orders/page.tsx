@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
+import { useOrderHistoryFilters, OrderHistoryFilter, OrderHistoryPager, OrderHistoryFilteredEmpty } from "@/components/dashboard/order-history-controls";
 import { trpc } from "@/lib/trpc/client";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import {
@@ -12,12 +14,10 @@ import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
 import { Package } from "lucide-react";
 import type { OrderStatus } from "@/types";
 
-export default function SellerOrdersPage() {
+function SellerOrdersContent() {
+  const filters = useOrderHistoryFilters();
   const { data, isLoading, isError, isFetching, refetch } =
-    trpc.order.getSellerOrders.useQuery({
-      page: 1,
-      limit: 50,
-    });
+    trpc.order.getSellerOrders.useQuery(filters.input);
 
   return (
     <div className="space-y-6">
@@ -27,6 +27,9 @@ export default function SellerOrdersPage() {
           Manage orders from your listings
         </p>
       </div>
+
+      <OrderHistoryFilter status={filters.status} onChange={filters.setStatus} />
+      <p className="text-sm text-muted-foreground">Seller proceeds reflect recorded refunds. Open an order for payment and transfer status; this amount does not confirm a bank payout.</p>
 
       {isLoading ? (
         <StatePanelLoading label="Loading seller orders" rows={4} />
@@ -38,6 +41,8 @@ export default function SellerOrdersPage() {
           isRetrying={isFetching}
           secondaryAction={{ label: "View listings", href: "/seller/listings" }}
         />
+      ) : data.items.length === 0 && (filters.status || filters.page > 1) ? (
+        <OrderHistoryFilteredEmpty page={filters.page} status={filters.status} onFirstPage={() => filters.setPage(1)} onClear={() => filters.setStatus("")} />
       ) : data.items.length === 0 ? (
         <StatePanel
           icon={Package}
@@ -62,12 +67,12 @@ export default function SellerOrdersPage() {
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-muted-foreground">
+                    <span className="break-all font-mono text-sm text-muted-foreground">
                       {order.orderNumber}
                     </span>
                     <OrderStatusBadge status={order.status as OrderStatus} />
                   </div>
-                  <h2 className="mt-1 truncate font-medium">
+                  <h2 className="mt-1 line-clamp-2 break-words font-medium">
                     {order.listing.title}
                   </h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -82,7 +87,7 @@ export default function SellerOrdersPage() {
                     {formatCurrency(order.sellerPayout)}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Net payout
+                    Seller proceeds
                   </div>
                   {order.sellerFreightContribution > 0 ? (
                     <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
@@ -96,6 +101,11 @@ export default function SellerOrdersPage() {
           ))}
         </ul>
       )}
+      {!isLoading && !isError && data ? <OrderHistoryPager data={data} isFetching={isFetching} onPage={filters.setPage} /> : null}
     </div>
   );
+}
+
+export default function SellerOrdersPage() {
+  return <Suspense fallback={<StatePanelLoading label="Loading order history" rows={4} />}><SellerOrdersContent /></Suspense>;
 }

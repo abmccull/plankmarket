@@ -24,8 +24,13 @@ export function readAnalyticsConsent(): AnalyticsConsentState | null {
     return null;
   }
 
-  const value = window.localStorage.getItem(ANALYTICS_CONSENT_KEY);
-  return value === "granted" || value === "denied" ? value : null;
+  try {
+    const value = window.localStorage.getItem(ANALYTICS_CONSENT_KEY);
+    return value === "granted" || value === "denied" ? value : null;
+  } catch {
+    // Optional storage cannot prevent access or imply consent to tracking.
+    return null;
+  }
 }
 
 export function writeAnalyticsConsent(value: AnalyticsConsentState): void {

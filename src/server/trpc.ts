@@ -10,6 +10,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { getRedisClient } from "@/lib/redis/client";
 import { checkViolationStatus } from "@/server/services/content-moderation";
 import { type AppRole, resolveRole } from "@/lib/supabase/roles";
+import { canPurchase, getDashboardPath } from "@/lib/auth/roles";
 import {
   getProcedureAssuranceRequirement,
   MFA_REQUIRED_MESSAGE,
@@ -480,6 +481,40 @@ export const strictProtectedProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceStrictRateLimit);
 
+// Draft typing must not consume the stricter submit/upload allowance. This
+// write limiter stays fail-closed and is scoped to the account and procedure.
+let verificationDraftSaveRateLimit: Ratelimit | undefined;
+function getVerificationDraftSaveRateLimit(): Ratelimit {
+  verificationDraftSaveRateLimit ??= new Ratelimit({
+    redis: getRedisClient(),
+    limiter: Ratelimit.slidingWindow(60, "60 s"),
+    prefix: "rl:verification-draft-save",
+  });
+  return verificationDraftSaveRateLimit;
+}
+const enforceVerificationDraftSaveRateLimit = t.middleware(async ({ ctx, path, next }) => {
+  const identifier = `${ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`}:${path}`;
+  let success: boolean;
+  try {
+    ({ success } = await getVerificationDraftSaveRateLimit().limit(identifier));
+  } catch (error) {
+    console.error("[rate-limit] verification draft limiter unavailable", { error: error instanceof Error ? error.name : "UnknownError" });
+    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Draft saving is temporarily unavailable. Please try again." });
+  }
+  if (!success) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Please wait a moment before saving your draft again." });
+  }
+  return next();
+});
+export const verificationDraftSaveProcedure = t.procedure.use(enforceAuth).use(enforceVerificationDraftSaveRateLimit);
+
+
+// Shared participant routes that grant admins access beyond their own records
+// must enforce admin assurance. Keep bootstrap/profile procedures reachable
+// before MFA so users can establish the stronger session.
+export const assuredProtectedProcedure = protectedProcedure.use(enforceAuthAssurance);
+export const strictAssuredProtectedProcedure = strictProtectedProcedure.use(enforceAuthAssurance);
+
 // Verified user middleware - requires authenticated + verified (or admin)
 const enforceVerified = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {
@@ -571,7 +606,8 @@ const enforceSellerOrPending = t.middleware(({ ctx, next }) => {
 
 export const sellerOrPendingProcedure = t.procedure.use(enforceAuth).use(enforceRateLimit).use(enforceSellerOrPending);
 
-// Buyer-only middleware (also requires verified)
+// Purchasing capability; sellers can also source inventory. Verification is
+// checked separately for transactional operations below.
 const enforceBuyer = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {
     throw new TRPCError({
@@ -579,7 +615,7 @@ const enforceBuyer = t.middleware(({ ctx, next }) => {
       message: "You must be logged in",
     });
   }
-  if (ctx.user.role !== "buyer" && ctx.user.role !== "admin") {
+  if (!canPurchase(ctx.user.role)) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Only buyers can perform this action",
@@ -599,7 +635,7 @@ export const strictBuyerProcedure = t.procedure
   .use(enforceStrictRateLimit)
   .use(enforceBuyer);
 
-// Buyer-only + verified (for transactional checkout/payment operations)
+// Verified purchasing capability for checkout/payment operations.
 const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {
   if (!ctx.authUser || !ctx.user) {
     throw new TRPCError({
@@ -607,7 +643,7 @@ const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {
       message: "You must be logged in",
     });
   }
-  if (ctx.user.role !== "buyer" && ctx.user.role !== "admin") {
+  if (!canPurchase(ctx.user.role)) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Only buyers can perform this action",
@@ -617,7 +653,7 @@ const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {
     throw new TRPCError({
       code: "FORBIDDEN",
       message:
-        "Buyer verification required before checkout. Complete verification at /buyer/settings.",
+        `Business verification required before checkout. Complete verification at ${getDashboardPath(ctx.user.role)}/verification.`,
     });
   }
   return next({
@@ -631,10 +667,12 @@ const enforceVerifiedBuyer = t.middleware(({ ctx, next }) => {
 export const verifiedBuyerProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceRateLimit)
+  .use(enforceAuthAssurance)
   .use(enforceVerifiedBuyer);
 export const strictVerifiedBuyerProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceStrictRateLimit)
+  .use(enforceAuthAssurance)
   .use(enforceVerifiedBuyer);
 
 // Admin-only middleware
@@ -730,3 +768,24 @@ export const messagingProcedure = t.procedure
   .use(enforceAuth)
   .use(enforceRateLimit)
   .use(enforceContentPolicy);
+
+// Insert in src/server/trpc.ts after enforceAuthAssurance and before exported procedures.
+// Every photo procedure shares its own account-scoped allowance, separate from strict10.
+let listingPhotoRateLimit: Ratelimit | undefined;
+function getListingPhotoRateLimit(): Ratelimit {
+  listingPhotoRateLimit ??= new Ratelimit({
+    redis: getRedisClient(), limiter: Ratelimit.slidingWindow(60, "60 s"), prefix: "rl:listing-photo",
+  });
+  return listingPhotoRateLimit;
+}
+const enforceListingPhotoRateLimit = t.middleware(async ({ ctx, next }) => {
+  const identifier = ctx.user?.id ?? ctx.authUser?.id ?? `ip:${ctx.clientIp}`;
+  let success: boolean;
+  try { ({ success } = await getListingPhotoRateLimit().limit(identifier)); }
+  catch {
+    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Photo preparation is temporarily unavailable. Your draft is safe; try again shortly." });
+  }
+  if (!success) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Please wait a moment before continuing this photo upload." });
+  return next();
+});
+export const listingPhotoProcedure = t.procedure.use(enforceAuth).use(enforceListingPhotoRateLimit).use(enforceAuthAssurance);

@@ -1,172 +1,129 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense } from "react";
 import Link from "next/link";
-import { trpc } from "@/lib/trpc/client";
-import { useProStatus } from "@/hooks/use-pro-status";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ProBadge } from "@/components/pro-badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
-import { CreditCard, ExternalLink, Loader2 } from "lucide-react";
-import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  BillingActionControls,
+  BillingStatusFeedback,
+  useBillingStatus,
+} from "@/components/subscription/pro-subscription-action";
+import { isPro } from "@/lib/pro";
+import { formatCurrency, formatDate } from "@/lib/utils";
 
-function StatusBadge({ status }: { status: string }) {
-  switch (status) {
-    case "active":
-      return <Badge variant="success">Active</Badge>;
-    case "trialing":
-      return <Badge variant="info">Trial</Badge>;
-    case "cancelled":
-      return <Badge variant="warning">Cancelled</Badge>;
-    case "past_due":
-      return <Badge variant="destructive">Past Due</Badge>;
-    default:
-      return <Badge variant="outline">Free</Badge>;
-  }
+const statusLabels: Record<string, string> = {
+  free: "Free",
+  active: "Active",
+  trialing: "Trial",
+  past_due: "Payment needs attention",
+  cancelled: "Cancelled",
+};
+const control = "h-auto min-h-11 whitespace-normal px-4 py-2 text-center";
+
+function SubscriptionWorkspace() {
+  const billing = useBillingStatus();
+  const data = billing.data;
+  const current = billing.phase === "ready";
+  const proAccess =
+    current && data ? isPro(data) : billing.hadProAccess === true;
+  return (
+    <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
+      <div>
+        <h1 className="text-2xl font-bold">Subscription</h1>
+        <p className="mt-1 text-muted-foreground">
+          Manage your Pro access and billing.
+        </p>
+      </div>
+      <BillingStatusFeedback billing={billing} showRefreshReady />
+      {data && (
+        <Card aria-label="Subscription status">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold">
+                {current ? "Current plan" : "Last checked plan"}
+              </h2>
+              <Badge
+                variant={
+                  current && data.proStatus === "past_due"
+                    ? "destructive"
+                    : "outline"
+                }
+              >
+                {current ? "" : "Last known: "}
+                {statusLabels[data.proStatus]}
+              </Badge>
+            </div>
+            <p className="text-sm">
+              {current ? "Current access: " : "Last known access: "}
+              {proAccess ? "Pro" : "Free"}
+            </p>
+            {current && data.proStatus === "past_due" && (
+              <p className="text-sm">
+                A payment needs attention. Open billing to review your payment
+                method and invoices.
+              </p>
+            )}
+            {current && data.proStatus === "cancelled" && !proAccess && (
+              <p className="text-sm text-muted-foreground">
+                Your Pro access has ended. Your billing history remains
+                available when a billing account is recorded.
+              </p>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <dl className="space-y-3 text-sm">
+              {data.proStartedAt && (
+                <div className="flex flex-wrap gap-x-2">
+                  <dt className="font-medium">Member since:</dt>
+                  <dd>{formatDate(data.proStartedAt)}</dd>
+                </div>
+              )}
+              {data.proStatus === "cancelled" &&
+                proAccess &&
+                data.proExpiresAt && (
+                  <div className="flex flex-wrap gap-x-2">
+                    <dt className="font-medium">Access until:</dt>
+                    <dd>{formatDate(data.proExpiresAt)}</dd>
+                  </div>
+                )}
+              {data.availableCredit > 0 && (
+                <div className="flex flex-wrap gap-x-2">
+                  <dt className="font-medium">Promotion credit:</dt>
+                  <dd>{formatCurrency(data.availableCredit)}</dd>
+                </div>
+              )}
+            </dl>
+            <BillingActionControls billing={billing} mode="manage" />
+            {current && !proAccess && (
+              <Button asChild variant="gold" className={control}>
+                <Link href="/pro">View Pro plans</Link>
+              </Button>
+            )}
+            {current && data.hasBillingAccount && (
+              <p className="text-sm text-muted-foreground">
+                Billing opens securely in Stripe. Review invoices, payment
+                methods and renewal details there, even after Pro access ends.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 export default function SubscriptionSettingsPage() {
-  const { isPro, proStatus, proExpiresAt, availableCredit, isLoading } =
-    useProStatus();
-  const [isRedirecting, setIsRedirecting] = useState(false);
-
-  const { data: statusData } = trpc.subscription.getStatus.useQuery(
-    undefined,
-    { staleTime: 5 * 60 * 1000 }
-  );
-
-  const createPortal = trpc.subscription.createPortalSession.useMutation({
-    onSuccess: (data) => {
-      if (data.url) {
-        window.location.href = data.url;
-      }
-    },
-    onError: (error) => {
-      setIsRedirecting(false);
-      toast.error(getErrorMessage(error));
-    },
-  });
-
-  const handleManage = () => {
-    setIsRedirecting(true);
-    createPortal.mutate();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 px-4 py-8">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-64 w-full rounded-xl" />
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-2xl mx-auto space-y-6 px-4 py-8">
-      <div>
-        <h1 className="text-2xl font-bold">Subscription</h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your PlankMarket subscription and billing.
+    <Suspense
+      fallback={
+        <p role="status" className="px-4 py-8">
+          Checking subscription status…
         </p>
-      </div>
-
-      {/* Current plan */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Current Plan</CardTitle>
-            <StatusBadge status={proStatus} />
-          </div>
-          <CardDescription>
-            {isPro
-              ? "You have full access to all Pro features."
-              : "You are on the free plan with limited features."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isPro && (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Plan:</span>
-                <span className="text-sm">
-                  PlankMarket Pro <ProBadge className="ml-1" />
-                </span>
-              </div>
-
-              {statusData?.proStartedAt && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Member since:</span>
-                  <span className="text-sm">
-                    {formatDate(statusData.proStartedAt)}
-                  </span>
-                </div>
-              )}
-
-              {proExpiresAt && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {proStatus === "cancelled"
-                      ? "Access until:"
-                      : "Next billing date:"}
-                  </span>
-                  <span className="text-sm">{formatDate(proExpiresAt)}</span>
-                </div>
-              )}
-
-              {availableCredit > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Promotion credit:</span>
-                  <span className="text-sm">
-                    {formatCurrency(availableCredit)}
-                  </span>
-                </div>
-              )}
-            </>
-          )}
-
-          <div className="pt-2">
-            {isPro ? (
-              <Button
-                variant="outline"
-                onClick={handleManage}
-                disabled={isRedirecting}
-              >
-                {isRedirecting ? (
-                  <>
-                    <Loader2
-                      className="mr-2 h-4 w-4 animate-spin"
-                      aria-hidden="true"
-                    />
-                    Redirecting...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Manage Subscription
-                    <ExternalLink
-                      className="ml-1 h-3 w-3"
-                      aria-hidden="true"
-                    />
-                  </>
-                )}
-              </Button>
-            ) : (
-              <Button asChild variant="gold">
-                <Link href="/pro">Upgrade to Pro</Link>
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+      }
+    >
+      <SubscriptionWorkspace />
+    </Suspense>
   );
 }

@@ -10,12 +10,12 @@ interface DonutChartProps {
 
 const COLORS = [
   "hsl(142 76% 36%)",   // emerald
-  "hsl(var(--primary))",
+  "var(--primary)",
   "hsl(217 91% 60%)",   // blue
   "hsl(38 92% 50%)",    // amber
   "hsl(280 67% 51%)",   // violet
   "hsl(0 72% 51%)",     // red
-  "hsl(var(--muted-foreground))",
+  "var(--muted-foreground)",
 ];
 
 export function DonutChart({
@@ -54,8 +54,8 @@ export function DonutChart({
         <Tooltip
           formatter={(value) => [formatValue(Number(value ?? 0))]}
           contentStyle={{
-            backgroundColor: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
             borderRadius: "8px",
             fontSize: "12px",
           }}

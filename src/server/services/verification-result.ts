@@ -7,6 +7,19 @@ const verificationCheckSchema = z
   })
   .strict();
 
+export const verificationDocumentEvidenceSchema = z
+  .object({
+    documentType: z.enum(["business_license", "tax_ein_notice", "other", "unknown"]),
+    businessName: z.string().max(255).nullable(),
+    einLast4: z.string().regex(/^\d{4}$/).nullable(),
+    state: z.string().regex(/^[A-Z]{2}$/).nullable(),
+    issuer: z.string().max(255).nullable(),
+    expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+    legible: z.boolean(),
+    possibleTampering: z.boolean(),
+  })
+  .strict();
+
 export const verificationResultSchema = z
   .object({
     score: z.number().finite().min(0).max(100),
@@ -26,6 +39,9 @@ export const verificationResultSchema = z
           .strict(),
       })
       .strict(),
+    // Extracted observations are optional so older advisory results remain readable.
+    // They are never sufficient by themselves to authorize an account.
+    documentEvidence: verificationDocumentEvidenceSchema.optional(),
   })
   .strict()
   .superRefine((result, ctx) => {

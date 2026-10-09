@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import { VerificationGate } from "../verification-gate";
 import { useAuthStore } from "@/lib/stores/auth-store";
 
+vi.mock("next/navigation", () => ({ usePathname: vi.fn(() => "/buyer") }));
+
 vi.mock("@/lib/stores/auth-store");
 const mockUseAuthStore = vi.mocked(useAuthStore);
 
@@ -129,7 +131,7 @@ describe("VerificationGate", () => {
     );
 
     expect(
-      screen.getByText(/verification pending/i),
+      screen.getByText(/business verification is under review/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Seller Dashboard")).toBeInTheDocument();
   });
@@ -166,7 +168,7 @@ describe("VerificationGate", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /submit buyer verification/i }),
-    ).toHaveAttribute("href", "/buyer/settings");
+    ).toHaveAttribute("href", "/buyer/verification");
     expect(screen.getByText("Buyer Dashboard")).toBeInTheDocument();
   });
 
@@ -197,7 +199,7 @@ describe("VerificationGate", () => {
       </VerificationGate>,
     );
 
-    expect(screen.getByText("Verification Rejected")).toBeInTheDocument();
+    expect(screen.getByText("A verification detail needs updating")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /submit seller verification/i }),
     ).toHaveAttribute("href", "/seller/verification");

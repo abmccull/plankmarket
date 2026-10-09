@@ -1,5 +1,6 @@
 "use client";
 
+import { QueryErrorState } from "@/components/ui/state-panel";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -54,7 +55,13 @@ import type { OrderStatus } from "@/types";
 
 const statusVariant: Record<
   string,
-  "default" | "success" | "warning" | "destructive" | "secondary" | "info" | "outline"
+  | "default"
+  | "success"
+  | "warning"
+  | "destructive"
+  | "secondary"
+  | "info"
+  | "outline"
 > = {
   pending: "warning",
   confirmed: "info",
@@ -101,7 +108,8 @@ export default function AdminFinancePage() {
 /* ─── Overview Tab ─── */
 
 function OverviewTab() {
-  const { data, isLoading } = trpc.admin.getFinanceStats.useQuery();
+  const { data, isLoading, isError, isFetching, refetch } =
+    trpc.admin.getFinanceStats.useQuery();
 
   if (isLoading) {
     return (
@@ -111,6 +119,17 @@ function OverviewTab() {
     );
   }
 
+  if (isError)
+    return (
+      <QueryErrorState
+        title="We couldn't load financial totals"
+        onRetry={() => {
+          void refetch();
+        }}
+        isRetrying={isFetching}
+      />
+    );
+
   if (!data) {
     return (
       <div className="text-center py-12">
@@ -119,13 +138,21 @@ function OverviewTab() {
     );
   }
 
-  const { summary, byStatus, monthlyTrend, escrowBreakdown, topSellers, recentOrders } = data;
+  const {
+    summary,
+    byStatus,
+    monthlyTrend,
+    escrowBreakdown,
+    topSellers,
+    recentOrders,
+  } = data;
 
   const chartData = monthlyTrend.map((m) => ({
     month: m.month,
     label: new Date(m.month + "-01").toLocaleDateString("en-US", {
       month: "short",
       year: "2-digit",
+      timeZone: "UTC",
     }),
     gmv: Number(m.gmv),
     fees: Number(m.buyerFees) + Number(m.sellerFees),
@@ -136,18 +163,68 @@ function OverviewTab() {
     <div className="space-y-6 mt-4">
       {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard title="Total GMV" value={formatCurrency(Number(summary.totalGmv))} icon={DollarSign} />
-        <KpiCard title="Platform Gross Revenue" value={formatCurrency(Number(summary.platformRevenue))} icon={TrendingUp} />
-        <KpiCard title="Avg Order Value" value={formatCurrency(Number(summary.avgOrderValue))} icon={ShoppingCart} />
-        <KpiCard title="Buyer Fees" value={formatCurrency(Number(summary.totalBuyerFees))} icon={Receipt} />
-        <KpiCard title="Seller Fees" value={formatCurrency(Number(summary.totalSellerFees))} icon={CreditCard} />
-        <KpiCard title="Seller Stripe Fees" value={formatCurrency(Number(summary.totalSellerStripeFees))} icon={CreditCard} />
-        <KpiCard title="Platform Stripe Fees" value={formatCurrency(Number(summary.totalPlatformStripeFees))} icon={Wallet} />
-        <KpiCard title="Full Freight Booked" value={formatCurrency(Number(summary.totalFreightBooked))} icon={ShoppingCart} />
-        <KpiCard title="Buyer Shipping" value={formatCurrency(Number(summary.totalBuyerFreightCharges))} icon={Receipt} />
-        <KpiCard title="Seller Shipping Contributions" value={formatCurrency(Number(summary.totalSellerFreightContributions))} icon={CreditCard} />
-        <KpiCard title="Shipping Margin" value={formatCurrency(Number(summary.totalShippingMargin))} icon={TrendingUp} />
-        <KpiCard title="Net Seller Payouts" value={formatCurrency(Number(summary.totalPayouts))} icon={Wallet} />
+        <KpiCard
+          title="Total GMV"
+          value={formatCurrency(Number(summary.totalGmv))}
+          icon={DollarSign}
+        />
+        <KpiCard
+          title="Platform Gross Revenue"
+          value={formatCurrency(Number(summary.platformRevenue))}
+          icon={TrendingUp}
+        />
+        <KpiCard
+          title="Avg Order Value"
+          value={formatCurrency(Number(summary.avgOrderValue))}
+          icon={ShoppingCart}
+        />
+        <KpiCard
+          title="Buyer Fees"
+          value={formatCurrency(Number(summary.totalBuyerFees))}
+          icon={Receipt}
+        />
+        <KpiCard
+          title="Seller Fees"
+          value={formatCurrency(Number(summary.totalSellerFees))}
+          icon={CreditCard}
+        />
+        <KpiCard
+          title="Seller Stripe Fees"
+          value={formatCurrency(Number(summary.totalSellerStripeFees))}
+          icon={CreditCard}
+        />
+        <KpiCard
+          title="Platform Stripe Fees"
+          value={formatCurrency(Number(summary.totalPlatformStripeFees))}
+          icon={Wallet}
+        />
+        <KpiCard
+          title="Full Freight Booked"
+          value={formatCurrency(Number(summary.totalFreightBooked))}
+          icon={ShoppingCart}
+        />
+        <KpiCard
+          title="Buyer Shipping"
+          value={formatCurrency(Number(summary.totalBuyerFreightCharges))}
+          icon={Receipt}
+        />
+        <KpiCard
+          title="Seller Shipping Contributions"
+          value={formatCurrency(
+            Number(summary.totalSellerFreightContributions),
+          )}
+          icon={CreditCard}
+        />
+        <KpiCard
+          title="Shipping Margin"
+          value={formatCurrency(Number(summary.totalShippingMargin))}
+          icon={TrendingUp}
+        />
+        <KpiCard
+          title="Net Seller Payouts"
+          value={formatCurrency(Number(summary.totalPayouts))}
+          icon={Wallet}
+        />
       </div>
 
       {/* GMV and platform fees over time */}
@@ -161,17 +238,46 @@ function OverviewTab() {
               <AreaChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="label" className="text-xs" />
-                <YAxis className="text-xs" tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`} />
+                <YAxis
+                  className="text-xs"
+                  tickFormatter={(v: number) =>
+                    new Intl.NumberFormat("en-US", {
+                      style: "currency",
+                      currency: "USD",
+                      notation: "compact",
+                      maximumFractionDigits: 1,
+                    }).format(v)
+                  }
+                />
                 <Tooltip
-                  formatter={(value, name) => [formatCurrency(Number(value)), name === "gmv" ? "GMV" : "Platform Fees"]}
+                  formatter={(value, name) => [
+                    formatCurrency(Number(value)),
+                    name === "gmv" ? "GMV" : "Platform Fees",
+                  ]}
                   labelFormatter={(label) => String(label)}
                 />
-                <Area type="monotone" dataKey="gmv" name="gmv" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.15} />
-                <Area type="monotone" dataKey="fees" name="fees" stroke="hsl(var(--secondary))" fill="hsl(var(--secondary))" fillOpacity={0.15} />
+                <Area
+                  type="monotone"
+                  dataKey="gmv"
+                  name="gmv"
+                  stroke="var(--primary)"
+                  fill="var(--primary)"
+                  fillOpacity={0.15}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="fees"
+                  name="fees"
+                  stroke="var(--secondary)"
+                  fill="var(--secondary)"
+                  fillOpacity={0.15}
+                />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-muted-foreground text-center py-8">No data yet</p>
+            <p className="text-muted-foreground text-center py-8">
+              No data yet
+            </p>
           )}
         </CardContent>
       </Card>
@@ -188,12 +294,21 @@ function OverviewTab() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="label" className="text-xs" />
                 <YAxis className="text-xs" allowDecimals={false} />
-                <Tooltip formatter={(value) => [Number(value), "Orders"]} labelFormatter={(label) => String(label)} />
-                <Bar dataKey="orders" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Tooltip
+                  formatter={(value) => [Number(value), "Orders"]}
+                  labelFormatter={(label) => String(label)}
+                />
+                <Bar
+                  dataKey="orders"
+                  fill="var(--primary)"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-muted-foreground text-center py-8">No data yet</p>
+            <p className="text-muted-foreground text-center py-8">
+              No data yet
+            </p>
           )}
         </CardContent>
       </Card>
@@ -207,15 +322,26 @@ function OverviewTab() {
           <CardContent>
             <div className="space-y-3">
               {byStatus.map((s) => (
-                <div key={s.status} className="flex items-center justify-between">
+                <div
+                  key={s.status}
+                  className="flex items-center justify-between"
+                >
                   <div className="flex items-center gap-2">
-                    <Badge variant={statusVariant[s.status] ?? "outline"}>{s.status}</Badge>
-                    <span className="text-sm text-muted-foreground">{s.count} orders</span>
+                    <Badge variant={statusVariant[s.status] ?? "outline"}>
+                      {s.status}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {s.count} orders
+                    </span>
                   </div>
-                  <span className="font-medium">{formatCurrency(Number(s.gmv))}</span>
+                  <span className="font-medium">
+                    {formatCurrency(Number(s.gmv))}
+                  </span>
                 </div>
               ))}
-              {byStatus.length === 0 && <p className="text-muted-foreground text-sm">No orders yet</p>}
+              {byStatus.length === 0 && (
+                <p className="text-muted-foreground text-sm">No orders yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -227,15 +353,26 @@ function OverviewTab() {
           <CardContent>
             <div className="space-y-3">
               {escrowBreakdown.map((e) => (
-                <div key={e.escrowStatus} className="flex items-center justify-between">
+                <div
+                  key={e.escrowStatus}
+                  className="flex items-center justify-between"
+                >
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="capitalize">{e.escrowStatus}</Badge>
-                    <span className="text-sm text-muted-foreground">{e.count} orders</span>
+                    <Badge variant="outline" className="capitalize">
+                      {e.escrowStatus}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground">
+                      {e.count} orders
+                    </span>
                   </div>
-                  <span className="font-medium">{formatCurrency(Number(e.total))}</span>
+                  <span className="font-medium">
+                    {formatCurrency(Number(e.total))}
+                  </span>
                 </div>
               ))}
-              {escrowBreakdown.length === 0 && <p className="text-muted-foreground text-sm">No orders yet</p>}
+              {escrowBreakdown.length === 0 && (
+                <p className="text-muted-foreground text-sm">No orders yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -250,18 +387,31 @@ function OverviewTab() {
           <CardContent>
             <div className="space-y-3">
               {topSellers.map((seller, i) => (
-                <div key={seller.sellerId} className="flex items-center justify-between">
+                <div
+                  key={seller.sellerId}
+                  className="flex items-center justify-between"
+                >
                   <div className="flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold">{i + 1}</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold">
+                      {i + 1}
+                    </span>
                     <div>
-                      <p className="text-sm font-medium leading-none">{seller.businessName || seller.sellerName}</p>
-                      <p className="text-xs text-muted-foreground">{seller.orderCount} orders</p>
+                      <p className="text-sm font-medium leading-none">
+                        {seller.businessName || seller.sellerName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {seller.orderCount} orders
+                      </p>
                     </div>
                   </div>
-                  <span className="font-medium">{formatCurrency(Number(seller.gmv))}</span>
+                  <span className="font-medium">
+                    {formatCurrency(Number(seller.gmv))}
+                  </span>
                 </div>
               ))}
-              {topSellers.length === 0 && <p className="text-muted-foreground text-sm">No sellers yet</p>}
+              {topSellers.length === 0 && (
+                <p className="text-muted-foreground text-sm">No sellers yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -273,18 +423,29 @@ function OverviewTab() {
           <CardContent>
             <div className="space-y-3">
               {recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between">
+                <div
+                  key={order.id}
+                  className="flex items-center justify-between"
+                >
                   <div>
                     <p className="text-sm font-mono">{order.orderNumber}</p>
-                    <p className="text-xs text-muted-foreground">{formatDate(order.createdAt)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(order.createdAt)}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant={statusVariant[order.status] ?? "outline"}>{order.status}</Badge>
-                    <span className="font-medium">{formatCurrency(Number(order.totalPrice))}</span>
+                    <Badge variant={statusVariant[order.status] ?? "outline"}>
+                      {order.status}
+                    </Badge>
+                    <span className="font-medium">
+                      {formatCurrency(Number(order.totalPrice))}
+                    </span>
                   </div>
                 </div>
               ))}
-              {recentOrders.length === 0 && <p className="text-muted-foreground text-sm">No orders yet</p>}
+              {recentOrders.length === 0 && (
+                <p className="text-muted-foreground text-sm">No orders yet</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -305,14 +466,22 @@ function TransactionsTab() {
     search: search || undefined,
     status:
       statusFilter !== "all"
-        ? (statusFilter as "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded")
+        ? (statusFilter as
+            | "pending"
+            | "confirmed"
+            | "processing"
+            | "shipped"
+            | "delivered"
+            | "cancelled"
+            | "refunded")
         : undefined,
     escrowStatus: escrowFilter !== "all" ? escrowFilter : undefined,
     page,
     limit: 50,
   };
 
-  const { data, isLoading } = trpc.admin.getFinanceTransactions.useQuery(queryInput);
+  const { data, isLoading, isError, isFetching, refetch } =
+    trpc.admin.getFinanceTransactions.useQuery(queryInput);
 
   const clearFilters = () => {
     setSearch("");
@@ -330,12 +499,16 @@ function TransactionsTab() {
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[200px]">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label
+                htmlFor="financeTransactionSearch"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
                 Search
               </label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="financeTransactionSearch"
                   placeholder="Order number..."
                   value={search}
                   onChange={(e) => {
@@ -348,7 +521,10 @@ function TransactionsTab() {
             </div>
 
             <div className="w-[160px]">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label
+                htmlFor="financeOrderStatus"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
                 Order Status
               </label>
               <Select
@@ -358,7 +534,7 @@ function TransactionsTab() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger id="financeOrderStatus">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -375,7 +551,10 @@ function TransactionsTab() {
             </div>
 
             <div className="w-[160px]">
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+              <label
+                htmlFor="financePaymentReleaseStatus"
+                className="text-xs font-medium text-muted-foreground mb-1.5 block"
+              >
                 Payment Release Status
               </label>
               <Select
@@ -385,7 +564,7 @@ function TransactionsTab() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger id="financePaymentReleaseStatus">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -399,7 +578,12 @@ function TransactionsTab() {
             </div>
 
             {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-9">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-9"
+              >
                 <X className="h-4 w-4 mr-1" />
                 Clear
               </Button>
@@ -409,14 +593,26 @@ function TransactionsTab() {
       </Card>
 
       {/* Table */}
-      {isLoading ? (
+      {isError ? (
+        <QueryErrorState
+          title="We couldn't load transactions"
+          onRetry={() => {
+            void refetch();
+          }}
+          isRetrying={isFetching}
+        />
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : data && data.transactions.length > 0 ? (
         <>
           <div className="rounded-md border">
-            <Table>
+            <Table
+              tabIndex={0}
+              aria-label="Finance transactions"
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
               <TableHeader>
                 <TableRow>
                   <TableHead>Order #</TableHead>
@@ -429,8 +625,12 @@ function TransactionsTab() {
                   <TableHead className="text-right">Subtotal</TableHead>
                   <TableHead className="text-right">Buyer Fee</TableHead>
                   <TableHead className="text-right">Seller Fee</TableHead>
-                  <TableHead className="text-right">Seller Stripe Fee</TableHead>
-                  <TableHead className="text-right">Platform Stripe Fee</TableHead>
+                  <TableHead className="text-right">
+                    Seller Stripe Fee
+                  </TableHead>
+                  <TableHead className="text-right">
+                    Platform Stripe Fee
+                  </TableHead>
                   <TableHead className="text-right">Full Freight</TableHead>
                   <TableHead>Freight Funding</TableHead>
                   <TableHead className="text-right">Buyer Shipping</TableHead>
@@ -520,7 +720,8 @@ function TransactionsTab() {
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               Showing {(data.page - 1) * data.limit + 1}–
-              {Math.min(data.page * data.limit, data.total)} of {data.total} transactions
+              {Math.min(data.page * data.limit, data.total)} of {data.total}{" "}
+              transactions
             </p>
             <div className="flex gap-2">
               <Button
@@ -545,7 +746,9 @@ function TransactionsTab() {
       ) : (
         <div className="text-center py-12">
           <p className="text-muted-foreground">
-            {hasFilters ? "No transactions match your filters" : "No transactions yet"}
+            {hasFilters
+              ? "No transactions match your filters"
+              : "No transactions yet"}
           </p>
         </div>
       )}
@@ -556,8 +759,13 @@ function TransactionsTab() {
 /* ─── Failed Transfers Tab ─── */
 
 function FailedTransfersTab() {
-  const { data: failedTransfers, isLoading } =
-    trpc.admin.getFailedTransfers.useQuery();
+  const {
+    data: failedTransfers,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = trpc.admin.getFailedTransfers.useQuery();
   const utils = trpc.useUtils();
 
   const retryMutation = trpc.admin.retryTransfer.useMutation({
@@ -577,6 +785,18 @@ function FailedTransfersTab() {
       </div>
     );
   }
+
+  if (isError)
+    return (
+      <QueryErrorState
+        title="We couldn't check failed transfers"
+        description="Transfer status is unavailable. Try again before treating this queue as clear."
+        onRetry={() => {
+          void refetch();
+        }}
+        isRetrying={isFetching}
+      />
+    );
 
   if (!failedTransfers?.length) {
     return (

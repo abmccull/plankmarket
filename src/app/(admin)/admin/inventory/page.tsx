@@ -1,13 +1,13 @@
 "use client";
 
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Database,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  QueryErrorState,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
 import {
   Card,
   CardContent,
@@ -32,41 +32,86 @@ const reasonLabels: Record<string, string> = {
 };
 
 export default function AdminInventoryOperationsPage() {
-  const { data, isLoading } =
-    trpc.inventoryIntegration.adminOverview.useQuery(undefined, {
+  const inventoryQuery = trpc.inventoryIntegration.adminOverview.useQuery(
+    undefined,
+    {
       refetchInterval: 60_000,
-    });
+      retry: false,
+    },
+  );
+  const data = inventoryQuery.data;
+  const header = (
+    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:flex-wrap">
+      <div className="min-w-0 w-full space-y-2 sm:flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <Database
+            className="h-7 w-7 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <h1 className="text-3xl font-bold">Inventory operations</h1>
+        </div>
+        <p className="text-muted-foreground">
+          Source freshness, feed failures, and stock discrepancies that were
+          intentionally kept out of live marketplace inventory.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Showing up to 500 sources, 250 most recent open mismatches, and 100
+          most recent failed runs. Each is a separate snapshot; counts describe
+          only the rows shown in that section.
+        </p>
+        <Link
+          href="/admin/reconciliation"
+          className="inline-flex min-h-11 items-center text-sm underline"
+        >
+          Open reconciliation queue
+        </Link>
+      </div>
+      <Button
+        variant="outline"
+        className="h-auto min-h-11 max-w-full whitespace-normal"
+        onClick={() => void inventoryQuery.refetch()}
+        disabled={inventoryQuery.isFetching}
+      >
+        Refresh queue
+      </Button>
+    </div>
+  );
 
-  if (isLoading) {
+  if (inventoryQuery.isLoading) {
     return (
-      <div className="flex min-h-80 items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
+        {header}
+        <StatePanelLoading label="Loading inventory overview" rows={3} />
+      </div>
+    );
+  }
+  if (inventoryQuery.isError || !data) {
+    return (
+      <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
+        {header}
+        <QueryErrorState
+          title="Inventory overview unavailable"
+          description="Source freshness and inventory exceptions could not be loaded. Try again before treating the queue as clear."
+          onRetry={() => void inventoryQuery.refetch()}
+          isRetrying={inventoryQuery.isFetching}
+        />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex items-center gap-2">
-          <Database className="h-7 w-7 text-primary" />
-          <h1 className="text-3xl font-bold">Inventory operations</h1>
-        </div>
-        <p className="mt-1 text-muted-foreground">
-          Source freshness, feed failures, and stock discrepancies that were
-          intentionally kept out of live marketplace inventory.
-        </p>
-      </div>
+    <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
+      {header}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[
-          ["All sources", data?.totals.sources ?? 0],
-          ["Active", data?.totals.activeSources ?? 0],
-          ["Stale", data?.totals.staleSources ?? 0],
-          ["Open mismatches", data?.totals.openMismatches ?? 0],
-          ["Recent failures", data?.totals.recentFailures ?? 0],
+          ["Sources shown", data.totals.sources],
+          ["Active sources shown", data.totals.activeSources],
+          ["Stale active sources shown", data.totals.staleSources],
+          ["Open mismatches shown", data.totals.openMismatches],
+          ["Failed runs shown", data.totals.recentFailures],
         ].map(([label, value]) => (
-          <Card key={label}>
+          <Card key={label} role="group" aria-label={String(label)}>
             <CardContent className="p-5">
               <div className="text-2xl font-bold">{value}</div>
               <div className="text-sm text-muted-foreground">{label}</div>
@@ -77,17 +122,17 @@ export default function AdminInventoryOperationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex flex-wrap items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-600" />
             Open inventory mismatches
           </CardTitle>
           <CardDescription>
-            Each item also opens or refreshes a durable data-integrity case in
-            the main reconciliation queue.
+            Up to 250 most recent open mismatches are shown here. Review related
+            data-integrity cases in the reconciliation queue.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {data?.openMismatches.length ? (
+          {data.openMismatches.length ? (
             data.openMismatches.map((mismatch) => (
               <div key={mismatch.id} className="rounded-lg border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -101,7 +146,10 @@ export default function AdminInventoryOperationsPage() {
                       {mismatch.listingTitle ?? "No listing mapped"}
                     </div>
                   </div>
-                  <Badge variant="warning">
+                  <Badge
+                    variant="warning"
+                    className="max-w-full whitespace-normal"
+                  >
                     {reasonLabels[mismatch.reason] ?? mismatch.reason}
                   </Badge>
                 </div>
@@ -129,8 +177,8 @@ export default function AdminInventoryOperationsPage() {
             ))
           ) : (
             <div className="flex items-center gap-2 rounded-md bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">
-              <CheckCircle2 className="h-5 w-5" />
-              No inventory mismatches are waiting for review.
+              <CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />
+              No open inventory mismatches in this snapshot.
             </div>
           )}
         </CardContent>
@@ -140,21 +188,25 @@ export default function AdminInventoryOperationsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Source freshness</CardTitle>
+            <CardDescription>
+              Up to 500 sources ordered by last successful sync. Stale marks
+              active sources past their configured freshness interval;
+              never-synced sources use their creation time.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {data?.sources.length ? (
+            {data.sources.length ? (
               data.sources.map((source) => (
                 <div
                   key={source.id}
-                  className="flex items-center justify-between gap-3 border-b py-3 last:border-0"
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-3 last:border-0"
                 >
                   <div className="min-w-0">
-                    <div className="truncate font-medium">
+                    <div className="font-medium [overflow-wrap:anywhere]">
                       {source.sellerName ?? source.sellerEmail} · {source.name}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Last good sync:{" "}
-                      {dateLabel(source.lastSuccessfulIngestAt)}
+                      Last good sync: {dateLabel(source.lastSuccessfulIngestAt)}
                     </div>
                   </div>
                   <Badge
@@ -174,7 +226,7 @@ export default function AdminInventoryOperationsPage() {
               ))
             ) : (
               <p className="text-sm text-muted-foreground">
-                No seller sources configured.
+                No sources in this snapshot.
               </p>
             )}
           </CardContent>
@@ -182,17 +234,21 @@ export default function AdminInventoryOperationsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <RefreshCw className="h-5 w-5" />
+            <CardTitle className="flex flex-wrap items-center gap-2">
+              <RefreshCw className="h-5 w-5 shrink-0" aria-hidden="true" />
               Recent failed runs
             </CardTitle>
+            <CardDescription>
+              Up to 100 most recent failed runs, across all sources. This is not
+              a time-window total.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {data?.batchFailures.length ? (
+            {data.batchFailures.length ? (
               data.batchFailures.map((batch) => (
                 <div
                   key={batch.id}
-                  className="flex items-center justify-between gap-3 border-b py-3 last:border-0"
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b py-3 last:border-0"
                 >
                   <div>
                     <div className="font-medium">{batch.sourceName}</div>
@@ -200,14 +256,17 @@ export default function AdminInventoryOperationsPage() {
                       {batch.itemCount} items · {dateLabel(batch.startedAt)}
                     </div>
                   </div>
-                  <Badge variant="destructive">
+                  <Badge
+                    variant="destructive"
+                    className="max-w-full whitespace-normal"
+                  >
                     {batch.errorCode ?? "UnknownError"}
                   </Badge>
                 </div>
               ))
             ) : (
               <p className="text-sm text-muted-foreground">
-                No failed inventory runs.
+                No failed inventory runs in this snapshot.
               </p>
             )}
           </CardContent>

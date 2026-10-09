@@ -19,7 +19,7 @@ const normalize = (value: string | undefined, fallback: string | null) =>
 /** Merge a partial step save without erasing fields from another saved step. */
 export function mergeVerificationDraftFields(
   existing: StoredVerificationDraftFields | null | undefined,
-  input: SaveVerificationDraftInput,
+  input: Omit<SaveVerificationDraftInput, "expectedOwnerId" | "expectedUpdatedAt">,
 ): StoredVerificationDraftFields {
   return {
     businessWebsite: normalize(

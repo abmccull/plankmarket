@@ -1,0 +1,8 @@
+PlankMarket browser photo preparation uses heic-to 1.6.5, Copyright its respective authors, under LGPL-3.0-or-later. The unmodified upstream license is available at /licenses/heic-to.txt.
+
+The CSP build is loaded separately and only for HEIC images that the browser cannot decode natively. Its upstream source, included libheif source/build instructions, and corresponding package are available here:
+https://github.com/hoppergee/heic-to
+https://registry.npmjs.org/heic-to/-/heic-to-1.6.5.tgz
+https://github.com/strukturag/libheif
+
+No upstream library code has been modified. Application builds retain the separately loaded decoder module.

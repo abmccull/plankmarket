@@ -1,39 +1,73 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CreditCard, X, ExternalLink } from "lucide-react";
 
 const BANNER_DISMISSED_KEY = "stripe-onboarding-banner-dismissed";
 
+function subscribeToStorage(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
 export function StripeOnboardingBanner() {
-  const [isDismissed, setIsDismissed] = useState(() => {
-    // Initialize state from sessionStorage
-    if (typeof window !== "undefined") {
-      return sessionStorage.getItem(BANNER_DISMISSED_KEY) === "true";
-    }
-    return false;
-  });
+  const accountId = useAuthStore((state) => state.user?.id);
+  const dismissalScope = accountId ?? "current-session";
+  const [dismissedFor, setDismissedFor] = useState<string | null>(null);
+  const persistedDismissal = useSyncExternalStore(
+    subscribeToStorage,
+    () => {
+      if (!accountId) return false;
+      try {
+        return sessionStorage.getItem(`${BANNER_DISMISSED_KEY}:${accountId}`) === "true";
+      } catch {
+        return false;
+      }
+    },
+    () => false,
+  );
+  const isDismissed = dismissedFor === dismissalScope || persistedDismissal;
 
   const router = useRouter();
-  const { data: connectStatus, isLoading } = trpc.payment.getConnectStatus.useQuery();
+  const { data: connectStatus, isLoading, isError, isFetching, refetch } = trpc.payment.getConnectStatus.useQuery();
 
   const handleSetUpPayments = () => {
     router.push("/seller/payments");
   };
 
   const handleDismiss = () => {
-    sessionStorage.setItem(BANNER_DISMISSED_KEY, "true");
-    setIsDismissed(true);
+    setDismissedFor(dismissalScope);
+    if (!accountId) return;
+    try {
+      sessionStorage.setItem(`${BANNER_DISMISSED_KEY}:${accountId}`, "true");
+    } catch {
+      // Dismissal still works for the current component session.
+    }
   };
 
   // Don't show banner if loading, dismissed, or already onboarded
-  if (isLoading || isDismissed || connectStatus?.onboardingComplete) {
+  if (isLoading || isDismissed) {
     return null;
   }
+
+  if (isError || !connectStatus) {
+    return (
+      <section role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
+        <p className="text-sm">We couldn’t check your payment account status.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Trying again…" : "Retry payment status"}</Button>
+          <Button asChild variant="outline" className="min-h-11"><Link href="/seller/payments">View payments</Link></Button>
+        </div>
+      </section>
+    );
+  }
+  if (connectStatus.onboardingComplete) return null;
 
   return (
     <Card className="border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20">

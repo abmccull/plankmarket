@@ -5,13 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ListingCard } from "@/components/search/listing-card";
 import { ListingTableView } from "@/components/search/listing-table-view";
-import { FacetedFilters } from "@/components/search/faceted-filters";
+import { FacetedFilters, type FilterUpdates } from "@/components/search/faceted-filters";
 import { SaveSearchDialog } from "@/components/saved-searches/save-search-dialog";
 import { SponsoredCarousel } from "@/components/promotions/sponsored-carousel";
 import { FeaturedCarousel } from "@/components/promotions/featured-carousel";
 import { PremiumHeroBanner } from "@/components/promotions/hero-banner";
 import { FEATURES } from "@/lib/feature-flags";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { canCreateListings, canPurchase } from "@/lib/auth/roles";
 import { useProStatus } from "@/hooks/use-pro-status";
 import { trpc } from "@/lib/trpc/client";
 import { FREE_LIMITS } from "@/lib/pro";
@@ -48,12 +49,26 @@ import {
   ChevronRight,
   BookmarkPlus,
   MapPin,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SearchFilters, SortOption, PromotionTier } from "@/types";
+import { parsePurchaseIntent } from "@/lib/marketplace/purchase-intent";
+import { getWearLayerOptions } from "@/lib/constants/flooring";
+import { MAX_PUBLIC_FILTER_NUMBER } from "@/lib/validators/listing";
+import type { SearchFilters, SortOption, PromotionTier, MaterialType } from "@/types";
 import { toast } from "sonner";
 import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 import type { FreightEstimateStatus } from "@/components/listings/listing-evidence";
+
+const JOB_MATERIALS: { value: MaterialType; label: string }[] = [
+  { value: "hardwood", label: "Hardwood" },
+  { value: "engineered", label: "Engineered wood" },
+  { value: "vinyl_lvp", label: "Vinyl / LVP" },
+  { value: "laminate", label: "Laminate" },
+  { value: "bamboo", label: "Bamboo" },
+  { value: "tile", label: "Tile" },
+  { value: "other", label: "Other" },
+];
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "proximity", label: "Nearest First" },
@@ -142,6 +157,7 @@ const FILTER_PARAM_KEYS: Array<keyof SearchFilters> = [
   "certifications",
   "minLotSize",
   "maxLotSize",
+  "hideQuantityConflicts",
   "maxDistance",
   "buyerZip",
   "waterproofRequired",
@@ -189,6 +205,7 @@ function writeFilterParams(params: URLSearchParams, filters: SearchFilters) {
   if (filters.maxLotSize !== undefined) {
     params.set("maxLotSize", String(filters.maxLotSize));
   }
+  if (filters.hideQuantityConflicts === true) params.set("hideQuantityConflicts", "true");
   if (filters.maxDistance !== undefined) {
     params.set("maxDistance", String(filters.maxDistance));
   }
@@ -220,6 +237,8 @@ export function ListingsBrowseClient({
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+  const [editingJobKey, setEditingJobKey] = useState<string | null>(null);
+  const jobSummaryRef = useRef<HTMLButtonElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const zeroResultImpressionRef = useRef<string | null>(null);
   const saveIntentHandledRef = useRef(false);
@@ -242,6 +261,114 @@ export function ListingsBrowseClient({
     () => searchParamsToFilters(currentSearchParams),
     [currentSearchParams],
   );
+  const [searchDraft, setSearchDraft] = useState({
+    source: searchParamsString,
+    intended: searchParamsString,
+    value: currentFilters.query ?? "",
+    acknowledgements: [] as string[],
+  });
+  if (searchDraft.source !== searchParamsString) {
+    const acknowledgement = searchDraft.acknowledgements.indexOf(searchParamsString);
+    // Reconcile URL changes before rendering, without replacing this input node.
+    setSearchDraft({
+      source: searchParamsString,
+      intended: acknowledgement >= 0 ? searchDraft.intended : searchParamsString,
+      value: acknowledgement >= 0 ? searchDraft.value : currentFilters.query ?? "",
+      acknowledgements: acknowledgement >= 0 ? searchDraft.acknowledgements.slice(acknowledgement + 1) : [],
+    });
+  }
+  const intendedFilters = useMemo(
+    () => searchParamsToFilters(new URLSearchParams(searchDraft.intended)),
+    [searchDraft.intended],
+  );
+  const normalizeKeyword = (value: string) => value.trim().length >= 3 ? value.trim() : "";
+  const isSearchPending = searchDraft.intended !== searchParamsString ||
+    normalizeKeyword(searchDraft.value) !== normalizeKeyword(currentFilters.query ?? "");
+  const intendedParamsRef = useRef(searchParamsString);
+  const observedParamsRef = useRef(searchParamsString);
+  const inFlightParamsRef = useRef<string | null>(null);
+  const issuedParamsRef = useRef(new Set<string>());
+  const pendingKeywordRef = useRef<string | undefined>(undefined);
+  const searchRevisionRef = useRef(0);
+  const cancelPendingSearch = useCallback(() => {
+    clearTimeout(timeoutRef.current);
+    timeoutRef.current = undefined;
+    searchRevisionRef.current += 1;
+  }, []);
+
+  const adoptSearchLocation = useCallback((paramsString: string) => {
+    cancelPendingSearch();
+    pendingKeywordRef.current = undefined;
+    issuedParamsRef.current.clear();
+    inFlightParamsRef.current = null;
+    intendedParamsRef.current = paramsString;
+    observedParamsRef.current = paramsString;
+    setSearchDraft((draft) => ({
+      ...draft,
+      intended: paramsString,
+      value: searchParamsToFilters(new URLSearchParams(paramsString)).query ?? "",
+      acknowledgements: [paramsString],
+    }));
+  }, [cancelPendingSearch]);
+
+  useEffect(() => {
+    if (observedParamsRef.current === searchParamsString) return;
+    observedParamsRef.current = searchParamsString;
+    if (issuedParamsRef.current.delete(searchParamsString)) {
+      if (inFlightParamsRef.current === searchParamsString) inFlightParamsRef.current = null;
+      // Coalesce edits made during a request, then dispatch their latest value.
+      // Concurrent pushes can let an older response strand the latest intent.
+      if (intendedParamsRef.current === searchParamsString) {
+        issuedParamsRef.current.clear();
+      } else if (inFlightParamsRef.current === null) {
+        const destination = intendedParamsRef.current;
+        inFlightParamsRef.current = destination;
+        issuedParamsRef.current.add(destination);
+        router.push(buildListingsUrl(new URLSearchParams(destination)), { scroll: false });
+      }
+      return;
+    }
+    cancelPendingSearch();
+    pendingKeywordRef.current = undefined;
+    issuedParamsRef.current.clear();
+    inFlightParamsRef.current = null;
+    intendedParamsRef.current = searchParamsString;
+  }, [cancelPendingSearch, router, searchParamsString]);
+
+  useEffect(() => {
+    const onHistory = () => adoptSearchLocation(new URLSearchParams(window.location.search).toString());
+    const onLink = (event: MouseEvent) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const link = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!link || (link.target && link.target !== "_self") || link.hasAttribute("download")) return;
+      const destination = new URL(link.href, window.location.href);
+      if (destination.pathname === window.location.pathname && destination.search === window.location.search && destination.origin === window.location.origin) return;
+      if (destination.origin === window.location.origin && destination.pathname === window.location.pathname) {
+        adoptSearchLocation(new URLSearchParams(destination.search).toString());
+        return;
+      }
+      cancelPendingSearch();
+      pendingKeywordRef.current = undefined;
+      inFlightParamsRef.current = null;
+      issuedParamsRef.current.clear();
+    };
+    window.addEventListener("popstate", onHistory);
+    window.addEventListener("click", onLink, true);
+    return () => {
+      window.removeEventListener("popstate", onHistory);
+      window.removeEventListener("click", onLink, true);
+      cancelPendingSearch();
+    };
+  }, [adoptSearchLocation, cancelPendingSearch]);
+  const purchaseIntent = parsePurchaseIntent({ quantitySqFt: currentFilters.minLotSize, zip: currentFilters.buyerZip });
+  const jobKey = JSON.stringify([currentFilters.materialType, currentFilters.minLotSize, currentFilters.buyerZip]);
+  const hasJobCriteria = Boolean(currentFilters.materialType?.length || currentFilters.minLotSize !== undefined || currentFilters.buyerZip);
+  const jobEditorOpen = !hasJobCriteria || editingJobKey === jobKey;
+  const jobSummary = [
+    currentFilters.materialType?.map((value) => JOB_MATERIALS.find((option) => option.value === value)?.label ?? value).join(", "),
+    currentFilters.minLotSize !== undefined ? `${currentFilters.minLotSize.toLocaleString()}+ sq ft lots` : undefined,
+    currentFilters.buyerZip ? `ZIP ${currentFilters.buyerZip}` : undefined,
+  ].filter(Boolean).join(" · ");
   const requestedSort = currentSearchParams.get("sort") ?? initialParams.sort;
   const currentSort = requestedSort === "proximity" && initialData.locationLabel === null
     ? "date_newest"
@@ -273,11 +400,34 @@ export function ListingsBrowseClient({
 
   const navigateWithParams = useCallback(
     (mutate: (params: URLSearchParams) => void) => {
-      const params = new URLSearchParams(rawSearchParams.toString());
+      cancelPendingSearch();
+      const params = new URLSearchParams(intendedParamsRef.current);
+      if (pendingKeywordRef.current !== undefined) {
+        const keyword = pendingKeywordRef.current.trim();
+        if (keyword.length >= 3) params.set("query", keyword);
+        else params.delete("query");
+        pendingKeywordRef.current = undefined;
+      }
       mutate(params);
-      router.push(buildListingsUrl(params));
+      const quantity = Number(params.get("minLotSize"));
+      if (params.getAll("minLotSize").length !== 1 || !Number.isFinite(quantity) || quantity <= 0 || quantity > MAX_PUBLIC_FILTER_NUMBER) {
+        params.delete("hideQuantityConflicts");
+      }
+      const destination = params.toString();
+      if (destination === intendedParamsRef.current) return;
+      intendedParamsRef.current = destination;
+      setSearchDraft((draft) => ({
+        ...draft,
+        intended: destination,
+        acknowledgements: [...draft.acknowledgements.filter((value) => value !== destination), destination],
+      }));
+      if (inFlightParamsRef.current === null) {
+        inFlightParamsRef.current = destination;
+        issuedParamsRef.current.add(destination);
+        router.push(buildListingsUrl(params), { scroll: false });
+      }
     },
-    [rawSearchParams, router],
+    [cancelPendingSearch, router],
   );
 
   const updateParams = useCallback(
@@ -299,19 +449,21 @@ export function ListingsBrowseClient({
   );
 
   const updateFilters = useCallback(
-    (updates: Partial<SearchFilters>) => {
+    (updates: FilterUpdates) => {
       navigateWithParams((params) => {
+        const current = searchParamsToFilters(params);
+        const patch = typeof updates === "function" ? updates(current) : updates;
         writeFilterParams(params, {
-          ...currentFilters,
-          ...updates,
+          ...current,
+          ...patch,
         });
-        if ("buyerZip" in updates && !updates.buyerZip && params.get("sort") === "proximity") {
+        if ("buyerZip" in patch && !patch.buyerZip && params.get("sort") === "proximity") {
           params.delete("sort");
         }
         params.delete("page");
       });
     },
-    [currentFilters, navigateWithParams],
+    [navigateWithParams],
   );
 
   const clearFilters = useCallback(() => {
@@ -340,15 +492,19 @@ export function ListingsBrowseClient({
 
   const handleSearchChange = useCallback(
     (value: string) => {
-      clearTimeout(timeoutRef.current);
+      setSearchDraft((draft) => ({ ...draft, value }));
+      pendingKeywordRef.current = value;
+      cancelPendingSearch();
+      const revision = searchRevisionRef.current;
       timeoutRef.current = setTimeout(() => {
+        if (searchRevisionRef.current !== revision) return;
         const normalized = value.trim();
         updateParams({
           query: normalized.length >= 3 ? normalized : undefined,
         });
       }, 300);
     },
-    [updateParams]
+    [cancelPendingSearch, updateParams]
   );
 
   // Build pagination URLs for crawlable links
@@ -373,6 +529,7 @@ export function ListingsBrowseClient({
     !isAuthLoading &&
     isAuthenticated &&
     !areSavedSearchesLoading &&
+    !isSearchPending &&
     !atSearchLimit;
   const hasFilters = searchGapContext.active_filter_count > 0;
   const isZeroResults = initialData.total === 0;
@@ -387,13 +544,6 @@ export function ListingsBrowseClient({
   )}&body=${encodeURIComponent(
     `Buyers are searching for inventory like yours. Review the current demand here: ${appUrl}${sharePath}`,
   )}`;
-
-  useEffect(
-    () => () => {
-      clearTimeout(timeoutRef.current);
-    },
-    [],
-  );
 
   useEffect(() => {
     if (!isZeroResults || zeroResultImpressionRef.current === zeroResultKey) {
@@ -464,6 +614,7 @@ export function ListingsBrowseClient({
   );
 
   const handleSaveSearchClick = useCallback(() => {
+    if (isSearchPending) return;
     trackZeroResultAction("save_search_alert");
 
     if (!isAuthenticated) {
@@ -490,6 +641,7 @@ export function ListingsBrowseClient({
     atSearchLimit,
     currentSearchParams,
     isAuthenticated,
+    isSearchPending,
     router,
     trackZeroResultAction,
   ]);
@@ -512,14 +664,8 @@ export function ListingsBrowseClient({
 
   const handleBuyerRequestClick = useCallback(() => {
     trackZeroResultAction("create_buyer_request");
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user || !canPurchase(user.role)) {
       router.push(buildAuthPath(buyerRequestPath, "buyer"));
-      return;
-    }
-
-    if (user?.role === "seller") {
-      toast.info("Buyer requests require a buyer account. Contact us if your business needs both roles.");
-      router.push("/contact?topic=buyer-account");
       return;
     }
 
@@ -529,216 +675,269 @@ export function ListingsBrowseClient({
     isAuthenticated,
     router,
     trackZeroResultAction,
-    user?.role,
+    user,
   ]);
 
   const handleSellerIntentClick = useCallback(() => {
     trackZeroResultAction("list_inventory");
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !user) {
       router.push(buildAuthPath(sellerIntentPath, "seller", "register"));
       return;
     }
 
-    if (user?.role === "buyer") {
-      toast.info("Listings require a seller account. Contact us to add selling access.");
-      router.push("/contact?topic=seller-account");
+    if (!canCreateListings(user.role)) {
+      const search = currentSearchParams.toString();
+      const returnPath = `/listings${search ? `?${search}` : ""}`;
+      router.push(`/settings/selling?${new URLSearchParams({ redirect: returnPath }).toString()}`);
       return;
     }
 
     router.push(sellerIntentPath);
   }, [
+    currentSearchParams,
     isAuthenticated,
     router,
     sellerIntentPath,
     trackZeroResultAction,
-    user?.role,
+    user,
   ]);
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <header className="mb-6 max-w-3xl">
-        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-secondary">
-          Current marketplace inventory
-        </p>
-        <h1 className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">
-          Browse surplus flooring listings
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground sm:text-base">
-          Compare lot economics, seller verification, inventory freshness, and
-          freight readiness before you contact a seller.
-        </p>
-      </header>
-      {/* Search Bar */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            key={currentFilters.query ?? ""}
-            placeholder="Search flooring by material, species, brand (3+ characters)..."
-            className="pl-10"
-            defaultValue={currentFilters.query ?? ""}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            minLength={3}
-            aria-label="Search flooring"
-          />
-        </div>
+  const displayControls = (
+    <>
+      <Select
+        value={String(currentLimit)}
+        onValueChange={(v) => updateParams({ limit: v })}
+      >
+        <SelectTrigger
+          aria-label="Listings per page"
+          className="w-auto max-w-full min-h-11 h-auto min-w-0 whitespace-normal text-sm [&>span]:line-clamp-none [&>span]:text-left"
+        >
+          <SelectValue>Show {currentLimit}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {viewMode === "grid" ? (
+            <>
+              <SelectItem className="min-h-11" value="12">
+                Show 12
+              </SelectItem>
+              <SelectItem className="min-h-11" value="24">
+                Show 24
+              </SelectItem>
+              <SelectItem className="min-h-11" value="48">
+                Show 48
+              </SelectItem>
+            </>
+          ) : (
+            <>
+              <SelectItem className="min-h-11" value="50">
+                Show 50
+              </SelectItem>
+              <SelectItem className="min-h-11" value="100">
+                Show 100
+              </SelectItem>
+              <SelectItem className="min-h-11" value="250">
+                Show 250
+              </SelectItem>
+            </>
+          )}
+        </SelectContent>
+      </Select>
+      <div className="flex w-fit shrink-0 border rounded-md">
         <Button
-          variant="outline"
+          variant="ghost"
           size="icon"
-          onClick={() => {
-            setIsMobileFilterOpen(false);
-            setIsFilterPanelOpen((open) => !open);
-          }}
-          className={cn("hidden md:flex", isFilterPanelOpen && "bg-accent")}
-          aria-label="Toggle filters"
-          aria-expanded={isFilterPanelOpen}
+          className={cn(
+            "h-11 w-11 rounded-r-none",
+            viewMode === "grid" && "bg-accent",
+          )}
+          onClick={() => handleViewModeChange("grid")}
+          aria-label="Grid view"
+          aria-pressed={viewMode === "grid"}
         >
-          <SlidersHorizontal className="h-4 w-4" />
+          <Grid3X3 className="h-4 w-4" />
         </Button>
-        <Sheet
-          open={isMobileFilterOpen}
-          onOpenChange={(open) => {
-            setIsMobileFilterOpen(open);
-            if (open) {
-              setIsFilterPanelOpen(false);
-            }
-          }}
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-11 w-11 rounded-l-none",
+            viewMode === "list" && "bg-accent",
+          )}
+          onClick={() => handleViewModeChange("list")}
+          aria-label="List view"
+          aria-pressed={viewMode === "list"}
         >
-          <SheetTrigger asChild>
-            <Button
-              variant="outline"
-              size="icon"
-              className="md:hidden"
-              aria-label="Open filters"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="flex flex-col gap-0 p-0">
-            <div className="shrink-0 border-b px-5 py-4 pr-12">
-              <SheetTitle>Filters</SheetTitle>
-              <p className="mt-1 text-sm text-muted-foreground" aria-live="polite">
-                {initialData.total.toLocaleString()}
-                {initialData.totalIsExact ? "" : "+"} listing
-                {initialData.total !== 1 ? "s" : ""} match
-              </p>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-              <FacetedFilters
-                key={`mobile-${filterStateKey}`}
-                filters={currentFilters}
-                onFiltersChange={updateFilters}
-                onClearFilters={clearFilters}
-              />
-            </div>
-            <div className="grid shrink-0 grid-cols-[auto_1fr] gap-3 border-t bg-background px-5 py-4 shadow-[0_-8px_24px_rgba(49,32,21,0.08)]">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11"
-                onClick={clearFilters}
-                disabled={!hasFilters}
-              >
-                Clear
-              </Button>
-              <SheetClose asChild>
-                <Button type="button" className="min-h-11">
-                  Show {initialData.total.toLocaleString()}
-                  {initialData.totalIsExact ? "" : "+"} result
-                  {initialData.total !== 1 ? "s" : ""}
-                </Button>
-              </SheetClose>
-            </div>
-          </SheetContent>
-        </Sheet>
+          <List className="h-4 w-4" />
+        </Button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="container mx-auto px-[16px] py-4 sm:py-6">
+      <header className="mb-3">
+        <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+          Flooring listings
+        </h1>
+      </header>
+      <div className="relative mb-2">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          name="query"
+          form="job-lot-search"
+          placeholder="Search flooring by material, species, brand (3+ characters)..."
+          className="min-h-11 pl-10"
+          value={searchDraft.value}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          minLength={3}
+          aria-label="Search flooring"
+        />
       </div>
 
+      {!jobEditorOpen && (
+        <button
+          ref={jobSummaryRef}
+          type="button"
+          className="mb-2 flex min-h-11 w-full items-center justify-between gap-3 border-b pb-2 text-left sm:hidden"
+          aria-label={`Edit job: ${jobSummary}`}
+          aria-expanded={false}
+          aria-controls="job-lot-search"
+          onClick={() => {
+            setEditingJobKey(jobKey);
+            requestAnimationFrame(() => document.getElementById("browse-job-material")?.focus());
+          }}
+        >
+          <span className="text-sm">{jobSummary}</span>
+          <span className="shrink-0 text-sm font-medium text-primary underline underline-offset-4">Edit job</span>
+        </button>
+      )}
       <form
-        className="mb-6 flex flex-wrap items-center gap-2 border-b pb-4"
+        id="job-lot-search"
+        key={jobKey}
+        className={cn("mb-2 space-y-2 border-b pb-3 sm:block", !jobEditorOpen && "hidden")}
+        aria-label="Find flooring for your job"
+        onInvalid={(event) => {
+          setEditingJobKey(jobKey);
+          const field = event.target as HTMLElement;
+          requestAnimationFrame(() => field.focus());
+        }}
         onSubmit={(event) => {
           event.preventDefault();
-          const zip = String(new FormData(event.currentTarget).get("locationZip") ?? "").trim();
-          if (!/^\d{5}$/.test(zip)) return;
-          updateParams({ buyerZip: zip, sort: "proximity" });
+          const data = new FormData(event.currentTarget);
+          const zip = String(data.get("locationZip") ?? "").trim();
+          const amount = String(data.get("quantity") ?? "").trim();
+          const quantity = amount ? Number(amount) : undefined;
+          const material = String(data.get("material") ?? "");
+          const query = String(data.get("query") ?? "").trim();
+          if (zip && !/^\d{5}$/.test(zip)) return;
+          if (quantity !== undefined && (!Number.isFinite(quantity) || quantity < 0 || quantity > MAX_PUBLIC_FILTER_NUMBER)) return;
+          if (query && query.length < 3) return;
+          if (quantity !== undefined && currentFilters.maxLotSize !== undefined && quantity > currentFilters.maxLotSize) {
+            toast.error("The square feet needed exceeds your maximum lot-size filter. Adjust that filter and try again.");
+            return;
+          }
+          const selected = JOB_MATERIALS.find((option) => option.value === material);
+          if (material && material !== "__selected" && !selected) return;
+          const materialType = material === "__selected" ? currentFilters.materialType : selected ? [selected.value] : undefined;
+          const materialChanged = (materialType ?? []).join(",") !== (currentFilters.materialType ?? []).join(",");
+          const validWearLayers = new Set(getWearLayerOptions(materialType).map((option) => option.value));
+          clearTimeout(timeoutRef.current);
+          updateParams({
+            query: query || undefined,
+            materialType: materialType?.join(","),
+            minLotSize: quantity === undefined ? undefined : String(quantity),
+            buyerZip: zip || undefined,
+            ...(!zip ? { maxDistance: undefined } : {}),
+            ...(materialChanged ? { wearLayer: currentFilters.wearLayer?.filter((layer) => validWearLayers.has(layer)).join(",") } : {}),
+            sort: zip ? "proximity" : currentSort === "proximity" ? undefined : currentSort,
+          });
+          setEditingJobKey(null);
+          requestAnimationFrame(() => {
+            if (jobSummaryRef.current?.getClientRects().length) jobSummaryRef.current.focus();
+          });
         }}
       >
-        <label htmlFor="browse-location-zip" className="flex items-center gap-2 text-sm font-medium">
-          <MapPin className="h-4 w-4 text-secondary" aria-hidden="true" />
-          Near your job
-        </label>
-        <Input
-          key={currentFilters.buyerZip ?? "nationwide"}
-          id="browse-location-zip"
-          name="locationZip"
-          aria-label="Job ZIP code"
-          placeholder="ZIP code"
-          defaultValue={currentFilters.buyerZip ?? ""}
-          inputMode="numeric"
-          autoComplete="postal-code"
-          pattern="[0-9]{5}"
-          maxLength={5}
-          required
-          className="min-h-11 w-24"
-        />
-        <Button type="submit" variant="outline" className="min-h-11">Find nearby</Button>
-        <p className="w-full text-xs text-muted-foreground sm:w-auto sm:pl-2" role="status">
+        <p className="text-sm font-medium">Find flooring for your job</p>
+        <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="col-span-2 min-w-0 space-y-1 sm:col-span-1">
+            <label htmlFor="browse-job-material" className="text-xs font-medium">Material</label>
+            <select id="browse-job-material" name="material" defaultValue={(currentFilters.materialType?.length ?? 0) > 1 ? "__selected" : currentFilters.materialType?.[0] ?? ""} className="flex h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="">Any material</option>
+              {(currentFilters.materialType?.length ?? 0) > 1 && <option value="__selected">Keep selected materials</option>}
+              {JOB_MATERIALS.map((material) => <option key={material.value} value={material.value}>{material.label}</option>)}
+            </select>
+          </div>
+          <div className="min-w-0 space-y-1">
+            <label htmlFor="browse-job-quantity" className="text-xs font-medium">Sq ft needed</label>
+            <Input id="browse-job-quantity" name="quantity" type="number" inputMode="decimal" min={0} max={MAX_PUBLIC_FILTER_NUMBER} step="any" placeholder="Any size" defaultValue={currentFilters.minLotSize ?? ""} className="min-h-11" aria-describedby="browse-job-hint" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <label htmlFor="browse-location-zip" className="flex items-center gap-1 text-xs font-medium"><MapPin className="h-3.5 w-3.5 text-secondary" aria-hidden="true" />Job ZIP code</label>
+            <Input id="browse-location-zip" name="locationZip" placeholder="Nationwide" defaultValue={currentFilters.buyerZip ?? ""} inputMode="numeric" autoComplete="postal-code" pattern="[0-9]{5}" maxLength={5} className="min-h-11" />
+          </div>
+          <Button type="submit" className="col-span-2 h-auto min-h-11 whitespace-normal sm:col-span-1">Find lots</Button>
+        </div>
+        <p id="browse-job-hint" className="text-xs text-muted-foreground">Shows lots with at least this many square feet. Check minimum orders on each lot; freight is quoted at checkout.</p>
+        {currentFilters.maxLotSize !== undefined && <p className="text-xs text-muted-foreground">Your maximum lot-size filter is {currentFilters.maxLotSize.toLocaleString()} sq ft.</p>}
+      </form>
+      {purchaseIntent.quantitySqFt !== undefined && (
+        <div className="mb-3">
+          <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="h-4 w-4 shrink-0 accent-primary"
+              checked={intendedFilters.hideQuantityConflicts === true}
+              onChange={(event) => updateParams({ hideQuantityConflicts: event.target.checked ? "true" : undefined })}
+              aria-describedby="quantity-conflict-hint"
+            />
+            Hide known quantity conflicts
+          </label>
+          <p id="quantity-conflict-hint" className="text-xs text-muted-foreground">
+            Keeps larger minimum orders and full lots. Lots needing confirmation remain visible.
+          </p>
+          {intendedFilters.hideQuantityConflicts && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 h-auto min-h-11 whitespace-normal"
+              aria-label="Remove quantity conflict filter"
+              onClick={() => updateParams({ hideQuantityConflicts: undefined })}
+            >
+              Quantity conflicts hidden <X className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+      )}
+        <p className="mb-3 text-xs text-muted-foreground" role="status">
           {currentFilters.buyerZip && initialData.locationLabel === null
             ? "ZIP not recognized. Distance sorting is unavailable; try another ZIP."
             : initialData.locationLabel
-              ? `${initialData.locationLabel}${currentFilters.maxDistance ? ` Â· within ${currentFilters.maxDistance} miles` : " Â· nationwide"}`
-              : "Enter a ZIP to put nearby inventory first."}
+              ? initialData.locationLabel + (currentFilters.maxDistance ? " · within " + currentFilters.maxDistance + " miles" : currentSort === "proximity" ? " · nearest lots first" : "")
+              : "Add a job ZIP to put nearby inventory first."}
         </p>
-      </form>
 
-      {/* Toolbar */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div className="text-sm text-muted-foreground">
-          {initialData.total.toLocaleString()}{initialData.totalIsExact ? "" : "+"} listing
-          {initialData.total !== 1 ? "s" : ""} found
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Select
-            value={String(currentLimit)}
-            onValueChange={(v) => updateParams({ limit: v })}
-          >
-            <SelectTrigger
-              aria-label="Listings per page"
-              className="w-full sm:w-[140px] h-8 text-xs"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {viewMode === "grid" ? (
-                <>
-                  <SelectItem value="12">Show 12</SelectItem>
-                  <SelectItem value="24">Show 24</SelectItem>
-                  <SelectItem value="48">Show 48</SelectItem>
-                </>
-              ) : (
-                <>
-                  <SelectItem value="50">Show 50</SelectItem>
-                  <SelectItem value="100">Show 100</SelectItem>
-                  <SelectItem value="250">Show 250</SelectItem>
-                </>
-              )}
-            </SelectContent>
-          </Select>
+      <div className="mb-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             value={currentSort}
             onValueChange={(v) => updateParams({ sort: v })}
           >
             <SelectTrigger
               aria-label="Sort listings"
-              className="w-full sm:w-[200px] h-8 text-xs"
+              className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal text-left sm:w-[200px] sm:flex-none [&>span]:line-clamp-none [&>span]:text-left"
             >
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
               {SORT_OPTIONS.map((opt) => (
                 <SelectItem
+                  className="min-h-11"
                   key={opt.value}
                   value={opt.value}
-                  disabled={opt.value === "proximity" && !currentFilters.buyerZip}
+                  disabled={
+                    opt.value === "proximity" && !currentFilters.buyerZip
+                  }
                 >
                   {opt.label}
                 </SelectItem>
@@ -746,44 +945,122 @@ export function ListingsBrowseClient({
             </SelectContent>
           </Select>
           <Button
+            variant="outline"
+            size="icon"
+            onClick={() => {
+              setIsMobileFilterOpen(false);
+              setIsFilterPanelOpen((open) => !open);
+            }}
+            className={cn(
+              "hidden h-11 w-11 md:flex",
+              isFilterPanelOpen && "bg-accent",
+            )}
+            aria-label="Toggle filters"
+            aria-expanded={isFilterPanelOpen}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
+          <Sheet
+            open={isMobileFilterOpen}
+            onOpenChange={(open) => {
+              setIsMobileFilterOpen(open);
+              if (open) {
+                setIsFilterPanelOpen(false);
+              }
+            }}
+          >
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-auto min-h-11 shrink-0 whitespace-normal md:hidden"
+                aria-label="Open filters"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span>Filters</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent
+              side="left"
+              className="flex w-[min(100%,384px)] flex-col gap-0 p-0 sm:max-w-[384px]"
+            >
+              <div className="shrink-0 border-b px-[20px] py-4 pr-[56px]">
+                <SheetTitle>Filters</SheetTitle>
+                <p
+                  className="mt-1 text-sm text-muted-foreground"
+                  aria-live="polite"
+                >
+                  {isSearchPending ? "Updating listings…" : <>{initialData.total.toLocaleString()}
+                  {initialData.totalIsExact ? "" : "+"} listing
+                  {initialData.total !== 1 ? "s" : ""} match</>}
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-[20px] py-4 [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:whitespace-normal [&_input]:min-h-11">
+                <section
+                  aria-labelledby="mobile-display-title"
+                  className="mb-5 space-y-3 border-b pb-5"
+                >
+                  <h3
+                    id="mobile-display-title"
+                    className="text-sm font-semibold"
+                  >
+                    Display preferences
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {displayControls}
+                  </div>
+                </section>
+                <FacetedFilters
+                  key={`mobile-${filterStateKey}`}
+                  filters={intendedFilters}
+                  onFiltersChange={updateFilters}
+                  onClearFilters={clearFilters}
+                />
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2 border-t bg-background px-[20px] py-4 shadow-[0_-8px_24px_rgba(49,32,21,0.08)]">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-11 flex-1 basis-20 whitespace-normal"
+                  onClick={clearFilters}
+                  disabled={!hasFilters}
+                >
+                  Clear
+                </Button>
+                <SheetClose asChild>
+                  <Button
+                    type="button"
+                    className="h-auto min-h-11 flex-[2] basis-40 whitespace-normal"
+                  >
+                    {isSearchPending ? "View results" : <>Show {initialData.total.toLocaleString()}
+                    {initialData.totalIsExact ? "" : "+"} result
+                    {initialData.total !== 1 ? "s" : ""}</>}
+                  </Button>
+                </SheetClose>
+              </div>
+            </SheetContent>
+          </Sheet>
+          <div className="hidden min-w-0 flex-wrap items-center gap-2 md:flex">
+            {displayControls}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm text-muted-foreground" role="status">
+            {isSearchPending ? "Updating listings…" : <>{initialData.total.toLocaleString()}
+            {initialData.totalIsExact ? "" : "+"} listing
+            {initialData.total !== 1 ? "s" : ""} found</>}
+          </div>
+          <Button
             variant={atSearchLimit ? "gold" : "outline"}
             size="sm"
             onClick={handleSaveSearchClick}
-            className="h-8"
+            disabled={isSearchPending}
+            className="min-h-11 h-auto whitespace-normal"
           >
             <BookmarkPlus className="mr-2 h-4 w-4" aria-hidden="true" />
             {isAuthenticated && !isPro
               ? `Save Search (${savedSearchCount}/${FREE_LIMITS.savedSearches})`
               : "Save Search"}
           </Button>
-          <div className="flex border rounded-md">
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 rounded-r-none",
-                viewMode === "grid" && "bg-accent"
-              )}
-              onClick={() => handleViewModeChange("grid")}
-              aria-label="Grid view"
-              aria-pressed={viewMode === "grid"}
-            >
-              <Grid3X3 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-8 w-8 rounded-l-none",
-                viewMode === "list" && "bg-accent"
-              )}
-              onClick={() => handleViewModeChange("list")}
-              aria-label="List view"
-              aria-pressed={viewMode === "list"}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
       </div>
 
@@ -803,35 +1080,43 @@ export function ListingsBrowseClient({
       />
 
       {/* Premium Hero Banner */}
-      {FEATURES.PROMOTIONS_ENABLED && <PremiumHeroBanner />}
+      {FEATURES.PROMOTIONS_ENABLED && <PremiumHeroBanner purchaseIntent={purchaseIntent} />}
 
       {/* Featured Carousel */}
-      {FEATURES.PROMOTIONS_ENABLED && <FeaturedCarousel />}
+      {FEATURES.PROMOTIONS_ENABLED && <FeaturedCarousel purchaseIntent={purchaseIntent} />}
 
       {/* Content */}
-      <div className="flex gap-8">
+      <div className="flex min-w-0 gap-8">
         {isFilterPanelOpen && (
-          <aside className="w-64 shrink-0 hidden md:block">
+          <aside className="hidden w-64 shrink-0 md:block [&_button]:min-h-11 [&_button]:min-w-11 [&_input]:min-h-11">
+            <h2 className="sr-only">Refine listings</h2>
             <FacetedFilters
               key={`desktop-${filterStateKey}`}
-              filters={currentFilters}
+              filters={intendedFilters}
               onFiltersChange={updateFilters}
               onClearFilters={clearFilters}
             />
           </aside>
         )}
 
-        <div className="flex-1">
-          {FEATURES.PROMOTIONS_ENABLED && sponsoredListings && sponsoredListings.length > 0 && (
-            <SponsoredCarousel listings={sponsoredListings} />
+        <div className="min-w-0 flex-1" role="region" aria-label="Listing results" aria-busy={isSearchPending}>
+          {isSearchPending && initialData.items.length > 0 && (
+            <p className="mb-3 text-sm text-muted-foreground">Previous results are shown while your search updates.</p>
           )}
+          {FEATURES.PROMOTIONS_ENABLED &&
+            sponsoredListings &&
+            sponsoredListings.length > 0 && (
+              <SponsoredCarousel listings={sponsoredListings} purchaseIntent={purchaseIntent} />
+            )}
 
-          {initialData.items.length === 0 ? (
+          {initialData.items.length === 0 && isSearchPending ? (
+            <p className="py-12 text-center text-muted-foreground">Finding inventory for your updated search…</p>
+          ) : initialData.items.length === 0 ? (
             <section
               aria-labelledby="search-gap-title"
-              className="mx-auto max-w-5xl py-12 text-center sm:py-16"
+              className="mx-auto max-w-5xl py-6 text-center sm:py-16"
             >
-              <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50">
+              <div className="mx-auto mb-4 hidden h-20 w-20 sm:flex items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/50">
                 <Search
                   className="h-10 w-10 text-muted-foreground/40"
                   aria-hidden="true"
@@ -852,20 +1137,44 @@ export function ListingsBrowseClient({
               </p>
 
               <div className="mx-auto mt-6 flex max-w-lg flex-col items-center gap-3">
-                <Button className="w-full sm:w-auto" onClick={handleBuyerRequestClick}>Post a buyer request</Button>
-                <p className="text-sm text-muted-foreground">Tell sellers what you need using your current search criteria.</p>
-                <Button variant="outline" className="w-full sm:w-auto" onClick={handleSaveSearchClick}>
-                  <BookmarkPlus className="mr-2 h-4 w-4" aria-hidden="true" />Save search alert
+                <Button
+                  className="h-auto min-h-11 w-full whitespace-normal sm:w-auto"
+                  onClick={handleBuyerRequestClick}
+                >
+                  Post a buyer request
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Tell sellers what you need using your current search criteria.
+                </p>
+                <Button
+                  variant="outline"
+                  className="h-auto min-h-11 w-full whitespace-normal sm:w-auto"
+                  onClick={handleSaveSearchClick}
+                >
+                  <BookmarkPlus className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Save search alert
                 </Button>
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm">
-                  <button type="button" onClick={handleSellerIntentClick} className="min-h-11 underline underline-offset-4">List matching inventory</button>
-                  <a className="inline-flex min-h-11 items-center underline underline-offset-4" href={referralHref} onClick={() => trackZeroResultAction("refer_inventory")}>Refer a seller</a>
+                  <button
+                    type="button"
+                    onClick={handleSellerIntentClick}
+                    className="min-h-11 underline underline-offset-4"
+                  >
+                    List matching inventory
+                  </button>
+                  <a
+                    className="inline-flex min-h-11 items-center underline underline-offset-4"
+                    href={referralHref}
+                    onClick={() => trackZeroResultAction("refer_inventory")}
+                  >
+                    Refer a seller
+                  </a>
                 </div>
               </div>
 
               {hasFilters && (
                 <Button
-                  className="mt-6"
+                  className="mt-6 h-auto min-h-11 whitespace-normal"
                   variant="ghost"
                   onClick={clearFilters}
                 >
@@ -876,11 +1185,11 @@ export function ListingsBrowseClient({
           ) : (
             <>
               {viewMode === "list" ? (
-                <ListingTableView items={initialData.items} />
+                <ListingTableView items={initialData.items} purchaseIntent={purchaseIntent} />
               ) : (
                 <div className="grid gap-4 stagger-grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {initialData.items.map((listing) => (
-                    <ListingCard key={listing.id} listing={listing} />
+                    <ListingCard key={listing.id} listing={listing} purchaseIntent={purchaseIntent} />
                   ))}
                 </div>
               )}
@@ -893,29 +1202,40 @@ export function ListingsBrowseClient({
                 >
                   {currentPage > 1 ? (
                     <Link href={buildPageUrl(currentPage - 1)}>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" className="min-h-11">
                         <ChevronLeft className="h-4 w-4" />
                         Previous
                       </Button>
                     </Link>
                   ) : (
-                    <Button variant="outline" size="sm" disabled>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-11"
+                      disabled
+                    >
                       <ChevronLeft className="h-4 w-4" />
                       Previous
                     </Button>
                   )}
                   <span className="text-sm text-muted-foreground px-4">
-                    Page {currentPage} of {initialData.totalPages}{initialData.totalIsExact ? "" : "+"}
+                    Page {currentPage} of {initialData.totalPages}
+                    {initialData.totalIsExact ? "" : "+"}
                   </span>
                   {currentPage < initialData.totalPages ? (
                     <Link href={buildPageUrl(currentPage + 1)}>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" className="min-h-11">
                         Next
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </Link>
                   ) : (
-                    <Button variant="outline" size="sm" disabled>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-11"
+                      disabled
+                    >
                       Next
                       <ChevronRight className="h-4 w-4" />
                     </Button>

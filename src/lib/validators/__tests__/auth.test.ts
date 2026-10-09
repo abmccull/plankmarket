@@ -5,6 +5,7 @@ import {
   loginSchema,
   saveVerificationDraftSchema,
   submitVerificationSchema,
+  getVerificationSubmissionSchema,
   updateProfileSchema,
 } from "@/lib/validators/auth";
 
@@ -140,12 +141,13 @@ describe("submitVerificationSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects invalid EIN format", () => {
+  it("accepts conventional EIN entry and rejects malformed values", () => {
     const missingDash = submitVerificationSchema.safeParse({
       ...validInput,
       einTaxId: "123456789",
     });
-    expect(missingDash.success).toBe(false);
+    expect(missingDash.success).toBe(true);
+    if (missingDash.success) expect(missingDash.data.einTaxId).toBe("12-3456789");
 
     const tooFewDigits = submitVerificationSchema.safeParse({
       ...validInput,
@@ -159,12 +161,29 @@ describe("submitVerificationSchema", () => {
     });
     expect(letters.success).toBe(false);
   });
+
+  it("normalizes a business domain while rejecting malformed or non-web URLs", () => {
+    const result = submitVerificationSchema.safeParse({ ...validInput, businessWebsite: " example.com " });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.businessWebsite).toBe("https://example.com");
+    for (const businessWebsite of ["not a website", "javascript:alert(1)", "ftp://example.com", "https://"]) {
+      expect(submitVerificationSchema.safeParse({ ...validInput, businessWebsite }).success).toBe(false);
+    }
+  });
+
+  it("requires the seller website at its field while keeping it optional for buyers", () => {
+    const seller = getVerificationSubmissionSchema("seller").safeParse({ ...validInput, businessWebsite: " " });
+    expect(seller.success).toBe(false);
+    if (!seller.success) expect(seller.error.issues[0]?.path).toEqual(["businessWebsite"]);
+    expect(getVerificationSubmissionSchema("buyer").safeParse({ ...validInput, businessWebsite: "" }).success).toBe(true);
+    expect(getVerificationSubmissionSchema("seller").safeParse({ ...validInput, businessWebsite: "example.com" }).success).toBe(true);
+  });
 });
 
 describe("saveVerificationDraftSchema", () => {
   it("accepts an incomplete step so users can resume later", () => {
     const result = saveVerificationDraftSchema.safeParse({
-      currentStep: 2,
+      expectedOwnerId: "11111111-1111-4111-8111-111111111111", expectedUpdatedAt: null, currentStep: 2,
       einTaxId: "12-",
     });
     expect(result.success).toBe(true);
@@ -172,11 +191,11 @@ describe("saveVerificationDraftSchema", () => {
 
   it("rejects invalid steps and oversized sensitive input", () => {
     expect(
-      saveVerificationDraftSchema.safeParse({ currentStep: 4 }).success,
+      saveVerificationDraftSchema.safeParse({ expectedOwnerId: "11111111-1111-4111-8111-111111111111", expectedUpdatedAt: null, currentStep: 4 }).success,
     ).toBe(false);
     expect(
       saveVerificationDraftSchema.safeParse({
-        currentStep: 2,
+        expectedOwnerId: "11111111-1111-4111-8111-111111111111", expectedUpdatedAt: null, currentStep: 2,
         einTaxId: "1".repeat(12),
       }).success,
     ).toBe(false);

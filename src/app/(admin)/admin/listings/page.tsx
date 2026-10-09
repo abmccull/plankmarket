@@ -1,12 +1,29 @@
 "use client";
 
-import { useState } from "react";
-import { SpecificationReview } from "@/components/admin/specification-review";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useEffect, useRef, useState } from "react";
+import type { inferRouterOutputs } from "@trpc/server";
+import type { AppRouter } from "@/server/routers/_app";
+import type { ColumnDef } from "@tanstack/react-table";
 import { trpc } from "@/lib/trpc/client";
-import { DataTable, DataTableColumnHeader } from "@/components/admin/data-table";
-import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { DataTable } from "@/components/admin/data-table";
+import { SpecificationReview } from "@/components/admin/specification-review";
 import { ListingStatusBadge } from "@/components/dashboard/status-badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import {
+  QueryErrorState,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,116 +40,325 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import {
-  Loader2,
-  MoreHorizontal,
-  Flag,
-  FlagOff,
-  ExternalLink,
-  ReceiptText,
-} from "lucide-react";
 import { formatCurrency, formatDate, getErrorMessage } from "@/lib/utils";
-import type { ColumnDef } from "@tanstack/react-table";
-import type { ListingStatus } from "@/types";
 
-interface Listing {
-  id: string;
-  title: string;
-  seller: {
-    name: string;
-    businessName: string | null;
-  };
-  askPricePerSqFt: number;
-  status: ListingStatus;
-  stripeTaxCode: string | null;
-  taxCodeStatus: "unassigned" | "pending_review" | "verified";
-  createdAt: Date | string;
-  [key: string]: unknown;
-}
+type Listing =
+  inferRouterOutputs<AppRouter>["admin"]["getListings"]["listings"][number];
+type Action = {
+  kind: "flag" | "restore" | "tax-verify" | "tax-clear";
+  listing: Listing;
+};
+type ListingFilter = Listing["status"] | "all";
+const LIMIT = 25;
+const control = "min-h-11 h-auto whitespace-normal px-3 py-2";
+const isFilter = (value: string): value is ListingFilter =>
+  ["all", "active", "archived", "draft", "sold", "expired"].includes(value);
 
 export default function AdminListingsPage() {
-  const { data: listingsData, isLoading } = trpc.admin.getListings.useQuery({ page: 1, limit: 50 });
+  const user = useAuthStore((state) => state.user);
+  return user?.role === "admin" ? (
+    <ListingsQueue key={user.id} actorId={user.id} />
+  ) : (
+    <StatePanelLoading label="Checking administrator access" rows={2} />
+  );
+}
+
+function ListingsQueue({ actorId }: { actorId: string }) {
+  const [page, setPage] = useState(1);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<ListingFilter>("all");
+  const query = trpc.admin.getListings.useQuery({
+    page,
+    limit: LIMIT,
+    query: search || undefined,
+    status: status === "all" ? undefined : status,
+  });
   const utils = trpc.useUtils();
-
-  const [specReviewId, setSpecReviewId] = useState<string | null>(null);
-  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
-  const [unflagDialogOpen, setUnflagDialogOpen] = useState(false);
-  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
-  const [flagReason, setFlagReason] = useState("");
-  const [taxDialogOpen, setTaxDialogOpen] = useState(false);
-  const [taxReviewAction, setTaxReviewAction] = useState<
-    "verify" | "clear"
-  >("verify");
+  const flag = trpc.admin.flagListing.useMutation({ retry: false });
+  const restore = trpc.admin.unflagListing.useMutation({ retry: false });
+  const tax = trpc.admin.setListingTaxCode.useMutation({ retry: false });
+  const [action, setAction] = useState<Action | null>(null);
+  const [reason, setReason] = useState("");
   const [taxCode, setTaxCode] = useState("");
-  const [taxClearReason, setTaxClearReason] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reviewTarget, setReviewTarget] = useState<Listing | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [specReview, setSpecReview] = useState<{
+    listingId: string;
+    opening: number;
+  } | null>(null);
+  const specTarget = useRef<typeof specReview>(null);
+  const specSequence = useRef(0);
+  const mounted = useRef(false);
+  const working = useRef(false);
+  const reviewRequired = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () =>
+    mounted.current &&
+    useAuthStore.getState().user?.id === actorId &&
+    useAuthStore.getState().user?.role === "admin";
+  const unavailable =
+    busy || !!reviewTarget || query.isError || query.isFetching;
+  const eligible =
+    !!action &&
+    (action.kind === "flag"
+      ? action.listing.status === "active"
+      : action.kind === "restore"
+        ? action.listing.status === "archived"
+        : action.kind === "tax-clear"
+          ? action.listing.taxCodeStatus === "verified"
+          : true);
+  const valid =
+    !!action &&
+    (action.kind === "tax-verify"
+      ? /^txcd_\d+$/.test(taxCode.trim())
+      : action.kind === "restore"
+        ? true
+        : reason.trim().length >= (action.kind === "tax-clear" ? 10 : 1) &&
+          reason.length <= 500);
 
-  const flagMutation = trpc.admin.flagListing.useMutation({
-    onSuccess: () => {
-      toast.success("Listing flagged and removed from marketplace");
-      utils.admin.getListings.invalidate();
-      setFlagDialogOpen(false);
-      setFlagReason("");
-    },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
-
-  const unflagMutation = trpc.admin.unflagListing.useMutation({
-    onSuccess: () => {
-      toast.success("Listing restored to marketplace");
-      utils.admin.getListings.invalidate();
-      setUnflagDialogOpen(false);
-    },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
-
-  const taxCodeMutation = trpc.admin.setListingTaxCode.useMutation({
-    onSuccess: () => {
-      toast.success(
-        taxReviewAction === "verify"
-          ? "Tax code verified"
-          : "Tax code cleared",
+  async function refreshQueue(allInputs = false) {
+    if (!current()) return;
+    try {
+      if (allInputs) {
+        await utils.admin.getListings.invalidate(undefined, {
+          refetchType: "none",
+        });
+        if (!current()) return;
+      }
+      const result = await query.refetch();
+      if (current()) setRefreshFailed(result.isError);
+    } catch {
+      if (current()) setRefreshFailed(true);
+    }
+  }
+  function openAction(kind: Action["kind"], listing: Listing) {
+    if (
+      !current() ||
+      working.current ||
+      reviewRequired.current ||
+      query.isError ||
+      query.isFetching
+    )
+      return;
+    setAction({ kind, listing });
+    setReason("");
+    setTaxCode(listing.stripeTaxCode ?? "");
+    setActionError(null);
+  }
+  async function reviewListing() {
+    if (!reviewTarget || !current() || working.current) return;
+    working.current = true;
+    setBusy(true);
+    try {
+      const result = await utils.client.admin.getListings.query({
+        query: reviewTarget.title,
+        page: 1,
+        limit: 100,
+      });
+      if (!current()) return;
+      const latest = result.listings.find(
+        (listing) => listing.id === reviewTarget.id,
       );
-      utils.admin.getListings.invalidate();
-      utils.admin.getTaxReadiness.invalidate();
-      setTaxDialogOpen(false);
+      if (!latest)
+        throw new Error(
+          "This listing could not be found. Keep the action on hold.",
+        );
+      setAction((previous) =>
+        previous ? { ...previous, listing: latest } : null,
+      );
+      reviewRequired.current = false;
+      setReviewTarget(null);
+      setActionError(null);
+      setNotice(
+        "Listing status refreshed. Review its current state before another action; this read does not confirm earlier notification or provider outcomes.",
+      );
+      await refreshQueue(true);
+    } catch (error) {
+      if (current()) setActionError(getErrorMessage(error));
+    } finally {
+      working.current = false;
+      if (current()) setBusy(false);
+    }
+  }
+  async function submit() {
+    if (
+      !action ||
+      !current() ||
+      working.current ||
+      reviewRequired.current ||
+      query.isError ||
+      query.isFetching ||
+      !eligible ||
+      !valid
+    )
+      return;
+    const selected = action;
+    working.current = true;
+    setBusy(true);
+    setActionError(null);
+    try {
+      let message: string;
+      if (selected.kind === "flag") {
+        await flag.mutateAsync({ listingId: selected.listing.id, reason });
+        message = "Listing flagged and removed from marketplace.";
+      } else if (selected.kind === "restore") {
+        const receipt = await restore.mutateAsync({
+          listingId: selected.listing.id,
+          restorationVersion: selected.listing.restorationVersion,
+        });
+        message = receipt.replayed
+          ? "This earlier restoration was already recorded. Refresh listing status to confirm its current state."
+          : receipt.confirmationRequired
+            ? "Listing restored. The seller must confirm current availability before buyers can see it."
+            : "Listing restored after review.";
+        if (receipt.alertsPending)
+          message += " Listing alerts are awaiting processing.";
+      } else if (selected.kind === "tax-verify") {
+        await tax.mutateAsync({
+          action: "verify",
+          listingId: selected.listing.id,
+          taxCode: taxCode.trim(),
+        });
+        message = "Tax code verified.";
+      } else {
+        await tax.mutateAsync({
+          action: "clear",
+          listingId: selected.listing.id,
+          reason: reason.trim(),
+        });
+        message = "Tax code cleared.";
+      }
+      if (!current()) return;
+      setNotice(message);
+      setAction(null);
+      setReason("");
       setTaxCode("");
-      setTaxClearReason("");
-    },
-    onError: (err) => {
-      toast.error(getErrorMessage(err));
-    },
-  });
-
+      await refreshQueue(true);
+      if (current() && selected.kind.startsWith("tax-"))
+        await utils.admin.getTaxReadiness
+          .invalidate(undefined, { refetchType: "none" })
+          .catch(() => undefined);
+    } catch (error) {
+      if (current()) {
+        reviewRequired.current = true;
+        setReviewTarget(selected.listing);
+        setActionError(
+          `${getErrorMessage(error)} The outcome is not confirmed here. Refresh listing status before another attempt.`,
+        );
+      }
+    } finally {
+      working.current = false;
+      if (current()) setBusy(false);
+    }
+  }
+  function taxState(listing: Listing) {
+    return (
+      <div className="space-y-1">
+        <Badge
+          variant={listing.taxCodeStatus === "verified" ? "success" : "outline"}
+        >
+          {listing.taxCodeStatus === "verified"
+            ? "Tax code verified"
+            : listing.taxCodeStatus === "pending_review"
+              ? "Tax review pending"
+              : "Tax code unassigned"}
+        </Badge>
+        {listing.stripeTaxCode && (
+          <p className="break-all font-mono text-xs text-muted-foreground">
+            {listing.stripeTaxCode}
+          </p>
+        )}
+      </div>
+    );
+  }
+  function actions(listing: Listing) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className={control}
+            aria-label={`Actions for ${listing.title}`}
+            disabled={unavailable}
+          >
+            Actions
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onSelect={() => {
+              if (current() && !working.current && !reviewRequired.current) {
+                const opening = {
+                  listingId: listing.id,
+                  opening: ++specSequence.current,
+                };
+                specTarget.current = opening;
+                setSpecReview(opening);
+              }
+            }}
+          >
+            Review product specifications
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a
+              href={`/listings/${listing.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View Listing
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => openAction("tax-verify", listing)}>
+            Review tax code
+          </DropdownMenuItem>
+          {listing.taxCodeStatus === "verified" && (
+            <DropdownMenuItem onSelect={() => openAction("tax-clear", listing)}>
+              Clear tax code
+            </DropdownMenuItem>
+          )}
+          {listing.status === "active" && (
+            <DropdownMenuItem
+              className="text-destructive"
+              onSelect={() => openAction("flag", listing)}
+            >
+              Flag Listing
+            </DropdownMenuItem>
+          )}
+          {listing.status === "archived" && (
+            <DropdownMenuItem onSelect={() => openAction("restore", listing)}>
+              Unflag / Restore
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
   const columns: ColumnDef<Listing>[] = [
     {
       accessorKey: "title",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Title" />
-      ),
+      header: "Title",
       cell: ({ row }) => (
-        <div className="max-w-[300px] truncate">{row.original.title}</div>
+        <span className="block max-w-xs break-words">{row.original.title}</span>
       ),
     },
     {
-      accessorKey: "seller",
+      id: "seller",
       header: "Seller",
       cell: ({ row }) =>
         row.original.seller.businessName || row.original.seller.name,
     },
     {
-      accessorKey: "pricePerSqFt",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Price" />
-      ),
+      accessorKey: "askPricePerSqFt",
+      header: "Price / sq ft",
       cell: ({ row }) => formatCurrency(row.original.askPricePerSqFt),
     },
     {
@@ -143,281 +369,281 @@ export default function AdminListingsPage() {
     {
       accessorKey: "taxCodeStatus",
       header: "Tax code",
-      cell: ({ row }) => (
-        <div className="space-y-1">
-          <Badge
-            variant={
-              row.original.taxCodeStatus === "verified"
-                ? "success"
-                : "outline"
-            }
-          >
-            {row.original.taxCodeStatus === "verified"
-              ? "Verified"
-              : "Not ready"}
-          </Badge>
-          {row.original.stripeTaxCode && (
-            <p className="font-mono text-xs text-muted-foreground">
-              {row.original.stripeTaxCode}
-            </p>
-          )}
-        </div>
-      ),
+      cell: ({ row }) => taxState(row.original),
     },
     {
       accessorKey: "createdAt",
-      header: ({ column }) => (
-        <DataTableColumnHeader column={column} title="Created" />
-      ),
+      header: "Created",
       cell: ({ row }) => formatDate(row.original.createdAt),
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Actions for ${row.original.title}`}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setSpecReviewId(row.original.id)}>Review product specifications</DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <a href={`/listings/${row.original.id}`} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="mr-2 h-4 w-4" />
-                View Listing
-              </a>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                setSelectedListing(row.original);
-                setTaxReviewAction("verify");
-                setTaxCode(row.original.stripeTaxCode ?? "");
-                setTaxDialogOpen(true);
-              }}
-            >
-              <ReceiptText className="mr-2 h-4 w-4" />
-              Review tax code
-            </DropdownMenuItem>
-            {row.original.taxCodeStatus === "verified" && (
-              <DropdownMenuItem
-                onClick={() => {
-                  setSelectedListing(row.original);
-                  setTaxReviewAction("clear");
-                  setTaxClearReason("");
-                  setTaxDialogOpen(true);
-                }}
-              >
-                <ReceiptText className="mr-2 h-4 w-4" />
-                Clear tax code
-              </DropdownMenuItem>
-            )}
-            {row.original.status === "active" && (
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => {
-                  setSelectedListing(row.original);
-                  setFlagDialogOpen(true);
-                }}
-              >
-                <Flag className="mr-2 h-4 w-4" />
-                Flag Listing
-              </DropdownMenuItem>
-            )}
-            {row.original.status === "archived" && (
-              <DropdownMenuItem
-                onClick={() => {
-                  setSelectedListing(row.original);
-                  setUnflagDialogOpen(true);
-                }}
-              >
-                <FlagOff className="mr-2 h-4 w-4" />
-                Unflag / Restore
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      enableHiding: false,
+      header: "Actions",
+      cell: ({ row }) => actions(row.original),
     },
   ];
-
+  const title =
+    action?.kind === "flag"
+      ? "Flag Listing"
+      : action?.kind === "restore"
+        ? "Restore Listing"
+        : action?.kind === "tax-verify"
+          ? "Verify listing tax code"
+          : "Clear listing tax code";
+  const commitLabel =
+    action?.kind === "flag"
+      ? "Flag Listing"
+      : action?.kind === "restore"
+        ? "Restore Listing"
+        : action?.kind === "tax-verify"
+          ? "Verify code"
+          : "Clear code";
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-3xl font-bold">Listing Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage all listings on the platform
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">Listing Management</h1>
+        <p className="mt-1 text-muted-foreground">
+          Find inventory and review its marketplace status.
+        </p>
       </div>
-
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <form
+        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!current() || working.current) return;
+          setSearch(searchDraft.trim());
+          setPage(1);
+        }}
+      >
+        <div className="min-w-0 flex-1 space-y-2">
+          <Label htmlFor="listing-search">Search listing title</Label>
+          <Input
+            id="listing-search"
+            value={searchDraft}
+            onChange={(event) => setSearchDraft(event.target.value)}
+            disabled={busy}
+            className="min-h-11"
+          />
         </div>
-      ) : listingsData ? (
-        <DataTable columns={columns} data={listingsData.listings} />
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No listings found</p>
+        <div className="space-y-2">
+          <Label htmlFor="listing-status-filter">Status</Label>
+          <select
+            id="listing-status-filter"
+            value={status}
+            disabled={busy}
+            className="min-h-11 w-full rounded-md border bg-background px-3"
+            onChange={(event) => {
+              if (isFilter(event.target.value) && !working.current) {
+                setStatus(event.target.value);
+                setPage(1);
+              }
+            }}
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="archived">Archived</option>
+            <option value="draft">Draft</option>
+            <option value="sold">Sold</option>
+            <option value="expired">Expired</option>
+          </select>
+        </div>
+        <Button type="submit" disabled={busy} className={control}>
+          Search listings
+        </Button>
+      </form>
+      {notice && (
+        <div role="status" className="space-y-2 rounded-md border p-3 text-sm">
+          <p>{notice}</p>
+          {refreshFailed && (
+            <p>
+              The listing list could not be refreshed. Retry the list without
+              repeating an accepted action.
+            </p>
+          )}
         </div>
       )}
-
-      <Dialog open={specReviewId !== null} onOpenChange={open => { if (!open) setSpecReviewId(null); }}><DialogContent className="max-h-[85vh] overflow-y-auto"><DialogHeader><DialogTitle>Review product specifications</DialogTitle></DialogHeader>{specReviewId && <SpecificationReview key={specReviewId} listingId={specReviewId} onComplete={() => { setSpecReviewId(null); void utils.admin.getListings.invalidate(); toast.success("Specification evidence review saved"); }} />}</DialogContent></Dialog>
-      {/* Flag Listing Dialog */}
-      <AlertDialog open={taxDialogOpen} onOpenChange={setTaxDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {taxReviewAction === "verify"
-                ? "Verify listing tax code"
-                : "Clear listing tax code"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {taxReviewAction === "verify"
-                ? "Enter only the Stripe Tax code approved for this flooring inventory. This administrative decision is audited; PlankMarket will not infer or auto-assign a category."
-                : "Clearing the code immediately makes this listing ineligible for tax-enabled checkout. Record why the prior verification is no longer valid."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2 py-2">
-            {taxReviewAction === "verify" ? (
-              <>
-                <Label htmlFor="listingTaxCode">Stripe Tax code</Label>
-                <Input
-                  id="listingTaxCode"
-                  value={taxCode}
-                  onChange={(event) => setTaxCode(event.target.value)}
-                  placeholder="txcd_..."
-                  autoComplete="off"
-                />
-              </>
-            ) : (
-              <>
-                <Label htmlFor="taxClearReason">Reason</Label>
-                <Textarea
-                  id="taxClearReason"
-                  value={taxClearReason}
-                  onChange={(event) =>
-                    setTaxClearReason(event.target.value)
-                  }
-                  rows={3}
-                  placeholder="Why is this tax code no longer approved?"
-                />
-              </>
-            )}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={
-                taxCodeMutation.isPending ||
-                (taxReviewAction === "verify"
-                  ? !/^txcd_\d+$/.test(taxCode.trim())
-                  : taxClearReason.trim().length < 10)
-              }
-              onClick={(event) => {
-                event.preventDefault();
-                if (!selectedListing) return;
-                if (taxReviewAction === "verify") {
-                  taxCodeMutation.mutate({
-                    action: "verify",
-                    listingId: selectedListing.id,
-                    taxCode: taxCode.trim(),
-                  });
-                } else {
-                  taxCodeMutation.mutate({
-                    action: "clear",
-                    listingId: selectedListing.id,
-                    reason: taxClearReason.trim(),
-                  });
-                }
-              }}
+      {reviewTarget && !action && (
+        <div role="alert" className="space-y-2 rounded-md border p-4">
+          <p>{actionError}</p>
+          <Button
+            className={control}
+            variant="outline"
+            onClick={() => void reviewListing()}
+            disabled={busy}
+          >
+            Refresh listing status
+          </Button>
+        </div>
+      )}
+      {query.isError ? (
+        <QueryErrorState
+          title="Listings unavailable"
+          description="Listing status could not be checked. Refresh the list before taking action."
+          onRetry={() => void refreshQueue()}
+          isRetrying={query.isFetching || busy}
+        />
+      ) : query.isLoading || !query.data ? (
+        <StatePanelLoading label="Loading listings" />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={query.data.listings}
+          serverPagination={{
+            page,
+            pageSize: LIMIT,
+            total: query.data.total,
+            totalPages: query.data.totalPages,
+            isFetching: query.isFetching || busy,
+            onPageChange: (next) => {
+              if (current() && !working.current) setPage(next);
+            },
+          }}
+          renderMobileRow={(listing) => (
+            <article
+              aria-label={`Listing ${listing.title}`}
+              className="min-w-0 space-y-3"
             >
-              {taxCodeMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {taxReviewAction === "verify"
-                ? "Verify code"
-                : "Clear code"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Flag Listing Dialog */}
-      <AlertDialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>
-        <AlertDialogContent>
+              <h2 className="break-words font-semibold">{listing.title}</h2>
+              <p className="break-words text-sm">
+                {listing.seller.businessName || listing.seller.name}
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-medium">
+                  {formatCurrency(listing.askPricePerSqFt)} / sq ft
+                </span>
+                <ListingStatusBadge status={listing.status} />
+              </div>
+              {taxState(listing)}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {formatDate(listing.createdAt)}
+                </span>
+                {actions(listing)}
+              </div>
+            </article>
+          )}
+        />
+      )}
+      <Dialog
+        open={specReview !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            specTarget.current = null;
+            setSpecReview(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review product specifications</DialogTitle>
+          </DialogHeader>
+          {specReview && (
+            <SpecificationReview
+              key={specReview.opening}
+              listingId={specReview.listingId}
+              onComplete={() => {
+                if (!current() || specTarget.current !== specReview) return;
+                specTarget.current = null;
+                setSpecReview(null);
+                setNotice("Specification evidence review saved.");
+                void refreshQueue(true);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={!!action}
+        onOpenChange={(open) => {
+          if (!open && !working.current) setAction(null);
+        }}
+      >
+        <AlertDialogContent className="max-h-[90dvh] overflow-y-auto">
           <AlertDialogHeader>
-            <AlertDialogTitle>Flag Listing</AlertDialogTitle>
+            <AlertDialogTitle>{title}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove &quot;{selectedListing?.title}&quot; from the
-              marketplace and notify the seller. Please provide a reason.
+              <span className="break-words font-medium">
+                {action?.listing.title}
+              </span>
+              <br />
+              {action?.kind === "flag"
+                ? "Remove this listing from the marketplace and notify the seller. Provide a reason."
+                : action?.kind === "restore"
+                  ? "Restore the reviewed listing if it still meets publishing requirements and notify the seller. Prices and expiry stay unchanged. The seller must still confirm availability when due before buyers can see it."
+                  : action?.kind === "tax-verify"
+                    ? "Enter only the Stripe Tax code approved for this flooring inventory. This administrative decision is audited; PlankMarket will not infer or auto-assign a category."
+                    : "Clearing the code immediately makes this listing ineligible for tax-enabled checkout. Record why the prior verification is no longer valid."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-2 py-2">
-            <Label htmlFor="flagReason">Reason</Label>
-            <Textarea
-              id="flagReason"
-              placeholder="Why is this listing being flagged?"
-              value={flagReason}
-              onChange={(e) => setFlagReason(e.target.value)}
-              rows={3}
-            />
-          </div>
+          {action?.kind === "tax-verify" ? (
+            <div className="space-y-2">
+              <Label htmlFor="listingTaxCode">Stripe Tax code</Label>
+              <Input
+                id="listingTaxCode"
+                value={taxCode}
+                onChange={(event) => setTaxCode(event.target.value)}
+                disabled={busy || !!reviewTarget}
+                autoComplete="off"
+                placeholder="txcd_..."
+              />
+            </div>
+          ) : action?.kind !== "restore" ? (
+            <div className="space-y-2">
+              <Label
+                htmlFor={
+                  action?.kind === "flag" ? "flagReason" : "taxClearReason"
+                }
+              >
+                Reason
+              </Label>
+              <Textarea
+                id={action?.kind === "flag" ? "flagReason" : "taxClearReason"}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                disabled={busy || !!reviewTarget}
+                rows={3}
+                maxLength={500}
+              />
+              <p className="text-sm text-muted-foreground">
+                {action?.kind === "tax-clear" ? "At least 10 characters. " : ""}
+                Up to 500 characters.
+              </p>
+            </div>
+          ) : null}
+          {actionError && (
+            <p role="alert" className="text-sm text-destructive">
+              {actionError}
+            </p>
+          )}
+          {reviewTarget && (
+            <Button
+              variant="outline"
+              className={control}
+              onClick={() => void reviewListing()}
+              disabled={busy}
+            >
+              Refresh listing status
+            </Button>
+          )}
+          {!eligible && action && (
+            <p role="status" className="text-sm">
+              The current listing status does not allow this action.
+            </p>
+          )}
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setFlagReason("")}>
+            <AlertDialogCancel className={control} disabled={busy}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={!flagReason.trim() || flagMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                if (selectedListing) {
-                  flagMutation.mutate({
-                    listingId: selectedListing.id,
-                    reason: flagReason,
-                  });
-                }
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {flagMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Flag Listing
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Unflag Listing Dialog */}
-      <AlertDialog open={unflagDialogOpen} onOpenChange={setUnflagDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Restore Listing</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will restore &quot;{selectedListing?.title}&quot; to the
-              marketplace and notify the seller.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={unflagMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault();
-                if (selectedListing) {
-                  unflagMutation.mutate({
-                    listingId: selectedListing.id,
-                  });
-                }
+              className={control}
+              disabled={unavailable || !eligible || !valid}
+              onClick={(event) => {
+                event.preventDefault();
+                void submit();
               }}
             >
-              {unflagMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Restore Listing
+              {busy ? "Working…" : commitLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

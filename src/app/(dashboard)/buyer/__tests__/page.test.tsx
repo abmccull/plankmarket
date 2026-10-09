@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BuyerDashboardPage from "../page";
@@ -170,7 +170,7 @@ describe("BuyerDashboardPage", () => {
     };
   });
 
-  it("shows a retryable dashboard error when required data cannot be loaded", async () => {
+  it("shows a retryable recent-orders error without hiding healthy dashboard data", async () => {
     buyerQueries.orders = {
       data: undefined,
       isLoading: false,
@@ -181,15 +181,24 @@ describe("BuyerDashboardPage", () => {
 
     render(<BuyerDashboardPage />);
 
+    const recentOrdersError = screen.getByRole("alert", {
+      name: "We couldn't load recent orders",
+    });
+    expect(recentOrdersError).toBeInTheDocument();
+    expect(screen.getByText("Total Orders:Unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Watchlist Items:1")).toBeInTheDocument();
+    expect(screen.getByText("Saved Searches:1")).toBeInTheDocument();
     expect(
-      screen.getByRole("alert", { name: "We couldn't load your dashboard" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("alert", { name: "We couldn't load your dashboard" }),
+    ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await userEvent.click(
+      within(recentOrdersError).getByRole("button", { name: "Try again" }),
+    );
 
     expect(ordersRefetch).toHaveBeenCalledOnce();
-    expect(watchlistRefetch).toHaveBeenCalledOnce();
-    expect(savedSearchesRefetch).toHaveBeenCalledOnce();
+    expect(watchlistRefetch).not.toHaveBeenCalled();
+    expect(savedSearchesRefetch).not.toHaveBeenCalled();
   });
 
   it("keeps primary data visible when recommendations fail", () => {

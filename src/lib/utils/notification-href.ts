@@ -2,28 +2,47 @@ import type { Notification } from "@/server/db/schema/notifications";
 import type { UserRole } from "@/types";
 
 export function getNotificationHref(
-  notification: Pick<Notification, "type" | "data">,
-  role?: UserRole | null,
+  notification: Pick<Notification, "id" | "type" | "data">,
+  _role?: UserRole | null,
 ): string | null {
+  // Kept for existing callers; account role never selects a transaction side.
+  void _role;
   const data = notification.data as Record<string, unknown> | null;
 
-  // Offer — link to specific offer if available
+  // A business may be either participant, regardless of its account role.
+  // Resolve even legacy notifications against their owned transaction on the server.
+  if (
+    data?.type === "sample_request_created" ||
+    data?.type === "sample_request_updated" ||
+    data?.orderId !== undefined ||
+    data?.offerId !== undefined ||
+    data?.conversationId !== undefined
+  ) {
+    return isUuid(notification.id) ? `/notifications/${notification.id}` : null;
+  }
+
   if (notification.type === "new_offer") {
-    return data?.offerId ? `/offers/${data.offerId}` : "/offers";
+    return "/offers";
   }
 
   // Listing match from saved search alert
   if (notification.type === "listing_match" && data?.savedSearchId) {
-    return "/buyer/saved-searches";
+    if (typeof data.searchQuery === "string")
+      return `/listings?${data.searchQuery}`;
+    const match = Array.isArray(data.matchingListingIds)
+      ? data.matchingListingIds.find(isUuid)
+      : undefined;
+    if (match) return `/listings/${match}`;
+    return "/settings/saved-searches";
   }
 
   // Listing match with slug (preference-based)
-  if (notification.type === "listing_match" && data?.listingSlug) {
-    return `/listings/${data.listingSlug}`;
+  if (notification.type === "listing_match" && typeof data?.listingSlug === "string" && data.listingSlug) {
+    return `/listings/${encodeURIComponent(data.listingSlug)}`;
   }
 
   // Listing match with only listingId
-  if (notification.type === "listing_match" && data?.listingId) {
+  if (notification.type === "listing_match" && isUuid(data?.listingId)) {
     return `/listings/${data.listingId}`;
   }
 
@@ -32,20 +51,9 @@ export function getNotificationHref(
     return "/seller/listings";
   }
 
-  // Direct sample-request workflow. Creation notifications always go to the
-  // seller; subsequent updates go to whichever counterpart received them.
-  if (data?.type === "sample_request_created") {
-    return "/seller/samples";
-  }
-
-  if (data?.type === "sample_request_updated") {
-    return role === "seller" ? "/seller/samples" : "/buyer/samples";
-  }
-
-  // Order-related notifications
-  if (data?.orderId) {
-    const base = role === "seller" ? "/seller" : "/buyer";
-    return `${base}/orders/${data.orderId}`;
+  // The destination always reads the current owner's application; never trust a supplied URL.
+  if (notification.type === "system" && isUuid(data?.sellerActivationId)) {
+    return "/settings/selling";
   }
 
   // System notification with bulk upload batchId
@@ -53,13 +61,11 @@ export function getNotificationHref(
     return "/seller/listings";
   }
 
-  // Conversation messages
-  if (data?.conversationId) {
-    return `/messages/${data.conversationId}`;
-  }
-
   // Seller request board responses
-  if (data?.type === "response_accepted" || data?.type === "response_declined") {
+  if (
+    data?.type === "response_accepted" ||
+    data?.type === "response_declined"
+  ) {
     return "/seller/request-board";
   }
 
@@ -69,4 +75,8 @@ export function getNotificationHref(
   }
 
   return null;
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }

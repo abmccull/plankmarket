@@ -99,6 +99,8 @@ export const publicListingCardColumns = {
   locationZip: true,
   askPricePerSqFt: true,
   buyNowPrice: true,
+  fullLotOnly: true,
+  partialQuantityMarkupPercent: true,
   condition: true,
   viewsCount: true,
   watchlistCount: true,
@@ -122,6 +124,9 @@ export const publicSellerColumns = {
   verificationStatus: true,
   createdAt: true,
   stripeOnboardingComplete: true,
+  // Selected only to derive the recorded payment setup state. Never expose
+  // the connected account reference in a public response.
+  stripeAccountId: true,
   // Selected only to derive freight-quote readiness. These private contact
   // fields are deliberately omitted by toPublicSeller().
   businessAddress: true,
@@ -175,12 +180,16 @@ export function getMaskedDisplayName(user: {
 }
 
 export function toPublicSeller(user: PublicSellerSource) {
+  // This is a stored setup snapshot, not a live Stripe readiness check.
+  // Reservation still confirms capabilities with Stripe before creating an order.
+  const paymentsConnected = Boolean(user.stripeAccountId?.trim()) && user.stripeOnboardingComplete === true;
   return {
     id: user.id,
     role: user.role,
     verified: user.verificationStatus === "verified",
     createdAt: user.createdAt,
-    stripeOnboardingComplete: user.stripeOnboardingComplete,
+    stripeOnboardingComplete: paymentsConnected,
+    paymentSetupStatus: paymentsConnected ? "connected" as const : "incomplete" as const,
     displayName: getMaskedDisplayName(user),
   };
 }
@@ -294,13 +303,20 @@ export type ConversationPartySource = Pick<
 export function toConversationParty(
   user: ConversationPartySource,
   revealIdentity: boolean,
+  participants?: { buyerId: string; sellerId: string },
 ) {
-  const maskedDisplayName = getMaskedDisplayName(user);
+  // This DTO describes the transaction side without changing the account role.
+  const role = user.id === participants?.buyerId
+    ? "buyer"
+    : user.id === participants?.sellerId
+      ? "seller"
+      : user.role;
+  const maskedDisplayName = getMaskedDisplayName({ ...user, role });
   const revealedName = revealIdentity ? user.name : null;
 
   return {
     id: user.id,
-    role: user.role,
+    role,
     verified: user.verificationStatus === "verified",
     identityRevealed: revealIdentity,
     name: revealedName,
@@ -343,6 +359,12 @@ export function toPublicListingCard(listing: PublicListingCardSource) {
     totalSqFt: listing.totalSqFt,
     moq: listing.moq,
     moqUnit: listing.moqUnit,
+    purchaseTerms: {
+      fullLotOnly: listing.fullLotOnly,
+      partialQuantityMarkupPercent: listing.partialQuantityMarkupPercent,
+      sqFtPerBox: listing.sqFtPerBox,
+      boxesPerPallet: listing.boxesPerPallet,
+    },
     locationCity: null,
     locationState: listing.locationState,
     freightEstimateStatus,

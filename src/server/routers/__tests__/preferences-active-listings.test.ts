@@ -274,7 +274,15 @@ describe("preferences active-listing default application", () => {
       };
       return builder;
     });
-    const caller = createCaller(createCallerContext({ insert }));
+    const tx = {
+      insert,
+      execute: vi.fn().mockResolvedValue([]),
+      query: { userPreferences: { findFirst: vi.fn().mockResolvedValue(undefined) } },
+    };
+    const caller = createCaller(createCallerContext({
+      ...tx,
+      transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)),
+    }));
 
     await caller.preferences.upsert({
       role: "seller",

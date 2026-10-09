@@ -29,7 +29,7 @@ export function canCreateListings(role: UserRole): boolean {
 }
 
 export function canPurchase(role: UserRole): boolean {
-  return role === "buyer" || role === "admin";
+  return role === "buyer" || role === "seller" || role === "admin";
 }
 
 export function canManageUsers(role: UserRole): boolean {

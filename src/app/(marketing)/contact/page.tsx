@@ -58,7 +58,8 @@ export default function ContactPage() {
               review your request.
             </p>
             <p className="mt-4 text-sm text-muted-foreground">
-              <strong>Tip:</strong> For order-related inquiries, please include your order number in the subject line for faster response.
+              <strong>Tip:</strong> For order-related inquiries, please include
+              your order number in the subject line for faster response.
             </p>
           </div>
         </div>
@@ -127,7 +128,8 @@ export default function ContactPage() {
               {
                 icon: Shield,
                 title: "Seller Verification",
-                description: "Questions about the verification process or documents",
+                description:
+                  "Questions about the verification process or documents",
                 href: "/seller-guide",
               },
               {
@@ -144,9 +146,10 @@ export default function ContactPage() {
               },
               {
                 icon: MessageSquare,
-                title: "Platform Messaging",
-                description: "Use in-dashboard messaging for account-specific help",
-                href: "/register",
+                title: "Account support",
+                description:
+                  "Email our team for help with your account or an order",
+                href: "mailto:support@plankmarket.com",
               },
               {
                 icon: Newspaper,
@@ -168,8 +171,12 @@ export default function ContactPage() {
                       <item.icon className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-sm font-semibold">{item.title}</CardTitle>
-                      <CardDescription className="text-xs mt-1">{item.description}</CardDescription>
+                      <CardTitle className="text-sm font-semibold">
+                        {item.title}
+                      </CardTitle>
+                      <CardDescription className="text-xs mt-1">
+                        {item.description}
+                      </CardDescription>
                     </div>
                   </CardHeader>
                 </Card>
@@ -193,11 +200,15 @@ export default function ContactPage() {
               <CardContent>
                 <div className="space-y-3 text-sm text-muted-foreground">
                   <div className="flex justify-between">
-                    <span className="font-medium text-foreground">Monday - Friday</span>
+                    <span className="font-medium text-foreground">
+                      Monday - Friday
+                    </span>
                     <span>9:00 AM - 6:00 PM ET</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="font-medium text-foreground">Saturday - Sunday</span>
+                    <span className="font-medium text-foreground">
+                      Saturday - Sunday
+                    </span>
                     <span>Closed</span>
                   </div>
                   <p className="pt-2 text-xs">
@@ -212,12 +223,16 @@ export default function ContactPage() {
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center mb-2">
                   <Lightbulb className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle className="font-display">Feedback & Suggestions</CardTitle>
+                <CardTitle className="font-display">
+                  Feedback & Suggestions
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 text-sm text-muted-foreground">
                   <p>
-                    We are always looking to improve PlankMarket. If you have feedback, feature requests, or suggestions, we want to hear from you.
+                    We are always looking to improve PlankMarket. If you have
+                    feedback, feature requests, or suggestions, we want to hear
+                    from you.
                   </p>
                   <p>
                     For press inquiries or media requests, contact{" "}
@@ -245,13 +260,11 @@ export default function ContactPage() {
                 Ready to Get Started?
               </h2>
               <p className="text-white/80 mb-8 max-w-xl mx-auto">
-                Join PlankMarket and connect with flooring professionals across the United States. Create your account today.
+                Join PlankMarket and connect with flooring professionals across
+                the United States. Create your account today.
               </p>
               <Link href="/register">
-                <Button
-                  size="xl"
-                  variant="gold"
-                >
+                <Button size="xl" variant="gold">
                   Create Free Account <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>

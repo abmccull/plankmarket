@@ -41,7 +41,16 @@
     "0036_private_verification_documents.sql",
     "0037_listing_import_identity.sql",
     "0038_seller_warehouses.sql",
-    "0039_product_specification_evidence.sql"
+    "0039_product_specification_evidence.sql",
+    "0040_resale_certificates.sql",
+    "0041_listing_form_drafts.sql",
+    "0042_seller_activation_requests.sql",
+    "0043_private_verification_reference_identity.sql",
+    "0044_role_provider_writes.sql",
+    "0045_private_verification_deletion_intent.sql",
+    "0046_private_verification_residue.sql",
+    "0047_private_listing_photos.sql",
+    "0048_buyer_match_alert_channels.sql"
   ],
   "forwardMigrations": [
     "0014_auth_data_hardening.sql",
@@ -69,6 +78,15 @@
     "0036_private_verification_documents.sql",
     "0037_listing_import_identity.sql",
     "0038_seller_warehouses.sql",
-    "0039_product_specification_evidence.sql"
+    "0039_product_specification_evidence.sql",
+    "0040_resale_certificates.sql",
+    "0041_listing_form_drafts.sql",
+    "0042_seller_activation_requests.sql",
+    "0043_private_verification_reference_identity.sql",
+    "0044_role_provider_writes.sql",
+    "0045_private_verification_deletion_intent.sql",
+    "0046_private_verification_residue.sql",
+    "0047_private_listing_photos.sql",
+    "0048_buyer_match_alert_channels.sql"
   ]
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { createTRPCContext } from "@/server/trpc";
 
 process.env.SKIP_ENV_VALIDATION = "1";
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
@@ -47,10 +48,12 @@ const {
   adminProcedure,
   createCallerFactory,
   createTRPCRouter,
+  protectedProcedure,
   strictSellerProcedure,
 } = await import("@/server/trpc");
 
 const router = createTRPCRouter({
+  profile: protectedProcedure.query(() => "profile available for MFA setup"),
   admin: createTRPCRouter({
     dashboard: adminProcedure.query(() => "ok"),
     refundOrder: adminProcedure.mutation(() => "ok"),
@@ -102,7 +105,7 @@ function createContext(params: {
     supabase: {},
     clientIp: "127.0.0.1",
     getAuthAssurance: async () => params.assurance,
-  } as unknown as Parameters<typeof createCaller>[0];
+  } as unknown as Awaited<ReturnType<typeof createTRPCContext>>;
 }
 
 function assurance(overrides?: Partial<AuthAssuranceState>): AuthAssuranceState {
@@ -116,6 +119,12 @@ function assurance(overrides?: Partial<AuthAssuranceState>): AuthAssuranceState 
 }
 
 describe("tRPC auth assurance middleware", () => {
+  it("keeps authenticated bootstrap available to AAL1 admins", async () => {
+    const context = createContext({ role: "admin", assurance: assurance({ currentLevel: "aal1", recentVerificationSatisfied: false }) });
+    context.getAuthAssurance = vi.fn().mockRejectedValue(new Error("MFA setup must be reachable"));
+    await expect(createCaller(context).profile()).resolves.toBe("profile available for MFA setup");
+    expect(context.getAuthAssurance).not.toHaveBeenCalled();
+  });
   it("denies admin procedures when the session is only AAL1", async () => {
     const caller = createCaller(
       createContext({

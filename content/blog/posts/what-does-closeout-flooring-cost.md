@@ -14,8 +14,6 @@ cluster: closeout-buying
 description: Closeout flooring pricing is opaque by design.
 ---
 
-# What Does Closeout Flooring Actually Cost?
-
 Closeout flooring pricing is opaque by design.
 
 There's no published index. Every distributor prices differently. Call five places and get five different quotes. The buyer with the best information captures the best deals. Everyone else overpays or walks away from good opportunities.

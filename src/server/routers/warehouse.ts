@@ -5,9 +5,11 @@ import zipcodes from "zipcodes";
 import { createTRPCRouter, sellerProcedure, strictSellerProcedure } from "../trpc";
 import { users, warehouses, listings, orders } from "../db/schema";
 import { requireShippingStateMatchesZip } from "../services/shipping-workflow";
+import { lockSellerWarehouseMutations } from "../services/warehouse-mutation-lock";
 const inputSchema = z.object({ label: z.string().trim().min(1).max(100), address: z.string().trim().min(3).max(500), city: z.string().trim().min(1).max(100), state: z.string().trim().toUpperCase().length(2), zip: z.string().regex(/^\d{5}$/), contactName: z.string().trim().min(1).max(255), phone: z.string().trim().min(7).max(30), pickupStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), pickupEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), hasLoadingDock: z.boolean(), hasForklift: z.boolean(), active: z.boolean().default(true), isDefault: z.boolean().default(false) }).refine(x => x.pickupStart < x.pickupEnd, "Pickup closing time must follow opening time").refine(x => !x.isDefault || x.active, "A default warehouse must be active");
 export const warehouseRouter = createTRPCRouter({
  list: sellerProcedure.query(async ({ctx}) => ({
+   ownerId: ctx.user.id,
    warehouses: await ctx.db.select().from(warehouses).where(eq(warehouses.sellerId, ctx.user.id)).orderBy(asc(warehouses.label)),
    listings: await ctx.db.select({ id: listings.id, title: listings.title, warehouseId: listings.warehouseId }).from(listings).where(eq(listings.sellerId, ctx.user.id)).orderBy(asc(listings.title)),
  })),
@@ -17,9 +19,11 @@ export const warehouseRouter = createTRPCRouter({
    if (!coordinates) throw new TRPCError({code:"BAD_REQUEST",message:"Enter a recognized US ZIP code"});
    const geoFields = {latitude:coordinates.latitude,longitude:coordinates.longitude,coordinateSource:"zip_centroid"};
    return ctx.db.transaction(async tx => {
-     await tx.select({id:users.id}).from(users).where(eq(users.id,ctx.user.id)).for("update");
-     // Match checkout's listing -> warehouse lock order to avoid reassignment races.
+     await lockSellerWarehouseMutations(tx, ctx.user.id);
+     // Match checkout's listing -> seller -> warehouse order. The advisory lock
+     // prevents creation/reassignment from changing attachments during enumeration.
      const attached = input.id ? await tx.select({id:listings.id}).from(listings).where(and(eq(listings.warehouseId,input.id),eq(listings.sellerId,ctx.user.id))).orderBy(asc(listings.id)).for("update") : [];
+     await tx.select({id:users.id}).from(users).where(eq(users.id,ctx.user.id)).for("update");
      const [existing] = input.id ? await tx.select().from(warehouses).where(and(eq(warehouses.id,input.id),eq(warehouses.sellerId,ctx.user.id))).for("update") : [];
      if(input.id && !existing) throw new TRPCError({code:"NOT_FOUND",message:"Warehouse not found"});
      const originChanged = existing && ["address","city","state","zip","contactName","phone","active","pickupStart","pickupEnd","hasLoadingDock","hasForklift"].some(k => existing[k as keyof typeof existing] !== input.data[k as keyof typeof input.data]);
@@ -37,9 +41,10 @@ export const warehouseRouter = createTRPCRouter({
    });
  }),
  assignListing: strictSellerProcedure.input(z.object({listingId:z.string().uuid(),warehouseId:z.string().uuid()})).mutation(async({ctx,input})=>ctx.db.transaction(async tx=>{
-   await tx.select({id:users.id}).from(users).where(eq(users.id,ctx.user.id)).for("update");
+   await lockSellerWarehouseMutations(tx, ctx.user.id);
    const [listing]=await tx.select().from(listings).where(and(eq(listings.id,input.listingId),eq(listings.sellerId,ctx.user.id))).for("update");
    if(!listing) throw new TRPCError({code:"NOT_FOUND",message:"Listing not found"});
+   await tx.select({id:users.id}).from(users).where(eq(users.id,ctx.user.id)).for("update");
    const [warehouse]=await tx.select().from(warehouses).where(and(eq(warehouses.id,input.warehouseId),eq(warehouses.sellerId,ctx.user.id),eq(warehouses.active,true))).for("share");
    if(!warehouse) throw new TRPCError({code:"NOT_FOUND",message:"Active warehouse not found"});
    if(listing.warehouseId===warehouse.id) return listing;

@@ -1,16 +1,24 @@
+import { listingPalletMinimumSchema } from "@/lib/validators/listing";
+import { advanceListingDraftSchema, listingDraftReferenceSchema, saveListingDraftSchema } from "@/lib/validators/listing-draft";
+import { advanceListingFormDraft, assertDraftSeller, consumeListingFormDraft, getListingFormDraft, prepareListingDraftPublication, saveListingFormDraft } from "@/server/services/listing-form-drafts";
+import { getReusableProductDetails } from "@/lib/marketplace/reusable-listing-product";
+import { normalizeCsvWearLayer } from "@/lib/csv/wear-layer";
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
 import {
   createTRPCRouter,
   publicReadProcedure,
+  protectedProcedure,
   sellerProcedure,
   adminProcedure,
   strictAdminProcedure,
 } from "../trpc";
 import {
-  listingFormSchema,
+  listingCreationSchema,
+  listingPalletDimensionsSchema,
   listingFormUpdateSchema,
   listingFilterSchema,
   MAX_PUBLIC_LISTING_RESULT_WINDOW,
-  csvListingRowSchema,
+  csvListingTransportSchema,
   listingSellingRulesSchema,
 } from "@/lib/validators/listing";
 import {
@@ -21,19 +29,41 @@ import {
   users,
   userPreferences,
 } from "../db/schema";
-import { eq, and, sql, gte, lte, inArray, desc, asc, ilike, or, isNull } from "drizzle-orm";
+import {
+  eq,
+  and,
+  sql,
+  gte,
+  lte,
+  inArray,
+  desc,
+  asc,
+  ilike,
+  or,
+  isNull,
+} from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import zipcodes from "zipcodes";
 import { saveListingMedia } from "@/server/services/listing-media";
+import { resolveListingWarehouseSelection } from "@/server/services/listing-warehouse-selection";
 import { createHash } from "node:crypto";
 import { importRequests } from "@/server/db/schema/import-requests";
 import { priority1 } from "@/server/services/priority1";
 import { redis } from "@/lib/redis/client";
 import { slugify } from "@/lib/utils";
 import { getFreightDefaults } from "@/lib/constants/freight-defaults";
-import { isPro, FREE_LIMITS } from "@/lib/pro";
+import { isPro } from "@/lib/pro";
+import { LISTING_CONFIRMATION_WARNING_DAYS } from "@/lib/listing-freshness";
 import { deriveListingTrustFields } from "@/lib/listing-trust";
+import {
+  assertListingCapacity,
+  lockListingQuota,
+  recordListingPublication,
+  tryEnqueueListingPublications,
+  publishDraftListings,
+  reconfirmListing,
+} from "@/server/services/listing-publication";
 import {
   applyUserPreferenceDefaultsToListing,
   getSellerListingPreferenceDefaults,
@@ -57,12 +87,11 @@ import {
   assertListingVisibleToViewer,
   publicActiveListingWhere,
 } from "@/server/security/listing-visibility";
-import { inngest } from "@/lib/inngest/client";
-import { buildListingCreatedEvent } from "@/lib/inngest/events";
 import {
   getDirectPurchaseLotValueSql,
   getDirectPurchaseUnitPriceSql,
 } from "@/server/db/expressions/listing-pricing";
+import { getMinimumAvailableStockSql, getNoKnownQuantityConflictSql } from "@/server/db/expressions/listing-quantity-fit";
 import { appendAuditEvent } from "@/server/services/audit-ledger";
 import {
   buildPublicReadCacheKey,
@@ -70,9 +99,12 @@ import {
   writePublicReadCache,
 } from "@/server/services/public-read-cache";
 
-import { sellerSpecificationProvenance, specificationReviewInvalidated } from "@/lib/product-specifications";
+import {
+  sellerSpecificationProvenance,
+  specificationReviewInvalidated,
+} from "@/lib/product-specifications";
 
- type PublicListingDto = ReturnType<typeof toPublicListingCard>;
+type PublicListingDto = ReturnType<typeof toPublicListingCard>;
 type PublicListingBrowseResponse = {
   items: Array<PublicListingDto & { isPromoted: boolean }>;
   total: number;
@@ -114,7 +146,7 @@ function hasOwnKey<T extends object>(
 }
 
 async function getSellerListingDefaultsForUser(
-  ctx: { db: typeof import("../db").db },
+  ctx: { db: Pick<typeof import("../db").db, "query"> },
   userId: string,
 ) {
   const existing = await ctx.db.query.userPreferences.findFirst({
@@ -158,201 +190,339 @@ function resolveValidatedSellingRuleFields(
 }
 
 export const listingRouter = createTRPCRouter({
-  getSpecificationReview: adminProcedure.input(z.object({ listingId: z.string().uuid() })).query(async ({ ctx, input }) => {
-    const listing = await ctx.db.query.listings.findFirst({ where: eq(listings.id, input.listingId), with: { media: { columns: { id: true, url: true, fileName: true }, orderBy: (m, { asc }) => [asc(m.sortOrder)] } } });
-    if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "Listing not found" });
-    return listing;
-  }),
+  getSpecificationReview: adminProcedure
+    .input(z.object({ listingId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const listing = await ctx.db.query.listings.findFirst({
+        where: eq(listings.id, input.listingId),
+        with: {
+          media: {
+            columns: { id: true, url: true, fileName: true },
+            orderBy: (m, { asc }) => [asc(m.sortOrder)],
+          },
+        },
+      });
+      if (!listing)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Listing not found",
+        });
+      return listing;
+    }),
   reviewSpecifications: strictAdminProcedure
-    .input(z.object({ listingId: z.string().uuid(), evidenceMediaId: z.string().uuid(), expectedUpdatedAt: z.coerce.date(), reviewNote: z.string().trim().min(10).max(2000) }))
-    .mutation(async ({ ctx, input }) => ctx.db.transaction(async tx => {
-      const [listing] = await tx.select().from(listings).where(eq(listings.id, input.listingId)).for("update");
-      if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "Listing not found" });
-      if (listing.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) throw new TRPCError({ code: "CONFLICT", message: "Specifications changed. Reload and review the current listing." });
-      const evidence = await tx.query.media.findFirst({ where: and(eq(media.id, input.evidenceMediaId), eq(media.listingId, listing.id), eq(media.uploaderId, listing.sellerId)) });
-      if (!evidence) throw new TRPCError({ code: "BAD_REQUEST", message: "Choose an attached listing image showing the manufacturer's specifications." });
-      const now = new Date();
-      const [reviewed] = await tx.update(listings).set({ specificationProvenance: "evidence_reviewed", specificationEvidenceId: evidence.id, specificationReviewedAt: now, specificationReviewedBy: ctx.user.id, updatedAt: now }).where(eq(listings.id, listing.id)).returning();
-      await appendAuditEvent(tx, { actorType: "admin", actorId: ctx.user.id, action: "listing.specifications_reviewed", entityType: "listing", entityId: listing.id, summary: "Product specifications reviewed against attached evidence", metadata: { evidenceMediaId: evidence.id, reviewNote: input.reviewNote, waterResistance: listing.waterResistance, previousProvenance: listing.specificationProvenance } });
-      return reviewed;
-    })),
-
-  // Create a new listing
-  create: sellerProcedure
-    .input(listingFormSchema)
-    .mutation(async ({ ctx, input }) => {
-      // Free-tier listing limit check
-      if (!isPro(ctx.user)) {
-        const [activeCount] = await ctx.db
-          .select({ count: sql<number>`count(*)::int` })
+    .input(
+      z.object({
+        listingId: z.string().uuid(),
+        evidenceMediaId: z.string().uuid(),
+        expectedUpdatedAt: z.coerce.date(),
+        reviewNote: z.string().trim().min(10).max(2000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        const [listing] = await tx
+          .select()
           .from(listings)
-          .where(and(
-            eq(listings.sellerId, ctx.user.id),
-            eq(listings.status, "active"),
-          ));
-        if ((activeCount?.count ?? 0) >= FREE_LIMITS.activeListings) {
+          .where(eq(listings.id, input.listingId))
+          .for("update");
+        if (!listing)
           throw new TRPCError({
-            code: "FORBIDDEN",
-            message: `Free accounts are limited to ${FREE_LIMITS.activeListings} active listings. Upgrade to Pro for unlimited listings.`,
+            code: "NOT_FOUND",
+            message: "Listing not found",
           });
-        }
-      }
+        if (listing.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Specifications changed. Reload and review the current listing.",
+          });
+        const evidence = await tx.query.media.findFirst({
+          where: and(
+            eq(media.id, input.evidenceMediaId),
+            eq(media.listingId, listing.id),
+            eq(media.uploaderId, listing.sellerId),
+          ),
+        });
+        if (!evidence)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "Choose an attached listing image showing the manufacturer's specifications.",
+          });
+        const now = new Date();
+        const [reviewed] = await tx
+          .update(listings)
+          .set({
+            specificationProvenance: "evidence_reviewed",
+            specificationEvidenceId: evidence.id,
+            specificationReviewedAt: now,
+            specificationReviewedBy: ctx.user.id,
+            updatedAt: now,
+          })
+          .where(eq(listings.id, listing.id))
+          .returning();
+        await appendAuditEvent(tx, {
+          actorType: "admin",
+          actorId: ctx.user.id,
+          action: "listing.specifications_reviewed",
+          entityType: "listing",
+          entityId: listing.id,
+          summary: "Product specifications reviewed against attached evidence",
+          metadata: {
+            evidenceMediaId: evidence.id,
+            reviewNote: input.reviewNote,
+            waterResistance: listing.waterResistance,
+            previousProvenance: listing.specificationProvenance,
+          },
+        });
+        return reviewed;
+      }),
+    ),
 
+  // Incomplete account forms are private preparation, not inventory or publication.
+  getFormDraft: protectedProcedure
+    .input(z.object({ id: z.string().uuid().optional() }).strict().default({}))
+    .query(({ ctx, input }) => getListingFormDraft(ctx.db, ctx.user.id, input.id)),
+  saveFormDraft: protectedProcedure
+    .input(saveListingDraftSchema)
+    .mutation(({ ctx, input }) => saveListingFormDraft(ctx.db, ctx.user.id, input)),
+  advanceFormDraft: protectedProcedure
+    .input(advanceListingDraftSchema)
+    .mutation(({ ctx, input }) => advanceListingFormDraft(ctx.db, ctx.user.id, input)),
+
+  getReusablePallets: protectedProcedure
+    .input(z.object({ expectedOwnerId: z.string().uuid(), page: z.number().int().min(1).max(100_000).default(1) }).strict())
+    .query(async ({ ctx, input }) => {
+      if (input.expectedOwnerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Your account changed. Reopen pallet dimensions." });
+      await assertDraftSeller(ctx.db, ctx.user.id);
+      const rows = await ctx.db.select({ id: listings.id, title: listings.title, palletLength: listings.palletLength, palletWidth: listings.palletWidth, palletHeight: listings.palletHeight })
+        .from(listings).where(and(eq(listings.sellerId, ctx.user.id),
+          sql`${listings.palletLength} > 0 and ${listings.palletLength} <= 120`,
+          sql`${listings.palletWidth} > 0 and ${listings.palletWidth} <= 120`,
+          sql`${listings.palletHeight} > 0 and ${listings.palletHeight} <= 120`))
+        .orderBy(desc(listings.createdAt), desc(listings.id)).limit(13).offset((input.page - 1) * 12);
+      return { ownerId: ctx.user.id, page: input.page, hasMore: rows.length > 12,
+        items: rows.slice(0, 12).flatMap(({ id, title, ...dimensions }) => {
+          const checked = listingPalletDimensionsSchema.safeParse(dimensions);
+          return checked.success ? [{ id, title, dimensions: checked.data }] : [];
+        }),
+      };
+    }),
+
+  getReusableProducts: protectedProcedure
+    .input(z.object({
+      expectedOwnerId: z.string().uuid(), query: z.string().trim().max(120).optional(),
+      page: z.number().int().min(1).max(100_000).default(1),
+      limit: z.number().int().min(1).max(24).default(12),
+    }).strict())
+    .query(async ({ ctx, input }) => {
+      if (input.expectedOwnerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "Your account changed. Reopen previous products for the current seller." });
+      await assertDraftSeller(ctx.db, ctx.user.id);
+      const conditions = [eq(listings.sellerId, ctx.user.id)];
+      if (input.query) {
+        const pattern = `%${input.query.replace(/[\\%_]/g, "\\$&")}%`;
+        conditions.push(or(ilike(listings.title, pattern), ilike(listings.brand, pattern), ilike(listings.modelNumber, pattern))!);
+      }
+      const rows = await ctx.db.select({
+        id: listings.id, title: listings.title, status: listings.status,
+        materialType: listings.materialType, species: listings.species, finish: listings.finish, grade: listings.grade,
+        color: listings.color, colorFamily: listings.colorFamily, thickness: listings.thickness, width: listings.width,
+        length: listings.length, wearLayer: listings.wearLayer, brand: listings.brand, modelNumber: listings.modelNumber,
+        sqFtPerBox: listings.sqFtPerBox, installationMethod: listings.installationMethod,
+        waterResistance: listings.waterResistance, certifications: listings.certifications,
+      }).from(listings).where(and(...conditions)).orderBy(desc(listings.createdAt), desc(listings.id))
+        .limit(input.limit + 1).offset((input.page - 1) * input.limit);
+      return { ownerId: ctx.user.id, page: input.page, hasMore: rows.length > input.limit,
+        items: rows.slice(0, input.limit).map(({ id, title, status, ...product }) => ({ id, title, status, ...getReusableProductDetails(product) })),
+      };
+    }),
+
+  // Create a new listing. The intersection preserves all full-form refinements.
+  create: sellerProcedure
+    .input(listingCreationSchema.and(z.object({ accountDraft: listingDraftReferenceSchema.optional() })))
+    .mutation(async ({ ctx, input }) => {
       const {
+        accountDraft,
         mediaIds,
         automaticMarkdownStartedAt,
         automaticMarkdownCurrentStep,
         automaticMarkdownLastAppliedAt,
         pricingRulesVersion,
+        warehouseRevision,
         ...listingData
       } = input;
       void automaticMarkdownStartedAt;
       void automaticMarkdownCurrentStep;
       void automaticMarkdownLastAppliedAt;
       void pricingRulesVersion;
-      const sellerDefaults = await getSellerListingDefaultsForUser(
-        ctx,
-        ctx.user.id,
-      );
-      const sellingRuleFields = resolveValidatedSellingRuleFields(
-        {
-          fullLotOnly: listingData.fullLotOnly,
-          partialQuantityMarkupPercent: listingData.partialQuantityMarkupPercent,
-          automaticMarkdownEnabled: listingData.automaticMarkdownEnabled,
-          automaticMarkdownFloorPercent:
-            listingData.automaticMarkdownFloorPercent,
-          automaticMarkdownIntervalDays:
-            listingData.automaticMarkdownIntervalDays,
-          allowSampleRequests: listingData.allowSampleRequests,
-          territoryMode: listingData.territoryMode,
-          allowedDestinationStates: listingData.allowedDestinationStates,
-          freightPaymentMode: listingData.freightPaymentMode,
-          sellerFreightStates: listingData.sellerFreightStates,
-          freightDropCharge: listingData.freightDropCharge,
-        },
-        sellerDefaults,
-      );
-
-      // Geo-lookup from ZIP code + auto-derive city/state
-      let locationLat: number | undefined;
-      let locationLng: number | undefined;
-      if (listingData.locationZip) {
-        const zipInfo = zipcodes.lookup(listingData.locationZip);
-        if (zipInfo) {
-          locationLat = zipInfo.latitude;
-          locationLng = zipInfo.longitude;
-          if (!listingData.locationCity) listingData.locationCity = zipInfo.city;
-          if (!listingData.locationState) listingData.locationState = zipInfo.state;
-        }
-      }
-      const now = new Date();
-      const markdownFields = resolveAutomaticMarkdownPersistence({
-        next: {
-          askPricePerSqFt: listingData.askPricePerSqFt,
-          automaticMarkdownEnabled: sellingRuleFields.automaticMarkdownEnabled,
-          automaticMarkdownFloorPercent:
-            sellingRuleFields.automaticMarkdownFloorPercent,
-          automaticMarkdownIntervalDays:
-            sellingRuleFields.automaticMarkdownIntervalDays,
-        },
-        now,
-      });
-      const { listing, trustedListing } = await ctx.db.transaction(async (tx) => {
-      const [listing] = await tx
-        .insert(listings)
-        .values({
-          ...listingData,
-          specificationProvenance: sellerSpecificationProvenance(listingData),
-          ...sellingRuleFields,
-          ...markdownFields,
-          sellerId: ctx.user.id,
-          status: "active",
-          publishedAt: now,
-          originalTotalSqFt: listingData.totalSqFt,
-          originalAskPricePerSqFt: listingData.askPricePerSqFt,
-          pricingRulesVersion: PRICING_RULES_VERSION,
-          locationLat,
-          locationLng,
-          expiresAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000), // 90 days
-        })
-        .returning();
-
-      // Generate and update slug (title + first 6 chars of UUID for uniqueness)
-      const slug = `${slugify(input.title)}-${listing.id.slice(0, 6)}`;
-      await tx
-        .update(listings)
-        .set({ slug })
-        .where(eq(listings.id, listing.id));
-
-      await saveListingMedia(tx, ctx.user.id, listing.id, mediaIds ?? []);
-
-      const [photoCountResult] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(media)
-        .where(eq(media.listingId, listing.id));
-      const photoCount = photoCountResult?.count ?? 0;
-
-      const [trustedListing] = await tx
-        .update(listings)
-        .set(
-          deriveListingTrustFields(
+      const { listing, trustedListing, isReplay } = await ctx.db.transaction(
+        async (tx) => {
+          await lockListingQuota(tx, ctx.user.id);
+          const draftPublication = accountDraft
+            ? await prepareListingDraftPublication(tx, ctx.user.id, accountDraft, input)
+            : null;
+          if (draftPublication?.receipt) {
+            return { listing: draftPublication.receipt, trustedListing: draftPublication.receipt, isReplay: true };
+          }
+          const pickup = await resolveListingWarehouseSelection(tx, ctx.user.id, { ...listingData, warehouseRevision });
+          const sellerDefaults = await getSellerListingDefaultsForUser(
+            { db: tx },
+            ctx.user.id,
+          );
+          const sellingRuleFields = resolveValidatedSellingRuleFields(
             {
-              ...listing,
-              photoCount,
+              fullLotOnly: listingData.fullLotOnly,
+              partialQuantityMarkupPercent:
+                listingData.partialQuantityMarkupPercent,
+              automaticMarkdownEnabled: listingData.automaticMarkdownEnabled,
+              automaticMarkdownFloorPercent:
+                listingData.automaticMarkdownFloorPercent,
+              automaticMarkdownIntervalDays:
+                listingData.automaticMarkdownIntervalDays,
+              allowSampleRequests: listingData.allowSampleRequests,
+              territoryMode: listingData.territoryMode,
+              allowedDestinationStates: listingData.allowedDestinationStates,
+              freightPaymentMode: listingData.freightPaymentMode,
+              sellerFreightStates: listingData.sellerFreightStates,
+              freightDropCharge: listingData.freightDropCharge,
+            },
+            sellerDefaults,
+          );
+
+          // Geo-lookup from ZIP code + auto-derive city/state
+          let locationLat: number | undefined;
+          let locationLng: number | undefined;
+          if (listingData.locationZip) {
+            const zipInfo = zipcodes.lookup(listingData.locationZip);
+            if (zipInfo) {
+              locationLat = zipInfo.latitude;
+              locationLng = zipInfo.longitude;
+              if (!listingData.locationCity)
+                listingData.locationCity = zipInfo.city;
+              if (!listingData.locationState)
+                listingData.locationState = zipInfo.state;
+            }
+          }
+          const now = new Date();
+          const markdownFields = resolveAutomaticMarkdownPersistence({
+            next: {
+              askPricePerSqFt: listingData.askPricePerSqFt,
+              automaticMarkdownEnabled: sellingRuleFields.automaticMarkdownEnabled,
+              automaticMarkdownFloorPercent:
+                sellingRuleFields.automaticMarkdownFloorPercent,
+              automaticMarkdownIntervalDays:
+                sellingRuleFields.automaticMarkdownIntervalDays,
             },
             now,
-          ),
-        )
-        .where(eq(listings.id, listing.id))
-        .returning();
+          });
+          await assertListingCapacity(tx, ctx.user.id, 1);
+          const [listing] = await tx
+            .insert(listings)
+            .values({
+              ...listingData,
+              specificationProvenance:
+                sellerSpecificationProvenance(listingData),
+              ...sellingRuleFields,
+              ...markdownFields,
+              sellerId: ctx.user.id,
+              status: "active",
+              publishedAt: now,
+              originalTotalSqFt: listingData.totalSqFt,
+              originalAskPricePerSqFt: listingData.askPricePerSqFt,
+              pricingRulesVersion: PRICING_RULES_VERSION,
+              locationLat,
+              locationLng,
+              ...pickup,
+              expiresAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000), // 90 days
+            })
+            .returning();
 
-      return { listing, trustedListing };
-      });
+          // Generate and update slug (title + first 6 chars of UUID for uniqueness)
+          const slug = `${slugify(input.title)}-${listing.id.slice(0, 6)}`;
+          await tx
+            .update(listings)
+            .set({ slug })
+            .where(eq(listings.id, listing.id));
+
+          const photoCount = await saveListingMedia(
+            tx,
+            listing,
+            mediaIds ?? [],
+          );
+
+          const [trustedListing] = await tx
+            .update(listings)
+            .set(
+              deriveListingTrustFields(
+                {
+                  ...listing,
+                  photoCount,
+                },
+                now,
+              ),
+            )
+            .where(eq(listings.id, listing.id))
+            .returning();
+
+          await recordListingPublication(tx, ctx.user.id, listing.id, null);
+          if (draftPublication) {
+            await consumeListingFormDraft(tx, draftPublication.draft, listing.id, draftPublication.publicationFingerprint);
+          }
+          return { listing, trustedListing, isReplay: false };
+        },
+      );
 
       // Only call Priority1 for freight class if seller didn't provide one
-      if (!listingData.freightClass && listingData.palletWeight && listingData.palletLength && listingData.palletWidth && listingData.palletHeight) {
-        priority1.getSuggestedClass({
-          totalWeight: listingData.palletWeight,
-          length: listingData.palletLength,
-          width: listingData.palletWidth,
-          height: listingData.palletHeight,
-          units: 1,
-        }).then(async (result) => {
-          await ctx.db
-            .update(listings)
-            .set({ freightClass: result.suggestedClass, updatedAt: new Date() })
-            .where(eq(listings.id, listing.id));
-        }).catch(() => {
-          // Non-fatal: listing still saved without freight class
-        });
+      if (
+        !isReplay &&
+        !listingData.freightClass &&
+        listingData.palletWeight &&
+        listingData.palletLength &&
+        listingData.palletWidth &&
+        listingData.palletHeight
+      ) {
+        priority1
+          .getSuggestedClass({
+            totalWeight: listingData.palletWeight,
+            length: listingData.palletLength,
+            width: listingData.palletWidth,
+            height: listingData.palletHeight,
+            units: 1,
+          })
+          .then(async (result) => {
+            await ctx.db
+              .update(listings)
+              .set({
+                freightClass: result.suggestedClass,
+                updatedAt: new Date(),
+              })
+              .where(eq(listings.id, listing.id));
+          })
+          .catch(() => {
+            // Non-fatal: listing still saved without freight class
+          });
       }
 
-      try {
-        await inngest.send(
-          buildListingCreatedEvent({
-            listingId: listing.id,
-            sellerId: ctx.user.id,
-          }),
-        );
-      } catch {
-        console.error("Failed to enqueue listing/created event", {
-          listingId: listing.id,
-          sellerId: ctx.user.id,
-        });
-      }
+      await tryEnqueueListingPublications(ctx.db, [listing.id]);
 
       return trustedListing ?? listing;
     }),
 
   // Bulk create listings from CSV data
   bulkCreate: sellerProcedure
-    .input(z.object({ requestId: z.string().uuid(), rows: z.array(csvListingRowSchema).min(1).max(100) }))
+    .input(
+      z.object({
+        requestId: z.string().uuid(),
+        rows: z.array(csvListingTransportSchema).min(1).max(100),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       // CSV bulk import is a Pro-only feature
       if (!isPro(ctx.user)) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "CSV bulk import is a Pro feature. Upgrade to Pro to import listings from spreadsheets.",
+          message:
+            "CSV bulk import is a Pro feature. Upgrade to Pro to import listings from spreadsheets.",
         });
       }
 
@@ -362,21 +532,67 @@ export const listingRouter = createTRPCRouter({
         ctx.user.id,
       );
 
-      const fingerprint = createHash("sha256").update(JSON.stringify(input.rows)).digest("hex");
+      const fingerprint = createHash("sha256")
+        .update(JSON.stringify(input.rows))
+        .digest("hex");
       let createdListings: (typeof listings.$inferSelect)[] = [];
       const result = await ctx.db.transaction(async (tx) => {
-        const [claim] = await tx.insert(importRequests).values({ sellerId: ctx.user.id, requestId: input.requestId, fingerprint }).onConflictDoNothing().returning();
+        const [claim] = await tx
+          .insert(importRequests)
+          .values({
+            sellerId: ctx.user.id,
+            requestId: input.requestId,
+            fingerprint,
+          })
+          .onConflictDoNothing()
+          .returning();
         if (!claim) {
-          const [existing] = await tx.select().from(importRequests).where(and(eq(importRequests.sellerId, ctx.user.id), eq(importRequests.requestId, input.requestId))).for("update");
-          if (!existing || existing.fingerprint !== fingerprint) throw new TRPCError({ code: "CONFLICT", message: "This import request was already used for different data. Start a new import." });
-          if (!existing.response) throw new TRPCError({ code: "CONFLICT", message: "The import is still processing. Retry this request shortly." });
+          const [existing] = await tx
+            .select()
+            .from(importRequests)
+            .where(
+              and(
+                eq(importRequests.sellerId, ctx.user.id),
+                eq(importRequests.requestId, input.requestId),
+              ),
+            )
+            .for("update");
+          if (!existing || existing.fingerprint !== fingerprint)
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "This import request was already used for different data. Start a new import.",
+            });
+          if (!existing.response)
+            throw new TRPCError({
+              code: "CONFLICT",
+              message:
+                "The import is still processing. Retry this request shortly.",
+            });
           return existing.response;
         }
-        for (const row of input.rows) resolveValidatedSellingRuleFields(row, sellerDefaults);
+        // Completed replay has returned above. New ambiguous imports fail before
+        // any listing insert; throwing also rolls back the import-request claim.
+        for (const row of input.rows) {
+          const packaging = listingPalletMinimumSchema.safeParse(row);
+          if (!packaging.success) throw new TRPCError({ code: "BAD_REQUEST", message: packaging.error.issues.map(issue => issue.message).join(" ") });
+          resolveValidatedSellingRuleFields(row, sellerDefaults);
+          try {
+            normalizeCsvWearLayer(row.wearLayer, row.wearLayerUnit, row.materialType);
+          } catch (error) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: error instanceof Error ? error.message : "Check the CSV wear-layer value and unit.",
+            });
+          }
+        }
         const results = [];
         const confirmedAt = new Date();
 
-        for (const row of input.rows) {
+        for (const sourceRow of input.rows) {
+          // Preserve source value/unit in the replay fingerprint; store only mm.
+          const { wearLayerUnit, ...row } = sourceRow;
+          row.wearLayer = normalizeCsvWearLayer(row.wearLayer, wearLayerUnit, row.materialType)?.millimeters;
           let locationLat: number | undefined;
           let locationLng: number | undefined;
           if (row.locationZip) {
@@ -392,17 +608,15 @@ export const listingRouter = createTRPCRouter({
           // Apply freight defaults from material type if not explicitly provided
           const freightDefaults = getFreightDefaults(row.materialType);
           const nmfcCode = row.nmfcCode ?? freightDefaults?.nmfcCode;
-          const freightClass = row.freightClass ?? freightDefaults?.freightClass;
+          const freightClass =
+            row.freightClass ?? freightDefaults?.freightClass;
           const sellingRuleFields = resolveValidatedSellingRuleFields(
             {
               fullLotOnly: row.fullLotOnly,
-              partialQuantityMarkupPercent:
-                row.partialQuantityMarkupPercent,
+              partialQuantityMarkupPercent: row.partialQuantityMarkupPercent,
               automaticMarkdownEnabled: row.automaticMarkdownEnabled,
-              automaticMarkdownFloorPercent:
-                row.automaticMarkdownFloorPercent,
-              automaticMarkdownIntervalDays:
-                row.automaticMarkdownIntervalDays,
+              automaticMarkdownFloorPercent: row.automaticMarkdownFloorPercent,
+              automaticMarkdownIntervalDays: row.automaticMarkdownIntervalDays,
               allowSampleRequests: row.allowSampleRequests,
               territoryMode: row.territoryMode,
               allowedDestinationStates: row.allowedDestinationStates,
@@ -478,31 +692,62 @@ export const listingRouter = createTRPCRouter({
 
         createdListings = results;
         const response = {
-          batchId, count: results.length,
-          listings: results.map((listing) => ({ id: listing.id, title: listing.title, materialType: listing.materialType, totalSqFt: listing.totalSqFt, askPricePerSqFt: listing.askPricePerSqFt })),
+          batchId,
+          count: results.length,
+          listings: results.map((listing) => ({
+            id: listing.id,
+            title: listing.title,
+            modelNumber: listing.modelNumber,
+            materialType: listing.materialType,
+            totalSqFt: listing.totalSqFt,
+            askPricePerSqFt: listing.askPricePerSqFt,
+          })),
         };
-        await tx.insert(notifications).values({ userId: ctx.user.id, type: "system", title: "Bulk Upload Complete", message: `${results.length} draft listings created from CSV upload`, data: { batchId, count: results.length } });
-        await tx.update(importRequests).set({ response }).where(eq(importRequests.id, claim.id));
+        await tx.insert(notifications).values({
+          userId: ctx.user.id,
+          type: "system",
+          title: "Bulk Upload Complete",
+          message: `${results.length} draft listings created from CSV upload`,
+          data: { batchId, count: results.length },
+        });
+        await tx
+          .update(importRequests)
+          .set({ response })
+          .where(eq(importRequests.id, claim.id));
         return response;
       });
       // Fire-and-forget freight class calculations (only for rows without a freight class)
       for (const row of input.rows) {
-        const rowFreightClass = row.freightClass ?? getFreightDefaults(row.materialType)?.freightClass;
-        if (!rowFreightClass && row.palletWeight && row.palletLength && row.palletWidth && row.palletHeight) {
+        const rowFreightClass =
+          row.freightClass ??
+          getFreightDefaults(row.materialType)?.freightClass;
+        if (
+          !rowFreightClass &&
+          row.palletWeight &&
+          row.palletLength &&
+          row.palletWidth &&
+          row.palletHeight
+        ) {
           const listing = createdListings.find((l) => l.title === row.title);
           if (listing) {
-            priority1.getSuggestedClass({
-              totalWeight: row.palletWeight,
-              length: row.palletLength,
-              width: row.palletWidth,
-              height: row.palletHeight,
-              units: 1,
-            }).then(async (result) => {
-              await ctx.db
-                .update(listings)
-                .set({ freightClass: result.suggestedClass, updatedAt: new Date() })
-                .where(eq(listings.id, listing.id));
-            }).catch(() => {});
+            priority1
+              .getSuggestedClass({
+                totalWeight: row.palletWeight,
+                length: row.palletLength,
+                width: row.palletWidth,
+                height: row.palletHeight,
+                units: 1,
+              })
+              .then(async (result) => {
+                await ctx.db
+                  .update(listings)
+                  .set({
+                    freightClass: result.suggestedClass,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(listings.id, listing.id));
+              })
+              .catch(() => {});
           }
         }
       }
@@ -511,94 +756,22 @@ export const listingRouter = createTRPCRouter({
     }),
 
   publishBulk: sellerProcedure
-    .input(z.object({ listingIds: z.array(z.string().uuid()).min(1).max(100) }))
-    .mutation(async ({ ctx, input }) => {
-      // Verify ownership and draft status, and check for media
-      const ownedListings = await ctx.db.query.listings.findMany({
-        where: and(
-          inArray(listings.id, input.listingIds),
-          eq(listings.sellerId, ctx.user.id),
-          eq(listings.status, "draft")
-        ),
-        with: {
-          media: { columns: { id: true } },
-        },
-      });
-
-      const publishable = ownedListings.filter((l) => l.media.length > 0);
-      const skipped = ownedListings.filter((l) => l.media.length === 0);
-
-      if (publishable.length === 0) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "No listings have photos to publish. Add photos before publishing.",
-        });
-      }
-
-      // Free-tier listing limit check
-      if (!isPro(ctx.user)) {
-        const [activeCount] = await ctx.db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(listings)
-          .where(and(
-            eq(listings.sellerId, ctx.user.id),
-            eq(listings.status, "active"),
-          ));
-        const currentActive = activeCount?.count ?? 0;
-        if (currentActive + publishable.length > FREE_LIMITS.activeListings) {
-          const canPublish = FREE_LIMITS.activeListings - currentActive;
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: `Free accounts are limited to ${FREE_LIMITS.activeListings} active listings. You can publish ${Math.max(0, canPublish)} more. Upgrade to Pro for unlimited.`,
-          });
-        }
-      }
-
-      const publishedIds = publishable.map((l) => l.id);
-      const confirmedAt = new Date();
-      await ctx.db.transaction(async (tx) => {
-        for (const listing of publishable) {
-          await tx
-            .update(listings)
-            .set({
-              status: "active",
-              publishedAt: confirmedAt,
-              updatedAt: confirmedAt,
-              ...deriveListingTrustFields(
-                {
-                  ...listing,
-                  status: "active",
-                  photoCount: listing.media.length,
-                },
-                confirmedAt,
-              ),
-            })
-            .where(eq(listings.id, listing.id));
-        }
-      });
-
-      try {
-        await inngest.send(
-          publishedIds.map((listingId) =>
-            buildListingCreatedEvent({
-              listingId,
-              sellerId: ctx.user.id,
-            }),
-          ),
-        );
-      } catch {
-        console.error("Failed to enqueue bulk listing/created events", {
-          sellerId: ctx.user.id,
-          listingCount: publishedIds.length,
-        });
-      }
-
-      return {
-        publishedCount: publishable.length,
-        skippedCount: skipped.length,
-        publishedIds,
-      };
-    }),
+    .input(
+      z.object({
+        listingIds: z.array(z.string().uuid()).min(1).max(100),
+        expectedUpdatedAt: z
+          .record(z.string().uuid(), z.coerce.date())
+          .optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      publishDraftListings(
+        ctx.db,
+        ctx.user.id,
+        input.listingIds,
+        input.expectedUpdatedAt,
+      ),
+    ),
 
   // Update an existing listing
   update: sellerProcedure
@@ -606,7 +779,8 @@ export const listingRouter = createTRPCRouter({
       z.object({
         id: z.string().uuid(),
         data: listingFormUpdateSchema,
-      })
+        appendMedia: z.boolean().optional(),
+      }),
     )
     .mutation(async ({ ctx, input }) => {
       const {
@@ -621,9 +795,10 @@ export const listingRouter = createTRPCRouter({
       void automaticMarkdownCurrentStep;
       void automaticMarkdownLastAppliedAt;
       void pricingRulesVersion;
-      const updatedLocation = updateData.locationZip !== undefined
-        ? zipcodes.lookup(updateData.locationZip)
-        : undefined;
+      const updatedLocation =
+        updateData.locationZip !== undefined
+          ? zipcodes.lookup(updateData.locationZip)
+          : undefined;
       const now = new Date();
       const { existing, updated } = await ctx.db.transaction(async (tx) => {
         // Listing checkout locks this same row before reserving inventory. Keeping
@@ -633,22 +808,37 @@ export const listingRouter = createTRPCRouter({
           .select()
           .from(listings)
           .where(
-            and(
-              eq(listings.id, input.id),
-              eq(listings.sellerId, ctx.user.id),
-            ),
+            and(eq(listings.id, input.id), eq(listings.sellerId, ctx.user.id)),
           )
           .for("update");
 
         if (!lockedListing) {
           throw new TRPCError({
             code: "NOT_FOUND",
-            message: "Listing not found or you do not have permission to edit it",
+            message:
+              "Listing not found or you do not have permission to edit it",
           });
         }
 
-        if (lockedListing.warehouseId && ["locationCity", "locationState", "locationZip"].some(key => hasOwnKey(updateData, key) && updateData[key as keyof typeof updateData] !== lockedListing[key as keyof typeof lockedListing])) {
-          throw new TRPCError({ code: "CONFLICT", message: "Change pickup location from Warehouses so shipping quotes stay consistent." });
+        if (
+          lockedListing.warehouseId &&
+          ["locationCity", "locationState", "locationZip"].some(
+            (key) =>
+              hasOwnKey(updateData, key) &&
+              updateData[key as keyof typeof updateData] !==
+                lockedListing[key as keyof typeof lockedListing],
+          )
+        ) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Change pickup location from Warehouses so shipping quotes stay consistent.",
+          });
+        }
+
+        if (["moq", "moqUnit", "sqFtPerBox", "boxesPerPallet"].some(key => hasOwnKey(updateData, key))) {
+          const packaging = listingPalletMinimumSchema.safeParse({ ...lockedListing, ...updateData });
+          if (!packaging.success) throw new TRPCError({ code: "BAD_REQUEST", message: packaging.error.issues.map(issue => issue.message).join(" ") });
         }
 
         const quantityChanged =
@@ -703,28 +893,52 @@ export const listingRouter = createTRPCRouter({
                   lockedListing.automaticMarkdownEnabled ??
                   false,
                 automaticMarkdownFloorPercent:
-                  updateData.automaticMarkdownFloorPercent ??
-                  lockedListing.automaticMarkdownFloorPercent ??
-                  null,
+                  updateData.automaticMarkdownFloorPercent !== undefined
+                    ? updateData.automaticMarkdownFloorPercent
+                    : (lockedListing.automaticMarkdownFloorPercent ?? null),
                 automaticMarkdownIntervalDays:
-                  updateData.automaticMarkdownIntervalDays ??
-                  lockedListing.automaticMarkdownIntervalDays ??
-                  null,
+                  updateData.automaticMarkdownIntervalDays !== undefined
+                    ? updateData.automaticMarkdownIntervalDays
+                    : (lockedListing.automaticMarkdownIntervalDays ?? null),
               },
               now,
             })
           : {};
 
+        if (sellingRuleUpdateTouched) {
+          const mergedRules = listingSellingRulesSchema.safeParse({
+            ...lockedListing,
+            ...updateData,
+            ...markdownFields,
+          });
+          if (!mergedRules.success) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: mergedRules.error.issues
+                .map((issue) => issue.message)
+                .join(" "),
+            });
+          }
+        }
+
         const [nextListing] = await tx
           .update(listings)
           .set({
             ...updateData,
-            ...((specificationReviewInvalidated(lockedListing, updateData) || (mediaIds !== undefined && lockedListing.specificationEvidenceId !== null && !mediaIds.includes(lockedListing.specificationEvidenceId))) ? {
-              specificationProvenance: sellerSpecificationProvenance({ ...lockedListing, ...updateData }),
-              specificationEvidenceId: null,
-              specificationReviewedAt: null,
-              specificationReviewedBy: null,
-            } : {}),
+            ...(specificationReviewInvalidated(lockedListing, updateData) ||
+            (mediaIds !== undefined && !input.appendMedia &&
+              lockedListing.specificationEvidenceId !== null &&
+              !mediaIds.includes(lockedListing.specificationEvidenceId))
+              ? {
+                  specificationProvenance: sellerSpecificationProvenance({
+                    ...lockedListing,
+                    ...updateData,
+                  }),
+                  specificationEvidenceId: null,
+                  specificationReviewedAt: null,
+                  specificationReviewedBy: null,
+                }
+              : {}),
             // Keep discovery coordinates attached to the current inventory ZIP.
             // Unknown ZIPs must clear the old point, never retain another location.
             ...(updateData.locationZip !== undefined
@@ -747,17 +961,15 @@ export const listingRouter = createTRPCRouter({
             updatedAt: now,
           })
           .where(
-            and(
-              eq(listings.id, input.id),
-              eq(listings.sellerId, ctx.user.id),
-            ),
+            and(eq(listings.id, input.id), eq(listings.sellerId, ctx.user.id)),
           )
           .returning();
 
         if (!nextListing) {
           throw new TRPCError({
             code: "CONFLICT",
-            message: "Listing changed while it was being updated. Please retry.",
+            message:
+              "Listing changed while it was being updated. Please retry.",
           });
         }
 
@@ -780,19 +992,35 @@ export const listingRouter = createTRPCRouter({
           });
         }
 
-        if (mediaIds !== undefined) {
-          await saveListingMedia(tx, ctx.user.id, input.id, mediaIds);
-        }
-        const [photoCountResult] = await tx.select({ count: sql<number>`count(*)::int` }).from(media).where(eq(media.listingId, input.id));
-        const [trustedListing] = await tx.update(listings).set(deriveListingTrustFields({ ...nextListing, photoCount: photoCountResult?.count ?? 0 }, now)).where(eq(listings.id, input.id)).returning();
-        return { existing: lockedListing, updated: trustedListing ?? nextListing };
+        const photoCount = await saveListingMedia(tx, nextListing, mediaIds, input.appendMedia);
+        const [trustedListing] = await tx
+          .update(listings)
+          .set(deriveListingTrustFields({ ...nextListing, photoCount }, now))
+          .where(eq(listings.id, input.id))
+          .returning();
+        return {
+          existing: lockedListing,
+          updated: trustedListing ?? nextListing,
+        };
       });
       const trustedListing = updated;
 
       // Only call Priority1 for freight class if seller didn't provide one in this update
       // and the listing doesn't already have a seller-provided freight class
-      const hasFreightClass = updateData.freightClass || (updated?.freightClass && !updateData.palletWeight && !updateData.palletLength && !updateData.palletWidth && !updateData.palletHeight);
-      if (!hasFreightClass && (updateData.palletWeight || updateData.palletLength || updateData.palletWidth || updateData.palletHeight)) {
+      const hasFreightClass =
+        updateData.freightClass ||
+        (updated?.freightClass &&
+          !updateData.palletWeight &&
+          !updateData.palletLength &&
+          !updateData.palletWidth &&
+          !updateData.palletHeight);
+      if (
+        !hasFreightClass &&
+        (updateData.palletWeight ||
+          updateData.palletLength ||
+          updateData.palletWidth ||
+          updateData.palletHeight)
+      ) {
         const currentValues = {
           palletWeight: updateData.palletWeight ?? existing.palletWeight,
           palletLength: updateData.palletLength ?? existing.palletLength,
@@ -800,21 +1028,32 @@ export const listingRouter = createTRPCRouter({
           palletHeight: updateData.palletHeight ?? existing.palletHeight,
         };
 
-        if (currentValues.palletWeight && currentValues.palletLength && currentValues.palletWidth && currentValues.palletHeight) {
-          priority1.getSuggestedClass({
-            totalWeight: currentValues.palletWeight,
-            length: currentValues.palletLength,
-            width: currentValues.palletWidth,
-            height: currentValues.palletHeight,
-            units: 1,
-          }).then(async (result) => {
-            await ctx.db
-              .update(listings)
-              .set({ freightClass: result.suggestedClass, updatedAt: new Date() })
-              .where(eq(listings.id, input.id));
-          }).catch(() => {
-            // Non-fatal: listing still updated without freight class
-          });
+        if (
+          currentValues.palletWeight &&
+          currentValues.palletLength &&
+          currentValues.palletWidth &&
+          currentValues.palletHeight
+        ) {
+          priority1
+            .getSuggestedClass({
+              totalWeight: currentValues.palletWeight,
+              length: currentValues.palletLength,
+              width: currentValues.palletWidth,
+              height: currentValues.palletHeight,
+              units: 1,
+            })
+            .then(async (result) => {
+              await ctx.db
+                .update(listings)
+                .set({
+                  freightClass: result.suggestedClass,
+                  updatedAt: new Date(),
+                })
+                .where(eq(listings.id, input.id));
+            })
+            .catch(() => {
+              // Non-fatal: listing still updated without freight class
+            });
         }
       }
 
@@ -822,53 +1061,15 @@ export const listingRouter = createTRPCRouter({
     }),
 
   reconfirm: sellerProcedure
-    .input(z.object({ id: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      const existing = await ctx.db.query.listings.findFirst({
-        where: and(
-          eq(listings.id, input.id),
-          eq(listings.sellerId, ctx.user.id),
-        ),
-      });
-
-      if (!existing) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Listing not found or you do not have permission to edit it",
-        });
-      }
-
-      if (existing.status !== "active") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only active listings can be reconfirmed",
-        });
-      }
-
-      const [photoCountResult] = await ctx.db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(media)
-        .where(eq(media.listingId, input.id));
-      const photoCount = photoCountResult?.count ?? 0;
-      const confirmedAt = new Date();
-
-      const [updated] = await ctx.db
-        .update(listings)
-        .set({
-          updatedAt: confirmedAt,
-          ...deriveListingTrustFields(
-            {
-              ...existing,
-              photoCount,
-            },
-            confirmedAt,
-          ),
-        })
-        .where(eq(listings.id, input.id))
-        .returning();
-
-      return updated;
-    }),
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        expectedUpdatedAt: z.coerce.date().optional(),
+      }),
+    )
+    .mutation(({ ctx, input }) =>
+      reconfirmListing(ctx.db, ctx.user.id, input.id, input.expectedUpdatedAt),
+    ),
 
   // Delete (archive) a listing
   delete: sellerProcedure
@@ -879,10 +1080,7 @@ export const listingRouter = createTRPCRouter({
           .select({ id: listings.id })
           .from(listings)
           .where(
-            and(
-              eq(listings.id, input.id),
-              eq(listings.sellerId, ctx.user.id),
-            ),
+            and(eq(listings.id, input.id), eq(listings.sellerId, ctx.user.id)),
           )
           .for("update");
 
@@ -900,9 +1098,7 @@ export const listingRouter = createTRPCRouter({
             and(
               eq(orders.listingId, input.id),
               isNull(orders.inventoryReleasedAt),
-              inArray(orders.status, [
-                ...UNRELEASED_INVENTORY_ORDER_STATUSES,
-              ]),
+              inArray(orders.status, [...UNRELEASED_INVENTORY_ORDER_STATUSES]),
             ),
           )
           .limit(1);
@@ -919,10 +1115,7 @@ export const listingRouter = createTRPCRouter({
           .update(listings)
           .set({ status: "archived", updatedAt: new Date() })
           .where(
-            and(
-              eq(listings.id, input.id),
-              eq(listings.sellerId, ctx.user.id),
-            ),
+            and(eq(listings.id, input.id), eq(listings.sellerId, ctx.user.id)),
           )
           .returning();
 
@@ -971,6 +1164,7 @@ export const listingRouter = createTRPCRouter({
           },
           media: {
             columns: publicMediaColumns,
+            where: publicProductPhotoWhere,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
           },
         },
@@ -1024,6 +1218,7 @@ export const listingRouter = createTRPCRouter({
           },
           media: {
             columns: publicMediaColumns,
+            where: publicProductPhotoWhere,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
           },
         },
@@ -1108,9 +1303,10 @@ export const listingRouter = createTRPCRouter({
       const anonymousCacheKey = ctx.user
         ? null
         : buildPublicReadCacheKey("listing-list", input);
-      const cached = await readPublicReadCache<PublicListingBrowseResponse>(
-        anonymousCacheKey,
-      );
+      const cached =
+        await readPublicReadCache<PublicListingBrowseResponse>(
+          anonymousCacheKey,
+        );
       if (cached) return cached;
 
       const publicNow = new Date();
@@ -1121,13 +1317,17 @@ export const listingRouter = createTRPCRouter({
       // Match tokens across product fields, including the manufacturer's model.
       // Keep each predicate index-friendly and escape SQL LIKE metacharacters.
       if (input.query?.trim()) {
-        const tokens = [...new Set(input.query.trim().toLowerCase().split(/\s+/))];
+        const tokens = [
+          ...new Set(input.query.trim().toLowerCase().split(/\s+/)),
+        ];
         for (const token of tokens) {
           const escaped = token.replace(/[\\%_]/g, "\\$&");
-          conditions.push(or(
-            ilike(listings.searchDocument, `%${escaped}%`),
-            ilike(listings.modelNumber, `%${escaped}%`),
-          )!);
+          conditions.push(
+            or(
+              ilike(listings.searchDocument, `%${escaped}%`),
+              ilike(listings.modelNumber, `%${escaped}%`),
+            )!,
+          );
         }
       }
 
@@ -1156,7 +1356,7 @@ export const listingRouter = createTRPCRouter({
         const widthConditions = input.width.map((w) =>
           w === 9
             ? gte(listings.width, 9)
-            : and(gte(listings.width, w - 0.1), lte(listings.width, w + 0.1))
+            : and(gte(listings.width, w - 0.1), lte(listings.width, w + 0.1)),
         );
         conditions.push(or(...widthConditions)!);
       }
@@ -1164,7 +1364,10 @@ export const listingRouter = createTRPCRouter({
       // Allow rounding from mm to hundredths of an inch, not adjacent sizes.
       if (input.thickness && input.thickness.length > 0) {
         const thicknessConditions = input.thickness.map((t) =>
-          and(gte(listings.thickness, t - 0.005), lte(listings.thickness, t + 0.005))
+          and(
+            gte(listings.thickness, t - 0.005),
+            lte(listings.thickness, t + 0.005),
+          ),
         );
         conditions.push(or(...thicknessConditions)!);
       }
@@ -1172,7 +1375,10 @@ export const listingRouter = createTRPCRouter({
       // Wear layer multi-select (match within ±0.02mm tolerance)
       if (input.wearLayer && input.wearLayer.length > 0) {
         const wearConditions = input.wearLayer.map((w) =>
-          and(gte(listings.wearLayer, w - 0.02), lte(listings.wearLayer, w + 0.02))
+          and(
+            gte(listings.wearLayer, w - 0.02),
+            lte(listings.wearLayer, w + 0.02),
+          ),
         );
         conditions.push(or(...wearConditions)!);
       }
@@ -1204,7 +1410,10 @@ export const listingRouter = createTRPCRouter({
 
       // Lot size range
       if (input.minLotSize !== undefined) {
-        conditions.push(gte(listings.totalSqFt, input.minLotSize));
+        conditions.push(getMinimumAvailableStockSql(input.minLotSize));
+      }
+      if (input.hideQuantityConflicts && input.minLotSize !== undefined) {
+        conditions.push(getNoKnownQuantityConflictSql(input.minLotSize));
       }
       if (input.maxLotSize !== undefined) {
         conditions.push(lte(listings.totalSqFt, input.maxLotSize));
@@ -1213,15 +1422,20 @@ export const listingRouter = createTRPCRouter({
       // Familiar marketplace confidence filters, backed by the same fields
       // used to construct the public listing evidence DTO.
       if (input.waterproofRequired === true) {
-        conditions.push(sql`${listings.waterResistance} = 'waterproof' AND ${listings.specificationProvenance} = 'evidence_reviewed' AND ${listings.specificationReviewedAt} IS NOT NULL AND ${listings.specificationEvidenceId} IS NOT NULL`);
+        conditions.push(
+          sql`${listings.waterResistance} = 'waterproof' AND ${listings.specificationProvenance} = 'evidence_reviewed' AND ${listings.specificationReviewedAt} IS NOT NULL AND ${listings.specificationEvidenceId} IS NOT NULL`,
+        );
       }
       if (input.sellerVerified !== undefined) {
+        // Relational where clauses remap Column tokens to the listings alias.
+        // Keep inner seller identifiers in their own scope; only the correlated
+        // outer sellerId should follow the relation's alias.
         conditions.push(sql<boolean>`(
           exists (
             select 1
-            from ${users}
-            where ${users.id} = ${listings.sellerId}
-              and ${users.verificationStatus} = 'verified'
+            from ${users} as "confidence_seller"
+            where "confidence_seller"."id" = ${listings.sellerId}
+              and "confidence_seller"."verification_status" = 'verified'
           )
         ) = ${input.sellerVerified}`);
       }
@@ -1241,10 +1455,10 @@ export const listingRouter = createTRPCRouter({
           and ${listings.boxesPerPallet} is not null
           and exists (
             select 1
-            from ${users}
-            where ${users.id} = ${listings.sellerId}
-              and nullif(btrim(${users.businessAddress}), '') is not null
-              and nullif(btrim(${users.phone}), '') is not null
+            from ${users} as "freight_seller"
+            where "freight_seller"."id" = ${listings.sellerId}
+              and nullif(btrim("freight_seller"."business_address"), '') is not null
+              and nullif(btrim("freight_seller"."phone"), '') is not null
           )
         ) = ${input.freightReady}`);
       }
@@ -1256,7 +1470,9 @@ export const listingRouter = createTRPCRouter({
       // Resolve origin independently: nearest ordering also works nationwide.
       let buyerLat: number | undefined;
       let buyerLng: number | undefined;
-      const zipInfo = input.buyerZip ? zipcodes.lookup(input.buyerZip) : undefined;
+      const zipInfo = input.buyerZip
+        ? zipcodes.lookup(input.buyerZip)
+        : undefined;
       if (zipInfo) {
         buyerLat = zipInfo.latitude;
         buyerLng = zipInfo.longitude;
@@ -1268,7 +1484,7 @@ export const listingRouter = createTRPCRouter({
             ),
           );
           conditions.push(
-            sql`(${getListingDistanceMilesSql(buyerLat, buyerLng)}) <= ${input.maxDistance}`
+            sql`(${getListingDistanceMilesSql(buyerLat, buyerLng)}) <= ${input.maxDistance}`,
           );
         }
       }
@@ -1284,7 +1500,7 @@ export const listingRouter = createTRPCRouter({
             ELSE 0
           END
           ELSE 0
-        END`
+        END`,
       );
 
       // Sort
@@ -1322,9 +1538,10 @@ export const listingRouter = createTRPCRouter({
       }
 
       // Explicit buyer sorting takes precedence over paid placement.
-      const orderByClause = input.sort === "proximity"
-        ? [userSort, promotionBoost, asc(listings.id)]
-        : [promotionBoost, userSort, asc(listings.id)];
+      const orderByClause =
+        input.sort === "proximity"
+          ? [userSort, promotionBoost, asc(listings.id)]
+          : [promotionBoost, userSort, asc(listings.id)];
 
       const where = and(...conditions);
       const offset = (input.page - 1) * input.limit;
@@ -1335,6 +1552,7 @@ export const listingRouter = createTRPCRouter({
           orderBy: (media: any, { asc }: any) => [asc(media.sortOrder)],
           limit: 1,
           columns: publicMediaColumns,
+          where: publicProductPhotoWhere,
         },
         seller: {
           columns: publicSellerColumns,
@@ -1373,10 +1591,7 @@ export const listingRouter = createTRPCRouter({
 
       const boundedCount = countResult[0]?.count ?? 0;
       const totalIsExact = boundedCount <= MAX_PUBLIC_LISTING_RESULT_WINDOW;
-      const total = Math.min(
-        boundedCount,
-        MAX_PUBLIC_LISTING_RESULT_WINDOW,
-      );
+      const total = Math.min(boundedCount, MAX_PUBLIC_LISTING_RESULT_WINDOW);
 
       const response: PublicListingBrowseResponse = {
         items: interleaved,
@@ -1396,18 +1611,45 @@ export const listingRouter = createTRPCRouter({
   getMyListings: sellerProcedure
     .input(
       z.object({
+        query: z.string().trim().max(120).optional(),
+        needsConfirmation: z.boolean().optional(),
         status: z
           .enum(["draft", "active", "sold", "expired", "archived"])
           .optional(),
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const conditions = [eq(listings.sellerId, ctx.user.id)];
 
       if (input.status) {
         conditions.push(eq(listings.status, input.status));
+      }
+
+      if (input.query) {
+        const escaped = input.query.replace(/[\\%_]/g, "\\$&");
+        const pattern = `%${escaped}%`;
+        conditions.push(
+          or(
+            ilike(listings.title, pattern),
+            ilike(listings.brand, pattern),
+            ilike(listings.modelNumber, pattern),
+          )!,
+        );
+      }
+      if (input.needsConfirmation) {
+        const warningAt = new Date(
+          Date.now() + LISTING_CONFIRMATION_WARNING_DAYS * 24 * 60 * 60 * 1000,
+        );
+        conditions.push(eq(listings.status, "active"));
+        conditions.push(
+          or(
+            isNull(listings.lastConfirmedAt),
+            isNull(listings.confirmationDueAt),
+            lte(listings.confirmationDueAt, warningAt),
+          )!,
+        );
       }
 
       const where = and(...conditions);
@@ -1422,7 +1664,7 @@ export const listingRouter = createTRPCRouter({
               limit: 1,
             },
           },
-          orderBy: desc(listings.createdAt),
+          orderBy: [desc(listings.createdAt), desc(listings.id)],
           limit: input.limit,
           offset,
         }),
@@ -1435,6 +1677,7 @@ export const listingRouter = createTRPCRouter({
       const total = countResult[0]?.count ?? 0;
 
       return {
+        ownerId: ctx.user.id,
         items,
         total,
         page: input.page,
@@ -1462,15 +1705,18 @@ export const listingRouter = createTRPCRouter({
 
   // Get trending/popular listings (public)
   getTrending: publicReadProcedure
-    .input(z.object({ limit: z.number().int().positive().max(12).default(6) }).optional())
+    .input(
+      z
+        .object({ limit: z.number().int().positive().max(12).default(6) })
+        .optional(),
+    )
     .query(async ({ ctx, input }) => {
       const limit = input?.limit ?? 6;
       const anonymousCacheKey = ctx.user
         ? null
         : buildPublicReadCacheKey("listing-trending", { limit });
-      const cached = await readPublicReadCache<PublicListingDto[]>(
-        anonymousCacheKey,
-      );
+      const cached =
+        await readPublicReadCache<PublicListingDto[]>(anonymousCacheKey);
       if (cached) return cached;
 
       const items = await ctx.db.query.listings.findMany({
@@ -1479,6 +1725,7 @@ export const listingRouter = createTRPCRouter({
         with: {
           media: {
             columns: publicMediaColumns,
+            where: publicProductPhotoWhere,
             orderBy: (media, { asc }) => [asc(media.sortOrder)],
             limit: 1,
           },

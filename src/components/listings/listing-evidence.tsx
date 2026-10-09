@@ -9,7 +9,6 @@ import {
   ShieldCheck,
   Truck,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { cn, formatSqFt } from "@/lib/utils";
 import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 
@@ -78,6 +77,7 @@ function formatConfirmationDate(value: Date | string | null | undefined) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   }).format(date);
 }
 
@@ -141,8 +141,7 @@ function getFreshnessBadge(
 
 function getEvidenceBadges(listing: ListingEvidenceData) {
   const hasPhotos = Boolean(listing.media?.length);
-  const freightReady =
-    listing.freightEstimateStatus === "quote_request_ready";
+  const freightReady = listing.freightEstimateStatus === "quote_request_ready";
   const badges: ListingEvidenceBadgeData[] = [];
   const freshnessBadge = getFreshnessBadge(listing);
 
@@ -273,36 +272,30 @@ export function getListingEvidenceAlerts(
 
 function EvidenceAlertCard({ alert }: { alert: ListingEvidenceAlert }) {
   const blocked = alert.tone === "blocked";
-
   return (
-    <div
-      className={cn(
-        "rounded-xl border p-3",
-        blocked
-          ? "border-destructive/30 bg-destructive/5"
-          : "border-amber-300/40 bg-amber-50/60 dark:bg-amber-950/10",
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-            blocked
-              ? "bg-destructive/10 text-destructive"
-              : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-          )}
-        >
-          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-        </div>
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Badge variant={blocked ? "destructive" : "warning"}>
-              {blocked ? "Blocked" : "Warning"}
-            </Badge>
-            <p className="text-sm font-semibold">{alert.title}</p>
-          </div>
-          <p className="text-sm text-muted-foreground">{alert.detail}</p>
-        </div>
+    <div className="flex items-start gap-2 border-l-2 border-current pl-3">
+      <AlertTriangle
+        className={cn(
+          "mt-0.5 h-4 w-4 shrink-0",
+          blocked ? "text-destructive" : "text-amber-800 dark:text-amber-300",
+        )}
+        aria-hidden="true"
+      />
+      <div>
+        <p className="text-sm font-semibold">
+          <span
+            className={cn(
+              "mr-2 text-xs",
+              blocked
+                ? "text-destructive"
+                : "text-amber-800 dark:text-amber-300",
+            )}
+          >
+            {blocked ? "Blocked" : "Warning"}
+          </span>
+          {alert.title}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">{alert.detail}</p>
       </div>
     </div>
   );
@@ -321,37 +314,45 @@ export function ListingEvidence({
   const originRegion = [listing.locationCity, listing.locationState]
     .filter(Boolean)
     .join(", ");
-  const freightReady =
-    listing.freightEstimateStatus === "quote_request_ready";
+  const freightReady = listing.freightEstimateStatus === "quote_request_ready";
   const freshnessLabel = getFreshnessLabel(listing);
   const alerts = getListingEvidenceAlerts(listing);
   const badges = getEvidenceBadges(listing);
 
   if (variant === "compact") {
     return (
-      <div className={cn("space-y-2", className)}>
-        <div className="flex flex-wrap gap-1.5">
-          {badges.map((badge) => (
-            <Badge
-              key={badge.label}
-              variant={badge.variant}
-              className="gap-1 text-[11px]"
-            >
-              <badge.icon className="h-3 w-3" aria-hidden="true" />
-              {badge.label}
-            </Badge>
-          ))}
-        </div>
-        <dl className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+      <div className={cn("space-y-2 text-xs", className)}>
+        <dl className="flex flex-wrap gap-x-3 gap-y-1 text-sm">
           <div>
+            <dt className="sr-only">Origin region</dt>
+            <dd>{originRegion || "Origin not provided"}</dd>
+          </div>
+          <div className="text-muted-foreground">
             <dt className="sr-only">Minimum order</dt>
             <dd>MOQ: {formatMoq(listing.moq, listing.moqUnit)}</dd>
           </div>
-          <div>
-            <dt className="sr-only">Origin region</dt>
-            <dd>{originRegion ? `Origin: ${originRegion}` : "Origin not provided"}</dd>
-          </div>
         </dl>
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-muted-foreground">
+          {badges
+            .filter((badge) => !badge.label.startsWith("Photos on file"))
+            .map((badge) => (
+              <span
+                key={badge.label}
+                className={cn(
+                  "inline-flex min-w-0 items-start gap-1",
+                  badge.variant === "destructive" && "text-destructive",
+                  badge.variant === "warning" &&
+                    "text-amber-800 dark:text-amber-300",
+                )}
+              >
+                <badge.icon
+                  className="mt-0.5 h-3 w-3 shrink-0"
+                  aria-hidden="true"
+                />
+                {badge.label}
+              </span>
+            ))}
+        </div>
       </div>
     );
   }
@@ -411,79 +412,47 @@ export function ListingEvidence({
   ];
 
   return (
-    <div className={cn("space-y-4", className)}>
-      <div className="flex flex-wrap gap-1.5">
-        {badges.map((badge) => (
-          <Badge key={badge.label} variant={badge.variant} className="gap-1">
-            <badge.icon className="h-3 w-3" aria-hidden="true" />
-            {badge.label}
-          </Badge>
-        ))}
-      </div>
-
+    <div className={cn("space-y-5", className)}>
       {alerts.length > 0 && (
         <div className="space-y-3">
           {alerts.map((alert) => (
-            <EvidenceAlertCard key={`${alert.tone}-${alert.title}`} alert={alert} />
+            <EvidenceAlertCard key={alert.tone + alert.title} alert={alert} />
           ))}
         </div>
       )}
-
-      <section className="space-y-3" aria-labelledby="listing-evidence-known-now">
-        <div>
-          <h3
-            id="listing-evidence-known-now"
-            className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-          >
-            Known now
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            These details come directly from the public listing and seller account.
-          </p>
-        </div>
-        <dl className="grid gap-3 sm:grid-cols-2">
+      <section aria-labelledby="listing-evidence-known-now">
+        <h3
+          id="listing-evidence-known-now"
+          className="mb-2 text-sm font-semibold"
+        >
+          Known now
+        </h3>
+        <dl className="divide-y">
           {knownNowItems.map((item) => (
-            <div key={item.label} className="rounded-lg border bg-muted/20 p-3">
-              <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-                <item.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                {item.label}
-              </dt>
-              <dd className="mt-1 text-sm font-medium">{item.value}</dd>
+            <div
+              key={item.label}
+              className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2"
+            >
+              <dt className="text-sm text-muted-foreground">{item.label}</dt>
+              <dd className="text-sm font-medium">{item.value}</dd>
             </div>
           ))}
         </dl>
       </section>
-
-      <section className="space-y-3" aria-labelledby="listing-evidence-calculated-later">
-        <div>
-          <h3
-            id="listing-evidence-calculated-later"
-            className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground"
-          >
-            Calculated later
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Final delivered cost depends on destination-specific freight details.
-          </p>
-        </div>
-        <dl className="grid gap-3">
+      <section aria-labelledby="listing-evidence-calculated-later">
+        <h3
+          id="listing-evidence-calculated-later"
+          className="mb-2 text-sm font-semibold"
+        >
+          Calculated later
+        </h3>
+        <dl>
           {calculatedLaterItems.map((item) => (
-            <div
-              key={item.label}
-              className={cn(
-                "rounded-lg border p-3",
-                item.blocked
-                  ? "border-amber-300/40 bg-amber-50/60 dark:bg-amber-950/10"
-                  : "bg-muted/20",
-              )}
-            >
-              <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-                <item.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                {item.label}
-              </dt>
-              <dd className="mt-1 space-y-1">
-                <span className="block text-sm font-medium">{item.value}</span>
-                <span className="block text-sm text-muted-foreground">{item.detail}</span>
+            <div key={item.label} className="space-y-1">
+              <dt className="text-sm font-medium">{item.label}</dt>
+              <dd className="text-sm text-muted-foreground">
+                <span className="block">{item.value}</span>
+                <span className="block">{item.detail}</span>
               </dd>
             </div>
           ))}

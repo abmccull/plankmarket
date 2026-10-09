@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight } from "lucide-react";
+import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
 
 export const metadata: Metadata = {
   title: "FAQ | PlankMarket",
@@ -18,8 +19,7 @@ const BUYER_FAQS = [
   },
   {
     question: "How are buyer fees calculated?",
-    answer:
-      "Buyers pay a 5% platform fee on the inventory subtotal only. Shipping is quoted separately at checkout, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin, so there is no additional buyer fee on shipping.",
+    answer: `Buyers pay a ${PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on the inventory subtotal only. Shipping is quoted separately at checkout, and the displayed freight charge may include carrier charges plus PlankMarket shipping service margin. There is no additional buyer fee on shipping.`,
   },
   {
     question: "How is shipping handled?",
@@ -47,12 +47,11 @@ const SELLER_FAQS = [
   {
     question: "When do sellers need verification?",
     answer:
-      "Sellers can create an account and explore the platform right away, but verification approval is required before creating listings.",
+      "Sellers can register and prepare one listing draft on this browser before approval. Business verification must be approved before uploading product photos or publishing. Drafts are not synced across devices.",
   },
   {
     question: "How are seller fees calculated?",
-    answer:
-      "Sellers pay a 5% platform fee on inventory subtotal and a 2.9% + $0.30 Stripe processing fee on inventory subtotal only.",
+    answer: `Sellers pay a ${PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus ${PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel} Stripe processing on the inventory subtotal only.`,
   },
   {
     question: "Who covers shipping-related processing costs?",
@@ -62,20 +61,28 @@ const SELLER_FAQS = [
   {
     question: "When do payouts happen?",
     answer:
-      "Stripe processes a platform charge at checkout. After live carrier pickup is confirmed and the configured delay passes, PlankMarket initiates a separate Stripe Connect transfer if payment, shipment, refund, and dispute checks still pass. The transfer is withheld when live pickup evidence is missing, the shipment is a dry-run, the charge is refunded or disputed, or a marketplace dispute is open. Bank availability depends on Stripe and the connected account's payout schedule. PlankMarket is not a regulated escrow service. The 48-hour post-delivery claim window is separate from payout timing. The seller dashboard shows transfer status and history.",
+      "Stripe charges the buyer at checkout. PlankMarket starts a separate Stripe Connect transfer after actual carrier pickup is confirmed, the release waiting period passes, and payment, shipment, refund and dispute checks pass. Missing pickup evidence, test shipments, refunded or disputed charges, and open marketplace disputes block the transfer. Bank availability depends on Stripe and your connected account's payout schedule. PlankMarket is not a regulated escrow service. The 48-hour post-delivery claim window is separate from transfer timing. Check transfer status and history in your seller dashboard.",
   },
 ];
 
 function FaqSection({
+  id,
   title,
   items,
+  actionHref,
+  actionLabel,
 }: {
+  id: string;
   title: string;
   items: { question: string; answer: string }[];
+  actionHref: string;
+  actionLabel: string;
 }) {
   return (
-    <section>
-      <h2 className="font-display text-2xl sm:text-3xl mb-6">{title}</h2>
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-28">
+      <h2 id={`${id}-title`} className="font-display text-2xl sm:text-3xl mb-6">
+        {title}
+      </h2>
       <div className="space-y-3">
         {items.map((item) => (
           <details
@@ -105,13 +112,19 @@ function FaqSection({
           </details>
         ))}
       </div>
+      <Button asChild variant="outline" className="mt-5">
+        <Link href={actionHref}>
+          {actionLabel}
+          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+      </Button>
     </section>
   );
 }
 
 export default function FaqPage() {
   return (
-    <div className="py-16 sm:py-20 bg-muted/20">
+    <div className="py-10 sm:py-14 bg-muted/20">
       <div className="container mx-auto px-4 max-w-5xl space-y-12">
         <div className="text-center max-w-3xl mx-auto">
           <Badge variant="outline" className="mb-4">
@@ -123,28 +136,51 @@ export default function FaqPage() {
           <p className="mt-4 text-muted-foreground text-lg">
             Quick answers for buyers and sellers using PlankMarket.
           </p>
+          <nav
+            aria-label="Help topics"
+            className="mt-6 flex flex-wrap justify-center gap-3"
+          >
+            <Button asChild variant="outline">
+              <Link href="#buyer-help">Buyer questions</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="#seller-help">Seller questions</Link>
+            </Button>
+          </nav>
         </div>
 
         <div className="grid gap-12">
-          <FaqSection title="Buyer FAQs" items={BUYER_FAQS} />
-          <FaqSection title="Seller FAQs" items={SELLER_FAQS} />
+          <FaqSection
+            id="buyer-help"
+            title="Buyer FAQs"
+            items={BUYER_FAQS}
+            actionHref="/listings"
+            actionLabel="Browse flooring"
+          />
+          <FaqSection
+            id="seller-help"
+            title="Seller FAQs"
+            items={SELLER_FAQS}
+            actionHref="/register?role=seller"
+            actionLabel="Create a seller account"
+          />
         </div>
 
         <div className="rounded-2xl border bg-card p-8 text-center">
           <h2 className="font-display text-2xl">Still have a question?</h2>
           <p className="mt-2 text-muted-foreground">
-            Contact our team and we will help you get unstuck quickly.
+            Contact our team with your account, listing or order question.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/contact">
-              <Button>Contact Support</Button>
-            </Link>
-            <Link href="/listings">
-              <Button variant="outline">
+            <Button asChild>
+              <Link href="/contact">Contact Support</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/listings">
                 Browse Listings
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
           </div>
         </div>
       </div>

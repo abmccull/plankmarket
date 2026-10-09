@@ -84,11 +84,12 @@ describe("RegisterForm", () => {
   it("makes account creation visibly separate from verification", () => {
     render(<RegisterPage />);
 
-    expect(screen.getByText(/create your account/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /create your buyer account/i })).toBeInTheDocument();
     expect(screen.getByText(/of 2/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/we do not ask for an ein/i),
+      screen.getByText(/verify your business before buying/i),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/ein|tax id/i)).not.toBeInTheDocument();
   });
 
   // 3. Shows seller account title when "Sell Flooring" clicked
@@ -229,6 +230,35 @@ describe("RegisterForm", () => {
     });
   });
 
+  it("rejects whitespace-only names before creating an account", async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    await fillValidForm(user);
+    await user.clear(screen.getByLabelText(/full name/i));
+    await user.type(screen.getByLabelText(/full name/i), "   ");
+    await user.clear(screen.getByLabelText(/business name/i));
+    await user.type(screen.getByLabelText(/business name/i), "   ");
+    fireEvent.submit(screen.getByRole("button", { name: /create buyer account/i }).closest("form")!);
+    await waitFor(() => expect(screen.getByText(/business name is required/i)).toBeInTheDocument());
+    expect(screen.getByLabelText(/full name/i)).toHaveAttribute("aria-invalid", "true");
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("normalizes pasted account fields while preserving the password", async () => {
+    const user = userEvent.setup();
+    render(<RegisterPage />);
+    for (const [label, value] of [
+      [/full name/i, "  Jane Doe  "], [/business name/i, "  Doe Lumber Co  "],
+      [/business email/i, "  jane@example.com  "], [/zip code/i, " 97201 "],
+      [/phone/i, " +1 503 555 0101 "], [/^password$/i, " secureP@ss1 "],
+    ] as const) await user.type(screen.getByLabelText(label), value);
+    fireEvent.submit(screen.getByRole("button", { name: /create buyer account/i }).closest("form")!);
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Jane Doe", businessName: "Doe Lumber Co", email: "jane@example.com",
+      zipCode: "97201", phone: "+1 503 555 0101", password: " secureP@ss1 ",
+    })));
+  });
+
   // 8. Shows loading state during submission
   it("disables submit button while loading", async () => {
     // Make mutation hang indefinitely so we can observe loading state
@@ -253,8 +283,7 @@ describe("RegisterForm", () => {
   });
 
   // 9. Handles server error (mutation rejection)
-  it("shows toast error when mutation fails", async () => {
-    const { toast } = await import("sonner");
+  it("shows a persistent inline error when mutation fails", async () => {
 
     mockMutateAsync.mockRejectedValue(new Error("Email already registered"));
 
@@ -268,7 +297,7 @@ describe("RegisterForm", () => {
     );
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Email already registered");
+      expect(screen.getByRole("alert")).toHaveTextContent("Email already registered");
     });
   });
 

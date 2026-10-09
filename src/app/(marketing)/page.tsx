@@ -1,654 +1,461 @@
-import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Suspense } from "react";
+import { ArrowRight, Search, ShieldCheck, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import {
-  ArrowRight,
-  ShoppingCart,
-  Store,
-  Shield,
-  TrendingDown,
-  Truck,
-  Clock,
-  DollarSign,
-  Users,
-  Calculator,
-} from "lucide-react";
-import { CarryingCostCalculatorCompact } from "@/components/marketing/carrying-cost-calculator-compact";
+  HomeInventory,
+  HomeInventorySkeleton,
+} from "@/components/marketing/home-inventory";
 import { PUBLIC_COMMERCIAL_COPY } from "@/lib/public-commercial-copy";
+import { FREE_LIMITS } from "@/lib/pro";
 
 export const metadata: Metadata = {
   title: "PlankMarket — B2B Closeout Flooring Marketplace",
   description:
-    "A purpose-built B2B marketplace for overstock, discontinued, and closeout flooring with verified transaction actions, transparent fees, seller-territory visibility, and integrated freight quotes.",
+    "Buy and sell surplus, overstock and closeout flooring. Compare available lots, review seller verification, and see order fees and freight before payment.",
 };
 
-export const revalidate = 3600;
+// Inventory uses the current viewer's existing public eligibility rules.
+export const dynamic = "force-dynamic";
+
+const materialOptions = [
+  ["engineered", "Engineered hardwood"],
+  ["hardwood", "Hardwood"],
+  ["vinyl_lvp", "Vinyl / LVP"],
+  ["laminate", "Laminate"],
+  ["tile", "Tile"],
+  ["bamboo", "Bamboo"],
+  ["other", "Other flooring"],
+] as const;
+
+const buyerSteps = [
+  [
+    "Find a lot that fits",
+    "Compare material, condition, available quantity and minimum order before you make a decision.",
+  ],
+  [
+    "Review the delivered cost",
+    "Buy at the listed price or make an offer. Review fees, freight and applicable tax before payment.",
+  ],
+  [
+    "Keep the order together",
+    "Track the order and freight, inspect the delivery, and report any issue from the order record.",
+  ],
+] as const;
+
+const sellerSteps = [
+  [
+    "Show buyers what you have",
+    "Add the lot's specifications, condition, quantity and clear photos. Your draft is saved to your account so you can continue on another device.",
+  ],
+  [
+    "Agree on the sale",
+    "Review offers and your expected proceeds. Keep buyer questions and order details in one place.",
+  ],
+  [
+    "Ship and track your payment",
+    "Prepare the freight for pickup. Follow the seller transfer status and any required action in your order.",
+  ],
+] as const;
 
 export default function HomePage() {
   return (
-    <>
-      {/* ─── Hero: The Depreciation Clock ──────────────────────────────── */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background min-h-[calc(100vh-4rem)] flex items-center">
-        {/* Hero background photo */}
-        <Image
-          src="https://images.unsplash.com/photo-1584622781564-1d987f7333c1?w=1400&q=80&fit=crop"
-          alt=""
-          fill
-          className="object-cover opacity-[0.07]"
-          priority
-          aria-hidden="true"
-        />
-        {/* Wood grain texture overlay */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `
-              repeating-linear-gradient(
-                90deg,
-                transparent,
-                transparent 2px,
-                oklch(0.40 0.10 55) 2px,
-                oklch(0.40 0.10 55) 4px
-              ),
-              repeating-linear-gradient(
-                0deg,
-                transparent,
-                transparent 1px,
-                oklch(0.42 0.09 155) 1px,
-                oklch(0.42 0.09 155) 2px
-              )
-            `,
-          }}
-        />
-
-        {/* Decorative blur circles */}
-        <div
-          aria-hidden="true"
-          className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl"
-        />
-        <div
-          aria-hidden="true"
-          className="absolute bottom-20 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl"
-        />
-
-        <div className="container mx-auto px-4 relative z-10 py-20">
+    <div id="marketplace-home">
+      <section
+        className="border-b bg-muted/25 py-5 sm:py-12 lg:py-14"
+        aria-labelledby="home-title"
+      >
+        <div className="container mx-auto px-4">
           <div className="mx-auto max-w-4xl text-center">
-            <Badge className="mb-6 border-transparent bg-amber-100 text-amber-800">
-              B2B Flooring Marketplace
-            </Badge>
-            <h1 className="font-display text-4xl tracking-tight sm:text-5xl md:text-6xl">
-              Your Closeout Inventory Is{" "}
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Losing Value Right Now
-              </span>
+            <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+              B2B flooring marketplace
+            </p>
+            <h1
+              id="home-title"
+              className="mt-2 font-display text-4xl tracking-tight sm:mt-3 sm:text-5xl lg:text-6xl"
+            >
+              Buy closeout flooring.
+              <br className="hidden sm:block" />{" "}
+              <span className="text-secondary">Sell your surplus.</span>
             </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Every week surplus flooring sits in a warehouse, carrying costs
-              eat into your margin and the product moves closer to obsolete.
-              PlankMarket gives sellers and buyers a purpose-built workflow for
-              listing, evaluating, negotiating, and shipping closeout flooring.
-            </p>
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/register?role=seller">
-                <Button size="xl" variant="gold">
-                  List Your Surplus Inventory
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/listings">
-                <Button size="xl" variant="outline">
-                  Browse Closeout Lots
-                </Button>
-              </Link>
-            </div>
-
-            {/* Trust signals */}
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
-                <Shield className="h-4 w-4" aria-hidden="true" />
-                <span>Verification for Protected Actions</span>
-              </div>
-              <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
-                <TrendingDown className="h-4 w-4" aria-hidden="true" />
-                <span>Seller Verification Shown on Every Lot</span>
-              </div>
-              <div className="flex items-center gap-1.5 bg-white/50 backdrop-blur-sm rounded-full px-5 py-2.5 shadow-elevation-xs">
-                <Truck className="h-4 w-4" aria-hidden="true" />
-                <span>Integrated LTL Freight</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── The Problem: Two Sides ────────────────────────────────────── */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-14">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Surplus flooring is a{" "}
-              <span className="text-primary">two-sided problem.</span>
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Sellers have inventory depreciating in their warehouse. Buyers
-              are missing deals they never hear about. The phone-around game
-              wastes time on both ends.
+            <p className="mx-auto mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:mt-4 sm:text-lg">
+              Source flooring for your next job. Sell surplus stock. Keep offers,
+              orders and freight in one place.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-            {/* Seller Pain */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-secondary/10 to-primary/10 flex items-center justify-center">
-                  <Store
-                    className="h-5 w-5 text-secondary"
-                    aria-hidden="true"
-                  />
-                </div>
-                <h3 className="font-display text-xl">
-                  If You Sell Flooring
-                </h3>
-              </div>
-              {[
-                {
-                  title: "Warehouse space is not free.",
-                  description:
-                    "A 5,000 sq ft lot of discontinued engineered oak sitting on pallets for six months is active overhead. That rack space has a price tag, and it compounds every week.",
-                },
-                {
-                  title: "Capital tied up in surplus is capital you can not use.",
-                  description:
-                    "$200,000 in overstock looks like an asset on paper. But every month it does not move, depreciation and storage costs eat into your recovery.",
-                },
-                {
-                  title: "Your sales channels were not built for liquidation.",
-                  description:
-                    "Your wholesale accounts do not want last year's closeout SKUs. Your reps are focused on active lines. Posting on classifieds brings low-ball offers and no-shows.",
-                },
-              ].map((pain) => (
-                <Card
-                  key={pain.title}
-                  className="border-l-4 border-l-destructive/30"
-                >
-                  <CardHeader className="pb-3">
-                    <CardTitle className="font-display text-base leading-snug">
-                      {pain.title}
-                    </CardTitle>
-                    <CardDescription className="text-sm leading-relaxed">
-                      {pain.description}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
-            </div>
-
-            {/* Buyer Pain */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                  <ShoppingCart
-                    className="h-5 w-5 text-primary"
-                    aria-hidden="true"
-                  />
-                </div>
-                <h3 className="font-display text-xl">
-                  If You Buy Flooring
-                </h3>
-              </div>
-              {[
-                {
-                  title: "The phone-around game wastes your week.",
-                  description:
-                    "You need 4,000 sq ft of engineered oak for a project. Two days calling distributors, chasing quotes, leaving voicemails. The lot you wanted sold yesterday.",
-                },
-                {
-                  title: "Good lots are gone before you hear about them.",
-                  description:
-                    "Mill-direct hardwood, discontinued premium LVP, name-brand engineered closeouts. The best surplus gets picked up by buyers already plugged into the right networks.",
-                },
-                {
-                  title: "Pricing is a black box.",
-                  description:
-                    "Call five distributors for the same product and get five different prices. None posted publicly. No baseline, no transparency, no way to know if you are getting a fair deal.",
-                },
-              ].map((pain) => (
-                <Card
-                  key={pain.title}
-                  className="border-l-4 border-l-destructive/30"
-                >
-                  <CardHeader className="pb-3">
-                    <CardTitle className="font-display text-base leading-snug">
-                      {pain.title}
-                    </CardTitle>
-                    <CardDescription className="text-sm leading-relaxed">
-                      {pain.description}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* ─── Carrying Cost Calculator ─────────────────────────────────── */}
-      <section className="py-20 bg-gradient-to-br from-destructive/5 via-background to-primary/5 border-y border-border">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-8">
-              <Badge className="mb-4 border-transparent bg-red-50 text-red-700">
-                <Calculator className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-                Free Calculator
-              </Badge>
-              <h2 className="font-display text-3xl sm:text-4xl">
-                How much is holding{" "}
-                <span className="text-destructive">actually costing you?</span>
-              </h2>
-              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                Plug in your numbers. See what surplus inventory costs you every
-                month in storage, insurance, depreciation, and lost capital.
-              </p>
-            </div>
-            <CarryingCostCalculatorCompact />
-          </div>
-        </div>
-      </section>
-
-      {/* ─── The Mechanism: How PlankMarket Works ──────────────────────── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-14">
-            <Badge variant="outline" className="mb-4">
-              The Marketplace
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl">
-              One platform. Verification before protected actions.{" "}
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Surplus moves fast.
-              </span>
-            </h2>
-            <p className="mt-4 text-muted-foreground text-lg">
-              PlankMarket connects flooring manufacturers, distributors, and
-              retailers to trade overstock, discontinued, and closeout
-              inventory directly. No brokers. No middlemen. Transparent
-              pricing on every lot.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <div className="flex flex-col gap-4">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                <Users className="h-7 w-7 text-primary" aria-hidden="true" />
-              </div>
-              <h3 className="font-display text-xl">Visible Verification</h3>
-              <p className="text-muted-foreground text-base leading-relaxed">
-                Seller verification status appears on every lot. Business
-                verification is required before checkout and other protected
-                transaction actions, and its status stays visible in the
-                workflow.
-              </p>
-            </div>
-            <div className="flex flex-col gap-4">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                <Clock className="h-7 w-7 text-primary" aria-hidden="true" />
-              </div>
-              <h3 className="font-display text-xl">Speed to Close</h3>
-              <p className="text-muted-foreground text-base leading-relaxed">
-                Sellers use guided forms and AI-assisted descriptions. Buyers
-                can save searches, while offers, negotiation, and checkout stay
-                attached to the marketplace record.
-              </p>
-            </div>
-            <div className="flex flex-col gap-4">
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-                <DollarSign
-                  className="h-7 w-7 text-primary"
-                  aria-hidden="true"
-                />
-              </div>
-              <h3 className="font-display text-xl">
-                Transparent Fees
-              </h3>
-              <p className="text-muted-foreground text-base leading-relaxed">
-                {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} on inventory.
-                {" "}
-                {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on inventory.
-                Seller processing applies to inventory only. No listing fees,
-                no required subscriptions, no hidden charges. Freight is quoted
-                separately before payment and the displayed freight charge may
-                include carrier charges plus PlankMarket shipping service
-                margin.
-              </p>
-            </div>
-          </div>
-
-          <div className="text-center mt-12">
-            <Link href="/how-it-works">
-              <Button variant="outline" size="lg">
-                See How It Works
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── How a Transaction Works ─────────────────────────────────── */}
-      <section className="py-16 border-b border-border">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-10">
-            <Badge variant="outline" className="mb-4">
-              How It Works
-            </Badge>
-            <h2 className="font-display text-3xl sm:text-4xl">
-              From listing to seller transfer in four steps.
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">
-            {[
-              { step: "1", title: "List", description: "Seller uploads specs, photos, and sets a price." },
-              { step: "2", title: "Offer or Buy", description: "Buyer purchases at listed price or negotiates an offer." },
-              { step: "3", title: "Ship", description: "Seller coordinates freight pickup through the platform." },
-              {
-                step: "4",
-                title: "Track Transfer",
-                description:
-                  "Seller transfer starts after confirmed pickup, the configured delay, and transaction checks.",
-              },
-            ].map((item) => (
-              <div key={item.step} className="text-center">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-secondary text-white flex items-center justify-center mx-auto mb-3 font-bold text-lg">
-                  {item.step}
-                </div>
-                <h3 className="font-display text-lg mb-1">{item.title}</h3>
-                <p className="text-sm text-muted-foreground">{item.description}</p>
-              </div>
-            ))}
-          </div>
-          <div className="text-center mt-8">
-            <Link href="/how-it-works">
-              <Button variant="outline" size="sm">
-                See the full process
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Every Listing Includes ───────────────────────────────────── */}
-      <section className="py-16 bg-muted/20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-10">
-              <h2 className="font-display text-2xl sm:text-3xl">
-                Every listing includes
-              </h2>
-              <p className="mt-3 text-muted-foreground">
-                Buyers see full detail on every lot before making a decision.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {[
-                "Material type & species",
-                "Plank dimensions",
-                "Grade & condition",
-                "Square footage",
-                "Price per sq ft",
-                "Up to 20 photos",
-                "Pallet count & weight",
-                "Seller verification badge",
-              ].map((item) => (
-                <div key={item} className="flex items-center gap-2 text-sm">
-                  <Shield className="h-4 w-4 text-primary shrink-0" aria-hidden="true" />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Who PlankMarket Is Built For ────────────────────────────── */}
-      <section className="py-20 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-14">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Who PlankMarket is built for.
-            </h2>
-            <p className="mt-4 text-muted-foreground text-lg max-w-2xl mx-auto">
-              A dedicated marketplace for the professionals who make, move, and install flooring.
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto stagger-grid">
-            {[
-              {
-                icon: Store,
-                title: "Manufacturers",
-                description:
-                  "Clear overstock and discontinued lines without disrupting your primary sales channels. Reach verified buyers who buy at volume.",
-              },
-              {
-                icon: Users,
-                title: "Distributors",
-                description:
-                  "Liquidate surplus inventory and recover capital tied up in slow-moving SKUs. List unlimited lots with no insertion fees.",
-              },
-              {
-                icon: ShoppingCart,
-                title: "Retailers & Contractors",
-                description:
-                  "Source closeout flooring for projects at below-channel pricing. Full specs and photos on every lot — no blind buys.",
-              },
-              {
-                icon: Truck,
-                title: "Builders & Purchasing Teams",
-                description:
-                  "Consolidate sourcing in one marketplace. Set alerts for the materials you need and buy with integrated freight quotes.",
-              },
-            ].map((persona) => (
-              <Card
-                key={persona.title}
-                className="card-hover-lift"
+          <form
+            id="home-search"
+            action="/listings"
+            method="get"
+            role="search"
+            aria-label="Search available flooring"
+            className="mx-auto mt-5 grid max-w-5xl grid-cols-2 items-end gap-3 text-left sm:mt-6 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(7rem,0.55fr)_auto]"
+          >
+            <div className="col-span-2 min-w-0 md:col-span-1">
+              <label
+                htmlFor="home-query"
+                className="mb-1.5 block text-sm font-medium"
               >
-                <CardHeader>
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-2">
-                    <persona.icon className="h-6 w-6 text-primary" aria-hidden="true" />
-                  </div>
-                  <CardTitle className="font-display text-base">
-                    {persona.title}
-                  </CardTitle>
-                  <CardDescription className="text-sm leading-relaxed text-foreground/80">
-                    {persona.description}
-                  </CardDescription>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Platform Facts ──────────────────────────────────────────── */}
-      <section className="py-12 bg-gradient-to-br from-primary to-secondary text-primary-foreground relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 opacity-[0.02]"
-          style={{
-            backgroundImage: `
-              repeating-linear-gradient(
-                90deg,
-                transparent,
-                transparent 2px,
-                white 2px,
-                white 4px
-              )
-            `,
-          }}
-        />
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            <div>
-              <div className="font-display text-2xl">6</div>
-              <div className="text-sm opacity-80">Material Categories</div>
+                What flooring do you need?
+              </label>
+              <Input
+                id="home-query"
+                name="query"
+                type="search"
+                maxLength={200}
+                placeholder="Material, brand or style"
+                className="h-12 bg-background text-base"
+              />
             </div>
-            <div>
-              <div className="font-display text-2xl">US-Focused</div>
-              <div className="text-sm opacity-80">State territory controls</div>
+            <div className="min-w-0">
+              <label
+                htmlFor="home-material"
+                className="mb-1.5 block text-sm font-medium"
+              >
+                Material
+              </label>
+              <select
+                id="home-material"
+                name="materialType"
+                defaultValue=""
+                className="h-12 w-full rounded-md border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">All flooring</option>
+                {materialOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div>
-              <div className="font-display text-2xl">Clear Fees</div>
-              <div className="text-sm opacity-80">Shown separately by role</div>
+            <div className="min-w-0">
+              <label
+                htmlFor="home-zip"
+                className="mb-1.5 block text-sm font-medium"
+              >
+                ZIP{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
+              </label>
+              <Input
+                id="home-zip"
+                name="buyerZip"
+                inputMode="numeric"
+                autoComplete="postal-code"
+                pattern="[0-9]{5}"
+                maxLength={5}
+                title="Enter a five-digit US ZIP code"
+                placeholder="Delivery ZIP"
+                className="h-12 bg-background text-base"
+              />
             </div>
-            <div>
-              <div className="font-display text-2xl">Milestone-Based</div>
-              <div className="text-sm opacity-80">Seller transfers</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── Buyer / Seller Fork ───────────────────────────────────────── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <h2 className="font-display text-3xl sm:text-4xl">
-              Which side of the trade are you on?
-            </h2>
-            <p className="mt-4 text-muted-foreground">
-              PlankMarket works for both sides. Pick your path.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl mx-auto">
-            {/* Buyer Card */}
-            <Link
-              href="/for-buyers"
-              className="group relative rounded-2xl border-2 border-border bg-card p-8 text-left transition-all duration-300 hover:border-primary hover:shadow-elevation-lg hover:-translate-y-1"
+            <Button
+              type="submit"
+              size="xl"
+              className="col-span-2 w-full px-6 md:col-span-1"
             >
-              <div className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl bg-gradient-to-r from-primary to-primary/60 opacity-0 transition-opacity group-hover:opacity-100" />
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center mb-5">
-                <ShoppingCart
-                  className="h-7 w-7 text-primary"
-                  aria-hidden="true"
-                />
-              </div>
-              <h3 className="font-display text-2xl mb-2">
-                I&apos;m a Buyer
-              </h3>
-              <p className="text-muted-foreground text-base leading-relaxed mb-4">
-                Source surplus hardwood, engineered, LVP, laminate, bamboo,
-                and tile at closeout pricing with seller verification shown on
-                every lot. Full specs and photos support comparison, while
-                buyer fees and freight are shown before payment.
-              </p>
-              <span className="inline-flex items-center text-sm font-semibold text-primary group-hover:gap-2 transition-all">
-                See buyer benefits
-                <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </span>
-            </Link>
-
-            {/* Seller Card */}
-            <Link
-              href="/for-sellers"
-              className="group relative rounded-2xl border-2 border-border bg-card p-8 text-left transition-all duration-300 hover:border-secondary hover:shadow-elevation-lg hover:-translate-y-1"
-            >
-              <div className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl bg-gradient-to-r from-secondary to-secondary/60 opacity-0 transition-opacity group-hover:opacity-100" />
-              <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-secondary/10 to-primary/10 flex items-center justify-center mb-5">
-                <Store
-                  className="h-7 w-7 text-secondary"
-                  aria-hidden="true"
-                />
-              </div>
-              <h3 className="font-display text-2xl mb-2">
-                I&apos;m a Seller
-              </h3>
-              <p className="text-muted-foreground text-base leading-relaxed mb-4">
-                Liquidate overstock and closeout inventory to verified
-                buyers in supported markets. {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} plus
-                inventory-only processing on completed sales. Projected seller
-                transfer shown before you accept.
-              </p>
-              <span className="inline-flex items-center text-sm font-semibold text-secondary group-hover:gap-2 transition-all">
-                See seller benefits
-                <ArrowRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </span>
-            </Link>
-          </div>
-
-          {/* Browse link */}
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Just browsing?{" "}
+              <Search aria-hidden="true" /> Find flooring
+            </Button>
+          </form>
+          <div className="mx-auto mt-2 flex max-w-5xl flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm sm:mt-4">
             <Link
               href="/listings"
-              className="font-medium text-primary underline underline-offset-4 hover:text-primary/80"
+              className="inline-flex min-h-11 items-center font-medium text-primary underline underline-offset-4"
             >
-              View all listings
+              Browse all flooring
             </Link>
-          </p>
+            <Link
+              href="/register?role=seller"
+              className="inline-flex min-h-11 items-center font-semibold text-primary underline underline-offset-4"
+            >
+              Sell surplus flooring
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* ─── Final CTA: The Clock Is Running ───────────────────────────── */}
-      <section className="py-20">
+      <section
+        id="available-flooring"
+        aria-labelledby="available-flooring-title"
+        className="scroll-mt-24 py-8 sm:py-12"
+      >
         <div className="container mx-auto px-4">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
-            <div
-              aria-hidden="true"
-              className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl"
-            />
-            <div
-              aria-hidden="true"
-              className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full blur-3xl"
-            />
-
-            <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl sm:text-4xl mb-4">
-                Every day surplus sits, the margin shrinks.
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2
+                id="available-flooring-title"
+                className="font-display text-2xl sm:text-3xl"
+              >
+                Available flooring lots
               </h2>
-              <p className="text-white/80 mb-8 max-w-xl mx-auto text-lg leading-relaxed">
-                Sellers: list your surplus and get it in front of verified
-                buyers in supported markets. Buyers: stop missing deals.
-                Set alerts for the products you need and source at
-                closeout prices.
+              <p className="mt-2 text-sm text-muted-foreground">
+                Review each lot&apos;s quantity, condition and freight
+                readiness.
               </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Link href="/register?role=seller">
-                  <Button size="xl" variant="gold">
-                    List Your Inventory
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/register?role=buyer">
-                  <Button
-                    size="xl"
-                    variant="outline"
-                    className="border-2 border-white/70 text-white bg-white/10 hover:bg-white/20"
-                  >
-                    Sign Up as Buyer
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-              <p className="mt-6 text-sm text-white/60">
-                Free to join. No listing fees. No required subscription.
-                Upgrade to Pro only if you need advanced tools.
+            </div>
+            <Link
+              href="/listings"
+              className="inline-flex min-h-11 items-center gap-2 font-semibold text-primary underline underline-offset-4"
+            >
+              View all flooring{" "}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+          <Suspense fallback={<HomeInventorySkeleton />}>
+            <HomeInventory />
+          </Suspense>
+          <p className="mt-4 text-sm text-muted-foreground">
+            {PUBLIC_COMMERCIAL_COPY.supportedMarketAvailability}
+          </p>
+          <nav
+            aria-label="Browse flooring by material"
+            className="mt-5 flex flex-wrap gap-2"
+          >
+            {materialOptions.slice(0, 6).map(([value, label]) => (
+              <Link
+                key={value}
+                href={`/listings?materialType=${value}`}
+                className="inline-flex min-h-11 items-center rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="trade-confidence-title"
+        className="border-y bg-muted/25 py-8 sm:py-10"
+      >
+        <div className="container mx-auto px-4">
+          <h2
+            id="trade-confidence-title"
+            className="mb-6 font-display text-2xl sm:text-3xl"
+          >
+            Know the lot. Know the next step.
+          </h2>
+          <div className="grid gap-6 md:grid-cols-3">
+            <div>
+              <ShieldCheck
+                className="mb-3 h-6 w-6 text-secondary"
+                aria-hidden="true"
+              />
+              <h3 className="font-semibold">Visible seller verification</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Review seller verification and the lot&apos;s evidence before
+                you decide. Business verification is required before buying or
+                publishing.
+              </p>
+            </div>
+            <div>
+              <Search
+                className="mb-3 h-6 w-6 text-secondary"
+                aria-hidden="true"
+              />
+              <h3 className="font-semibold">Fees you can review</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                {PUBLIC_COMMERCIAL_COPY.buyerMarketplaceFeeLabel} and{" "}
+                {PUBLIC_COMMERCIAL_COPY.sellerMarketplaceFeeLabel} on inventory.
+                Sellers also pay {PUBLIC_COMMERCIAL_COPY.sellerProcessingLabel}{" "}
+                in payment processing.
+              </p>
+              <Link
+                href="/pricing"
+                className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4"
+              >
+                See fees and an order example
+              </Link>
+            </div>
+            <div>
+              <Truck
+                className="mb-3 h-6 w-6 text-secondary"
+                aria-hidden="true"
+              />
+              <h3 className="font-semibold">Freight with the order</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Review freight options for your delivery address before payment.
+                Keep pickup, tracking and delivery information with the order.
               </p>
             </div>
           </div>
         </div>
       </section>
-    </>
+
+      <section
+        aria-label="Buyer and seller journeys"
+        className="py-10 sm:py-14"
+      >
+        <div className="container mx-auto grid gap-10 px-4 md:grid-cols-2 md:gap-12">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-secondary">
+              For buyers
+            </p>
+            <h2 className="mt-2 font-display text-2xl sm:text-3xl">
+              From a useful find to a delivered lot
+            </h2>
+            <ol className="mt-6 space-y-5">
+              {buyerSteps.map(([title, description], index) => (
+                <li key={title} className="flex gap-3">
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-sm font-semibold text-secondary"
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                  <div>
+                    <h3 className="font-semibold">{title}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                      {description}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <Link
+              href="/for-buyers"
+              className="mt-5 inline-flex min-h-11 items-center gap-2 font-semibold text-primary underline underline-offset-4"
+            >
+              See how buying works{" "}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+              For sellers
+            </p>
+            <h2 className="mt-2 font-display text-2xl sm:text-3xl">
+              Put your surplus in front of buyers
+            </h2>
+            <ol className="mt-6 space-y-5">
+              {sellerSteps.map(([title, description], index) => (
+                <li key={title} className="flex gap-3">
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                  <div>
+                    <h3 className="font-semibold">{title}</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                      {description}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <Link
+              href="/for-sellers"
+              className="mt-5 inline-flex min-h-11 items-center gap-2 font-semibold text-primary underline underline-offset-4"
+            >
+              See how selling works{" "}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="home-questions-title"
+        className="border-t py-10 sm:py-12"
+      >
+        <div className="container mx-auto grid gap-6 px-4 md:grid-cols-[1fr_2fr] md:gap-12">
+          <div>
+            <h2
+              id="home-questions-title"
+              className="font-display text-2xl sm:text-3xl"
+            >
+              Before you get started
+            </h2>
+            <Link
+              href="/faq"
+              className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-primary underline underline-offset-4"
+            >
+              View all questions
+            </Link>
+          </div>
+          <div className="divide-y border-y">
+            <details className="group py-4">
+              <summary className="cursor-pointer py-1 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Do I need an account to browse?
+              </summary>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                No. Browse available lots first. Create a business account when
+                you&apos;re ready to save, message or trade. Business
+                verification is required before buying or publishing.
+              </p>
+            </details>
+            <details className="group py-4">
+              <summary className="cursor-pointer py-1 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                What does the Free plan include?
+              </summary>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Free includes {FREE_LIMITS.activeListings} active listings and{" "}
+                {FREE_LIMITS.savedSearches} saved searches. Marketplace
+                transaction fees still apply. Pro is optional if you need more
+                tools.
+              </p>
+            </details>
+            <details className="group py-4">
+              <summary className="cursor-pointer py-1 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                How much will freight cost?
+              </summary>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Freight depends on the lot, pickup and delivery details. Review
+                the quote before payment. The displayed charge may include
+                carrier charges plus PlankMarket shipping service margin.
+              </p>
+            </details>
+            <details className="group py-4">
+              <summary className="cursor-pointer py-1 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                When does the seller receive payment?
+              </summary>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                Seller transfers are scheduled after confirmed carrier pickup
+                and the payment release period, subject to order checks. Bank
+                arrival depends on Stripe and the seller&apos;s payout schedule.{" "}
+                <Link
+                  href="/pricing"
+                  className="font-medium text-primary underline underline-offset-4"
+                >
+                  Review payment details.
+                </Link>
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="home-seller-title"
+        className="border-t bg-primary/5 py-8 sm:py-10"
+      >
+        <div className="container mx-auto flex flex-col gap-5 px-4 md:flex-row md:items-center md:justify-between">
+          <div className="max-w-2xl">
+            <h2
+              id="home-seller-title"
+              className="font-display text-2xl sm:text-3xl"
+            >
+              Make room for your next order.
+            </h2>
+            <p className="mt-2 text-muted-foreground">
+              Create a listing with your lot&apos;s specifications, condition,
+              quantity and photos. Start with up to {FREE_LIMITS.activeListings}{" "}
+              active listings on Free.
+            </p>
+          </div>
+          <Button asChild size="xl" className="shrink-0 px-6">
+            <Link href="/register?role=seller">
+              Create a seller account <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }

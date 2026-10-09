@@ -122,12 +122,17 @@ describe("offer MOQ enforcement", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects direct offers below the listing minimum order quantity", async () => {
+  it.each([
+    { terms: { moq: 500 }, message: "Minimum order quantity is 500 sq ft" },
+    { terms: { moq: 1, moqUnit: "pallets", sqFtPerBox: null }, message: "The seller must complete pallet packaging details before this listing can be purchased or offered on." },
+    { terms: { moq: 1, moqUnit: "pallets", boxesPerPallet: null }, message: "The seller must complete pallet packaging details before this listing can be purchased or offered on." },
+    { terms: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 }, message: "Minimum order quantity is 960 sq ft" },
+  ])("rejects invalid direct offer terms: $message", async ({ terms, message }) => {
     const db = {
       query: {
         listings: {
           findFirst: vi.fn().mockResolvedValue(
-            createActiveListing({ moq: 500 }),
+            createActiveListing(terms),
           ),
         },
         offers: {
@@ -148,14 +153,19 @@ describe("offer MOQ enforcement", () => {
       }),
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
-      message: "Minimum order quantity is 500 sq ft",
+      message,
     });
 
     expect(db.query.offers.findFirst).not.toHaveBeenCalled();
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it("rechecks MOQ on accepted-offer checkout before quote consumption", async () => {
+  it.each([
+    { terms: { moq: 200 }, message: "Minimum order quantity is 200 sq ft" },
+    { terms: { moq: 1, moqUnit: "pallets", sqFtPerBox: null }, message: "The seller must complete pallet packaging details before this listing can be purchased or offered on." },
+    { terms: { moq: 1, moqUnit: "pallets", boxesPerPallet: null }, message: "The seller must complete pallet packaging details before this listing can be purchased or offered on." },
+    { terms: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 }, message: "Minimum order quantity is 960 sq ft" },
+  ])("rechecks accepted offer before consuming quote: $message", async ({ terms, message }) => {
     const offer = {
       id: OFFER_ID,
       buyerId: BUYER_ID,
@@ -184,9 +194,7 @@ describe("offer MOQ enforcement", () => {
           from: () => ({
             where: () => ({
               for: vi.fn().mockResolvedValue([
-                createActiveListing({
-                  moq: 200,
-                }),
+                createActiveListing(terms),
               ]),
             }),
           }),
@@ -213,7 +221,7 @@ describe("offer MOQ enforcement", () => {
       }),
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
-      message: "Minimum order quantity is 200 sq ft",
+      message,
     });
 
     expect(redisGetMock).not.toHaveBeenCalled();

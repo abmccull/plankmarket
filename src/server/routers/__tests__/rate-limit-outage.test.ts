@@ -292,14 +292,14 @@ describe("strict authenticated limiter outages", () => {
     expect(db.query.shipments.findFirst).not.toHaveBeenCalled();
   });
 
-  it("keeps verified-buyer gating semantics on the strict checkout procedure", async () => {
+  it.each(["pending", "unverified", "rejected"] as const)("keeps seller %s verification gating on strict checkout", async (verificationStatus) => {
     const db = {
       transaction: vi.fn(),
     };
     const caller = createCaller(
       createContext({
         db,
-        user: { verificationStatus: "pending" },
+        user: { role: "seller", verificationStatus },
       }),
     );
 
@@ -309,7 +309,7 @@ describe("strict authenticated limiter outages", () => {
       }),
     ).rejects.toMatchObject({
       code: "FORBIDDEN",
-      message: expect.stringContaining("Buyer verification required"),
+      message: expect.stringContaining("verification required"),
     });
     expect(db.transaction).not.toHaveBeenCalled();
   });

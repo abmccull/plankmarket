@@ -1,12 +1,16 @@
-import { verificationDocumentId } from "@/lib/verification-documents";
+import { purgeAbandonedListingPhotos, purgeDeletedListingPhotoResidue, type ListingPhotoCleanupResult } from "./listing-photo-cleanup";
+import { verificationDocumentId, verificationDocumentReference } from "@/lib/verification-documents";
 import { deletePrivateVerificationDocument, purgeAbandonedVerificationDocuments } from "./verification-documents";
-import { and, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { expireSellerActivationEvidence } from "./seller-activation";
+import { purgeDeletedVerificationResidue, type VerificationResidueResult } from "./verification-document-residue";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type Database } from "@/server/db";
 import {
   sampleRequests,
   shippingAddresses,
   users,
   verificationDrafts,
+  sellerActivationRequests,
 } from "@/server/db/schema";
 import {
   deleteUploadThingFile,
@@ -18,6 +22,9 @@ type DbExecutor =
   | Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 export interface PrivacyRetentionSweepResult {
+  listingPhotoResidue?: ListingPhotoCleanupResult;
+  listingPhotoAbandoned?: ListingPhotoCleanupResult;
+  verificationResidue?: VerificationResidueResult;
   verificationDraftsDeleted: number;
   verificationDraftProviderDeletionFailed: number;
   verificationDraftProviderRetentionBlocked: number;
@@ -26,10 +33,14 @@ export interface PrivacyRetentionSweepResult {
   verificationProviderRetentionBlocked: number;
   sampleRequestsPurged: number;
   shippingAddressesDeleted: number;
+  sellerActivationsExpired: number;
+  sellerActivationEvidencePurged: number;
+  sellerActivationProviderDeletionFailed: number;
+  sellerActivationProviderRetentionBlocked: number;
 }
 
 type VerificationDocumentReference = {
-  kind: "draft" | "user";
+  kind: "draft" | "user" | "activation";
   id: string;
   documentUrl: string;
   trustedKey: string | null;
@@ -38,13 +49,14 @@ type VerificationDocumentReference = {
 };
 
 function buildVerificationDocumentReference(params: {
-  kind: "draft" | "user";
+  kind: "draft" | "user" | "activation";
   id: string;
   documentUrl: string | null | undefined;
   due: boolean;
 }): VerificationDocumentReference {
   const documentUrl = params.documentUrl?.trim() || "";
-  const trustedKey = verificationDocumentId(documentUrl) ? documentUrl : getUploadThingFileKeyFromUrl(documentUrl);
+  const privateId = verificationDocumentId(documentUrl);
+  const trustedKey = privateId ? verificationDocumentReference(privateId) : getUploadThingFileKeyFromUrl(documentUrl);
 
   return {
     kind: params.kind,
@@ -64,7 +76,7 @@ type VerificationDocumentPurgeOutcome =
 
 async function resolveVerificationDocumentPurgeOutcomes(params: {
   references: readonly VerificationDocumentReference[];
-  deleteVerificationDocument: (key: string) => Promise<void>;
+  deleteVerificationDocument: (key: string) => Promise<void | "deleted" | "retained">;
 }): Promise<Map<string, VerificationDocumentPurgeOutcome>> {
   const referenceGroups = new Map<string, VerificationDocumentReference[]>();
   for (const reference of params.references) {
@@ -91,8 +103,8 @@ async function resolveVerificationDocumentPurgeOutcomes(params: {
     }
 
     try {
-      await params.deleteVerificationDocument(uploadThingKey);
-      outcomes.set(groupKey, "deleted");
+      const result = await params.deleteVerificationDocument(uploadThingKey);
+      outcomes.set(groupKey, result === "retained" ? "retained" : "deleted");
     } catch {
       outcomes.set(groupKey, "failed");
     }
@@ -108,7 +120,8 @@ function getVerificationDocumentPurgeOutcome(
   const normalizedUrl = documentUrl?.trim() || null;
   if (!normalizedUrl) return "no_document";
 
-  const uploadThingKey = verificationDocumentId(normalizedUrl) ? normalizedUrl : getUploadThingFileKeyFromUrl(normalizedUrl);
+  const privateId = verificationDocumentId(normalizedUrl);
+  const uploadThingKey = privateId ? verificationDocumentReference(privateId) : getUploadThingFileKeyFromUrl(normalizedUrl);
   const groupKey = uploadThingKey
     ? `key:${uploadThingKey}`
     : `url:${normalizedUrl}`;
@@ -120,8 +133,17 @@ const TERMINAL_SAMPLE_REQUEST_STATUSES = ["declined", "cancelled", "delivered"] 
 export async function runPrivacyRetentionSweep(
   executor: DbExecutor = db,
   now = new Date(),
-  deleteVerificationDocument: (key: string) => Promise<void> = async key => { if (verificationDocumentId(key)) await deletePrivateVerificationDocument(key); else await deleteUploadThingFile(key); },
+  deleteVerificationDocument: (key: string) => Promise<void | "deleted" | "retained"> = async key => { if (verificationDocumentId(key)) return deletePrivateVerificationDocument(key, { now }); else await deleteUploadThingFile(key); },
 ): Promise<PrivacyRetentionSweepResult> {
+  // Existing tombstones are already unavailable. Their periodic cleanup must
+  // commit claims and cannot run inside an injected retention transaction.
+  const verificationResidue = executor === db ? await purgeDeletedVerificationResidue() : undefined;
+  // Each photo queue has a bounded budget and commits its own durable claims.
+  const listingPhotoResidue = executor === db ? await purgeDeletedListingPhotoResidue(db, { budgetMs: 8_000 }) : undefined;
+  const listingPhotoAbandoned = executor === db ? await purgeAbandonedListingPhotos(db, { budgetMs: 8_000 }) : undefined;
+  // Expiration is a state transition first; no provider removal may race an
+  // otherwise-approvable due application. This never resets buyer verification.
+  const sellerActivationsExpired = await expireSellerActivationEvidence(executor, now);
   const draftDocumentReferences = await executor
     .select({
       userId: verificationDrafts.userId,
@@ -168,11 +190,26 @@ export async function runPrivacyRetentionSweep(
       ),
     );
 
+  const activationDocumentReferences = await executor
+    .select({ id: sellerActivationRequests.id, documentId: sellerActivationRequests.documentId })
+    .from(sellerActivationRequests)
+    .where(sql`${sellerActivationRequests.documentId} is not null`);
+
+  const activationsToPurge = await executor
+    .select({ id: sellerActivationRequests.id, documentId: sellerActivationRequests.documentId })
+    .from(sellerActivationRequests)
+    .where(and(
+      lte(sellerActivationRequests.purgeAfter, now),
+      isNull(sellerActivationRequests.evidencePurgedAt),
+      sql`(${sellerActivationRequests.status} in ('stale','rejected') or (${sellerActivationRequests.status}='approved' and ${sellerActivationRequests.syncState}='complete'))`,
+    ));
+
   const purgeableDraftUserIds: string[] = [];
   let verificationDraftProviderDeletionFailed = 0;
   let verificationDraftProviderRetentionBlocked = 0;
   const dueDraftIds = new Set(draftsToPurge.map((draft) => draft.userId));
   const dueUserIds = new Set(usersToPurge.map((user) => user.id));
+  const dueActivationIds = new Set(activationsToPurge.map(application => application.id));
   const sharedDraftReferences = draftDocumentReferences.map((reference) =>
     buildVerificationDocumentReference({
       kind: "draft",
@@ -190,7 +227,14 @@ export async function runPrivacyRetentionSweep(
     }),
   );
   const providerPurgeOutcomes = await resolveVerificationDocumentPurgeOutcomes({
-    references: [...sharedDraftReferences, ...sharedUserReferences],
+    references: [...sharedDraftReferences, ...sharedUserReferences, ...activationDocumentReferences.map(application =>
+      buildVerificationDocumentReference({
+        kind: "activation",
+        id: application.id,
+        documentUrl: application.documentId ? `verification-document:${application.documentId}` : null,
+        due: dueActivationIds.has(application.id),
+      }),
+    )],
     deleteVerificationDocument,
   });
 
@@ -218,7 +262,13 @@ export async function runPrivacyRetentionSweep(
       ? []
       : await executor
           .delete(verificationDrafts)
-          .where(inArray(verificationDrafts.userId, purgeableDraftUserIds))
+          .where(and(
+            lte(verificationDrafts.purgeAfter, now),
+            or(...draftsToPurge.filter(draft => purgeableDraftUserIds.includes(draft.userId)).map(draft => and(
+              eq(verificationDrafts.userId, draft.userId),
+              sql`${verificationDrafts.verificationDocUrl} is not distinct from ${draft.verificationDocUrl}`,
+            ))),
+          ))
           .returning({ userId: verificationDrafts.userId });
 
   const purgeableUserIds: string[] = [];
@@ -258,8 +308,42 @@ export async function runPrivacyRetentionSweep(
             verificationEvidencePurgedAt: now,
             updatedAt: now,
           })
-          .where(inArray(users.id, purgeableUserIds))
+          .where(and(
+            lte(users.verificationDataPurgeAfter, now),
+            isNull(users.verificationEvidencePurgedAt),
+            or(...usersToPurge.filter(user => purgeableUserIds.includes(user.id)).map(user => and(
+              eq(users.id, user.id),
+              sql`${users.verificationDocUrl} is not distinct from ${user.verificationDocUrl}`,
+            ))),
+          ))
           .returning({ id: users.id });
+
+  const purgeableActivationIds: string[] = [];
+  let sellerActivationProviderDeletionFailed = 0;
+  let sellerActivationProviderRetentionBlocked = 0;
+  for (const application of activationsToPurge) {
+    const outcome = getVerificationDocumentPurgeOutcome(
+      application.documentId ? `verification-document:${application.documentId}` : null,
+      providerPurgeOutcomes,
+    );
+    if (outcome === "no_document" || outcome === "retained" || outcome === "deleted") {
+      purgeableActivationIds.push(application.id);
+    } else if (outcome === "blocked") {
+      sellerActivationProviderRetentionBlocked++;
+    } else {
+      sellerActivationProviderDeletionFailed++;
+    }
+  }
+  const purgedActivations = purgeableActivationIds.length === 0 ? [] : await executor
+    .update(sellerActivationRequests)
+    .set({ einTaxId: null, einLast4: null, documentId: null, evidencePurgedAt: now, updatedAt: now })
+    .where(and(
+      inArray(sellerActivationRequests.id, purgeableActivationIds),
+      lte(sellerActivationRequests.purgeAfter, now),
+      isNull(sellerActivationRequests.evidencePurgedAt),
+      sql`(${sellerActivationRequests.status} in ('stale','rejected') or (${sellerActivationRequests.status}='approved' and ${sellerActivationRequests.syncState}='complete'))`,
+    ))
+    .returning({ id: sellerActivationRequests.id });
 
   const purgedSampleRequests = await executor
     .update(sampleRequests)
@@ -299,6 +383,9 @@ export async function runPrivacyRetentionSweep(
   if (executor === db) await purgeAbandonedVerificationDocuments(now);
 
   return {
+    ...(verificationResidue ? { verificationResidue } : {}),
+    ...(listingPhotoResidue ? { listingPhotoResidue } : {}),
+    ...(listingPhotoAbandoned ? { listingPhotoAbandoned } : {}),
     verificationDraftsDeleted: deletedDrafts.length,
     verificationDraftProviderDeletionFailed,
     verificationDraftProviderRetentionBlocked,
@@ -307,5 +394,9 @@ export async function runPrivacyRetentionSweep(
     verificationProviderRetentionBlocked,
     sampleRequestsPurged: purgedSampleRequests.length,
     shippingAddressesDeleted: deletedShippingAddresses.length,
+    sellerActivationsExpired,
+    sellerActivationEvidencePurged: purgedActivations.length,
+    sellerActivationProviderDeletionFailed,
+    sellerActivationProviderRetentionBlocked,
   };
 }

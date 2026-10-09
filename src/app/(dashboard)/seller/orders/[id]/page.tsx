@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { OrderDetailRoute, type ParticipantOrder } from "@/components/orders/order-detail-route";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import {
   formatCurrency,
@@ -31,15 +32,19 @@ import type { OrderStatus } from "@/types";
 import { TransactionTimeline } from "@/components/marketplace/transaction-timeline";
 
 export default function SellerOrderDetailPage() {
-  const params = useParams();
-  const orderId = params.id as string;
+  const params = useParams<{ id: string }>();
+  return (
+    <OrderDetailRoute orderId={params.id} side="seller">
+      {(order, refetch) => <SellerOrderContent order={order} refetch={refetch} />}
+    </OrderDetailRoute>
+  );
+}
+
+function SellerOrderContent({ order, refetch }: { order: ParticipantOrder; refetch: () => void }) {
+  const orderId = order.id;
   const [trackingNumber, setTrackingNumber] = useState("");
   const [carrier, setCarrier] = useState("");
   const utils = trpc.useUtils();
-
-  const { data: order, isLoading, refetch } = trpc.order.getById.useQuery({
-    id: orderId,
-  });
 
   const { data: orderReviews } = trpc.review.getByOrder.useQuery(
     { orderId },
@@ -77,38 +82,31 @@ export default function SellerOrderDetailPage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!order) {
-    return (
-      <div className="text-center py-12">
-        <h1 className="text-2xl font-bold">Order Not Found</h1>
-      </div>
-    );
-  }
-
   const paymentCaptured =
     order.paymentStatus === "succeeded" ||
     order.paymentStatus === "partially_refunded";
   const canSellerCancel = !paymentCaptured;
+  // Show the panel only when its existing inputs or actions are available.
+  const hasOrderControls =
+    canSellerCancel ||
+    (order.status === "pending" && paymentCaptured) ||
+    (!order.selectedQuoteId &&
+      ["pending", "confirmed", "processing", "shipped"].includes(order.status));
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Order {order.orderNumber}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl font-bold">Order {order.orderNumber}</h1>
           <p className="text-muted-foreground text-sm">
             Placed on {formatDate(order.createdAt)}
           </p>
         </div>
         <OrderStatusBadge status={order.status as OrderStatus} />
       </div>
+
+      {/* Current payment and freight guidance comes before reference details. */}
+      <OrderRecoveryPanel orderId={orderId} />
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Order Summary */}
@@ -278,13 +276,12 @@ export default function SellerOrderDetailPage() {
       <BuyerCrmPanel buyerId={order.buyerId} />
 
       {/* Shipment Tracking (Priority1 orders) */}
-      <OrderRecoveryPanel orderId={orderId} />
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
 
       <TransactionTimeline order={order} audience="seller" />
 
       {/* Actions */}
-      {order.status !== "delivered" && order.status !== "cancelled" && (
+      {order.status !== "delivered" && order.status !== "cancelled" && hasOrderControls && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Update Order</CardTitle>

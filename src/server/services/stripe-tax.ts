@@ -1,3 +1,4 @@
+import type { ResaleDecision } from "@/lib/resale-exemption";
 import { createHash } from "node:crypto";
 import type Stripe from "stripe";
 import { env } from "@/env";
@@ -55,6 +56,8 @@ interface TaxAddress {
 }
 
 export interface CalculateOrderTaxInput {
+  /** Server-resolved and locked; never accepted from checkout input. */
+  resaleDecision?: ResaleDecision;
   checkoutReference: string;
   listingId: string;
   inventoryAmount: number;
@@ -270,7 +273,7 @@ export function buildStripeTaxCalculationRequest(params: {
       quantity: 1,
       reference: `inventory:${params.input.listingId}`,
       tax_behavior: "exclusive",
-      tax_code: inventoryTaxCode,
+      tax_code: params.input.resaleDecision?.exemptInventory ? STRIPE_NON_TAXABLE_TAX_CODE : inventoryTaxCode,
     },
   ];
   // PaymentIntent tax hooks require its amount to equal calculation.amount_total.
@@ -287,6 +290,10 @@ export function buildStripeTaxCalculationRequest(params: {
   }
 
   const canonicalInput = {
+    resaleCertificateId: params.input.resaleDecision?.certificateId ?? null,
+    resaleRuleRevision: params.input.resaleDecision?.rule?.revision ?? null,
+    exemptInventory: params.input.resaleDecision?.exemptInventory ?? false,
+    exemptFreight: params.input.resaleDecision?.exemptFreight ?? false,
     policyVersion: params.policy.version,
     mode: params.policy.mode,
     checkoutReference: params.input.checkoutReference,
@@ -334,7 +341,7 @@ export function buildStripeTaxCalculationRequest(params: {
           shipping_cost: {
             amount: freightAmountCents,
             tax_behavior: "exclusive" as const,
-            tax_code: params.policy.shippingTaxCode,
+            tax_code: params.input.resaleDecision?.exemptFreight ? STRIPE_NON_TAXABLE_TAX_CODE : params.policy.shippingTaxCode,
           },
         }
       : {}),
@@ -487,8 +494,8 @@ export async function calculateOrderTax(
     amountTotalCents: calculation.amount_total,
     taxAmountExclusiveCents: calculation.tax_amount_exclusive,
     taxAmountInclusiveCents: calculation.tax_amount_inclusive,
-    taxableInventoryAmountCents: built.inventoryAmountCents,
-    taxableFreightAmountCents: built.freightAmountCents,
+    taxableInventoryAmountCents: input.resaleDecision?.exemptInventory ? 0 : built.inventoryAmountCents,
+    taxableFreightAmountCents: input.resaleDecision?.exemptFreight ? 0 : built.freightAmountCents,
     taxableBuyerFeeAmountCents: built.taxableBuyerFeeAmountCents,
     inventoryTaxCode: built.inventoryTaxCode,
     shippingTaxCode: policy.shippingTaxCode!,
@@ -515,8 +522,8 @@ export async function calculateOrderTax(
     taxLiability: snapshot.liabilityOwner,
     taxStatus: "calculated",
     taxAmount: fromCents(calculation.tax_amount_exclusive),
-    taxableInventoryAmount: fromCents(built.inventoryAmountCents),
-    taxableFreightAmount: fromCents(built.freightAmountCents),
+    taxableInventoryAmount: input.resaleDecision?.exemptInventory ? 0 : fromCents(built.inventoryAmountCents),
+    taxableFreightAmount: input.resaleDecision?.exemptFreight ? 0 : fromCents(built.freightAmountCents),
     taxableBuyerFeeAmount: fromCents(built.taxableBuyerFeeAmountCents),
     stripeTaxCalculationId: calculation.id,
     stripeTaxAccountId:

@@ -1,4 +1,14 @@
+export { listingPhotoUploads } from "./listing-photo-uploads";
+export type { ListingPhotoUpload, NewListingPhotoUpload } from "./listing-photo-uploads";
+export { roleProviderWrites } from "./role-provider-writes";
+export type { RoleProviderWrite, RoleWritePurpose } from "./role-provider-writes";
 // Schema barrel exports
+export { sellerActivationRequests } from "./seller-activation-requests";
+export type { SellerActivationRequest, NewSellerActivationRequest, SellerActivationIdentitySnapshot, SellerActivationStatus, SellerActivationSyncState } from "./seller-activation-requests";
+export { listingFormDrafts } from "./listing-form-drafts";
+export type { ListingFormDraft } from "./listing-form-drafts";
+export { resaleRules, resaleCertificates } from "./resale-certificates";
+export { verificationDocuments } from "./verification-documents";
 export { warehouses } from "./warehouses";
 export type { Warehouse } from "./warehouses";
 export { users, userRoleEnum } from "./users";

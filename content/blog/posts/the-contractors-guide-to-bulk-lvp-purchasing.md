@@ -234,4 +234,4 @@ The margin advantage of systematic bulk sourcing compounds over time. A 25% mate
 
 ---
 
-*PlankMarket is where contractors source bulk LVP at wholesale prices. [Browse surplus and closeout inventory →](/browse?category=lvp)*
+*PlankMarket is where contractors source bulk LVP at wholesale prices. [Browse surplus and closeout inventory →](/listings?materialType=vinyl_lvp)*

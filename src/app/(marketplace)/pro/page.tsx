@@ -7,7 +7,7 @@ import { ProSubscriptionAction } from "@/components/subscription/pro-subscriptio
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { isPro } from "@/lib/pro";
+import { FREE_LIMITS, PRO_MONTHLY_CREDIT, isPro } from "@/lib/pro";
 import {
   type BillingInterval,
   resolveBillingInterval,
@@ -18,35 +18,36 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "PlankMarket Pro - Advanced Buyer and Seller Tools",
   description:
-    "Compare Free and Pro on PlankMarket. Pro adds unlimited listings and saved searches, saved-search monitoring and repricing tools, market intelligence, seller followups, bulk upload, and the Pro badge.",
+    "Compare Free and Pro on PlankMarket. Pro adds unlimited listings and saved searches, seller offer automation and repricing tools, market intelligence, seller followups, bulk upload, and the Pro badge.",
   alternates: {
     canonical: "/pro",
   },
   openGraph: {
     title: "PlankMarket Pro",
     description:
-      "Optional Pro access for power users who want unlimited listings or saved searches, saved-search monitoring and repricing tools, market intelligence, seller followups, and bulk upload.",
+      "Optional Pro access for power users who want unlimited listings or saved searches, seller offer automation and repricing tools, market intelligence, seller followups, and bulk upload.",
   },
 };
 
 const FREE_FEATURES = [
-  "10 active listings",
-  "3 saved searches",
-  "AI-assisted search & listing creation",
-  "AI offer insights",
+  `${FREE_LIMITS.activeListings} active listings`,
+  `${FREE_LIMITS.savedSearches} saved searches with email and in-app alerts`,
+  "Search and filter flooring inventory",
+  "Send offers and message sellers",
   "Marketplace transaction fees shown separately by role",
   "Unlimited transactions",
 ] as const;
 
-const PRO_FEATURES = [
+const PRO_SELLER_FEATURES = [
   "Unlimited active listings",
-  "Unlimited saved searches",
-  "Saved-search monitoring and seller repricing tools",
-  "Market intelligence (pricing data, demand signals, competitive position)",
+  "Offer automation and repricing tools",
+  "Seller pricing benchmarks and demand signals",
   "Seller CRM (tags, notes, followups)",
   "Bulk CSV import",
-  ...(FEATURES.PROMOTIONS_ENABLED ? ["$15/month promotion credit"] : []),
-  "Pro badge on profile",
+  ...(FEATURES.PROMOTIONS_ENABLED
+    ? [`$${PRO_MONTHLY_CREDIT}/month promotion credit`]
+    : []),
+  "Pro badge on your seller profile",
 ] as const;
 
 type ProPageProps = {
@@ -71,11 +72,11 @@ function FeatureList({ features }: { features: readonly string[] }) {
 
 function BillingToggle({ interval }: { interval: BillingInterval }) {
   return (
-    <div className="mt-8 flex items-center justify-center gap-3">
+    <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
       <Link
         href="/pro?interval=monthly"
         className={cn(
-          "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+          "inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium transition-colors",
           interval === "monthly"
             ? "bg-primary text-primary-foreground"
             : "text-muted-foreground hover:text-foreground",
@@ -87,7 +88,7 @@ function BillingToggle({ interval }: { interval: BillingInterval }) {
       <Link
         href="/pro?interval=annual"
         className={cn(
-          "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+          "inline-flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium transition-colors",
           interval === "annual"
             ? "bg-primary text-primary-foreground"
             : "text-muted-foreground hover:text-foreground",
@@ -108,6 +109,9 @@ function BillingToggle({ interval }: { interval: BillingInterval }) {
 export default async function ProPricingPage({ searchParams }: ProPageProps) {
   const params = await searchParams;
   const interval = resolveBillingInterval(params.interval);
+  const authQuery = new URLSearchParams({
+    redirect: `/pro?interval=${interval}`,
+  }).toString();
   const caller = await createServerCaller();
   const session = await caller.auth.getSession();
   const isAuthenticated = session.isAuthenticated;
@@ -118,9 +122,7 @@ export default async function ProPricingPage({ searchParams }: ProPageProps) {
     const status = await caller.subscription.getStatus();
     hasProAccess = isPro({
       proStatus: status.proStatus,
-      proExpiresAt: status.proExpiresAt
-        ? new Date(status.proExpiresAt)
-        : null,
+      proExpiresAt: status.proExpiresAt ? new Date(status.proExpiresAt) : null,
     });
   }
 
@@ -138,7 +140,8 @@ export default async function ProPricingPage({ searchParams }: ProPageProps) {
                 <ProBadge className="ml-1 align-middle" />
               </h1>
               <p className="text-muted-foreground">
-                You have access to all Pro features.
+                Your account has Pro access. Seller tools require an approved
+                seller account.
               </p>
             </div>
             <div className="flex justify-center">
@@ -155,31 +158,15 @@ export default async function ProPricingPage({ searchParams }: ProPageProps) {
       <div className="text-center">
         <h1 className="text-display-md">PlankMarket Pro</h1>
         <p className="mt-3 text-base text-muted-foreground">
-          Unlock advanced tools to buy and sell smarter on PlankMarket.
-          Marketplace transaction fees remain separate from Pro.
+          Track more buying opportunities or manage a larger seller catalog. Pro
+          is optional; marketplace transaction fees remain separate.
         </p>
       </div>
 
       <BillingToggle interval={interval} />
 
       <div className="mt-10 grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Free</CardTitle>
-            <div className="mt-2">
-              <span className="text-3xl font-bold">$0</span>
-              <span className="text-muted-foreground">/month</span>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Get started with the essentials.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <FeatureList features={FREE_FEATURES} />
-          </CardContent>
-        </Card>
-
-        <Card className="relative border-primary">
+        <Card data-plan="pro" className="relative border-primary">
           <div className="absolute left-0 right-0 top-0 h-1 rounded-t-xl bg-gradient-to-r from-primary to-secondary" />
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -196,7 +183,7 @@ export default async function ProPricingPage({ searchParams }: ProPageProps) {
             </div>
             {interval === "annual" ? (
               <p className="mt-1 text-sm text-muted-foreground">
-                $20.75/month, billed annually
+                $249 billed annually ($20.75/month equivalent)
               </p>
             ) : (
               <p className="mt-1 text-sm text-muted-foreground">
@@ -205,21 +192,41 @@ export default async function ProPricingPage({ searchParams }: ProPageProps) {
             )}
           </CardHeader>
           <CardContent className="space-y-4">
-            <FeatureList features={PRO_FEATURES} />
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold">For buyers</h2>
+              <FeatureList
+                features={[
+                  "Unlimited saved searches with email and in-app alerts",
+                ]}
+              />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-sm font-semibold">For verified sellers</h2>
+              <FeatureList features={PRO_SELLER_FEATURES} />
+            </div>
             {isAuthenticated ? (
               <ProSubscriptionAction interval={interval} mode="subscribe" />
             ) : (
               <div className="mt-4 space-y-3">
-                <Button asChild className="w-full" variant="gold" size="lg">
-                  <Link href="/register">
+                <Button
+                  asChild
+                  className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-center"
+                  variant="gold"
+                  size="lg"
+                >
+                  <Link href={`/register?${authQuery}`}>
                     <UserPlus className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Create Account to Upgrade
+                    Create account to upgrade
                   </Link>
                 </Button>
-                <Button asChild className="w-full" variant="outline">
-                  <Link href="/login">
+                <Button
+                  asChild
+                  className="h-auto min-h-11 w-full whitespace-normal px-4 py-3 text-center"
+                  variant="outline"
+                >
+                  <Link href={`/login?${authQuery}`}>
                     <LogIn className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Sign In to Subscribe
+                    Sign in to subscribe
                   </Link>
                 </Button>
                 <p className="text-center text-xs text-muted-foreground">
@@ -228,6 +235,29 @@ export default async function ProPricingPage({ searchParams }: ProPageProps) {
                 </p>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card data-plan="free">
+          <CardHeader>
+            <CardTitle className="text-lg">Free</CardTitle>
+            <div className="mt-2">
+              <span className="text-3xl font-bold">$0</span>
+              <span className="text-muted-foreground">/month</span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Browse, save and transact without a subscription.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <FeatureList features={FREE_FEATURES} />
+            <Button asChild variant="outline" className="mt-6 min-h-11 w-full">
+              <Link href="/listings">Browse with Free</Link>
+            </Button>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Business approval is required before checkout or creating
+              listings.
+            </p>
           </CardContent>
         </Card>
       </div>

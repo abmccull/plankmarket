@@ -1,25 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { withPurchaseIntent, type PurchaseIntent } from "@/lib/marketplace/purchase-intent";
 import { trpc } from "@/lib/trpc/client";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { canPurchase } from "@/lib/auth/roles";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { SellerPaymentNotReadyDialog } from "@/components/checkout/seller-payment-not-ready-dialog";
 import { MakeOfferModal } from "@/components/offers/make-offer-modal";
 import {
   formatCurrency,
   formatSqFt,
-  formatDate,
   formatPricePerSqFt,
   calculateBuyerFee,
 } from "@/lib/utils";
 import { BUYER_MARKETPLACE_FEE_PERCENT } from "@/lib/fees";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
+import { getPurchaseQuantityPreview } from "@/lib/marketplace/purchase-quantity-preview";
+import { PurchaseQuantityPreview } from "./purchase-quantity-preview";
+import { DeliveredCostReview } from "./delivered-cost-review";
 import {
   Heart,
   Share2,
@@ -42,6 +45,7 @@ import {
 import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 
 interface ListingDetailClientProps {
+  purchaseIntent?: PurchaseIntent;
   listing: {
     id: string;
     title: string;
@@ -55,6 +59,8 @@ interface ListingDetailClientProps {
     allowOffers: boolean;
     moq: number | null;
     moqUnit: "pallets" | "sqft" | null;
+    sqFtPerBox?: number | null;
+    boxesPerPallet?: number | null;
     freightEstimateStatus: FreightEstimateStatus;
     freshnessStatus?: ListingFreshnessStatus;
     lastConfirmedAt?: Date | string | null;
@@ -83,44 +89,58 @@ function formatMoq(moq: number | null, unit: "pallets" | "sqft" | null) {
   return formatSqFt(moq);
 }
 
-export function ListingDetailClient({ listing }: ListingDetailClientProps) {
-  const router = useRouter();
-  const params = useParams();
-  const { isAuthenticated, user } = useAuthStore();
-  const listingId = params.id as string;
+function formatListingDate(date: Date | string) {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(date));
+}
 
-  const [showPaymentNotReadyDialog, setShowPaymentNotReadyDialog] = useState(false);
+export function ListingDetailClient({ listing, purchaseIntent }: ListingDetailClientProps) {
+  const router = useRouter();
+  const { isAuthenticated, user, isLoading: isAuthLoading } = useAuthStore();
+  const isOwner = Boolean(user && listing.sellerId === user.id);
+  const listingId = listing.id;
+  const checkoutHref = withPurchaseIntent(`/listings/${listing.id}/checkout`, purchaseIntent);
+  const detailHref = withPurchaseIntent(`/listings/${listing.id}`, purchaseIntent);
+  const loginCheckoutHref = "/login?" + new URLSearchParams({ redirect: checkoutHref }).toString();
+  const sellerPaymentsReady = Boolean(listing.seller?.stripeOnboardingComplete);
+
+  const [showPaymentNotReadyDialog, setShowPaymentNotReadyDialog] =
+    useState(false);
   const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
   const [isContactingLoading, setIsContactingLoading] = useState(false);
   const [isRequestingSample, setIsRequestingSample] = useState(false);
   const [viewingAsBuyer, setViewingAsBuyer] = useState(false);
 
-  const {
-    data: purchaseConfig,
-    isLoading: isPurchaseConfigLoading,
-  } = trpc.listing.getPurchaseConfig.useQuery(
-    { listingId },
-    { enabled: !!listingId },
-  );
+  const { data: purchaseConfig, isLoading: isPurchaseConfigLoading } =
+    trpc.listing.getPurchaseConfig.useQuery(
+      { listingId },
+      { enabled: !!listingId },
+    );
 
   const { data: sellerReputation } = trpc.review.getUserReputation.useQuery(
     { userId: listing.sellerId },
-    { enabled: !!listing.seller }
+    { enabled: !!listing.seller },
   );
 
   const { data: watchlistStatus } = trpc.watchlist.isWatchlisted.useQuery(
     { listingId },
-    { enabled: isAuthenticated }
+    { enabled: isAuthenticated },
   );
 
   const utils = trpc.useUtils();
   const addToWatchlist = trpc.watchlist.add.useMutation();
   const removeFromWatchlist = trpc.watchlist.remove.useMutation();
-  const getOrCreateConversation = trpc.message.getOrCreateConversation.useMutation();
+  const getOrCreateConversation =
+    trpc.message.getOrCreateConversation.useMutation();
 
   const handleWatchlist = async () => {
+    if (isAuthLoading) return;
     if (!isAuthenticated) {
-      router.push(`/login?redirect=/listings/${listingId}`);
+      router.push("/login?" + new URLSearchParams({ redirect: detailHref }).toString());
       return;
     }
 
@@ -157,6 +177,10 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   };
 
   const handleBuyNowClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (isAuthLoading || isOwner) {
+      e.preventDefault();
+      return;
+    }
     if (!listing?.seller) return;
 
     // Check if seller has completed Stripe onboarding
@@ -167,8 +191,9 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   };
 
   const handleContactSeller = async () => {
+    if (isAuthLoading || isOwner) return;
     if (!isAuthenticated) {
-      router.push(`/login?redirect=/listings/${listingId}`);
+      router.push("/login?" + new URLSearchParams({ redirect: detailHref }).toString());
       return;
     }
 
@@ -192,8 +217,9 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   };
 
   const handleMakeOfferClick = () => {
+    if (isAuthLoading || isOwner) return;
     if (!isAuthenticated) {
-      router.push(`/login?redirect=/listings/${listingId}`);
+      router.push("/login?" + new URLSearchParams({ redirect: detailHref }).toString());
       return;
     }
 
@@ -208,8 +234,9 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   };
 
   const handleRequestSample = async () => {
+    if (isAuthLoading || isOwner) return;
     if (!isAuthenticated) {
-      router.push(`/login?redirect=/listings/${listingId}`);
+      router.push("/login?" + new URLSearchParams({ redirect: detailHref }).toString());
       return;
     }
 
@@ -218,17 +245,24 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
   };
 
   // Check if current user is the seller
-  const isOwner = user && listing?.sellerId === user.id;
   const isOwnListing = isOwner && !viewingAsBuyer;
   const canRequestSample =
     purchaseConfig?.allowSampleRequests &&
-    (!user || user.role === "buyer" || user.role === "admin");
+    (!user || canPurchase(user.role));
 
   const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
   const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
-  const buyerFee = calculateBuyerFee(lotValue);
-  const freightReady =
-    listing.freightEstimateStatus === "quote_request_ready";
+  const quantityPreview = getPurchaseQuantityPreview({ ...listing, purchaseTerms: purchaseConfig ? {
+    fullLotOnly: purchaseConfig.fullLotOnly,
+    partialQuantityMarkupPercent: purchaseConfig.partialQuantityMarkupPercent,
+    sqFtPerBox: listing.sqFtPerBox ?? null,
+    boxesPerPallet: listing.boxesPerPallet ?? null,
+  } : undefined }, purchaseIntent?.quantitySqFt);
+  const resolvedPreview = quantityPreview?.status === "ready" ? quantityPreview : null;
+  const displayedUnitPrice = resolvedPreview?.unitPrice ?? directPurchaseUnitPrice;
+  const buyerFee = resolvedPreview?.buyerFee ?? calculateBuyerFee(lotValue);
+  const freightReady = listing.freightEstimateStatus === "quote_request_ready";
+  const canReviewFreight = freightReady && Boolean(purchaseConfig) && !isOwner && user?.verificationStatus === "verified" && canPurchase(user.role) && (!quantityPreview || Boolean(resolvedPreview));
   const evidenceAlerts = getListingEvidenceAlerts({
     totalSqFt: listing.totalSqFt,
     moq: listing.moq,
@@ -242,21 +276,13 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
     media: listing.media,
     seller: listing.seller,
   });
-  const knownNowItems = [
-    `Direct purchase unit price ${formatPricePerSqFt(directPurchaseUnitPrice)}`,
-    `Lot subtotal ${formatCurrency(lotValue)}`,
-    `Buyer marketplace fee ${formatCurrency(buyerFee)}`,
-    `Minimum order ${formatMoq(listing.moq, listing.moqUnit)}`,
-  ];
   const calculatedLaterItems = [
     freightReady
-      ? "Freight quote is calculated after destination details are entered at checkout."
+      ? canReviewFreight ? "Review freight below using your destination and delivery services; checkout confirms the current quote before payment." : "Freight quote is calculated after destination details are entered at checkout."
       : "Freight quote is not ready from this listing yet because seller freight setup is incomplete.",
-    purchaseConfig?.canSplitLots === false
-      ? "Full-lot purchasing rules are fixed now."
-      : purchaseConfig?.partialQuantityMarkupPercent != null
-        ? `Partial-lot pricing adds +${purchaseConfig.partialQuantityMarkupPercent}% below the full lot.`
-        : "Partial-lot pricing depends on seller purchase rules.",
+    ...(purchaseConfig?.canSplitLots !== false && purchaseConfig?.partialQuantityMarkupPercent == null
+      ? ["Partial-lot pricing depends on seller purchase rules."]
+      : []),
   ];
 
   return (
@@ -269,7 +295,13 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
             variant="outline"
             size="icon"
             onClick={handleWatchlist}
-            aria-label={watchlistStatus?.isWatchlisted ? "Remove from watchlist" : "Add to watchlist"}
+            disabled={isAuthLoading}
+            aria-busy={isAuthLoading}
+            aria-label={
+              watchlistStatus?.isWatchlisted
+                ? "Remove from watchlist"
+                : "Add to watchlist"
+            }
             aria-pressed={watchlistStatus?.isWatchlisted}
             className="flex-1"
           >
@@ -292,15 +324,15 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
           </Button>
         </div>
         <Card className="sticky top-20 overflow-hidden">
-          <div className="h-1.5 bg-gradient-to-r from-primary to-secondary" />
           <CardContent className="p-6 space-y-4">
+          {(purchaseIntent?.quantitySqFt || purchaseIntent?.zip) && <p className="border-b pb-3 text-sm text-muted-foreground">Your job: {purchaseIntent.quantitySqFt ? formatSqFt(purchaseIntent.quantitySqFt) : "quantity to confirm"}{purchaseIntent.zip ? " · ZIP " + purchaseIntent.zip : ""}. Confirm this lot’s order terms at checkout.</p>}
             {/* Price */}
             <div>
               <div className="text-3xl font-display font-bold text-primary tabular-nums">
-                {formatPricePerSqFt(directPurchaseUnitPrice)}
+                {formatPricePerSqFt(displayedUnitPrice)}
               </div>
               <p className="text-sm text-muted-foreground tabular-nums">
-                Direct purchase lot: {formatCurrency(lotValue)}
+                {resolvedPreview ? `Materials (${formatSqFt(resolvedPreview.quantitySqFt)}): ${formatCurrency(resolvedPreview.subtotal)}` : `${quantityPreview ? "Whole lot at listed price" : "Direct purchase lot"}: ${formatCurrency(lotValue)}`}
               </p>
               {listing.buyNowPrice != null &&
                 listing.buyNowPrice !== listing.askPricePerSqFt && (
@@ -310,6 +342,8 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                   </p>
                 )}
             </div>
+
+            <PurchaseQuantityPreview preview={quantityPreview} showPrice={false} />
 
             <Separator />
 
@@ -321,24 +355,20 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                   {formatSqFt(listing.totalSqFt)}
                 </span>
               </div>
-              {listing.moq && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Min Order</span>
-                  <span className="font-medium tabular-nums">
-                    {listing.moqUnit === "pallets"
-                      ? `${listing.moq.toLocaleString()} pallet${listing.moq === 1 ? "" : "s"}`
-                      : formatSqFt(listing.moq)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between">
+              <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                <span className="text-muted-foreground">Min Order</span>
+                <span className="font-medium tabular-nums">
+                  {formatMoq(listing.moq, listing.moqUnit)}
+                </span>
+              </div>
+              {(!quantityPreview || resolvedPreview) && <div className="flex justify-between">
                 <span className="text-muted-foreground">
                   Buyer Fee ({BUYER_MARKETPLACE_FEE_PERCENT}%)
                 </span>
                 <span className="font-medium tabular-nums">
                   {formatCurrency(buyerFee)}
                 </span>
-              </div>
+              </div>}
               {purchaseConfig?.canSplitLots === false && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Lot Policy</span>
@@ -348,16 +378,21 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
               {purchaseConfig?.canSplitLots &&
                 purchaseConfig.partialQuantityMarkupPercent != null && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Partial Orders</span>
+                    <span className="text-muted-foreground">
+                      Partial Orders
+                    </span>
                     <span className="font-medium text-right">
-                      +{purchaseConfig.partialQuantityMarkupPercent}% below full lot
+                      +{purchaseConfig.partialQuantityMarkupPercent}% below full
+                      lot
                     </span>
                   </div>
                 )}
               {purchaseConfig?.sellingTerritoryMode === "allowed_states" &&
                 purchaseConfig.allowedDestinationStates.length > 0 && (
                   <div className="flex justify-between items-start gap-4">
-                    <span className="text-muted-foreground">Selling Territory</span>
+                    <span className="text-muted-foreground">
+                      Selling Territory
+                    </span>
                     <span className="font-medium text-right">
                       {purchaseConfig.allowedDestinationStates.join(", ")}
                     </span>
@@ -367,80 +402,51 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                 <span className="text-muted-foreground">Shipping</span>
                 <span className="font-medium text-right">
                   {freightReady
-                    ? "Quote request at checkout"
+                    ? canReviewFreight ? "Quote available below" : "Quote request at checkout"
                     : "Contact seller for freight"}
                 </span>
               </div>
               <Separator />
-              <div className="flex justify-between font-semibold tabular-nums">
-                <span>Total before shipping</span>
-                <span>{formatCurrency(lotValue + buyerFee)}</span>
-              </div>
+              {(!quantityPreview || resolvedPreview) && <div className="flex justify-between gap-3 font-semibold tabular-nums">
+                <span>Total before shipping and tax</span>
+                <span className="shrink-0">{formatCurrency(resolvedPreview?.totalBeforeShippingAndTax ?? lotValue + buyerFee)}</span>
+              </div>}
             </div>
 
-            <div className="space-y-3 rounded-xl border bg-muted/20 p-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Known now
-                </p>
-                <ul className="mt-2 space-y-1 text-sm text-foreground">
-                  {knownNowItems.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-              <Separator />
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Calculated later
-                </p>
-                <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                  {calculatedLaterItems.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {calculatedLaterItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            {canReviewFreight && user && (
+              <DeliveredCostReview
+                key={`${user.id}:${listing.id}:${purchaseIntent?.zip ?? ""}:${resolvedPreview?.quantitySqFt ?? listing.totalSqFt}:${resolvedPreview?.totalBeforeShippingAndTax ?? lotValue + buyerFee}`}
+                listingId={listing.id}
+                quantitySqFt={resolvedPreview?.quantitySqFt ?? listing.totalSqFt}
+                beforeFreightAndTax={resolvedPreview?.totalBeforeShippingAndTax ?? lotValue + buyerFee}
+                initialZip={purchaseIntent?.zip}
+              />
+            )}
 
             {evidenceAlerts.length > 0 && (
-              <div className="space-y-3">
-                {evidenceAlerts.map((alert) => {
-                  const blocked = alert.tone === "blocked";
-
-                  return (
-                    <div
-                      key={`${alert.tone}-${alert.title}`}
-                      className={
-                        blocked
-                          ? "rounded-xl border border-destructive/30 bg-destructive/5 p-4"
-                          : "rounded-xl border border-amber-300/40 bg-amber-50/60 p-4 dark:bg-amber-950/10"
-                      }
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={
-                            blocked
-                              ? "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
-                              : "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-                          }
-                        >
-                          <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={blocked ? "destructive" : "warning"}>
-                              {blocked ? "Blocked" : "Warning"}
-                            </Badge>
-                            <p className="text-sm font-semibold">{alert.title}</p>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {alert.detail}
-                          </p>
-                        </div>
-                      </div>
+              <div className="space-y-3 border-t pt-3">
+                {evidenceAlerts.map((alert) => (
+                  <div
+                    key={alert.tone + alert.title}
+                    className="flex items-start gap-2"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0 text-destructive"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold">{alert.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {alert.detail}
+                      </p>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
 
@@ -464,7 +470,25 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
             ) : (
               <div className="space-y-2">
                 {/* Primary action - Buy Now or Purchase */}
-                {listing.buyNowPrice ? (
+                {!sellerPaymentsReady ? (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    Seller payment setup is incomplete. Contact the seller about
+                    this lot.
+                  </p>
+                ) : (isAuthLoading || isOwner) &&
+                  (listing.buyNowPrice || !listing.allowOffers) ? (
+                  <Button
+                    variant={listing.buyNowPrice ? "secondary" : "default"}
+                    className="w-full tabular-nums"
+                    size="lg"
+                    disabled
+                    aria-busy={isAuthLoading}
+                  >
+                    {listing.buyNowPrice
+                      ? quantityPreview ? "Review purchase" : `Buy Now - ${formatPricePerSqFt(listing.buyNowPrice)}`
+                      : "Purchase"}
+                  </Button>
+                ) : listing.buyNowPrice ? (
                   <Button
                     asChild
                     variant="secondary"
@@ -474,12 +498,12 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     <Link
                       href={
                         isAuthenticated
-                          ? `/listings/${listing.id}/checkout`
-                          : `/login?redirect=/listings/${listing.id}/checkout`
+                          ? checkoutHref
+                          : loginCheckoutHref
                       }
                       onClick={handleBuyNowClick}
                     >
-                      Buy Now - {formatPricePerSqFt(listing.buyNowPrice)}
+                      {quantityPreview ? "Review purchase" : `Buy Now - ${formatPricePerSqFt(listing.buyNowPrice)}`}
                     </Link>
                   </Button>
                 ) : !listing.allowOffers ? (
@@ -487,8 +511,8 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     <Link
                       href={
                         isAuthenticated
-                          ? `/listings/${listing.id}/checkout`
-                          : `/login?redirect=/listings/${listing.id}/checkout`
+                          ? checkoutHref
+                          : loginCheckoutHref
                       }
                       onClick={handleBuyNowClick}
                     >
@@ -505,7 +529,12 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                       className="w-full"
                       size="lg"
                       onClick={handleMakeOfferClick}
-                      disabled={isPurchaseConfigLoading || !purchaseConfig}
+                      disabled={
+                        isAuthLoading || isOwner ||
+                        isPurchaseConfigLoading ||
+                        !purchaseConfig
+                      }
+                      aria-busy={isAuthLoading}
                       aria-label="Make an offer on this listing"
                     >
                       <HandCoins className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -514,21 +543,36 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                   )}
 
                   <Button
-                    variant={listing.allowOffers ? "outline" : "default"}
-                    className={listing.allowOffers ? "w-full" : "w-full sm:col-span-2"}
+                    variant={
+                      !sellerPaymentsReady || !listing.allowOffers
+                        ? "default"
+                        : "outline"
+                    }
+                    className={
+                      listing.allowOffers ? "w-full" : "w-full sm:col-span-2"
+                    }
                     size="lg"
                     onClick={handleContactSeller}
-                    disabled={isContactingLoading}
+                    disabled={isAuthLoading || isOwner || isContactingLoading}
+                    aria-busy={isAuthLoading || isContactingLoading}
                     aria-label="Contact the seller"
                   >
-                    {isContactingLoading ? (
+                    {isAuthLoading ? (
+                      "Checking account…"
+                    ) : isContactingLoading ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        <Loader2
+                          className="mr-2 h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
                         Connecting...
                       </>
                     ) : (
                       <>
-                        <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                        <MessageSquare
+                          className="mr-2 h-4 w-4"
+                          aria-hidden="true"
+                        />
                         Contact Seller
                       </>
                     )}
@@ -541,23 +585,32 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                     className="w-full"
                     size="lg"
                     onClick={handleRequestSample}
-                    disabled={isRequestingSample}
+                    disabled={isAuthLoading || isOwner || isRequestingSample}
+                    aria-busy={isAuthLoading}
                   >
                     {isRequestingSample ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        <Loader2
+                          className="mr-2 h-4 w-4 animate-spin"
+                          aria-hidden="true"
+                        />
                         Opening sample request...
                       </>
                     ) : (
                       <>
-                        <MessageSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                        <MessageSquare
+                          className="mr-2 h-4 w-4"
+                          aria-hidden="true"
+                        />
                         Request Sample
                       </>
                     )}
                   </Button>
                 )}
 
-                {viewingAsBuyer && (
+                {isOwner && viewingAsBuyer && (
+                  <div className="space-y-2">
+                  <p role="status" className="text-sm text-muted-foreground">Buyer preview. Trading actions are disabled on your own listing.</p>
                   <Button
                     variant="ghost"
                     className="w-full text-muted-foreground"
@@ -566,6 +619,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                   >
                     Back to Seller View
                   </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -596,7 +650,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {formatDate(listing.createdAt)}
+                {formatListingDate(listing.createdAt)}
               </span>
             </div>
 
@@ -670,7 +724,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground">Direct purchase</p>
             <p className="truncate font-display text-lg font-bold text-primary tabular-nums">
-              <span>{formatCurrency(directPurchaseUnitPrice)}</span>
+              <span>{formatCurrency(displayedUnitPrice)}</span>
               <span className="ml-1 text-xs font-normal text-muted-foreground">
                 / sq ft
               </span>
@@ -686,22 +740,47 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
                 Edit listing
               </Link>
             </Button>
-          ) : listing.buyNowPrice ? (
+          ) : !sellerPaymentsReady ? (
             <Button
-              asChild
-              variant="secondary"
               size="lg"
+              className="h-auto min-h-11 max-w-[60%] whitespace-normal px-[16px] py-2"
+              onClick={handleContactSeller}
+              disabled={isAuthLoading || isOwner || isContactingLoading}
+              aria-busy={isAuthLoading || isContactingLoading}
+              aria-label="Contact the seller from the mobile action bar"
             >
+              {isAuthLoading
+                ? "Checking account…"
+                : isContactingLoading
+                  ? "Connecting…"
+                  : "Contact seller"}
+            </Button>
+          ) : (isAuthLoading || isOwner) && (listing.buyNowPrice || !listing.allowOffers) ? (
+            <Button
+              variant={listing.buyNowPrice ? "secondary" : "default"}
+              size="lg"
+              disabled
+              aria-busy={isAuthLoading}
+              aria-label={
+                listing.buyNowPrice
+                  ? quantityPreview ? "Review purchase" : `Buy now at ${formatPricePerSqFt(listing.buyNowPrice)}`
+                  : "Purchase this listing"
+              }
+            >
+              {listing.buyNowPrice ? quantityPreview ? "Review purchase" : "Buy now" : "Purchase"}
+            </Button>
+          ) : listing.buyNowPrice ? (
+            <Button asChild variant="secondary" size="lg">
               <Link
                 href={
                   isAuthenticated
-                    ? `/listings/${listing.id}/checkout`
-                    : `/login?redirect=/listings/${listing.id}/checkout`
+                    ? checkoutHref
+                    : loginCheckoutHref
                 }
                 onClick={handleBuyNowClick}
-                aria-label={`Buy now at ${formatPricePerSqFt(listing.buyNowPrice)}`}
+                aria-label={quantityPreview ? "Review purchase" : `Buy now at ${formatPricePerSqFt(listing.buyNowPrice)}`}
               >
-                Buy now
+                {quantityPreview ? "Review purchase" : "Buy now"}
               </Link>
             </Button>
           ) : !listing.allowOffers ? (
@@ -709,8 +788,8 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
               <Link
                 href={
                   isAuthenticated
-                    ? `/listings/${listing.id}/checkout`
-                    : `/login?redirect=/listings/${listing.id}/checkout`
+                    ? checkoutHref
+                    : loginCheckoutHref
                 }
                 onClick={handleBuyNowClick}
                 aria-label="Purchase this listing"
@@ -722,7 +801,10 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
             <Button
               size="lg"
               onClick={handleMakeOfferClick}
-              disabled={isPurchaseConfigLoading || !purchaseConfig}
+              disabled={
+                isAuthLoading || isOwner || isPurchaseConfigLoading || !purchaseConfig
+              }
+              aria-busy={isAuthLoading}
               aria-label="Make an offer from the mobile action bar"
             >
               Make offer
@@ -744,7 +826,7 @@ export function ListingDetailClient({ listing }: ListingDetailClientProps) {
 
       {/* Make Offer Modal */}
       <MakeOfferModal
-        open={showMakeOfferModal}
+        open={!isOwner && showMakeOfferModal}
         onOpenChange={setShowMakeOfferModal}
         listingId={listing.id}
         listingTitle={listing.title}

@@ -48,7 +48,7 @@ function database(pages:unknown[][]) {
  const select=vi.fn(()=>{const rows=pages.shift()??[];const q: Record<string, (...args: any[]) => any> ={from:()=>q,where:(p:unknown)=>{predicates.push(p);return q;},orderBy:()=>q,for:async()=>rows,limit:async()=>rows,then:(resolve:(r:unknown[])=>unknown)=>Promise.resolve(rows).then(resolve)};return q;});
  const update=vi.fn(()=>{const q: Record<string, (...args: any[]) => any> ={set:(value:unknown)=>{writes.push(value);return q;},where:()=>q,returning:async()=>[existing],then:(resolve:(r:unknown[])=>unknown)=>Promise.resolve([]).then(resolve)};return q;});
  const insert=vi.fn(()=>({values:(v:unknown)=>{writes.push(v);return {returning:async()=>[existing]};}}));
- const db: any ={select,update,insert};db.transaction=async(action:(tx:unknown)=>unknown)=>action(db);
+ const db: any ={select,update,insert,execute:vi.fn().mockResolvedValue([])};db.transaction=async(action:(tx:unknown)=>unknown)=>action(db);
  return {db,predicates,writes,select,update,insert};
 }
 describe("warehouse tenant and reservation guards",()=>{
@@ -57,30 +57,30 @@ describe("warehouse tenant and reservation guards",()=>{
   const fake=database([]);await expect(callerFactory(context(fake.db,"buyer")).warehouse.save({data})).rejects.toThrow();expect(fake.select).not.toHaveBeenCalled();
  });
  it("scopes lookup to seller and refuses another seller's warehouse update",async()=>{
-  const fake=database([[{id:sellerId}],[],[]]);
+  const fake=database([[],[{id:sellerId}],[]]);
   await expect(callerFactory(context(fake.db)).warehouse.save({id:warehouseId,data})).rejects.toThrow("Warehouse not found");
   expect(fake.writes).toHaveLength(0);
   const query=new PgDialect().sqlToQuery(fake.predicates[2] as never);expect(query.params).toContain(sellerId);expect(query.params).toContain(warehouseId);
  });
  it("refuses another seller's warehouse assignment",async()=>{
-  const fake=database([[{id:sellerId}],[{id:listingId,sellerId,warehouseId:null}],[]]);
+  const fake=database([[{id:listingId,sellerId,warehouseId:null}],[{id:sellerId}],[]]);
   await expect(callerFactory(context(fake.db)).warehouse.assignListing({listingId,warehouseId})).rejects.toThrow("Active warehouse not found");expect(fake.writes).toHaveLength(0);
  });
  it("changes default inside same transaction after seller locking",async()=>{
-  const fake=database([[{id:sellerId}],[],existing?[existing]:[]]);
+  const fake=database([[],[{id:sellerId}],existing?[existing]:[]]);
   await callerFactory(context(fake.db)).warehouse.save({id:warehouseId,data:{...data,isDefault:true}});
   expect(fake.writes[0]).toMatchObject({isDefault:false});expect(fake.writes[1]).toMatchObject({isDefault:true,revision:1});
  });
  it.each([{address:"200 New Rd"},{pickupEnd:"17:00"},{hasForklift:true},{active:false}])("blocks origin or capability edits during reservation",async change=>{
-  const fake=database([[{id:sellerId}],[{id:listingId}],[existing],[{id:"order"}]]);
+  const fake=database([[{id:listingId}],[{id:sellerId}],[existing],[{id:"order"}]]);
   await expect(callerFactory(context(fake.db)).warehouse.save({id:warehouseId,data:{...data,...change}})).rejects.toThrow("reserved orders");expect(fake.writes).toHaveLength(0);
  });
  it("blocks reassignment during reservation",async()=>{
-  const fake=database([[{id:sellerId}],[{id:listingId,sellerId,warehouseId:null}],[existing],[{id:"order"}]]);
+  const fake=database([[{id:listingId,sellerId,warehouseId:null}],[{id:sellerId}],[existing],[{id:"order"}]]);
   await expect(callerFactory(context(fake.db)).warehouse.assignListing({listingId,warehouseId})).rejects.toThrow("reserved orders");expect(fake.writes).toHaveLength(0);
  });
  it("derives approximate coordinates from ZIP and increments origin revision",async()=>{
-  const fake=database([[{id:sellerId}],[],[existing]]);
+  const fake=database([[],[{id:sellerId}],[existing]]);
   await callerFactory(context(fake.db)).warehouse.save({id:warehouseId,data:{...data,pickupEnd:"17:00"}});
   expect(fake.writes[0]).toMatchObject({revision:2,coordinateSource:"zip_centroid",latitude:expect.any(Number),longitude:expect.any(Number)});
  });

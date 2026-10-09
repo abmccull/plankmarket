@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc/client";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { DateRangeSelector } from "@/components/analytics/date-range-selector";
 import { ChartCard } from "@/components/analytics/chart-card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { AreaChart } from "@/components/analytics/area-chart";
 import { BarChart } from "@/components/analytics/bar-chart";
 import { DonutChart } from "@/components/analytics/donut-chart";
@@ -52,9 +53,8 @@ function isPeriod(value: string): value is Period {
 function calcTrend(
   current: number,
   previous: number,
-): { value: number; label: string } {
-  if (previous === 0)
-    return { value: current > 0 ? 100 : 0, label: "vs prev period" };
+): { value: number; label: string } | undefined {
+  if (previous === 0) return undefined;
   const pct = Math.round(((current - previous) / previous) * 100);
   return { value: pct, label: "vs prev period" };
 }
@@ -186,6 +186,9 @@ function OverviewTab({ period }: { period: Period }) {
           title="Captured net proceeds"
           value={formatCurrency(kpis.revenue)}
           icon={DollarSign}
+          description={
+            kpis.prevRevenue === 0 ? "No previous-period baseline" : undefined
+          }
           trend={revenueTrend}
           accentColor="secondary"
         />
@@ -193,6 +196,9 @@ function OverviewTab({ period }: { period: Period }) {
           title="Paid orders"
           value={formatNumber(kpis.orders)}
           icon={ShoppingCart}
+          description={
+            kpis.prevOrders === 0 ? "No previous-period baseline" : undefined
+          }
           trend={ordersTrend}
           accentColor="primary"
         />
@@ -620,6 +626,7 @@ function ReviewsTab({ period }: { period: Period }) {
               { name: "Shipping", value: subRatings.shipping },
             ]}
             layout="horizontal"
+            valueDomain={[0, 5]}
             formatValue={(v) => v.toFixed(1)}
             height={150}
           />
@@ -627,30 +634,37 @@ function ReviewsTab({ period }: { period: Period }) {
       </div>
 
       {recentReviews.length > 0 && (
-        <ChartCard title="Recent Reviews">
-          <div className="space-y-4">
-            {recentReviews.map((r) => (
-              <ReviewCard
-                key={r.id}
-                reviewerName={r.reviewerName}
-                reviewerAvatar={r.reviewerAvatar}
-                date={new Date(r.date)}
-                rating={r.rating}
-                title={r.title ?? undefined}
-                comment={r.comment}
-                subRatings={r.subRatings}
-                sellerResponse={
-                  r.sellerResponse
-                    ? {
-                        message: r.sellerResponse.message,
-                        date: new Date(r.sellerResponse.date),
-                      }
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        </ChartCard>
+        <Card>
+          <CardHeader className="pb-2">
+            <h2 className="text-base font-semibold leading-none tracking-tight">
+              Recent Reviews
+            </h2>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {recentReviews.map((r) => (
+                <ReviewCard
+                  key={r.id}
+                  reviewerName={r.reviewerName}
+                  reviewerAvatar={r.reviewerAvatar}
+                  date={new Date(r.date)}
+                  rating={r.rating}
+                  title={r.title ?? undefined}
+                  comment={r.comment}
+                  subRatings={r.subRatings}
+                  sellerResponse={
+                    r.sellerResponse
+                      ? {
+                          message: r.sellerResponse.message,
+                          date: new Date(r.sellerResponse.date),
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </>
   );

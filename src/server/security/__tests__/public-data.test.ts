@@ -44,6 +44,8 @@ const listingSource = {
   askPricePerSqFt: 3.25,
   buyNowPrice: null,
   allowOffers: true,
+  fullLotOnly: false,
+  partialQuantityMarkupPercent: 10,
   condition: "new_overstock",
   reasonCode: "overproduction",
   certifications: ["fsc"],
@@ -85,10 +87,29 @@ const listingSource = {
     verificationStatus: "verified",
     createdAt: new Date("2025-01-01T00:00:00Z"),
     stripeOnboardingComplete: true,
+    stripeAccountId: "acct_private_projection_proof",
   },
 };
 
 describe("public marketplace DTOs", () => {
+  it.each([
+    [true, "acct_private_projection_proof", "connected"],
+    [false, "acct_private_projection_proof", "incomplete"],
+    [true, null, "incomplete"],
+    [true, "", "incomplete"],
+    [false, null, "incomplete"],
+  ] as const)("projects recorded payment setup: complete=%s account=%s", (complete, account, expected) => {
+    const source = { ...listingSource, seller: { ...listingSource.seller, stripeOnboardingComplete: complete, stripeAccountId: account } };
+    for (const result of [toPublicListing(source as never), toPublicListingCard(source as never)]) {
+      expect(result.seller).toHaveProperty("paymentSetupStatus", expected);
+      expect(result.seller?.stripeOnboardingComplete).toBe(expected === "connected");
+      expect(result.seller).not.toHaveProperty("stripeAccountId");
+      expect(JSON.stringify(result)).not.toContain("acct_private_projection_proof");
+      expect(result.seller).not.toHaveProperty("businessAddress");
+      expect(result.seller).not.toHaveProperty("phone");
+    }
+  });
+
   it("drops confidential pricing, exact location, upload keys, and real names", () => {
     const result = toPublicListing(
       listingSource as unknown as PublicListingSource,
@@ -151,11 +172,15 @@ describe("public marketplace DTOs", () => {
       title: listingSource.title,
       totalSqFt: listingSource.totalSqFt,
       freightEstimateStatus: "quote_request_ready",
+      purchaseTerms: { fullLotOnly: false, partialQuantityMarkupPercent: 10, sqFtPerBox: 20, boxesPerPallet: 40 },
     });
     expect(result).not.toHaveProperty("description");
     expect(result).not.toHaveProperty("certifications");
     expect(result).not.toHaveProperty("palletWeight");
     expect(result).not.toHaveProperty("locationZip");
+    expect(result).not.toHaveProperty("floorPrice");
+    expect(result.seller).not.toHaveProperty("businessAddress");
+    expect(result.seller).not.toHaveProperty("phone");
   });
 
   it("keeps public reviews free of order and relationship identifiers", () => {

@@ -9,9 +9,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { OrderDetailRoute, type ParticipantOrder } from "@/components/orders/order-detail-route";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
-import { Loader2, Package, MapPin, Truck, Store, Star } from "lucide-react";
+import { Package, MapPin, Truck, Store, Star } from "lucide-react";
 import { OrderRecoveryPanel } from "@/components/shipping/order-recovery-panel";
 import TrackingTimeline from "@/components/shipping/tracking-timeline";
 import { LeaveReviewForm } from "@/components/reviews/leave-review-form";
@@ -21,45 +22,35 @@ import { TransactionTimeline } from "@/components/marketplace/transaction-timeli
 import { BuyerClaimCard } from "@/components/disputes/buyer-claim-card";
 
 export default function BuyerOrderDetailPage() {
-  const params = useParams();
-  const orderId = params.id as string;
+  const params = useParams<{ id: string }>();
+  return (
+    <OrderDetailRoute orderId={params.id} side="buyer">
+      {(order) => <BuyerOrderContent order={order} />}
+    </OrderDetailRoute>
+  );
+}
 
-  const { data: order, isLoading } = trpc.order.getById.useQuery({
-    id: orderId,
-  });
-
+function BuyerOrderContent({ order }: { order: ParticipantOrder }) {
+  const orderId = order.id;
   const { data: orderReviews } = trpc.review.getByOrder.useQuery(
     { orderId },
     { enabled: !!order && order.status === "delivered" }
   );
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!order) {
-    return (
-      <div className="text-center py-12">
-        <h1 className="text-2xl font-bold">Order Not Found</h1>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Order {order.orderNumber}</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl font-bold">Order {order.orderNumber}</h1>
           <p className="text-muted-foreground text-sm">
             Placed on {formatDate(order.createdAt)}
           </p>
         </div>
         <OrderStatusBadge status={order.status as OrderStatus} />
       </div>
+
+      {/* Current payment and freight guidance comes before reference details. */}
+      <OrderRecoveryPanel orderId={orderId} />
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Order Summary */}
@@ -111,7 +102,7 @@ export default function BuyerOrderDetailPage() {
                 total remains the persisted order total shown below.
               </p>
             )}
-            {order.shippingPrice &&
+            {order.shippingPrice !== null && order.shippingPrice !== 0 &&
               (order.sellerFreightContribution > 0 ? (
                 <>
                   <div className="flex justify-between">
@@ -216,7 +207,6 @@ export default function BuyerOrderDetailPage() {
       </div>
 
       {/* Shipment Tracking (Priority1 orders) */}
-      <OrderRecoveryPanel orderId={orderId} />
       {order.selectedQuoteId && <TrackingTimeline orderId={orderId} />}
 
       <TransactionTimeline order={order} audience="buyer" />

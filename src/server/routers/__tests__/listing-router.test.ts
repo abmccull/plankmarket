@@ -81,7 +81,7 @@ describe("listingRouter seller default revalidation", () => {
 
   it("rejects create when saved defaults make the listing selling rules contradictory", async () => {
     const insert = vi.fn();
-    const db = {
+    const tx = {
       query: {
         userPreferences: {
           findFirst: vi.fn().mockResolvedValue({
@@ -90,6 +90,13 @@ describe("listingRouter seller default revalidation", () => {
         },
       },
       insert,
+      execute: vi.fn().mockResolvedValue([]),
+    };
+    const db = {
+      ...tx,
+      transaction: vi.fn(
+        async (callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx),
+      ),
     };
 
     const caller = createCaller(createCallerContext({ db }));
@@ -122,7 +129,13 @@ describe("listingRouter seller default revalidation", () => {
   });
 
   it("rejects bulkCreate when saved defaults make a CSV row contradictory after merge", async () => {
-    const txInsert = vi.fn(() => ({ values: () => ({ onConflictDoNothing: () => ({ returning: async () => [{ id: "import-claim" }] }) }) }));
+    const txInsert = vi.fn(() => ({
+      values: () => ({
+        onConflictDoNothing: () => ({
+          returning: async () => [{ id: "import-claim" }],
+        }),
+      }),
+    }));
     const db = {
       query: {
         userPreferences: {
@@ -131,10 +144,11 @@ describe("listingRouter seller default revalidation", () => {
           }),
         },
       },
-      transaction: vi.fn(async (callback: (tx: { insert: typeof txInsert }) => unknown) =>
-        callback({
-          insert: txInsert,
-        }),
+      transaction: vi.fn(
+        async (callback: (tx: { insert: typeof txInsert }) => unknown) =>
+          callback({
+            insert: txInsert,
+          }),
       ),
     };
 
@@ -202,9 +216,11 @@ describe("listingRouter seller default revalidation", () => {
       .mockImplementationOnce(() => ({
         from: vi.fn(() => ({
           where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([
-              { id: "33333333-3333-4333-8333-333333333333" },
-            ]),
+            limit: vi
+              .fn()
+              .mockResolvedValue([
+                { id: "33333333-3333-4333-8333-333333333333" },
+              ]),
           })),
         })),
       }));
@@ -235,16 +251,23 @@ describe("listingRouter seller default revalidation", () => {
   });
 });
 
-
 describe("listing discovery accuracy", () => {
   function browseDb() {
     const findMany = vi.fn().mockResolvedValue([]);
     const builder = {
-      from: vi.fn(), where: vi.fn(), limit: vi.fn(), as: vi.fn(),
+      from: vi.fn(),
+      where: vi.fn(),
+      limit: vi.fn(),
+      as: vi.fn(),
       then: (resolve: (rows: { count: number }[]) => unknown) =>
         Promise.resolve([{ count: 0 }]).then(resolve),
     };
-    for (const method of [builder.from, builder.where, builder.limit, builder.as]) {
+    for (const method of [
+      builder.from,
+      builder.where,
+      builder.limit,
+      builder.as,
+    ]) {
       method.mockReturnValue(builder);
     }
     return { query: { listings: { findMany } }, select: vi.fn(() => builder) };
@@ -254,7 +277,9 @@ describe("listing discovery accuracy", () => {
     const db = browseDb();
     const caller = createCaller(createCallerContext({ db }));
     await caller.listing.list({ query: "Oak ABC-100" });
-    const query = new PgDialect().sqlToQuery(db.query.listings.findMany.mock.calls[0][0].where);
+    const query = new PgDialect().sqlToQuery(
+      db.query.listings.findMany.mock.calls[0][0].where,
+    );
     expect(query.sql).toContain('"model_number"');
     expect(query.params).toContain("%oak%");
     expect(query.params).toContain("%abc-100%");
@@ -264,7 +289,10 @@ describe("listing discovery accuracy", () => {
   it("sorts by distance with a ZIP and no radius, before promoted placement", async () => {
     const db = browseDb();
     const caller = createCaller(createCallerContext({ db }));
-    const result = await caller.listing.list({ buyerZip: "84101", sort: "proximity" });
+    const result = await caller.listing.list({
+      buyerZip: "84101",
+      sort: "proximity",
+    });
     const query = db.query.listings.findMany.mock.calls[0][0];
     const dialect = new PgDialect();
     expect(dialect.sqlToQuery(query.orderBy[0]).sql).toContain("acos");
@@ -276,10 +304,19 @@ describe("listing discovery accuracy", () => {
   it("applies a radius only when requested and reports unknown ZIPs", async () => {
     const db = browseDb();
     const caller = createCaller(createCallerContext({ db }));
-    await caller.listing.list({ buyerZip: "84101", maxDistance: 100, sort: "proximity" });
+    await caller.listing.list({
+      buyerZip: "84101",
+      maxDistance: 100,
+      sort: "proximity",
+    });
     const dialect = new PgDialect();
-    expect(dialect.sqlToQuery(db.query.listings.findMany.mock.calls[0][0].where).sql).toContain("acos");
-    const result = await caller.listing.list({ buyerZip: "00000", sort: "proximity" });
+    expect(
+      dialect.sqlToQuery(db.query.listings.findMany.mock.calls[0][0].where).sql,
+    ).toContain("acos");
+    const result = await caller.listing.list({
+      buyerZip: "00000",
+      sort: "proximity",
+    });
     expect(result.locationLabel).toBeNull();
   });
 
@@ -287,7 +324,9 @@ describe("listing discovery accuracy", () => {
     const db = browseDb();
     const caller = createCaller(createCallerContext({ db }));
     await caller.listing.list({ thickness: [0.24], width: [9] });
-    const query = new PgDialect().sqlToQuery(db.query.listings.findMany.mock.calls[0][0].where);
+    const query = new PgDialect().sqlToQuery(
+      db.query.listings.findMany.mock.calls[0][0].where,
+    );
     expect(query.params).toContain(0.235);
     expect(query.params).toContain(0.245);
     expect(query.params).toContain(9);
@@ -298,62 +337,181 @@ describe("listing discovery accuracy", () => {
   it.each([
     ["84101", true],
     ["00000", false],
-  ])("replaces stale coordinates on a ZIP edit to %s", async (locationZip, known) => {
-    const existing = {
-      id: "22222222-2222-4222-8222-222222222222",
-      sellerId: "11111111-1111-4111-8111-111111111111",
-      totalSqFt: 1250, locationZip: "75001", locationLat: 32.96, locationLng: -96.84,
-      status: "draft", freightClass: "125",
-    };
-    const updated = { ...existing, locationZip };
-    const set = vi.fn((values: Record<string, unknown>) => ({ where: () => ({ returning: async () => [{ ...updated, ...values }] }) }));
-    const tx = {
-      select: () => ({ from: () => ({ where: () => ({ for: async () => [existing], then: (resolve: (rows: { count: number }[]) => unknown) => Promise.resolve([{ count: 0 }]).then(resolve) }) }) }),
-      update: () => ({ set }),
-    };
-    const db = {
-      transaction: (callback: (transaction: typeof tx) => unknown) => callback(tx),
-      select: () => ({ from: () => ({ where: async () => [{ count: 0 }] }) }),
-      update: () => ({ set: () => ({ where: () => ({ returning: async () => [updated] }) }) }),
-    };
-    const caller = createCaller(createCallerContext({ db }));
-    await caller.listing.update({ id: existing.id, data: { locationZip } });
-    const persisted = set.mock.calls[0][0] as unknown as { locationLat: number | null; locationLng: number | null };
-    if (known) {
-      expect(persisted.locationLat).toBeGreaterThan(40);
-      expect(persisted.locationLng).toBeLessThan(-111);
-    } else {
-      expect(persisted.locationLat).toBeNull();
-      expect(persisted.locationLng).toBeNull();
-    }
-  });
+  ])(
+    "replaces stale coordinates on a ZIP edit to %s",
+    async (locationZip, known) => {
+      const existing = {
+        id: "22222222-2222-4222-8222-222222222222",
+        sellerId: "11111111-1111-4111-8111-111111111111",
+        totalSqFt: 1250,
+        locationZip: "75001",
+        locationLat: 32.96,
+        locationLng: -96.84,
+        status: "draft",
+        freightClass: "125",
+      };
+      const updated = { ...existing, locationZip };
+      const set = vi.fn((values: Record<string, unknown>) => ({
+        where: () => ({ returning: async () => [{ ...updated, ...values }] }),
+      }));
+      const tx = {
+        // This existing ZIP-edit fixture is a draft with no saved photos.
+        // Return listing rows for the parent lock and media rows for the ordered photo lock.
+        select: vi
+          .fn()
+          .mockImplementationOnce(() => ({
+            from: () => ({ where: () => ({ for: async () => [existing] }) }),
+          }))
+          .mockImplementationOnce(() => ({
+            from: () => ({
+              where: () => ({ orderBy: () => ({ for: async () => [] }) }),
+            }),
+          })),
+        update: () => ({ set }),
+      };
+      const db = {
+        transaction: (callback: (transaction: typeof tx) => unknown) =>
+          callback(tx),
+        select: () => ({ from: () => ({ where: async () => [{ count: 0 }] }) }),
+        update: () => ({
+          set: () => ({ where: () => ({ returning: async () => [updated] }) }),
+        }),
+      };
+      const caller = createCaller(createCallerContext({ db }));
+      await caller.listing.update({ id: existing.id, data: { locationZip } });
+      const persisted = set.mock.calls[0][0] as unknown as {
+        locationLat: number | null;
+        locationLng: number | null;
+      };
+      if (known) {
+        expect(persisted.locationLat).toBeGreaterThan(40);
+        expect(persisted.locationLng).toBeLessThan(-111);
+      } else {
+        expect(persisted.locationLat).toBeNull();
+        expect(persisted.locationLng).toBeNull();
+      }
+    },
+  );
 });
-
 
 describe("CSV import replay", () => {
   const requestId = "55555555-5555-4555-8555-555555555555";
-  const row = { title: "Oak stock", materialType: "hardwood", totalSqFt: 1000, askPricePerSqFt: 2, condition: "new_overstock", totalPallets: 1, moq: 100, moqUnit: "sqft", locationZip: "80202", palletWeight: 1000, palletLength: 48, palletWidth: 40, palletHeight: 40 };
+  const row = {
+    title: "Oak stock",
+    materialType: "hardwood",
+    totalSqFt: 1000,
+    askPricePerSqFt: 2,
+    condition: "new_overstock",
+    totalPallets: 1,
+    moq: 100,
+    moqUnit: "sqft",
+    locationZip: "80202",
+    palletWeight: 1000,
+    palletLength: 48,
+    palletWidth: 40,
+    palletHeight: 40,
+  };
   async function replayDb(mismatch = false) {
     const { csvListingRowSchema } = await import("@/lib/validators/listing");
     const { createHash } = await import("node:crypto");
     const response = { batchId: requestId, listings: [], count: 0 };
-    const fingerprint = createHash("sha256").update(JSON.stringify([csvListingRowSchema.parse(row)])).digest("hex");
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify([csvListingRowSchema.parse(row)]))
+      .digest("hex");
     const tx = {
-      insert: vi.fn(() => ({ values: vi.fn(() => ({ onConflictDoNothing: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([]) })) })) })),
-      select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn(() => ({ for: vi.fn().mockResolvedValue([{ fingerprint: mismatch ? "changed" : fingerprint, response }]) })) })) })),
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(() => ({
+            returning: vi.fn().mockResolvedValue([]),
+          })),
+        })),
+      })),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            for: vi
+              .fn()
+              .mockResolvedValue([
+                { fingerprint: mismatch ? "changed" : fingerprint, response },
+              ]),
+          })),
+        })),
+      })),
       update: vi.fn(),
     };
-    return { db: { query: { userPreferences: { findFirst: vi.fn().mockResolvedValue(null) } }, transaction: vi.fn(async (callback: (value: typeof tx) => unknown) => callback(tx)) }, tx, response };
+    return {
+      db: {
+        query: {
+          userPreferences: { findFirst: vi.fn().mockResolvedValue(null) },
+        },
+        transaction: vi.fn(async (callback: (value: typeof tx) => unknown) =>
+          callback(tx),
+        ),
+      },
+      tx,
+      response,
+    };
   }
   it("returns the original result after a lost response without creating new listings", async () => {
     const { db, tx, response } = await replayDb();
-    expect(await createCaller(createCallerContext({ db })).listing.bulkCreate({ requestId, rows: [row] })).toEqual(response);
+    expect(
+      await createCaller(createCallerContext({ db })).listing.bulkCreate({
+        requestId,
+        rows: [row],
+      }),
+    ).toEqual(response);
     expect(tx.insert).toHaveBeenCalledTimes(1);
     expect(tx.update).not.toHaveBeenCalled();
   });
   it("rejects reuse of a request identity for changed content", async () => {
     const { db, tx } = await replayDb(true);
-    await expect(createCaller(createCallerContext({ db })).listing.bulkCreate({ requestId, rows: [row] })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      createCaller(createCallerContext({ db })).listing.bulkCreate({
+        requestId,
+        rows: [row],
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
     expect(tx.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("pallet minimum business boundaries", () => {
+  const lot = {
+    title: "Verified oak inventory lot", materialType: "engineered", totalSqFt: 2000,
+    totalPallets: 3, moq: 1, moqUnit: "pallets", palletWeight: 1200,
+    palletLength: 48, palletWidth: 40, palletHeight: 60, locationZip: "75001",
+    askPricePerSqFt: 2.49, condition: "closeout",
+  };
+  it.each(["create", "publication", "csv"])("rejects missing measurements at %s", async (boundary) => {
+    const { listingCreationSchema, listingFormSchema, csvListingRowSchema } = await import("@/lib/validators/listing");
+    const schema = boundary === "create" ? listingCreationSchema : boundary === "publication" ? listingFormSchema : csvListingRowSchema;
+    const result = schema.safeParse(lot);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.map(issue => issue.path[0])).toEqual(expect.arrayContaining(["sqFtPerBox", "boxesPerPallet"]));
+    expect(schema.safeParse({ ...lot, sqFtPerBox: 24, boxesPerPallet: 40 }).success).toBe(true);
+  });
+  it.each([
+    { data: { sqFtPerBox: null }, existing: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 } },
+    { data: { boxesPerPallet: null }, existing: { moq: 1, moqUnit: "pallets", sqFtPerBox: 24, boxesPerPallet: 40 } },
+    { data: { moqUnit: "pallets" }, existing: { moq: 1, moqUnit: "sqft", sqFtPerBox: null, boxesPerPallet: null } },
+  ] as const)("rejects unsafe merged packaging update $data", async ({ data, existing }) => {
+    const tx = {
+      select: vi.fn(() => ({ from: () => ({ where: () => ({ for: async () => [{ id: "22222222-2222-4222-8222-222222222222", sellerId: "11111111-1111-4111-8111-111111111111", ...existing }] }) }) })),
+      update: vi.fn(),
+    };
+    const db = { transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)) };
+    await expect(createCaller(createCallerContext({ db })).listing.update({ id: "22222222-2222-4222-8222-222222222222", data })).rejects.toMatchObject({ code: "BAD_REQUEST", message: expect.stringContaining("pallet") });
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("pallet minimum arithmetic boundaries", () => {
+  it.each([
+    { moq: 1e308, sqFtPerBox: 1e308, boxesPerPallet: 40 },
+    { moq: 1e-300, sqFtPerBox: 1e-300, boxesPerPallet: 1 },
+  ])("rejects unrepresentable pallet minimum $moq", async (terms) => {
+    const { listingPalletMinimumSchema, csvListingRowSchema } = await import("@/lib/validators/listing");
+    expect(listingPalletMinimumSchema.safeParse({ ...terms, moqUnit: "pallets" }).success).toBe(false);
+    expect(csvListingRowSchema.safeParse({ ...terms, moqUnit: "pallets", title: "Verified oak inventory lot", materialType: "engineered", totalSqFt: 2000, totalPallets: 3, palletWeight: 1200, palletLength: 48, palletWidth: 40, palletHeight: 60, locationZip: "75001", askPricePerSqFt: 2.49, condition: "closeout" }).success).toBe(false);
   });
 });

@@ -1,16 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { SellerOrderWork } from "@/components/dashboard/dashboard-order-work";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { StripeOnboardingBanner } from "@/components/dashboard/stripe-onboarding-banner";
 import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { trpc } from "@/lib/trpc/client";
-import { useProStatus } from "@/hooks/use-pro-status";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ProBadge } from "@/components/pro-badge";
 import { AreaChart } from "@/components/analytics/area-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -28,8 +26,6 @@ import {
   MapPin,
   SlidersHorizontal,
   BarChart3,
-  X,
-  Sparkles,
 } from "lucide-react";
 
 export default function SellerDashboardPage() {
@@ -38,20 +34,6 @@ export default function SellerDashboardPage() {
   const analyticsQuery = trpc.analytics.overview.useQuery({ period: "30d" });
   const recommendedRequestsQuery =
     trpc.matching.recommendedRequests.useQuery();
-
-  const { isPro } = useProStatus();
-  const [proBannerDismissed, setProBannerDismissed] = useState(() => {
-    if (typeof window === "undefined") {
-      return true;
-    }
-
-    return localStorage.getItem("plankmarket_pro_banner_dismissed") === "true";
-  });
-
-  const handleDismissProBanner = () => {
-    localStorage.setItem("plankmarket_pro_banner_dismissed", "true");
-    setProBannerDismissed(true);
-  };
 
   const isPrimaryLoading =
     listingStatsQuery.isLoading || orderStatsQuery.isLoading;
@@ -95,16 +77,18 @@ export default function SellerDashboardPage() {
         </p>
       </div>
 
+      <SellerOrderWork />
+
       <StripeOnboardingBanner />
 
-      <OnboardingChecklist variant="seller" />
+      <OnboardingChecklist variant="seller" defaultCollapsed />
 
       {isPrimaryLoading ? (
         <StatePanelLoading label="Loading your seller dashboard" rows={4} />
       ) : hasPrimaryError ? (
         <QueryErrorState
           title="We couldn't load your seller dashboard"
-          description="Listing and order totals are unchanged. Check your connection and try loading the dashboard again."
+          description="We couldn’t refresh these totals. Your order queues above remain available; try loading this summary again."
           onRetry={() =>
             void Promise.all([
               listingStatsQuery.refetch(),
@@ -149,53 +133,23 @@ export default function SellerDashboardPage() {
               <div><dt>Buyer refunds</dt><dd>{formatCurrency(moneySummary.refunds)}</dd></div>
               <div><dt>Recorded net seller transfers</dt><dd>{formatCurrency(moneySummary.transfers)}</dd></div>
               <div><dt>Paid, awaiting seller transfer</dt><dd>{formatCurrency(moneySummary.awaitingTransfer)}</dd></div>
-              <div><dt>Awaiting buyer payment</dt><dd>{formatCurrency(moneySummary.awaitingPayment)}</dd></div>
+              <div><dt>Seller proceeds awaiting payment</dt><dd>{formatCurrency(moneySummary.awaitingPayment)}</dd></div>
             </dl>
           </section>
 
-          {!isPro && !proBannerDismissed ? (
-            <div className="relative flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100/30 px-5 py-4">
-              <div className="flex min-w-0 items-center gap-3">
-                <Sparkles
-                  className="h-5 w-5 shrink-0 text-amber-600"
-                  aria-hidden="true"
-                />
-                <p className="text-sm">
-                  Unlock AI Agent, Market Intelligence, and unlimited listings
-                  with <span className="font-semibold">PlankMarket Pro</span>{" "}
-                  <ProBadge className="align-middle" /> - $29/mo
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Link href="/pro">
-                  <Button size="sm" variant="gold">
-                    Learn More
-                  </Button>
-                </Link>
-                <button
-                  onClick={handleDismissProBanner}
-                  className="rounded-md p-1 text-amber-700 transition-colors hover:bg-amber-200/60"
-                  aria-label="Dismiss Pro upgrade banner"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ) : null}
-
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                  <BarChart3 className="h-4 w-4" />
-                  30-Day Revenue
+                  <BarChart3 className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Paid seller proceeds · last 30 days
                 </CardTitle>
-                <Link href="/seller/analytics">
-                  <Button variant="ghost" size="sm">
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/seller/analytics">
                     View detailed analytics{" "}
                     <ArrowRight className="ml-1 h-3 w-3" />
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
@@ -215,8 +169,8 @@ export default function SellerDashboardPage() {
               ) : analyticsData.timeSeries.length === 0 ? (
                 <StatePanel
                   icon={BarChart3}
-                  title="No revenue data yet"
-                  description="Once orders move through the marketplace, revenue trends will appear here."
+                  title="No paid seller proceeds in the last 30 days"
+                  description="This chart groups orders by confirmation date and reflects recorded refunds."
                   tone="info"
                   primaryAction={{
                     label: "Manage listings",
@@ -411,6 +365,7 @@ export default function SellerDashboardPage() {
           </div>
         </>
       )}
+      <p className="text-sm text-muted-foreground">Need more listing capacity or market insights? <Link href="/pro" className="font-medium text-primary underline underline-offset-4">Compare Pro features</Link></p>
     </div>
   );
 }

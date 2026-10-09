@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import postgres from "postgres";
 import { PgDialect } from "drizzle-orm/pg-core";
+import { drizzle } from "drizzle-orm/postgres-js";
 import {
   isListingTerritoryVisibleToViewer,
   publicActiveListingWhere,
@@ -162,5 +164,66 @@ describe("listing territory visibility", () => {
     expect(anonymousQuery.sql).toContain("territory_mode");
     expect(anonymousQuery.params).toContain("unrestricted");
     expect(anonymousQuery.sql).not.toContain("jsonb_array_elements_text");
+  });
+});
+
+
+describe("seller sourcing territory", () => {
+  it("shows another seller's eligible territory to a verified seller", () => {
+    expect(isListingTerritoryVisibleToViewer(restrictedListing, viewer({role:"seller"}))).toBe(true);
+    const query=new PgDialect().sqlToQuery(publicActiveListingWhere(new Date("2030-01-01"),viewer({role:"seller"}))!);
+    expect(query.sql).toContain("seller_id");
+    expect(query.sql).toContain("jsonb_array_elements_text");
+    expect(query.params).toContain(BUYER_ID);
+    expect(query.params).toContain('["CO"]');
+  });
+  it.each([{businessState:"UT"},{businessState:null},{verificationStatus:"pending"},{verificationStatus:"unverified"},{verificationStatus:"rejected"}])("retains verified-state restrictions: %j", (overrides) => {
+    expect(isListingTerritoryVisibleToViewer(restrictedListing,viewer({role:"seller",...overrides}))).toBe(false);
+  });
+  it("rejects malformed policies for a purchasing seller",()=>{
+    expect(isListingTerritoryVisibleToViewer({...restrictedListing,allowedDestinationStates:["CO","ZZ"]},viewer({role:"seller"}))).toBe(false);
+  });
+});
+
+// Explicit loopback-only integration opt-in; ignores application credentials.
+// Uses connection-local tables, never application inventory.
+describe.skipIf(process.env.DUAL_CAPABILITY_DB_PROOF !== "1")("seller sourcing SQL on disposable PostgreSQL", () => {
+  let connection: ReturnType<typeof postgres>;
+  beforeAll(async () => {
+    connection = postgres("postgresql://postgres@127.0.0.1:55439/plankmarket_bootstrap_design_20260929", { max: 1, connect_timeout: 3 });
+    const [identity] = await connection`select current_database() as name, host(inet_server_addr()) as address`;
+    expect(identity.name).toBe("plankmarket_bootstrap_design_20260929");
+    expect(identity.address).toBe("127.0.0.1");
+    // Match the application's Drizzle JSON serializers; raw postgres.js would
+    // otherwise encode the already-serialized JSON predicate parameters twice.
+    drizzle(connection);
+    await connection`create temporary table listings (id text primary key, seller_id uuid not null, status text not null, last_confirmed_at timestamptz, confirmation_due_at timestamptz, territory_mode text, allowed_destination_states jsonb)`;
+    await connection`insert into pg_temp.listings values
+      ('unrestricted', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'unrestricted', '[]'),
+      ('allowed', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '["CO"]'),
+      ('blocked', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '["UT"]'),
+      ('invalid', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '["CO", "ZZ"]'),
+      ('null-item', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '["CO", null]'),
+      ('object', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '{"CO": true}'),
+      ('empty', ${SELLER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '[]'),
+      ('own', ${BUYER_ID}, 'active', '2029-01-01', '2031-01-01', 'allowed_states', '["UT"]'),
+      ('own-stale', ${BUYER_ID}, 'active', '2029-01-01', '2029-12-31', 'unrestricted', '[]'),
+      ('own-draft', ${BUYER_ID}, 'draft', '2029-01-01', '2031-01-01', 'unrestricted', '[]'),
+      ('unconfirmed', ${SELLER_ID}, 'active', null, '2031-01-01', 'unrestricted', '[]')`;
+  });
+  afterAll(async () => { if (connection) await connection.end({ timeout: 2 }); });
+
+  it.each([
+    { verificationStatus: "verified", businessState: "CO", expected: ["allowed", "own", "unrestricted"] },
+    { verificationStatus: "pending", businessState: "CO", expected: ["own", "unrestricted"] },
+    { verificationStatus: "unverified", businessState: "CO", expected: ["own", "unrestricted"] },
+    { verificationStatus: "rejected", businessState: "CO", expected: ["own", "unrestricted"] },
+    { verificationStatus: "verified", businessState: null, expected: ["own", "unrestricted"] },
+    { verificationStatus: "verified", businessState: "ZZ", expected: ["own", "unrestricted"] },
+    { verificationStatus: "verified", businessState: "UT", expected: ["blocked", "own", "unrestricted"] },
+  ])("filters inventory for $verificationStatus / $businessState", async ({ verificationStatus, businessState, expected }) => {
+    const query = new PgDialect().sqlToQuery(publicActiveListingWhere(new Date("2030-01-01"), viewer({ role: "seller", verificationStatus, businessState }))!);
+    const rows = await connection.unsafe(`select id from pg_temp.listings as listings where ${query.sql} order by id`, query.params as string[]);
+    expect(rows.map(row => row.id)).toEqual(expected);
   });
 });

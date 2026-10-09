@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
   AlertOctagon,
@@ -9,16 +9,14 @@ import {
   Loader2,
   UserCheck,
 } from "lucide-react";
-import { toast } from "sonner";
-import { DataTable, DataTableColumnHeader } from "@/components/admin/data-table";
+import { QueryErrorState } from "@/components/ui/state-panel";
+import {
+  DataTable,
+  DataTableColumnHeader,
+} from "@/components/admin/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -91,6 +89,33 @@ const SEVERITY_VARIANT: Record<
 };
 
 export default function ReconciliationCasesPage() {
+  const actor = useAuthStore((state) => state.user);
+  if (actor?.role !== "admin")
+    return <p role="status">Checking administrator access…</p>;
+  return <ReconciliationQueue key={actor.id} actorId={actor.id} />;
+}
+function ReconciliationQueue({ actorId }: { actorId: string }) {
+  const mounted = useRef(false);
+  const working = useRef(false);
+  const selection = useRef<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  const [detailFailed, setDetailFailed] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [uncertain, setUncertain] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () =>
+    mounted.current &&
+    useAuthStore.getState().user?.id === actorId &&
+    useAuthStore.getState().user?.role === "admin";
+
+  const [page, setPage] = useState(1);
   const utils = trpc.useUtils();
   const { user } = useAuthStore();
   const [status, setStatus] = useState<CaseStatus | "active">("active");
@@ -101,53 +126,157 @@ export default function ReconciliationCasesPage() {
   const [note, setNote] = useState("");
 
   const listQuery = trpc.reconciliation.list.useQuery({
-    page: 1,
+    page,
     limit: 50,
     status,
     severity: severity === "all" ? undefined : severity,
   });
   const detailQuery = trpc.reconciliation.getById.useQuery(
     {
-      caseId:
-        selectedCase?.id ?? "00000000-0000-4000-8000-000000000000",
+      caseId: selectedCase?.id ?? "00000000-0000-4000-8000-000000000000",
     },
     { enabled: Boolean(selectedCase) },
   );
   const updateStatus = trpc.reconciliation.updateStatus.useMutation({
-    onSuccess: async () => {
-      toast.success("Reconciliation case updated.");
-      setNextStatus("");
-      setResolution("");
-      await Promise.all([
-        utils.reconciliation.list.invalidate(),
-        utils.reconciliation.getById.invalidate(),
-      ]);
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
+    retry: false,
   });
-  const assign = trpc.reconciliation.assign.useMutation({
-    onSuccess: async () => {
-      toast.success("Case assignment updated.");
-      await Promise.all([
-        utils.reconciliation.list.invalidate(),
-        utils.reconciliation.getById.invalidate(),
-      ]);
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
-  });
-  const addNote = trpc.reconciliation.addNote.useMutation({
-    onSuccess: async () => {
-      setNote("");
-      toast.success("Case note added.");
-      await Promise.all([
-        utils.reconciliation.list.invalidate(),
-        utils.reconciliation.getById.invalidate(),
-      ]);
-    },
-    onError: (error) => toast.error(getErrorMessage(error)),
-  });
+  const assign = trpc.reconciliation.assign.useMutation({ retry: false });
+  const addNote = trpc.reconciliation.addNote.useMutation({ retry: false });
 
-  const rows = (listQuery.data?.items ?? []) as CaseRow[];
+  const queueUnavailable = listQuery.isError || readFailed;
+  const detailHealthy =
+    !!selectedCase &&
+    !!detailQuery.data &&
+    detailQuery.data.id === selectedCase.id &&
+    !detailQuery.isError &&
+    !detailFailed &&
+    !detailQuery.isFetching;
+  const activeProblem =
+    problem ??
+    (uncertain[selectedCase?.id ?? ""]
+      ? "Action result unconfirmed. Refresh detail before another attempt."
+      : null);
+  const decisionsBlocked =
+    busy || !detailHealthy || !!uncertain[selectedCase?.id ?? ""];
+  if (
+    listQuery.isSuccess &&
+    !listQuery.isFetching &&
+    page > Math.max(listQuery.data.totalPages, 1)
+  )
+    setPage(Math.max(listQuery.data.totalPages, 1));
+  const refreshQueue = async () => {
+    if (!current()) return;
+    try {
+      // Keep visited pages stale so a clamped page reads current rows.
+      await utils.reconciliation.list.invalidate(undefined, {
+        refetchType: "none",
+      });
+      if (!current()) return;
+      const result = await listQuery.refetch({ throwOnError: true });
+      if (!current()) return;
+      setReadFailed(false);
+      return result.data;
+    } catch {
+      if (current()) setReadFailed(true);
+    }
+  };
+  const refreshDetail = async () => {
+    const selectedId = selectedCase?.id;
+    if (!selectedId || busy || !current()) return;
+    try {
+      const result = await detailQuery.refetch({ throwOnError: true });
+      if (
+        !current() ||
+        selection.current !== selectedId ||
+        result.data?.id !== selectedId
+      )
+        return;
+      setDetailFailed(false);
+      setUncertain((previous) => {
+        const next = { ...previous };
+        delete next[selectedId];
+        return next;
+      });
+      setProblem(null);
+    } catch {
+      if (current() && selection.current === selectedId) setDetailFailed(true);
+    }
+  };
+  async function runDecision<T>(
+    request: () => Promise<T>,
+    message: string | ((result: T) => string),
+    accepted?: () => void,
+  ) {
+    const selectedId = selectedCase?.id;
+    if (!selectedId || working.current || decisionsBlocked || !current())
+      return;
+    working.current = true;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await Promise.all([
+        utils.reconciliation.list.cancel(),
+        utils.reconciliation.getById.cancel(),
+      ]);
+      if (!current()) return;
+      let result: T;
+      try {
+        result = await request();
+      } catch (error) {
+        if (!current()) return;
+        const code = (error as { data?: { code?: string } }).data?.code;
+        const known = [
+          "BAD_REQUEST",
+          "FORBIDDEN",
+          "UNAUTHORIZED",
+          "NOT_FOUND",
+          "CONFLICT",
+        ].includes(code ?? "");
+        setProblem(
+          known
+            ? getErrorMessage(error)
+            : "Action result unconfirmed. Refresh detail before another attempt.",
+        );
+        if (!known)
+          setUncertain((previous) => ({ ...previous, [selectedId]: true }));
+        return;
+      }
+      if (!current()) return;
+      setNotice(typeof message === "function" ? message(result) : message);
+      accepted?.();
+      // Invalidate all visited page/filter inputs, then read the active queue.
+      await utils.reconciliation.list.invalidate(undefined, {
+        refetchType: "none",
+      });
+      if (!current()) return;
+      await refreshQueue();
+      if (!current()) return;
+      await utils.reconciliation.getById.invalidate(undefined, {
+        refetchType: "none",
+      });
+      if (!current()) return;
+      try {
+        await detailQuery.refetch({ throwOnError: true });
+        if (current()) setDetailFailed(false);
+      } catch {
+        if (current()) setDetailFailed(true);
+      }
+    } catch {
+      if (current()) {
+        setReadFailed(true);
+        setDetailFailed(true);
+      }
+    } finally {
+      if (current()) {
+        working.current = false;
+        setBusy(false);
+      }
+    }
+  }
+
+  const rows = (
+    queueUnavailable ? [] : (listQuery.data?.items ?? [])
+  ) as CaseRow[];
 
   const columns: ColumnDef<CaseRow>[] = [
     {
@@ -211,20 +340,28 @@ export default function ReconciliationCasesPage() {
         <Button
           variant="outline"
           size="sm"
+          className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+          disabled={busy}
           onClick={() => {
+            if (busy || queueUnavailable) return;
+            setDetailFailed(false);
+            setProblem(null);
+            selection.current = row.original.id;
+            setNotice(null);
             setSelectedCase(row.original);
             setNextStatus(row.original.status);
+            setResolution("");
+            setNote("");
           }}
         >
-          Open
+          Review
         </Button>
       ),
     },
   ];
 
   const detail = detailQuery.data;
-  const terminal =
-    nextStatus === "resolved" || nextStatus === "dismissed";
+  const terminal = nextStatus === "resolved" || nextStatus === "dismissed";
 
   return (
     <div className="space-y-6">
@@ -236,6 +373,15 @@ export default function ReconciliationCasesPage() {
         </p>
       </div>
 
+      {notice && !selectedCase ? <p role="status">{notice}</p> : null}
+      <Button
+        variant="outline"
+        className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+        disabled={busy || listQuery.isFetching}
+        onClick={() => void refreshQueue()}
+      >
+        Refresh queue
+      </Button>
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -245,7 +391,7 @@ export default function ReconciliationCasesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">
-            {listQuery.data?.openCount ?? "—"}
+            {queueUnavailable ? "—" : (listQuery.data?.openCount ?? "—")}
           </CardContent>
         </Card>
         <Card>
@@ -256,7 +402,9 @@ export default function ReconciliationCasesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold text-destructive">
-            {listQuery.data?.criticalOpenCount ?? "—"}
+            {queueUnavailable
+              ? "—"
+              : (listQuery.data?.criticalOpenCount ?? "—")}
           </CardContent>
         </Card>
         <Card>
@@ -267,21 +415,24 @@ export default function ReconciliationCasesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-2xl font-bold">
-            {rows.filter((item) => !item.assignedTo).length}
+            {queueUnavailable
+              ? "—"
+              : rows.filter((item) => !item.assignedTo).length}
           </CardContent>
         </Card>
       </div>
 
       <div className="flex flex-wrap gap-4">
         <div className="w-52 space-y-1">
-          <Label>Status</Label>
+          <Label htmlFor="caseStatusFilter">Status</Label>
           <Select
             value={status}
-            onValueChange={(value) =>
-              setStatus(value as CaseStatus | "active")
-            }
+            onValueChange={(value) => {
+              setStatus(value as CaseStatus | "active");
+              setPage(1);
+            }}
           >
-            <SelectTrigger>
+            <SelectTrigger id="caseStatusFilter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -295,36 +446,82 @@ export default function ReconciliationCasesPage() {
           </Select>
         </div>
         <div className="w-52 space-y-1">
-          <Label>Severity</Label>
+          <Label htmlFor="caseSeverityFilter">Severity</Label>
           <Select
             value={severity}
-            onValueChange={(value) =>
-              setSeverity(value as CaseSeverity | "all")
-            }
+            onValueChange={(value) => {
+              setSeverity(value as CaseSeverity | "all");
+              setPage(1);
+            }}
           >
-            <SelectTrigger>
+            <SelectTrigger id="caseSeverityFilter">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All severities</SelectItem>
-              {(["critical", "high", "medium", "low"] as const).map(
-                (value) => (
-                  <SelectItem key={value} value={value}>
-                    {value}
-                  </SelectItem>
-                ),
-              )}
+              {(["critical", "high", "medium", "low"] as const).map((value) => (
+                <SelectItem key={value} value={value}>
+                  {value}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {listQuery.isLoading ? (
+      {queueUnavailable ? (
+        <QueryErrorState
+          title="Reconciliation unavailable"
+          onRetry={() => void refreshQueue()}
+          isRetrying={listQuery.isFetching}
+        />
+      ) : listQuery.isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
-      ) : rows.length > 0 ? (
-        <DataTable columns={columns} data={rows} />
+      ) : listQuery.data ? (
+        <DataTable
+          columns={columns}
+          data={rows}
+          serverPagination={{
+            page,
+            pageSize: 50,
+            total: listQuery.data.total,
+            totalPages: listQuery.data.totalPages,
+            onPageChange: setPage,
+            isFetching: listQuery.isFetching || busy,
+          }}
+          renderMobileRow={(row) => (
+            <div className="min-w-0 space-y-2">
+              <p className="break-words font-medium">{row.title}</p>
+              <p className="text-sm">
+                {row.caseKey} · {STATUS_LABELS[row.status]}
+              </p>
+              <Badge variant={SEVERITY_VARIANT[row.severity]}>
+                {row.severity}
+              </Badge>
+              <div>
+                <Button
+                  variant="outline"
+                  className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+                  disabled={busy}
+                  onClick={() => {
+                    setDetailFailed(false);
+                    setProblem(null);
+                    selection.current = row.id;
+                    setNotice(null);
+                    setSelectedCase(row);
+                    setNextStatus(row.status);
+                    setResolution("");
+                    setNote("");
+                  }}
+                >
+                  Review
+                </Button>
+              </div>
+            </div>
+          )}
+        />
       ) : (
         <div className="rounded-lg border py-12 text-center text-muted-foreground">
           No reconciliation cases match these filters.
@@ -333,7 +530,9 @@ export default function ReconciliationCasesPage() {
 
       <Dialog
         open={Boolean(selectedCase)}
-        onOpenChange={(open) => !open && setSelectedCase(null)}
+        onOpenChange={(open) =>
+          !open && !busy && ((selection.current = null), setSelectedCase(null))
+        }
       >
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
@@ -343,19 +542,50 @@ export default function ReconciliationCasesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {detailQuery.isLoading ? (
+          {notice ? (
+            <p role="status" className="text-sm font-medium">
+              {notice}
+            </p>
+          ) : null}
+          {activeProblem ? (
+            <p role="alert" className="text-sm text-destructive">
+              {activeProblem}
+            </p>
+          ) : null}
+          <Button
+            variant="outline"
+            className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+            disabled={busy || detailQuery.isFetching}
+            onClick={() => void refreshDetail()}
+          >
+            Refresh detail
+          </Button>
+          {detailQuery.isError || detailFailed ? (
+            <div role="alert" className="space-y-2">
+              <p>
+                Current case detail could not be loaded. Review the latest
+                detail before acting.
+              </p>
+              <Button
+                variant="outline"
+                className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+                disabled={busy || detailQuery.isFetching}
+                onClick={() => void refreshDetail()}
+              >
+                Retry detail
+              </Button>
+            </div>
+          ) : detailQuery.isLoading ? (
             <div className="flex justify-center py-10">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
-          ) : detail ? (
+          ) : detail && detail.id === selectedCase?.id ? (
             <div className="space-y-5">
               <div className="flex flex-wrap gap-2">
                 <Badge variant={SEVERITY_VARIANT[detail.severity]}>
                   {detail.severity}
                 </Badge>
-                <Badge variant="outline">
-                  {STATUS_LABELS[detail.status]}
-                </Badge>
+                <Badge variant="outline">{STATUS_LABELS[detail.status]}</Badge>
                 <Badge variant="secondary">
                   {detail.type.replaceAll("_", " ")}
                 </Badge>
@@ -408,13 +638,24 @@ export default function ReconciliationCasesPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="h-auto min-h-11 max-w-full whitespace-normal py-2"
                   onClick={() =>
-                    assign.mutate({
-                      caseId: detail.id,
-                      assigneeId: detail.assignedTo ? null : (user?.id ?? null),
-                    })
+                    void runDecision(
+                      () =>
+                        assign.mutateAsync({
+                          caseId: detail.id,
+                          assigneeId: detail.assignedTo
+                            ? null
+                            : (user?.id ?? null),
+                        }),
+                      "Case assignment updated.",
+                    )
                   }
-                  disabled={assign.isPending || (!detail.assignedTo && !user?.id)}
+                  disabled={
+                    decisionsBlocked ||
+                    assign.isPending ||
+                    (!detail.assignedTo && !user?.id)
+                  }
                 >
                   {detail.assignedTo ? "Return to queue" : "Assign to me"}
                 </Button>
@@ -423,14 +664,17 @@ export default function ReconciliationCasesPage() {
               <Separator />
 
               <div className="space-y-3">
-                <h3 className="font-semibold">Update status</h3>
+                <Label htmlFor="caseNextStatus" className="font-semibold">
+                  Update status
+                </Label>
                 <Select
                   value={nextStatus}
-                  onValueChange={(value) =>
-                    setNextStatus(value as CaseStatus)
-                  }
+                  onValueChange={(value) => setNextStatus(value as CaseStatus)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger
+                    id="caseNextStatus"
+                    disabled={decisionsBlocked}
+                  >
                     <SelectValue placeholder="Choose status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -443,6 +687,8 @@ export default function ReconciliationCasesPage() {
                 </Select>
                 {terminal && (
                   <Textarea
+                    aria-label="Resolution and evidence considered"
+                    disabled={decisionsBlocked}
                     value={resolution}
                     onChange={(event) => setResolution(event.target.value)}
                     placeholder="Document the evidence, corrective action, provider state, and final verification."
@@ -452,19 +698,29 @@ export default function ReconciliationCasesPage() {
                 )}
                 <Button
                   size="sm"
+                  className="h-auto min-h-11 max-w-full whitespace-normal py-2"
                   disabled={
+                    decisionsBlocked ||
                     !nextStatus ||
                     updateStatus.isPending ||
                     (terminal && resolution.trim().length < 10)
                   }
                   onClick={() =>
-                    updateStatus.mutate({
-                      caseId: detail.id,
-                      status: nextStatus as CaseStatus,
-                      ...(terminal
-                        ? { resolution: resolution.trim() }
-                        : {}),
-                    })
+                    void runDecision(
+                      () =>
+                        updateStatus.mutateAsync({
+                          caseId: detail.id,
+                          status: nextStatus as CaseStatus,
+                          ...(terminal
+                            ? { resolution: resolution.trim() }
+                            : {}),
+                        }),
+                      "Reconciliation case updated.",
+                      () => {
+                        setNextStatus("");
+                        setResolution("");
+                      },
+                    )
                   }
                 >
                   Save status
@@ -474,8 +730,12 @@ export default function ReconciliationCasesPage() {
               <Separator />
 
               <div className="space-y-3">
-                <h3 className="font-semibold">Case notes</h3>
+                <Label htmlFor="caseNote" className="font-semibold">
+                  Case note
+                </Label>
                 <Textarea
+                  id="caseNote"
+                  disabled={decisionsBlocked}
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   placeholder="Record a provider call, reconciliation check, or next action."
@@ -485,12 +745,22 @@ export default function ReconciliationCasesPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={note.trim().length < 2 || addNote.isPending}
+                  className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+                  disabled={
+                    decisionsBlocked ||
+                    note.trim().length < 2 ||
+                    addNote.isPending
+                  }
                   onClick={() =>
-                    addNote.mutate({
-                      caseId: detail.id,
-                      message: note.trim(),
-                    })
+                    void runDecision(
+                      () =>
+                        addNote.mutateAsync({
+                          caseId: detail.id,
+                          message: note.trim(),
+                        }),
+                      "Case note added.",
+                      () => setNote(""),
+                    )
                   }
                 >
                   Add note
@@ -504,10 +774,7 @@ export default function ReconciliationCasesPage() {
                 </h3>
                 <div className="space-y-3">
                   {detail.events.map((event) => (
-                    <div
-                      key={event.id}
-                      className="border-l-2 pl-3 text-sm"
-                    >
+                    <div key={event.id} className="border-l-2 pl-3 text-sm">
                       <p>{event.message}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatDate(event.createdAt)} ·{" "}
@@ -525,7 +792,15 @@ export default function ReconciliationCasesPage() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedCase(null)}>
+            <Button
+              variant="outline"
+              className="h-auto min-h-11 max-w-full whitespace-normal py-2"
+              disabled={busy}
+              onClick={() => {
+                selection.current = null;
+                setSelectedCase(null);
+              }}
+            >
               Close
             </Button>
           </DialogFooter>

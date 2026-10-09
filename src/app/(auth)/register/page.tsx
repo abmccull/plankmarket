@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useAuthStore } from "@/lib/stores/auth-store";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -8,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, type RegisterInput } from "@/lib/validators/auth";
 import { trpc } from "@/lib/trpc/client";
 import { sanitizeRedirectPath } from "@/lib/auth/safe-redirect";
+import { buyerVerificationHref, getBuyerContinuation } from "@/lib/auth/buyer-continuation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +25,7 @@ import { Loader2, Store, ShoppingBag } from "lucide-react";
 
 function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,44 +51,62 @@ function RegisterForm() {
   const loginHref = `/login?${loginParams.toString()}`;
   const registerMutation = trpc.auth.register.useMutation();
 
+  const active = useRef(false);
+  const generation = useRef(0);
+  const submitting = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    const unsubscribe = useAuthStore.subscribe((next, previous) => {
+      if (previous.user && next.user?.id !== previous.user.id) generation.current += 1;
+    });
+    return () => { active.current = false; generation.current += 1; unsubscribe(); };
+  }, [redirect, defaultRole]);
+  const current = (attempt: number) => active.current && attempt === generation.current;
   const onSubmit = async (data: RegisterInput) => {
-    setIsLoading(true);
+    if (submitting.current) return;
+    submitting.current = true;
+    const attempt = ++generation.current;
+    setIsLoading(true); setProblem(null);
     try {
-      await registerMutation.mutateAsync(data);
+      const result = await registerMutation.mutateAsync(data);
+      if (!current(attempt)) return;
+      const liveUser = useAuthStore.getState().user;
+      if (liveUser && liveUser.id !== result.user?.id) { setProblem("Your account changed while registration was completing. Sign in to continue with the intended account."); return; }
       toast.success("Account created. Business verification is the next step.");
-      router.push(redirect ?? (data.role === "seller" ? "/seller" : "/buyer"));
+      const needsBuyerVerification = data.role === "buyer" && (!redirect || getBuyerContinuation(redirect)?.isCheckout);
+      router.push(needsBuyerVerification
+        ? buyerVerificationHref(redirect)
+        : redirect ?? (data.role === "seller" ? "/seller" : "/buyer"));
       router.refresh();
     } catch (error: unknown) {
+      if (!current(attempt)) return;
       const message =
         error instanceof Error ? error.message : "Registration failed";
-      toast.error(message);
+      setProblem(message);
     } finally {
-      setIsLoading(false);
+      submitting.current = false;
+      if (active.current) setIsLoading(false);
     }
   };
 
   return (
     <Card className="w-full max-w-lg">
-      <CardHeader className="text-center">
-        <div className="mb-2 flex items-center justify-center gap-2 text-sm font-medium text-primary">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">1</span>
-          Create your account
-          <span className="text-muted-foreground">of 2</span>
-        </div>
+      <CardHeader className="pb-4 text-left">
+        <p className="text-xs font-medium text-muted-foreground">Step 1 of 2 · Account</p>
         <h1 className="text-2xl font-semibold leading-none tracking-tight">
-          {selectedRole === "seller" ? "Create Your Seller Account" : "Create Your Buyer Account"}
+          {selectedRole === "seller" ? "Create your seller account" : "Create your buyer account"}
         </h1>
         <CardDescription>
           {selectedRole === "seller"
-            ? "Start with basic account details. Listing is free; the 5% seller fee and inventory-only processing apply only on completed sales after verification."
-            : "Start browsing immediately. The 5% buyer fee applies only when a purchase is completed, and the selected freight quote is shown before payment."}
+            ? "Verify your business before publishing."
+            : "Verify your business before buying."}
         </CardDescription>
-        <p className="mt-3 text-sm text-muted-foreground">Next: verify your business. You can save your progress and return later.</p>
       </CardHeader>
-      <form onSubmit={handleSubmit(onSubmit)}>
+      <form method="post" onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>I want to</Label>
+          {problem && <p role="alert" className="text-sm text-destructive">{problem} Your entered details are kept on this page.</p>}
+          <fieldset disabled={isLoading} className="space-y-4">
+          <div role="group" aria-label="Account purpose">
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -221,7 +242,6 @@ function RegisterForm() {
               autoComplete="postal-code"
               placeholder="75001"
               inputMode="numeric"
-              maxLength={5}
               {...register("zipCode")}
               aria-describedby={errors.zipCode ? "zipCode-error" : undefined}
               aria-invalid={!!errors.zipCode}
@@ -263,19 +283,18 @@ function RegisterForm() {
               </p>
             )}
           </div>
+          </fieldset>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {selectedRole === "seller" ? "Create Seller Account" : "Create Buyer Account"}
           </Button>
-          <div className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-            We do not ask for an EIN or supporting document during account
-            creation. Those details are entered later in the secure,
-            server-saved verification flow. If verified business identity
-            details are changed later, the account returns to review.
-            Marketplace fees are disclosed separately before protected
-            transactions are completed.
+          <div className="space-y-2 text-xs leading-relaxed text-muted-foreground">
+            <p>No EIN or documents needed here. Add them during business verification, where you can save and return later.</p>
+            <p>{selectedRole === "seller"
+              ? "Free listings. Completed sales have a 5% seller fee plus inventory-only processing."
+              : "5% buyer fee on completed purchases. Freight is quoted before payment."}</p>
           </div>
           <p className="text-xs text-center text-muted-foreground">
             By creating an account, you agree to our{" "}
@@ -301,7 +320,7 @@ function RegisterForm() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />}>
+    <Suspense fallback={<p role="status">Loading account creation…</p>}>
       <RegisterForm />
     </Suspense>
   );

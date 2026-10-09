@@ -6,6 +6,7 @@ import type {
   SearchFilters,
   Species,
 } from "@/types";
+import { MAX_PUBLIC_FILTER_NUMBER } from "@/lib/validators/listing";
 
 const MATERIAL_TYPES = new Set<MaterialType>([
   "hardwood",
@@ -275,6 +276,15 @@ export function buildShareableSearchParams(
 
   for (const [key, value] of numericValues) {
     if (value) params.set(key, value);
+  }
+  // Keep the opt-in pair intact across the full accepted job-quantity range.
+  // Other referral fields retain their existing privacy/range restrictions.
+  if (filters.hideQuantityConflicts === true) {
+    const quantity = safeNumber(filters.minLotSize, { min: Number.MIN_VALUE, max: MAX_PUBLIC_FILTER_NUMBER });
+    if (quantity) {
+      params.set("minLotSize", quantity);
+      params.set("hideQuantityConflicts", "true");
+    }
   }
 
   const states = Array.from(new Set(filters.state ?? []))

@@ -34,6 +34,15 @@ import {
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  serverPagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    isFetching?: boolean;
+  };
+  renderMobileRow?: (row: TData) => React.ReactNode;
 }
 
 export function DataTableColumnHeader({
@@ -82,10 +91,12 @@ export function DataTableColumnHeader({
 export function DataTable<TData, TValue>({
   columns,
   data,
+  serverPagination,
+  renderMobileRow,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
-    []
+    [],
   );
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({});
@@ -98,7 +109,14 @@ export function DataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    // Server mode renders the returned page as-is; it must not page/sort/filter
+    // a second time and imply those operations span the entire dataset.
+    manualPagination: !!serverPagination,
+    manualFiltering: !!serverPagination,
+    enableSorting: !serverPagination,
+    getPaginationRowModel: serverPagination
+      ? undefined
+      : getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
@@ -113,7 +131,13 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div
+        className={
+          renderMobileRow
+            ? "hidden xl:flex items-center justify-end"
+            : "flex items-center justify-end"
+        }
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="ml-auto">
@@ -141,7 +165,25 @@ export function DataTable<TData, TValue>({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="relative">
+      {renderMobileRow && (
+        <div
+          className="divide-y rounded-md border xl:hidden"
+          aria-label="Queue records"
+        >
+          {data.length ? (
+            data.map((row, index) => (
+              <div key={index} className="min-w-0 p-4">
+                {renderMobileRow(row)}
+              </div>
+            ))
+          ) : (
+            <p className="p-6 text-center text-muted-foreground">No results.</p>
+          )}
+        </div>
+      )}
+      <div
+        className={renderMobileRow ? "relative hidden xl:block" : "relative"}
+      >
         <div className="overflow-x-auto rounded-md border">
           <Table>
             <TableHeader>
@@ -154,7 +196,7 @@ export function DataTable<TData, TValue>({
                           ? null
                           : flexRender(
                               header.column.columnDef.header,
-                              header.getContext()
+                              header.getContext(),
                             )}
                       </TableHead>
                     );
@@ -173,7 +215,7 @@ export function DataTable<TData, TValue>({
                       <TableCell key={cell.id}>
                         {flexRender(
                           cell.column.columnDef.cell,
-                          cell.getContext()
+                          cell.getContext(),
                         )}
                       </TableCell>
                     ))}
@@ -199,22 +241,60 @@ export function DataTable<TData, TValue>({
       </div>
       <div className="flex flex-col-reverse gap-4 sm:flex-row sm:items-center sm:justify-end sm:gap-2">
         <div className="text-sm text-muted-foreground text-center sm:text-left sm:flex-1">
-          {table.getFilteredRowModel().rows.length} row(s) total.
+          {serverPagination ? (
+            <span aria-live="polite">
+              {serverPagination.total === 0
+                ? "0 results"
+                : data.length === 0
+                  ? `0 of ${serverPagination.total} results`
+                  : `${(serverPagination.page - 1) * serverPagination.pageSize + 1}–${Math.min(serverPagination.page * serverPagination.pageSize, serverPagination.total)} of ${serverPagination.total} results`}
+              {serverPagination.totalPages > 0 &&
+                (serverPagination.page > serverPagination.totalPages
+                  ? " · This page is no longer available."
+                  : ` · Page ${serverPagination.page} of ${serverPagination.totalPages}`)}
+            </span>
+          ) : (
+            <>{table.getFilteredRowModel().rows.length} row(s) total.</>
+          )}
         </div>
         <div className="flex gap-2 justify-center sm:justify-end">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            className={serverPagination ? "min-h-11" : undefined}
+            onClick={() =>
+              serverPagination
+                ? serverPagination.onPageChange(
+                    Math.min(
+                      serverPagination.page - 1,
+                      Math.max(serverPagination.totalPages, 1),
+                    ),
+                  )
+                : table.previousPage()
+            }
+            disabled={
+              serverPagination
+                ? serverPagination.isFetching || serverPagination.page <= 1
+                : !table.getCanPreviousPage()
+            }
           >
             Previous
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            className={serverPagination ? "min-h-11" : undefined}
+            onClick={() =>
+              serverPagination
+                ? serverPagination.onPageChange(serverPagination.page + 1)
+                : table.nextPage()
+            }
+            disabled={
+              serverPagination
+                ? serverPagination.isFetching ||
+                  serverPagination.page >= serverPagination.totalPages
+                : !table.getCanNextPage()
+            }
           >
             Next
           </Button>

@@ -16,7 +16,7 @@ import {
 
 vi.mock("@/lib/trpc/client", () => ({
   trpc: {
-    auth: { getProfile: { useQuery: vi.fn(() => ({ data: { id: "buyer-test" } })) } },
+    auth: { getProfile: { useQuery: vi.fn(() => ({ data: { id: "buyer-test", role: "buyer", verificationStatus: "verified" } })) } },
     listing: {
       getById: { useQuery: vi.fn() },
       getPurchaseConfig: { useQuery: vi.fn() },
@@ -72,7 +72,7 @@ vi.mock("@/lib/identity/display-name", () => ({
 // ---------------------------------------------------------------------------
 
 const mockListing = {
-  id: "listing-123",
+  id: "22222222-2222-4222-8222-222222222222",
   title: "Premium Oak Flooring",
   askPricePerSqFt: 3.5,
   buyNowPrice: 3.5,
@@ -134,12 +134,17 @@ function setupDefaultMocks(overrides?: {
   isLoading?: boolean;
   searchParamsGet?: (key: string) => string | null;
 }) {
-  vi.mocked(useParams).mockReturnValue({ id: "listing-123" });
+  vi.mocked(useParams).mockReturnValue({ id: "22222222-2222-4222-8222-222222222222" });
   vi.mocked(useRouter).mockReturnValue(
     mockRouter as unknown as ReturnType<typeof useRouter>,
   );
+  const getSearchParam = overrides?.searchParamsGet ?? vi.fn(() => null);
   vi.mocked(useSearchParams).mockReturnValue({
-    get: overrides?.searchParamsGet ?? vi.fn(() => null),
+    get: getSearchParam,
+    getAll: (key: string) => {
+      const value = getSearchParam(key);
+      return value === null ? [] : [value];
+    },
   } as unknown as ReturnType<typeof useSearchParams>);
 
   vi.mocked(trpc.listing.getById.useQuery).mockReturnValue({
@@ -201,12 +206,12 @@ describe("CheckoutPage", () => {
     expect(screen.queryByText("Checkout")).not.toBeInTheDocument();
   });
 
-  it("shows 'Listing Not Found' when listing is null", () => {
+  it("shows a recoverable listing read failure when listing is null", () => {
     setupDefaultMocks({ listing: null, isLoading: false });
 
     render(<CheckoutPage />);
 
-    expect(screen.getByText("Listing Not Found")).toBeInTheDocument();
+    expect(screen.getByText("We couldn't load this listing")).toBeInTheDocument();
     expect(screen.queryByText("Checkout")).not.toBeInTheDocument();
   });
 
@@ -318,6 +323,8 @@ describe("CheckoutPage", () => {
   it("shows 'Accepted Offer' banner when offerId present", () => {
     const mockOffer = {
       id: "offer-789",
+      listingId: mockListing.id,
+      buyerId: "buyer-test",
       status: "accepted",
       offerPricePerSqFt: 3.0,
       counterPricePerSqFt: null,
@@ -360,7 +367,7 @@ describe("CheckoutPage", () => {
     expect(toast.error).toHaveBeenCalledWith(
       "This seller hasn't set up payment processing yet.",
     );
-    expect(mockRouter.push).toHaveBeenCalledWith("/listings/listing-123");
+    expect(mockRouter.push).toHaveBeenCalledWith("/listings/22222222-2222-4222-8222-222222222222");
   });
 
   it("shows 'Back to listing' button", () => {
@@ -387,7 +394,7 @@ describe("CheckoutPage saved order recovery", () => {
   const order = { id: "same-order", status: "pending", paymentStatus: "pending", taxAmount: 0, totalPrice: 100, taxStatus: "disabled", taxLiability: "none", taxJurisdictionSummary: [] };
   beforeEach(() => {
     vi.clearAllMocks(); window.sessionStorage.clear(); setupDefaultMocks();
-    window.sessionStorage.setItem("plankmarket:checkout:v1:buyer-test:listing-123:direct", JSON.stringify(saved));
+    window.sessionStorage.setItem("plankmarket:checkout:v1:buyer-test:22222222-2222-4222-8222-222222222222:direct", JSON.stringify(saved));
   });
 
   it("recovers a lost create response even when the full lot is no longer listed", async () => {
@@ -427,7 +434,7 @@ describe("CheckoutPage saved order recovery", () => {
     await userEvent.setup().click(await screen.findByRole("button", { name: "Resume saved checkout" }));
     await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith("/buyer/orders/same-order"));
     expect(payment).not.toHaveBeenCalled();
-    expect(window.sessionStorage.getItem("plankmarket:checkout:v1:buyer-test:listing-123:direct")).not.toBeNull();
+    expect(window.sessionStorage.getItem("plankmarket:checkout:v1:buyer-test:22222222-2222-4222-8222-222222222222:direct")).not.toBeNull();
   });
 
   it("does not discard the saved attempt when server reset is rejected", async () => {
@@ -435,6 +442,48 @@ describe("CheckoutPage saved order recovery", () => {
     render(<CheckoutPage />);
     await userEvent.setup().click(await screen.findByRole("button", { name: "Change checkout details" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Active reservation"));
-    expect(window.sessionStorage.getItem("plankmarket:checkout:v1:buyer-test:listing-123:direct")).not.toBeNull();
+    expect(window.sessionStorage.getItem("plankmarket:checkout:v1:buyer-test:22222222-2222-4222-8222-222222222222:direct")).not.toBeNull();
+  });
+});
+
+
+describe("CheckoutPage purchasing seller approval and recovery", () => {
+  const actorId = "purchasing-seller";
+  const listingId = "22222222-2222-4222-8222-222222222222";
+  function seller(status: string) {
+    vi.mocked(trpc.auth.getProfile.useQuery).mockReturnValue({ data: { id: actorId, role: "seller", verificationStatus: status, stripeOnboardingComplete: false }, isLoading: false, isError: false } as unknown as ReturnType<typeof trpc.auth.getProfile.useQuery>);
+  }
+  beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); setupDefaultMocks(); seller("verified"); });
+  afterEach(() => {
+    vi.mocked(trpc.auth.getProfile.useQuery).mockReturnValue({ data: { id: "buyer-test", role: "buyer", verificationStatus: "verified" } } as unknown as ReturnType<typeof trpc.auth.getProfile.useQuery>);
+  });
+  it.each([
+    ["unverified", "Verify your business before checkout"],
+    ["pending", "Your business review is in progress"],
+    ["rejected", "Update your business verification"],
+  ])("gates a fresh %s seller purchase without a new order or payment", async (status, heading) => {
+    seller(status); render(<CheckoutPage />);
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue to Shipping" })).not.toBeInTheDocument();
+    expect(mockMutationReturn.mutateAsync).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /verify my business|check verification status|update verification/i }).getAttribute("href")).toContain("/buyer/verification?redirect=");
+  });
+  it("a verified seller can buy without configuring its own Connect account", async () => {
+    render(<CheckoutPage />);
+    expect(await screen.findByRole("button", { name: "Continue to Shipping" })).toBeInTheDocument();
+    expect(screen.queryByText(/set up payments/i)).not.toBeInTheDocument();
+  });
+  it("keeps a pending seller's existing saved-attempt recovery ahead of the fresh-purchase gate", async () => {
+    seller("pending"); setupDefaultMocks({ listing: null });
+    const saved = { mode: "direct", input: { requestId: "11111111-1111-4111-8111-111111111111", listingId, quantitySqFt: 2000, shippingName: "Synthetic Buyer", shippingAddress: "123 Main Street", shippingCity: "Denver", shippingState: "CO", shippingZip: "80202", selectedQuoteToken: "consumed-fixture-quote" } };
+    const key = `plankmarket:checkout:v1:${actorId}:${listingId}:direct`; sessionStorage.setItem(key, JSON.stringify(saved));
+    const create = vi.fn().mockResolvedValue({ id: "same-persisted-order", status: "pending", paymentStatus: "processing", taxAmount: 0, totalPrice: 100, taxStatus: "disabled", taxLiability: "none", taxJurisdictionSummary: [] });
+    const payment = vi.fn();
+    vi.mocked(trpc.order.create.useMutation).mockReturnValue({ mutateAsync: create } as unknown as ReturnType<typeof trpc.order.create.useMutation>);
+    vi.mocked(trpc.payment.createPaymentIntent.useMutation).mockReturnValue({ mutateAsync: payment } as unknown as ReturnType<typeof trpc.payment.createPaymentIntent.useMutation>);
+    render(<CheckoutPage />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Resume saved checkout" }));
+    await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith("/buyer/orders/same-persisted-order"));
+    expect(create).toHaveBeenCalledWith(saved.input); expect(payment).not.toHaveBeenCalled(); expect(sessionStorage.getItem(key)).not.toBeNull();
   });
 });

@@ -156,6 +156,7 @@ export interface SearchFilters {
   certifications?: Certification[];
   minLotSize?: number;
   maxLotSize?: number;
+  hideQuantityConflicts?: true;
   maxDistance?: number;
   buyerZip?: string;
   waterproofRequired?: true;

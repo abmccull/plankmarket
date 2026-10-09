@@ -39,6 +39,8 @@ export const userPreferences = pgTable(
     minWearLayerMil: real("min_wear_layer_mil"),
     preferredCertifications: jsonb("preferred_certifications").$type<string[]>(),
     waterproofRequired: boolean("waterproof_required").default(false),
+    buyerMatchInAppEnabled: boolean("buyer_match_in_app_enabled").default(true).notNull(),
+    buyerMatchEmailEnabled: boolean("buyer_match_email_enabled").default(false).notNull(),
 
     // === SELLER FIELDS ===
     originZip: varchar("origin_zip", { length: 10 }),

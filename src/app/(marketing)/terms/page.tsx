@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -59,7 +58,7 @@ export default function TermsOfServicePage() {
       title: "Eligibility",
       content: (
         <p className="text-sm text-muted-foreground">
-          You must be at least 18 years old and have the legal capacity to enter into contracts to use PlankMarket. By registering an account, you represent and warrant that you meet these eligibility requirements. You also represent that you are acting on behalf of a legitimate business entity with authority to bind that entity to these terms. Buyers may register and browse before verification, but must be approved before placing orders. Sellers may register and explore before verification, but must be approved before creating listings.
+          You must be at least 18 years old and have the legal capacity to enter into contracts to use PlankMarket. By registering an account, you represent and warrant that you meet these eligibility requirements. You also represent that you are acting on behalf of a legitimate business entity with authority to bind that entity to these terms. Buyers may register and browse before verification, but must be approved before placing orders. Sellers may register, explore and prepare one listing draft in their browser before verification. Approval is required before uploading product photos or publishing listings.
         </p>
       ),
     },
@@ -73,11 +72,11 @@ export default function TermsOfServicePage() {
             You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Provide accurate and complete registration information</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Keep your account information up to date</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Notify us immediately of any unauthorized use of your account</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Not share your account credentials with others</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Not create multiple accounts for fraudulent purposes</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Provide accurate and complete registration information</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Keep your account information up to date</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Notify us immediately of any unauthorized use of your account</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Not share your account credentials with others</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Not create multiple accounts for fraudulent purposes</span></li>
           </ul>
         </div>
       ),
@@ -92,11 +91,11 @@ export default function TermsOfServicePage() {
             Sellers are responsible for the accuracy and completeness of all listing information. Sellers warrant that:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>They have legal ownership or authorization to sell listed items</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>All product information is accurate and not misleading</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Listed products comply with all applicable laws and regulations</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Product images accurately represent the actual items for sale</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>They will honor the terms and pricing stated in their listings</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">They have legal ownership or authorization to sell listed items</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">All product information is accurate and not misleading</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Listed products comply with all applicable laws and regulations</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Product images accurately represent the actual items for sale</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">They will honor the terms and pricing stated in their listings</span></li>
           </ul>
         </div>
       ),
@@ -119,11 +118,11 @@ export default function TermsOfServicePage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">PlankMarket charges the following fees:</p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Buyer Fee:</strong> 5% of the inventory subtotal only, added to the buyer&apos;s total at checkout</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Fee:</strong> 5% of the inventory subtotal, deducted from seller payout</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seller Processing Fee:</strong> 2.9% + $0.30 calculated on inventory subtotal only and deducted from seller payout</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Platform Processing Share:</strong> PlankMarket absorbs processing costs attributable to shipping and any remaining processor share not assigned to seller</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Shipping Charge:</strong> Shipping is quoted separately at checkout. The quoted amount may include carrier charges plus PlankMarket shipping margin and is charged to the buyer unless otherwise agreed</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Buyer Fee:</strong> 5% of the inventory subtotal only, added to the buyer&apos;s total at checkout</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Seller Fee:</strong> 5% of the inventory subtotal, deducted from seller payout</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Seller Processing Fee:</strong> 2.9% + $0.30 calculated on inventory subtotal only and deducted from seller payout</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Platform Processing Share:</strong> PlankMarket absorbs processing costs attributable to shipping and any remaining processor share not assigned to seller</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Shipping Charge:</strong> Shipping is quoted separately at checkout. The quoted amount may include carrier charges plus PlankMarket shipping margin and is charged to the buyer unless otherwise agreed</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             All fees are subject to change with 30 days notice. Fees are non-refundable except as required by law or as explicitly stated in our refund policy.
@@ -167,13 +166,13 @@ export default function TermsOfServicePage() {
             Surplus flooring materials are sold in the condition described in the listing. Common condition grades include:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>New Overstock:</strong> Unused, first-quality materials from excess production or canceled orders</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Discontinued:</strong> First-quality materials no longer in active production</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Closeout:</strong> End-of-line inventory being cleared at reduced prices</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Seconds:</strong> Materials with minor cosmetic imperfections that do not affect performance</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Slight Damage:</strong> Materials with visible defects; extent described in listing</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Returns:</strong> Previously sold materials returned by end customers; condition varies</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><strong>Remnants:</strong> Partial lots or leftover quantities from larger orders</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>New Overstock:</strong> Unused, first-quality materials from excess production or canceled orders</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Discontinued:</strong> First-quality materials no longer in active production</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Closeout:</strong> End-of-line inventory being cleared at reduced prices</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Seconds:</strong> Materials with minor cosmetic imperfections that do not affect performance</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Slight Damage:</strong> Materials with visible defects; extent described in listing</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Returns:</strong> Previously sold materials returned by end customers; condition varies</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1"><strong>Remnants:</strong> Partial lots or leftover quantities from larger orders</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             Sellers must accurately describe the condition of materials. Buyers acknowledge that surplus materials may have minor variations and should review all listing photos and descriptions carefully before purchase.
@@ -218,9 +217,9 @@ export default function TermsOfServicePage() {
             Buyers have 48 hours after delivery to report damage, shortage, or material discrepancy to PlankMarket with supporting evidence including:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Photographs of damaged or incorrect materials</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Copy of the signed delivery receipt with noted exceptions</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Description of the issue</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Photographs of damaged or incorrect materials</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Copy of the signed delivery receipt with noted exceptions</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Description of the issue</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             Claims submitted after the 48-hour reporting window are accepted
@@ -243,9 +242,9 @@ export default function TermsOfServicePage() {
             In the event of a dispute between buyer and seller, PlankMarket will mediate in good faith. Both parties agree to:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Provide requested evidence within 3 business days</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Cooperate with PlankMarket&apos;s investigation</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Accept PlankMarket&apos;s resolution as binding for transactions under $5,000</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Provide requested evidence within 3 business days</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Cooperate with PlankMarket&apos;s investigation</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Accept PlankMarket&apos;s resolution as binding for transactions under $5,000</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             For disputes exceeding $5,000, either party may pursue resolution through binding arbitration administered by the American Arbitration Association under its Commercial Arbitration Rules, conducted in the State of Wyoming.
@@ -266,10 +265,10 @@ export default function TermsOfServicePage() {
             If a buyer initiates a chargeback or payment reversal through their payment provider, PlankMarket reserves the right to:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Suspend the buyer&apos;s account pending investigation</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Provide transaction evidence to the payment processor</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Deduct disputed amounts from the buyer&apos;s future transactions</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Pursue recovery of funds if the chargeback is determined to be fraudulent</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Suspend the buyer&apos;s account pending investigation</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Provide transaction evidence to the payment processor</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Deduct disputed amounts from the buyer&apos;s future transactions</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Pursue recovery of funds if the chargeback is determined to be fraudulent</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             PlankMarket retains delivery confirmation and dispute records for chargeback review. Chargeback outcomes are determined by Stripe and the applicable payment networks and are not guaranteed.
@@ -287,10 +286,10 @@ export default function TermsOfServicePage() {
             By listing materials on PlankMarket, sellers represent and warrant that:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>They have clear title and authority to sell the listed materials</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Material descriptions, photos, and condition reports are accurate</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Materials comply with applicable safety standards (CARB2, FloorScore, etc. where claimed)</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Materials do not infringe on any third-party intellectual property rights</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">They have clear title and authority to sell the listed materials</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Material descriptions, photos, and condition reports are accurate</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Materials comply with applicable safety standards (CARB2, FloorScore, etc. where claimed)</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Materials do not infringe on any third-party intellectual property rights</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             Sellers agree to indemnify and hold harmless PlankMarket from any claims arising from misrepresentation, intellectual property infringement, product defects, or regulatory non-compliance related to their listings.
@@ -306,14 +305,14 @@ export default function TermsOfServicePage() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">The following items and activities are strictly prohibited:</p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Counterfeit or illegally obtained goods</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Products that violate intellectual property rights</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Hazardous materials not properly classified and documented</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Stolen property or property obtained through fraud</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Items that violate local, state, or federal laws</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Fraudulent listings or deceptive practices</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Harassment, threats, or abusive behavior toward other users</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Attempts to circumvent platform fees or payment systems</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Counterfeit or illegally obtained goods</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Products that violate intellectual property rights</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Hazardous materials not properly classified and documented</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Stolen property or property obtained through fraud</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Items that violate local, state, or federal laws</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Fraudulent listings or deceptive practices</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Harassment, threats, or abusive behavior toward other users</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Attempts to circumvent platform fees or payment systems</span></li>
           </ul>
         </div>
       ),
@@ -328,11 +327,11 @@ export default function TermsOfServicePage() {
             PlankMarket provides the platform on an &quot;as is&quot; and &quot;as available&quot; basis. We make no warranties, express or implied, regarding the quality, accuracy, or availability of products listed. To the fullest extent permitted by law, PlankMarket shall not be liable for:
           </p>
           <ul className="space-y-1.5 text-sm text-muted-foreground ml-4">
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Any indirect, incidental, special, or consequential damages</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Loss of profits, revenue, data, or business opportunities</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Product quality, delivery, or post-sale issues</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Actions or omissions of buyers or sellers on the platform</li>
-            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span>Unauthorized access to or alteration of your data</li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Any indirect, incidental, special, or consequential damages</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Loss of profits, revenue, data, or business opportunities</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Product quality, delivery, or post-sale issues</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Actions or omissions of buyers or sellers on the platform</span></li>
+            <li className="flex items-start gap-2"><span className="text-primary mt-1.5 shrink-0">&#8226;</span><span className="min-w-0 flex-1">Unauthorized access to or alteration of your data</span></li>
           </ul>
           <p className="text-sm text-muted-foreground">
             Our total liability shall not exceed the fees paid by you to PlankMarket in the 12 months preceding the claim.
@@ -404,11 +403,11 @@ export default function TermsOfServicePage() {
   return (
     <>
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-[40px] sm:py-16">
         <div className="absolute top-20 left-10 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
         <div className="absolute bottom-10 right-10 w-96 h-96 bg-accent/10 rounded-full blur-3xl" />
 
-        <div className="container mx-auto px-4 relative z-10">
+        <div className="container mx-auto px-[16px] relative z-10">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Legal
@@ -427,21 +426,40 @@ export default function TermsOfServicePage() {
       </section>
 
       {/* Sections */}
-      <section className="py-20">
-        <div className="container mx-auto px-4">
+      <section className="py-10 sm:py-16">
+        <div className="container mx-auto px-[16px]">
           <div className="max-w-3xl mx-auto space-y-4">
+            <details className="mb-6 border-y border-border py-2">
+              <summary id="terms-contents" className="min-h-11 cursor-pointer scroll-mt-28 py-3 font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                On this page
+              </summary>
+              <nav aria-label="Terms of service sections">
+                <ol className="grid gap-x-4 pb-3 sm:grid-cols-2">
+                  {sections.map((section) => (
+                    <li key={section.number} className="min-w-0">
+                      <a href={"#terms-section-" + section.number} className="block min-h-11 py-3 text-sm text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                        {section.number}. {section.title}
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </nav>
+            </details>
             {sections.map((section) => (
               <Card key={section.number}>
-                <CardHeader className="flex-row items-start gap-4 pb-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center shrink-0">
+                <CardHeader className="flex-row items-start gap-[12px] space-y-0 p-[16px] pb-[12px]">
+                  <div aria-hidden="true" className="hidden h-[32px] w-[32px] shrink-0 items-center justify-center rounded-full bg-primary/10 sm:flex">
                     <section.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <CardTitle className="text-lg font-display pt-1.5">
+                  <h2 id={"terms-section-" + section.number} tabIndex={-1} className="min-w-0 scroll-mt-28 font-display text-lg leading-snug">
                     {section.number}. {section.title}
-                  </CardTitle>
+                  </h2>
                 </CardHeader>
-                <CardContent className="pl-[4.5rem]">
+                <CardContent className="px-[16px] pb-[16px] pt-0">
                   {section.content}
+                  <a href="#terms-contents" className="mt-4 inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+                    Return to contents
+                  </a>
                 </CardContent>
               </Card>
             ))}
@@ -451,7 +469,7 @@ export default function TermsOfServicePage() {
 
       {/* CTA */}
       <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-[16px]">
           <div className="max-w-3xl mx-auto text-center">
             <Separator className="mb-8" />
             <div className="flex items-center justify-center gap-2 mb-4">
@@ -462,16 +480,16 @@ export default function TermsOfServicePage() {
               Please also review our other policies that govern your use of PlankMarket.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/privacy">
-                <Button variant="outline">
+              <Button asChild variant="outline" className="h-auto min-h-11 whitespace-normal">
+                <Link href="/privacy">
                   Privacy Policy <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <Link href="/contact">
-                <Button variant="outline">
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="h-auto min-h-11 whitespace-normal">
+                <Link href="/contact">
                   Contact Us <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { noContactInfo } from "@/lib/content-filter/zod";
 
 const materialTypes = [
   "hardwood",
@@ -82,7 +83,7 @@ export const updateBuyerRequestSchema = z.object({
 export const createResponseSchema = z.object({
   requestId: z.string().uuid(),
   listingId: z.string().uuid("Select an active listing"),
-  message: z.string().min(1).max(2000),
+  message: z.string().min(1).max(2000).superRefine(noContactInfo("response")),
 });
 
 export const buyerRequestFilterSchema = z.object({

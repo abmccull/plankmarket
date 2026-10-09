@@ -1,8 +1,4 @@
-import {
-  createTRPCRouter,
-  buyerProcedure,
-  sellerProcedure,
-} from "../trpc";
+import { createTRPCRouter, buyerProcedure, sellerProcedure } from "../trpc";
 import {
   createBuyerRequestSchema,
   updateBuyerRequestSchema,
@@ -32,7 +28,13 @@ import {
 } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { detectSelfReference, getBlockedContentMessage } from "@/lib/content-filter";
 import { resolveBuyerRequestListingMatch } from "@/server/services/buyer-request-listing-match";
+import {
+  isProductImageMimeType,
+  retainedMediaIds,
+  publicProductPhotoWhere,
+} from "@/server/services/listing-media";
 
 /**
  * Maximum number of open requests a buyer may have at once.
@@ -50,7 +52,7 @@ const REQUEST_EXPIRY_DAYS = 30;
 function generateRequestTitle(
   materialTypes: string[],
   minTotalSqFt: number,
-  destinationZip: string
+  destinationZip: string,
 ): string {
   const matLabel = materialTypes
     .map((m) => m.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()))
@@ -69,79 +71,117 @@ export const buyerRequestRouter = createTRPCRouter({
    */
   create: buyerProcedure
     .input(createBuyerRequestSchema)
-    .mutation(async ({ ctx, input }) => {
-      // Enforce max open request limit
-      const [{ count }] = await ctx.db
-        .select({ count: sql<number>`cast(count(*) as integer)` })
-        .from(buyerRequests)
-        .where(
-          and(
-            eq(buyerRequests.buyerId, ctx.user.id),
-            eq(buyerRequests.status, "open")
-          )
+    .mutation(async ({ ctx, input }) =>
+      ctx.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`buyer-request:${ctx.user.id}`}, 0))`,
         );
-
-      if (count >= MAX_OPEN_REQUESTS) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `You can have at most ${MAX_OPEN_REQUESTS} open requests at a time. Please close an existing request before creating a new one.`,
-        });
-      }
-
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + REQUEST_EXPIRY_DAYS);
-
-      const title = generateRequestTitle(
-        input.materialTypes,
-        input.minTotalSqFt,
-        input.destinationZip
-      );
-
-      const [request] = await ctx.db
-        .insert(buyerRequests)
-        .values({
-          buyerId: ctx.user.id,
-          title,
-          materialTypes: input.materialTypes,
-          minTotalSqFt: input.minTotalSqFt,
-          maxTotalSqFt: input.maxTotalSqFt,
-          priceMaxPerSqFt: input.priceMaxPerSqFt,
-          priceMinPerSqFt: input.priceMinPerSqFt,
-          destinationZip: input.destinationZip,
-          pickupOk: input.pickupOk,
-          pickupRadiusMiles: input.pickupRadiusMiles,
-          shippingOk: input.shippingOk,
-          specs: input.specs,
-          notes: input.notes,
-          urgency: input.urgency,
-          expiresAt,
-        })
-        .returning();
-
-      if (!request) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create request",
-        });
-      }
-
-      // Link uploaded media to this request (only unclaimed media)
-      if (input.mediaIds && input.mediaIds.length > 0) {
-        await ctx.db
-          .update(media)
-          .set({ buyerRequestId: request.id })
+        // Enforce max open request limit
+        const [{ count }] = await tx
+          .select({ count: sql<number>`cast(count(*) as integer)` })
+          .from(buyerRequests)
           .where(
             and(
-              inArray(media.id, input.mediaIds),
-              isNull(media.buyerRequestId),
-              isNull(media.listingId),
-              eq(media.uploaderId, ctx.user.id),
-            )
+              eq(buyerRequests.buyerId, ctx.user.id),
+              eq(buyerRequests.status, "open"),
+            ),
           );
-      }
 
-      return request;
-    }),
+        if (count >= MAX_OPEN_REQUESTS) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `You can have at most ${MAX_OPEN_REQUESTS} open requests at a time. Please close an existing request before creating a new one.`,
+          });
+        }
+
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + REQUEST_EXPIRY_DAYS);
+
+        const title = generateRequestTitle(
+          input.materialTypes,
+          input.minTotalSqFt,
+          input.destinationZip,
+        );
+
+        const [request] = await tx
+          .insert(buyerRequests)
+          .values({
+            buyerId: ctx.user.id,
+            title,
+            materialTypes: input.materialTypes,
+            minTotalSqFt: input.minTotalSqFt,
+            maxTotalSqFt: input.maxTotalSqFt,
+            priceMaxPerSqFt: input.priceMaxPerSqFt,
+            priceMinPerSqFt: input.priceMinPerSqFt,
+            destinationZip: input.destinationZip,
+            pickupOk: input.pickupOk,
+            pickupRadiusMiles: input.pickupRadiusMiles,
+            shippingOk: input.shippingOk,
+            specs: input.specs,
+            notes: input.notes,
+            urgency: input.urgency,
+            expiresAt,
+          })
+          .returning();
+
+        if (!request) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to create request",
+          });
+        }
+
+        // Validate the complete selection under media locks, atomically with the
+        // request. Retained evidence and uncertain deletions are never reusable.
+        if (input.mediaIds && input.mediaIds.length > 0) {
+          const selected = await tx
+            .select()
+            .from(media)
+            .where(inArray(media.id, input.mediaIds))
+            .orderBy(asc(media.id))
+            .for("update");
+          const retained = await retainedMediaIds(tx, input.mediaIds);
+          if (
+            selected.length !== input.mediaIds.length ||
+            retained.size ||
+            selected.some(
+              (photo) =>
+                photo.uploaderId !== ctx.user.id ||
+                photo.listingId ||
+                photo.buyerRequestId ||
+                photo.deletionClaimToken ||
+                !isProductImageMimeType(photo.mimeType),
+            )
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "A selected photo is unavailable or retained with a claim. Upload a separate supported image for this request.",
+            });
+          }
+          const attached = await tx
+            .update(media)
+            .set({ buyerRequestId: request.id })
+            .where(
+              and(
+                inArray(media.id, input.mediaIds),
+                isNull(media.buyerRequestId),
+                isNull(media.listingId),
+                isNull(media.deletionClaimToken),
+                eq(media.uploaderId, ctx.user.id),
+              ),
+            )
+            .returning({ id: media.id });
+          if (attached.length !== input.mediaIds.length)
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "A photo changed while saving. Refresh and try again.",
+            });
+        }
+
+        return request;
+      }),
+    ),
 
   /**
    * Get the current buyer's requests, paginated, with response counts.
@@ -151,7 +191,7 @@ export const buyerRequestRouter = createTRPCRouter({
       z.object({
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(50).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const offset = (input.page - 1) * input.limit;
@@ -159,12 +199,15 @@ export const buyerRequestRouter = createTRPCRouter({
       const [items, countResult] = await Promise.all([
         ctx.db.query.buyerRequests.findMany({
           where: eq(buyerRequests.buyerId, ctx.user.id),
-          orderBy: desc(buyerRequests.createdAt),
+          orderBy: [desc(buyerRequests.createdAt), desc(buyerRequests.id)],
           limit: input.limit,
           offset,
         }),
         ctx.db
-          .select({ count: sql<number>`cast(count(*) as integer)`, openCount: sql<number>`cast(count(*) filter (where ${buyerRequests.status} = 'open') as integer)` })
+          .select({
+            count: sql<number>`cast(count(*) as integer)`,
+            openCount: sql<number>`cast(count(*) filter (where ${buyerRequests.status} = 'open') as integer)`,
+          })
           .from(buyerRequests)
           .where(eq(buyerRequests.buyerId, ctx.user.id)),
       ]);
@@ -212,15 +255,38 @@ export const buyerRequestRouter = createTRPCRouter({
       const [responses, requestMedia] = await Promise.all([
         ctx.db.query.buyerRequestResponses.findMany({
           where: eq(buyerRequestResponses.requestId, input.requestId),
-          orderBy: desc(buyerRequestResponses.createdAt),
+          orderBy: [desc(buyerRequestResponses.createdAt), desc(buyerRequestResponses.id)],
         }),
         ctx.db.query.media.findMany({
-          where: eq(media.buyerRequestId, input.requestId),
+          where: and(
+            eq(media.buyerRequestId, input.requestId),
+            publicProductPhotoWhere(media),
+          ),
           orderBy: (media, { asc }) => [asc(media.sortOrder)],
         }),
       ]);
 
-      return { ...request, responses, media: requestMedia };
+      // This read only resolves the already-created conversation for the selected
+      // response. Ownership was checked above; never create a destination here.
+      const accepted = responses.find((response) => response.status === "accepted" && response.listingId);
+      const conversation = accepted?.listingId
+        ? await ctx.db.query.conversations.findFirst({
+            where: and(
+              eq(conversations.listingId, accepted.listingId),
+              eq(conversations.buyerId, request.buyerId),
+              eq(conversations.sellerId, accepted.sellerId),
+            ),
+            columns: { id: true },
+          })
+        : undefined;
+      return {
+        ...request,
+        responses: responses.map((response) => ({
+          ...response,
+          conversationId: response.id === accepted?.id ? conversation?.id ?? null : null,
+        })),
+        media: requestMedia,
+      };
     }),
 
   /**
@@ -489,7 +555,9 @@ export const buyerRequestRouter = createTRPCRouter({
         }
         if (
           request.status !== "open" &&
-          !(request.status === "matched" && existingAccepted?.id === response.id)
+          !(
+            request.status === "matched" && existingAccepted?.id === response.id
+          )
         ) {
           throw new TRPCError({
             code: "CONFLICT",
@@ -572,7 +640,10 @@ export const buyerRequestRouter = createTRPCRouter({
           )
           .limit(1);
 
-        if (!attachedListing || attachedListing.sellerId !== response.sellerId) {
+        if (
+          !attachedListing ||
+          attachedListing.sellerId !== response.sellerId
+        ) {
           throw new TRPCError({
             code: "CONFLICT",
             message:
@@ -810,26 +881,22 @@ export const buyerRequestRouter = createTRPCRouter({
         conditions.push(
           sql`${buyerRequests.materialTypes} ?| array[${sql.join(
             input.materialTypes.map((m) => sql`${m}`),
-            sql`, `
-          )}]`
+            sql`, `,
+          )}]`,
         );
       }
 
       if (input.minSqFt !== undefined) {
-        conditions.push(
-          sql`${buyerRequests.minTotalSqFt} >= ${input.minSqFt}`
-        );
+        conditions.push(sql`${buyerRequests.minTotalSqFt} >= ${input.minSqFt}`);
       }
 
       if (input.maxSqFt !== undefined) {
-        conditions.push(
-          sql`${buyerRequests.minTotalSqFt} <= ${input.maxSqFt}`
-        );
+        conditions.push(sql`${buyerRequests.minTotalSqFt} <= ${input.maxSqFt}`);
       }
 
       if (input.maxPricePerSqFt !== undefined) {
         conditions.push(
-          sql`${buyerRequests.priceMaxPerSqFt} <= ${input.maxPricePerSqFt}`
+          sql`${buyerRequests.priceMaxPerSqFt} <= ${input.maxPricePerSqFt}`,
         );
       }
 
@@ -849,14 +916,14 @@ export const buyerRequestRouter = createTRPCRouter({
 
       const orderBy =
         input.sort === "newest"
-          ? [desc(buyerRequests.createdAt)]
+          ? [desc(buyerRequests.createdAt), desc(buyerRequests.id)]
           : input.sort === "urgency"
-          ? [asc(urgencyOrder), desc(buyerRequests.createdAt)]
-          : input.sort === "sqft_desc"
-          ? [desc(buyerRequests.minTotalSqFt)]
-          : input.sort === "price_desc"
-          ? [desc(buyerRequests.priceMaxPerSqFt)]
-          : [desc(buyerRequests.createdAt)];
+            ? [asc(urgencyOrder), desc(buyerRequests.createdAt), desc(buyerRequests.id)]
+            : input.sort === "sqft_desc"
+              ? [desc(buyerRequests.minTotalSqFt), desc(buyerRequests.id)]
+              : input.sort === "price_desc"
+                ? [desc(buyerRequests.priceMaxPerSqFt), desc(buyerRequests.id)]
+                : [desc(buyerRequests.createdAt), desc(buyerRequests.id)];
 
       const [items, countResult] = await Promise.all([
         ctx.db.query.buyerRequests.findMany({
@@ -867,6 +934,7 @@ export const buyerRequestRouter = createTRPCRouter({
           with: {
             media: {
               columns: { id: true, url: true },
+              where: publicProductPhotoWhere,
               orderBy: (media, { asc }) => [asc(media.sortOrder)],
               limit: 1,
             },
@@ -983,10 +1051,30 @@ export const buyerRequestRouter = createTRPCRouter({
         if (!territoryMatch.eligible) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message:
-              "That listing is not eligible for the buyer's destination",
+            message: "That listing is not eligible for the buyer's destination",
           });
         }
+
+        // Request-response policy: reuse the canonical context-aware detector.
+        const highConfidence = detectSelfReference(input.message, ctx.user).filter(
+          (detection) => detection.level === "high",
+        );
+        if (highConfidence.length > 0) {
+          const message = getBlockedContentMessage("response", highConfidence);
+          // Parser-produced Zod errors retain their Error prototype through
+          // tRPC, so the form receives its structured message-field feedback.
+          const validation = z
+            .object({ message: z.string().refine(() => false, message) })
+            .safeParse({ message: input.message });
+          if (!validation.success) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message,
+              cause: validation.error,
+            });
+          }
+        }
+        // End request-response policy.
 
         const [newResponse] = await tx
           .insert(buyerRequestResponses)
@@ -1039,7 +1127,7 @@ export const buyerRequestRouter = createTRPCRouter({
       z.object({
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(50).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const offset = (input.page - 1) * input.limit;
@@ -1047,7 +1135,7 @@ export const buyerRequestRouter = createTRPCRouter({
       const [items, countResult] = await Promise.all([
         ctx.db.query.buyerRequestResponses.findMany({
           where: eq(buyerRequestResponses.sellerId, ctx.user.id),
-          orderBy: desc(buyerRequestResponses.createdAt),
+          orderBy: [desc(buyerRequestResponses.createdAt), desc(buyerRequestResponses.id)],
           limit: input.limit,
           offset,
           with: {

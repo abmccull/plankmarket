@@ -1,7 +1,9 @@
 "use client";
 
-import Image from "next/image";
+import { ListingImage as Image } from "@/components/listings/listing-image";
 import Link from "next/link";
+import { Suspense } from "react";
+import { useOrderHistoryFilters, OrderHistoryFilter, OrderHistoryPager, OrderHistoryFilteredEmpty } from "@/components/dashboard/order-history-controls";
 import { trpc } from "@/lib/trpc/client";
 import { OrderStatusBadge } from "@/components/dashboard/status-badge";
 import {
@@ -13,12 +15,10 @@ import { formatCurrency, formatSqFt, formatDate } from "@/lib/utils";
 import { Package, Search } from "lucide-react";
 import type { OrderStatus } from "@/types";
 
-export default function BuyerOrdersPage() {
+function BuyerOrdersContent() {
+  const filters = useOrderHistoryFilters();
   const { data, isLoading, isError, isFetching, refetch } =
-    trpc.order.getMyOrders.useQuery({
-      page: 1,
-      limit: 50,
-    });
+    trpc.order.getMyOrders.useQuery(filters.input);
 
   return (
     <div className="space-y-6">
@@ -28,6 +28,8 @@ export default function BuyerOrdersPage() {
           Track and manage your flooring purchases
         </p>
       </div>
+
+      <OrderHistoryFilter status={filters.status} onChange={filters.setStatus} />
 
       {isLoading ? (
         <StatePanelLoading label="Loading your orders" rows={4} />
@@ -39,6 +41,8 @@ export default function BuyerOrdersPage() {
           isRetrying={isFetching}
           secondaryAction={{ label: "Browse listings", href: "/listings" }}
         />
+      ) : data.items.length === 0 && (filters.status || filters.page > 1) ? (
+        <OrderHistoryFilteredEmpty page={filters.page} status={filters.status} onFirstPage={() => filters.setPage(1)} onClear={() => filters.setStatus("")} />
       ) : data.items.length === 0 ? (
         <StatePanel
           icon={Search}
@@ -73,12 +77,12 @@ export default function BuyerOrdersPage() {
 
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm text-muted-foreground">
+                    <span className="break-all font-mono text-sm text-muted-foreground">
                       {order.orderNumber}
                     </span>
                     <OrderStatusBadge status={order.status as OrderStatus} />
                   </div>
-                  <h2 className="mt-1 truncate font-medium">
+                  <h2 className="mt-1 line-clamp-2 break-words font-medium">
                     {order.listing.title}
                   </h2>
                   <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -101,6 +105,11 @@ export default function BuyerOrdersPage() {
           ))}
         </ul>
       )}
+      {!isLoading && !isError && data ? <OrderHistoryPager data={data} isFetching={isFetching} onPage={filters.setPage} /> : null}
     </div>
   );
+}
+
+export default function BuyerOrdersPage() {
+  return <Suspense fallback={<StatePanelLoading label="Loading order history" rows={4} />}><BuyerOrdersContent /></Suspense>;
 }

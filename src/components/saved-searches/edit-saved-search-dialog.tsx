@@ -16,7 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { getFilterBadges, filtersToSearchParams } from "@/lib/utils/search-filters";
+import {
+  getFilterBadges,
+  filtersToSearchParams,
+} from "@/lib/utils/search-filters";
 import type { SavedSearch } from "@/server/db/schema/saved-searches";
 
 type AlertFrequency = "instant" | "daily" | "weekly";
@@ -49,10 +52,10 @@ export function EditSavedSearchDialog({
   const [name, setName] = useState(search.name);
   const [alertEnabled, setAlertEnabled] = useState(search.alertEnabled);
   const [alertFrequency, setAlertFrequency] = useState<AlertFrequency>(
-    (search.alertFrequency as AlertFrequency) || "instant"
+    (search.alertFrequency as AlertFrequency) || "instant",
   );
   const [alertChannels, setAlertChannels] = useState<AlertChannel[]>(
-    (search.alertChannels as AlertChannel[]) || ["email"]
+    (search.alertChannels as AlertChannel[]) || ["email"],
   );
 
   const updateSearch = trpc.search.updateSavedSearch.useMutation();
@@ -87,7 +90,12 @@ export function EditSavedSearchDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!updateSearch.isPending) onOpenChange(next);
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Saved Search</DialogTitle>
@@ -105,6 +113,7 @@ export function EditSavedSearchDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={255}
+              disabled={updateSearch.isPending}
             />
           </div>
 
@@ -114,7 +123,11 @@ export function EditSavedSearchDialog({
             <div className="flex flex-wrap gap-1.5">
               {badges.length > 0 ? (
                 badges.map((b, i) => (
-                  <Badge key={`${b.key}-${i}`} variant="outline" className="text-xs">
+                  <Badge
+                    key={`${b.key}-${i}`}
+                    variant="outline"
+                    className="text-xs"
+                  >
                     {b.label}
                   </Badge>
                 ))
@@ -134,34 +147,35 @@ export function EditSavedSearchDialog({
 
           {/* Alert toggle */}
           <div className="space-y-2">
-            <Label>Alerts</Label>
+            <Label htmlFor="saved-search-alert-toggle">Alerts</Label>
             <button
               type="button"
+              id="saved-search-alert-toggle"
+              aria-label="Alerts for this saved search"
+              disabled={updateSearch.isPending}
               role="switch"
               aria-checked={alertEnabled}
               onClick={() => setAlertEnabled(!alertEnabled)}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                alertEnabled ? "bg-primary" : "bg-input"
-              }`}
+              className="flex min-h-11 items-center rounded-md border px-3 text-sm font-medium disabled:opacity-50"
             >
-              <span
-                className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${
-                  alertEnabled ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
+              {alertEnabled ? "Alerts enabled" : "Alerts paused"}
             </button>
           </div>
 
           {/* Frequency */}
-          <div className={`space-y-2 ${!alertEnabled ? "opacity-50 pointer-events-none" : ""}`}>
+          <div
+            className={`space-y-2 ${!alertEnabled ? "opacity-50 pointer-events-none" : ""}`}
+          >
             <Label>Frequency</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {FREQUENCY_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => setAlertFrequency(opt.value)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  aria-pressed={alertFrequency === opt.value}
+                  disabled={!alertEnabled || updateSearch.isPending}
+                  className={`min-h-11 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                     alertFrequency === opt.value
                       ? "bg-primary text-primary-foreground"
                       : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
@@ -174,9 +188,11 @@ export function EditSavedSearchDialog({
           </div>
 
           {/* Channels */}
-          <div className={`space-y-2 ${!alertEnabled ? "opacity-50 pointer-events-none" : ""}`}>
+          <div
+            className={`space-y-2 ${!alertEnabled ? "opacity-50 pointer-events-none" : ""}`}
+          >
             <Label>Channels</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {CHANNEL_OPTIONS.map((opt) => {
                 const active = alertChannels.includes(opt.value);
                 return (
@@ -184,7 +200,9 @@ export function EditSavedSearchDialog({
                     key={opt.value}
                     type="button"
                     onClick={() => toggleChannel(opt.value)}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    aria-pressed={active}
+                    disabled={!alertEnabled || updateSearch.isPending}
+                    className={`min-h-11 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       active
                         ? "bg-secondary text-secondary-foreground"
                         : "border border-input bg-background hover:bg-accent hover:text-accent-foreground"
@@ -199,8 +217,21 @@ export function EditSavedSearchDialog({
           </div>
         </div>
 
+        <p className="text-xs text-muted-foreground">
+          Pausing stops new alert scheduling. Alerts already being processed may
+          still arrive.
+        </p>
+        {updateSearch.error && (
+          <p role="alert" className="text-sm text-destructive">
+            Your changes have not been confirmed. {updateSearch.error.message}
+          </p>
+        )}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            disabled={updateSearch.isPending}
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button

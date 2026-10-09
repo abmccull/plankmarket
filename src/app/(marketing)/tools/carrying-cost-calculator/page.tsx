@@ -1,135 +1,105 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
 import { CarryingCostCalculator } from "@/components/marketing/carrying-cost-calculator";
+import { carryingCostInputsFromQuery } from "@/lib/carrying-cost";
 
 export const metadata: Metadata = {
   title: "Inventory Carrying Cost Calculator | PlankMarket",
   description:
-    "Calculate the true cost of holding surplus flooring inventory. See warehouse, insurance, depreciation, and opportunity costs vs. selling at liquidation prices today.",
-  openGraph: {
-    title: "How Much Is Your Surplus Flooring Costing You Each Month?",
-    description:
-      "Free calculator: see storage, insurance, depreciation, and capital costs for holding surplus flooring inventory. Compare holding vs. selling today.",
-    type: "website",
-  },
+    "Compare illustrative holding and selling scenarios for surplus flooring. Set your own storage, insurance, capital and value-loss assumptions and review estimated seller fees.",
+  alternates: { canonical: "/tools/carrying-cost-calculator" },
 };
 
-export default function CarryingCostCalculatorPage() {
+export default async function CarryingCostCalculatorPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const inputs = carryingCostInputsFromQuery(await searchParams);
   return (
     <>
-      {/* ── Hero ── */}
-      <section className="py-16 md:py-20 bg-gradient-to-b from-primary/5 to-background">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
-              Free Tool
-            </Badge>
-            <h1 className="font-display text-3xl tracking-tight sm:text-4xl md:text-5xl">
-              Inventory Carrying Cost{" "}
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Calculator
-              </span>
-            </h1>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-              Every month surplus flooring sits in a warehouse, carrying costs
-              eat into your recovery. Plug in your numbers to see how much
-              holding is actually costing you — and what you would recover by
-              selling today.
-            </p>
-          </div>
+      <section className="border-b bg-muted/20 py-8 sm:py-12">
+        <div className="container mx-auto max-w-5xl px-4">
+          <p className="text-sm font-medium text-secondary">
+            Seller decision tool
+          </p>
+          <h1 className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">
+            Inventory carrying-cost calculator
+          </h1>
+          <p className="mt-3 max-w-2xl text-muted-foreground">
+            Compare selling a lot now with holding it for longer. Your
+            assumptions drive the estimate; actual prices, costs and sale timing
+            can differ.
+          </p>
         </div>
       </section>
-
-      {/* ── Calculator ── */}
-      <section className="py-12 md:py-16">
-        <div className="container mx-auto px-4 max-w-5xl">
-          <CarryingCostCalculator />
+      <section className="py-8 sm:py-10" aria-label="Carrying-cost calculator">
+        <div className="container mx-auto max-w-5xl px-4">
+          <CarryingCostCalculator
+            key={JSON.stringify(inputs)}
+            initialInputs={inputs}
+          />
         </div>
       </section>
-
-      {/* ── Context / Education ── */}
-      <section className="py-16 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto space-y-8">
-            <h2 className="font-display text-2xl sm:text-3xl text-center">
-              What goes into carrying costs?
-            </h2>
-            <div className="space-y-6 text-muted-foreground leading-relaxed">
-              <div>
-                <h3 className="font-display text-lg text-foreground mb-2">
-                  Warehouse storage
-                </h3>
-                <p>
-                  Rack space, climate control, property tax allocation, and
-                  utilities. Industry averages range from $0.50 to $1.25 per
-                  square foot per month depending on location and facility type.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-display text-lg text-foreground mb-2">
-                  Insurance
-                </h3>
-                <p>
-                  Inventory insurance typically runs 0.3% to 0.8% of inventory
-                  value per month. The more product sitting in your warehouse,
-                  the higher the premium.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-display text-lg text-foreground mb-2">
-                  Depreciation
-                </h3>
-                <p>
-                  Flooring products lose value over time as styles change,
-                  manufacturers discontinue lines, and market conditions shift.
-                  Closeout inventory depreciates faster than active product
-                  lines.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-display text-lg text-foreground mb-2">
-                  Cost of capital
-                </h3>
-                <p>
-                  Capital tied up in surplus inventory is capital you cannot
-                  deploy. Whether it is loan interest, lost investment returns,
-                  or delayed business spending, the opportunity cost is real and
-                  compounds monthly.
-                </p>
-              </div>
+      <section className="border-t py-8 sm:py-10">
+        <div className="container mx-auto max-w-5xl px-4">
+          <h2 className="font-display text-2xl">
+            Choose assumptions you can explain
+          </h2>
+          <dl className="mt-5 grid gap-6 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="font-semibold">Storage and insurance</dt>
+              <dd className="mt-1 leading-relaxed text-muted-foreground">
+                Use the monthly costs you allocate to this lot. Warehouse rent
+                depends on occupied space and your own allocation, not the
+                number of square feet of flooring in the lot.
+              </dd>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA ── */}
-      <section className="py-16">
-        <div className="container mx-auto px-4">
-          <div className="rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white relative overflow-hidden">
-            <div
-              aria-hidden="true"
-              className="absolute top-0 right-0 w-64 h-64 bg-accent/20 rounded-full blur-3xl"
-            />
-            <div className="text-center relative z-10">
-              <h2 className="font-display text-3xl sm:text-4xl mb-4">
-                Stop paying to store inventory that is not working for you.
-              </h2>
-              <p className="text-white/80 mb-8 max-w-xl mx-auto text-lg leading-relaxed">
-                List your surplus on PlankMarket and get it in front of verified
-                buyers in supported markets. A 5% seller marketplace fee plus
-                disclosed inventory payment processing applies when it sells.
-                No listing fee.
-              </p>
-              <Link href="/register?role=seller">
-                <Button size="xl" variant="gold">
-                  List Your Surplus Inventory
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
+            <div>
+              <dt className="font-semibold">Capital or opportunity cost</dt>
+              <dd className="mt-1 leading-relaxed text-muted-foreground">
+                Use a relevant annual financing rate or your chosen
+                opportunity-cost assumption. The model lists it separately from
+                storage and insurance cash costs.
+              </dd>
             </div>
+            <div>
+              <dt className="font-semibold">Estimated value loss</dt>
+              <dd className="mt-1 leading-relaxed text-muted-foreground">
+                Enter a monthly decline only if it fits your scenario. Zero
+                means no assumed decline. This is not a market valuation or an
+                expected return.
+              </dd>
+            </div>
+            <div>
+              <dt className="font-semibold">Sale discount and fees</dt>
+              <dd className="mt-1 leading-relaxed text-muted-foreground">
+                The same discount is applied to each sale-date value. Published
+                seller and processing fees are included for one hypothetical
+                sale. Other costs are excluded;{" "}
+                <Link
+                  href="/pricing"
+                  className="font-medium text-primary underline underline-offset-4"
+                >
+                  review the fee details
+                </Link>
+                .
+              </dd>
+            </div>
+          </dl>
+          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 border-t pt-5 text-sm font-medium">
+            <Link
+              href="/seller-guide"
+              className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+            >
+              Prepare a listing
+            </Link>
+            <Link
+              href="/listings"
+              className="inline-flex min-h-11 items-center text-primary underline underline-offset-4"
+            >
+              Browse available flooring
+            </Link>
           </div>
         </div>
       </section>

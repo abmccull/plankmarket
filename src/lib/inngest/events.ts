@@ -2,6 +2,7 @@ export const PLANKMARKET_EVENTS = {
   userRegistered: "user/registered",
   verificationSubmitted: "verification/submitted",
   listingCreated: "listing/created",
+  listingPublicationRecoveryPage: "listing/publication-recovery-page",
   savedSearchInstantPage: "saved-search/instant-page",
   savedSearchDigestPage: "saved-search/digest-page",
   shipmentTrackingPage: "shipment/tracking-page",
@@ -35,6 +36,9 @@ export type PlankMarketEventSchemas = {
   };
   "listing/created": {
     data: { listingId: string; sellerId: string };
+  };
+  "listing/publication-recovery-page": {
+    data: { scanStartedAt: string; afterCreatedAt?: string; afterId?: string };
   };
   "saved-search/instant-page": {
     data: {
@@ -125,10 +129,20 @@ export type PlankMarketEventSchemas = {
     data: { userId: string };
   };
   "subscription/payment-failed": {
-    data: { userId: string };
+    data: {
+      userId: string;
+      customerId?: string;
+      subscriptionId?: string;
+      sourceStripeEventId?: string;
+    };
   };
   "subscription/expired": {
-    data: { userId: string };
+    data: {
+      userId: string;
+      customerId?: string;
+      subscriptionId?: string;
+      sourceStripeEventId?: string;
+    };
   };
 };
 

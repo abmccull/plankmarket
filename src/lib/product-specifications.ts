@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getWearLayerOptionsForSingle } from "@/lib/constants/flooring";
 
 export const packagingTypes = ["unknown", "sealed_cartons", "open_cartons", "loose_boards", "mixed"] as const;
 export const installationMethods = ["unknown", "click_lock", "glue_down", "nail_down", "staple_down", "floating", "multiple"] as const;
@@ -33,4 +34,25 @@ export function hasReviewedWaterproofSpecification(listing: { waterResistance?: 
 
 export function specificationLabel(value: string | null | undefined): string {
   return value ? value.replaceAll("_", " ") : "Unknown";
+}
+
+/** Use known seller-form labels; preserve uncertainty for unmatched saved values. */
+export function formatListingWearLayer(
+  wearLayer: number | null | undefined,
+  materialType?: string | null
+): string {
+  if (wearLayer == null || !Number.isFinite(wearLayer) || wearLayer <= 0) {
+    return "Not provided";
+  }
+
+  const preset = getWearLayerOptionsForSingle(materialType ?? undefined).find(
+    // PostgreSQL real values may return with binary floating-point noise.
+    // This is precision tolerance, not the broader search-filter tolerance.
+    (option) => Math.abs(option.value - wearLayer) <= Math.max(1, option.value) * 1e-6
+  );
+  if (preset) return preset.label;
+
+  // Historical CSV guidance used mils while the form stored millimeters.
+  // Without unit provenance, unmatched values cannot be safely converted.
+  return "Confirm wear layer with seller";
 }

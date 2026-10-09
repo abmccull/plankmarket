@@ -32,3 +32,18 @@ it.each(["", "STRIPE_TAX_MODE=disabled\n"])("rejects production tax disabled or 
     expect(result.stdout + result.stderr).toContain("disabled tax blocks checkout");
   } finally { rmSync(dir, { recursive: true }); }
 });
+
+it("keeps document egress and automatic approval gated by recorded reviews", () => {
+  const dir = mkdtempSync(join(tmpdir(), "plankmarket-verification-env-"));
+  try {
+    const path = join(dir, ".env");
+    const secret = "sensitive-typesafe-key-must-never-appear";
+    writeFileSync(path, `ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS=true\nTYPESAFE_VERIFICATION_ENABLED=true\nVERIFICATION_AUTO_APPROVAL_ENABLED=true\nTYPESAFE_API_KEY=${secret}\n`);
+    const result = spawnSync(process.execPath, ["scripts/check-production-env.mjs", "--file", path], { encoding: "utf8" });
+    const output = result.stdout + result.stderr;
+    expect(result.status).toBe(1);
+    expect(output).toContain("privacy/legal approval reference");
+    expect(output).toContain("evaluation reference");
+    expect(output).not.toContain(secret);
+  } finally { rmSync(dir, { recursive: true }); }
+});

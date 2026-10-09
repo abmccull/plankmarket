@@ -12,6 +12,7 @@ export const adminItems: AdminNavigationItem[] = [
   { title: "Shipments", href: "/admin/shipments", icon: Package },
   { title: "Disputes", href: "/admin/disputes", icon: Scale },
   { title: "Reconciliation", href: "/admin/reconciliation", icon: Wrench },
+  { title: "Resale certificates", href: "/admin/resale", icon: ShieldCheck },
   { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
   ...(FEATURES.PROMOTIONS_ENABLED
     ? [{ title: "Promotions", href: "/admin/promotions", icon: Megaphone }]

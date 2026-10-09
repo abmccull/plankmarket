@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import type { PurchaseIntent } from "@/lib/marketplace/purchase-intent";
 import { trpc } from "@/lib/trpc/client";
 import { ListingCard } from "@/components/search/listing-card";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function FeaturedCarousel() {
+export function FeaturedCarousel({ purchaseIntent }: { purchaseIntent?: PurchaseIntent } = {}) {
   const { data: featuredListings, isLoading } =
     trpc.promotion.getFeatured.useQuery({ limit: 6 });
 
@@ -43,6 +44,7 @@ export function FeaturedCarousel() {
           {featuredListings.map((listing) => (
             <ListingCard
               key={listing.id}
+              purchaseIntent={purchaseIntent}
               listing={{
                 ...listing,
                 isPromoted: true,

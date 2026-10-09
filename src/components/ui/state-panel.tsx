@@ -65,10 +65,11 @@ function StateAction({
   action: StatePanelAction;
   variant: "default" | "outline";
 }) {
+  const actionClassName = "h-auto min-h-11 min-w-0 max-w-full whitespace-normal px-[min(1rem,16px)] py-2 text-center";
   if ("href" in action && action.href) {
     return (
-      <Button asChild variant={variant}>
-        <Link href={action.href}>{action.label}</Link>
+      <Button asChild variant={variant} className={actionClassName}>
+        <Link href={action.href}><span className="min-w-0 max-w-full break-words">{action.label}</span></Link>
       </Button>
     );
   }
@@ -77,10 +78,11 @@ function StateAction({
     <Button
       type="button"
       variant={variant}
+      className={actionClassName}
       onClick={action.onClick}
       disabled={action.disabled}
     >
-      {action.label}
+      <span className="min-w-0 max-w-full break-words">{action.label}</span>
     </Button>
   );
 }
@@ -106,7 +108,7 @@ export function StatePanel({
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       className={cn(
-        "flex min-h-64 flex-col items-center justify-center rounded-xl border px-5 py-10 text-center shadow-sm",
+        "flex min-h-64 flex-col items-center justify-center rounded-xl border px-[min(1.25rem,20px)] py-10 text-center shadow-sm",
         styles.panel,
         className,
       )}

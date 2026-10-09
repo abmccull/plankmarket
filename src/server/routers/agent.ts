@@ -1,35 +1,59 @@
-import {
-  createTRPCRouter,
-  protectedProcedure,
-  sellerProcedure,
-} from "../trpc";
+import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { agentConfigs, agentActions } from "@/server/db/schema";
 import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isPro } from "@/lib/pro";
+import type { Database } from "@/server/db";
+
+async function pauseRule(
+  db: Database,
+  userId: string,
+  field: "offerAutoEnabled" | "repricingEnabled" | "monitorEnabled",
+) {
+  const [result] = await db
+    .insert(agentConfigs)
+    .values({ userId, [field]: false })
+    .onConflictDoUpdate({
+      target: agentConfigs.userId,
+      set: { [field]: false, updatedAt: new Date() },
+    })
+    .returning();
+  return result;
+}
+
+function requireVerifiedSeller(user: {
+  role: string;
+  verificationStatus: string;
+}) {
+  if (
+    user.role !== "admin" &&
+    (user.role !== "seller" || user.verificationStatus !== "verified")
+  ) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "A verified seller account is required to enable these rules.",
+    });
+  }
+}
 
 export const agentRouter = createTRPCRouter({
   /**
    * Get the current user's agent configuration.
-   * Returns null with proRequired flag if user is not Pro.
+   * Keep owned stop controls available even after Pro access ends.
    */
   getConfig: protectedProcedure.query(async ({ ctx }) => {
-    if (!isPro(ctx.user)) {
-      return { config: null, proRequired: true };
-    }
-
     const config = await ctx.db.query.agentConfigs.findFirst({
       where: eq(agentConfigs.userId, ctx.user.id),
     });
 
-    return { config: config ?? null, proRequired: false };
+    return { config: config ?? null, proRequired: !isPro(ctx.user) };
   }),
 
   /**
    * Update offer auto-handling rules (sellers only).
    */
-  updateOfferRules: sellerProcedure
+  updateOfferRules: protectedProcedure
     .input(
       z
         .object({
@@ -42,6 +66,7 @@ export const agentRouter = createTRPCRouter({
         })
         .refine(
           (data) => {
+            if (!data.offerAutoEnabled) return true;
             // Validate ordering: acceptAbove > counterAt > rejectBelow
             if (
               data.offerAcceptAbove !== undefined &&
@@ -69,10 +94,13 @@ export const agentRouter = createTRPCRouter({
           {
             message:
               "Threshold ordering must be: acceptAbove > counterAt > rejectBelow",
-          }
-        )
+          },
+        ),
     )
     .mutation(async ({ ctx, input }) => {
+      if (!input.offerAutoEnabled)
+        return pauseRule(ctx.db, ctx.user.id, "offerAutoEnabled");
+      requireVerifiedSeller(ctx.user);
       if (!isPro(ctx.user)) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -115,9 +143,11 @@ export const agentRouter = createTRPCRouter({
     .input(
       z.object({
         monitorEnabled: z.boolean(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
+      if (!input.monitorEnabled)
+        return pauseRule(ctx.db, ctx.user.id, "monitorEnabled");
       if (!isPro(ctx.user)) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -152,16 +182,19 @@ export const agentRouter = createTRPCRouter({
   /**
    * Update smart repricing rules (sellers only).
    */
-  updateRepricingRules: sellerProcedure
+  updateRepricingRules: protectedProcedure
     .input(
       z.object({
         repricingEnabled: z.boolean(),
         repricingDropPercent: z.number().min(1).max(50).optional(),
         repricingStaleAfterDays: z.number().int().min(1).max(90).optional(),
         repricingFloorPercent: z.number().min(10).max(100).optional(),
-      })
+      }),
     )
     .mutation(async ({ ctx, input }) => {
+      if (!input.repricingEnabled)
+        return pauseRule(ctx.db, ctx.user.id, "repricingEnabled");
+      requireVerifiedSeller(ctx.user);
       if (!isPro(ctx.user)) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -203,7 +236,7 @@ export const agentRouter = createTRPCRouter({
         .object({
           days: z.number().int().min(1).max(365).optional(),
         })
-        .optional()
+        .optional(),
     )
     .query(async ({ ctx, input }) => {
       if (!isPro(ctx.user)) {
@@ -227,8 +260,8 @@ export const agentRouter = createTRPCRouter({
           .where(
             and(
               eq(agentActions.userId, ctx.user.id),
-              gt(agentActions.createdAt, since)
-            )
+              gt(agentActions.createdAt, since),
+            ),
           )
           .groupBy(agentActions.actionType),
 
@@ -236,7 +269,7 @@ export const agentRouter = createTRPCRouter({
         ctx.db.query.agentActions.findMany({
           where: and(
             eq(agentActions.userId, ctx.user.id),
-            gt(agentActions.createdAt, since)
+            gt(agentActions.createdAt, since),
           ),
           orderBy: [desc(agentActions.createdAt)],
           limit: 50,
@@ -249,7 +282,7 @@ export const agentRouter = createTRPCRouter({
             acc[row.actionType] = row.count;
             return acc;
           },
-          {} as Record<string, number>
+          {} as Record<string, number>,
         ),
         recent,
       };

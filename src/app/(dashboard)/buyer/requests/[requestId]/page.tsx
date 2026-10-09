@@ -1,6 +1,8 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
+import { useAuthStore } from "@/lib/stores/auth-store";
+import { QueryErrorState } from "@/components/ui/state-panel";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { trpc } from "@/lib/trpc/client";
@@ -42,7 +44,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
 import {
   ArrowLeft,
   Loader2,
@@ -102,6 +103,7 @@ type ResponseItem = {
   sellerId: string;
   listingId: string | null;
   requestId: string;
+  conversationId?: string | null;
 };
 
 function ResponseCard({
@@ -109,14 +111,15 @@ function ResponseCard({
   onAccept,
   onDecline,
   actingId,
+  disabled,
 }: {
   response: ResponseItem;
   onAccept: (id: string) => void;
   onDecline: (id: string) => void;
   actingId: string | null;
+  disabled: boolean;
 }) {
-  const isPending =
-    response.status === "sent" || response.status === "viewed";
+  const isPending = response.status === "sent" || response.status === "viewed";
   const isThisActing = actingId === response.id;
 
   return (
@@ -131,8 +134,8 @@ function ResponseCard({
               response.status === "accepted"
                 ? "default"
                 : response.status === "declined"
-                ? "destructive"
-                : "secondary"
+                  ? "destructive"
+                  : "secondary"
             }
             className="capitalize"
           >
@@ -140,7 +143,7 @@ function ResponseCard({
           </Badge>
         </div>
 
-        <p className="text-sm text-foreground whitespace-pre-line">
+        <p className="text-sm text-foreground whitespace-pre-line [overflow-wrap:anywhere]">
           {response.message}
         </p>
 
@@ -160,12 +163,28 @@ function ResponseCard({
           </div>
         )}
 
+        {response.status === "accepted" &&
+          (response.conversationId ? (
+            <Button asChild className="h-auto min-h-11 whitespace-normal">
+              <Link href={"/messages/" + response.conversationId}>
+                Message selected seller
+              </Link>
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              The selected response is saved, but its conversation is
+              unavailable.{" "}
+              <Link href="/messages" className="underline">
+                Open Messages
+              </Link>
+            </p>
+          ))}
         {isPending && (
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button
               size="sm"
               onClick={() => onAccept(response.id)}
-              disabled={!!actingId}
+              disabled={!!actingId || disabled}
               aria-label="Accept this response"
             >
               {isThisActing ? (
@@ -174,10 +193,7 @@ function ResponseCard({
                   aria-hidden="true"
                 />
               ) : (
-                <CheckCircle
-                  className="mr-2 h-3.5 w-3.5"
-                  aria-hidden="true"
-                />
+                <CheckCircle className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
               )}
               Accept
             </Button>
@@ -185,7 +201,7 @@ function ResponseCard({
               size="sm"
               variant="outline"
               onClick={() => onDecline(response.id)}
-              disabled={!!actingId}
+              disabled={!!actingId || disabled}
               aria-label="Decline this response"
             >
               <XCircle className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
@@ -206,9 +222,44 @@ export default function BuyerRequestDetailPage({
   params: Promise<{ requestId: string }>;
 }) {
   const { requestId } = use(params);
+  const { user } = useAuthStore();
+  return (
+    <BuyerRequestDetail
+      key={(user?.id ?? "anonymous") + ":" + requestId}
+      requestId={requestId}
+      actorId={user?.id ?? null}
+    />
+  );
+}
+function BuyerRequestDetail({
+  requestId,
+  actorId,
+}: {
+  requestId: string;
+  actorId: string | null;
+}) {
   const router = useRouter();
+  const mountedRef = useRef(true),
+    pendingRef = useRef(false);
+  const [pending, setPending] = useState(false),
+    [actionError, setActionError] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [acceptTarget, setAcceptTarget] = useState<string | null>(null);
+  const [confirmedMatch, setConfirmedMatch] = useState<{
+    responseId: string;
+    conversationId: string;
+  } | null>(null);
+  const isCurrent = () =>
+    mountedRef.current && useAuthStore.getState().user?.id === actorId;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [actingResponseId, setActingResponseId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const editPreparedRef = useRef(false);
   const [editNotes, setEditNotes] = useState("");
   const [editUrgency, setEditUrgency] = useState("flexible");
 
@@ -216,80 +267,89 @@ export default function BuyerRequestDetailPage({
   const {
     data: req,
     isLoading,
+    isError,
+    isFetching,
     refetch,
   } = trpc.buyerRequest.getRequest.useQuery(
     { requestId },
-    { enabled: !!requestId }
+    { enabled: !!requestId && !!actorId },
   );
 
   const acceptMutation = trpc.buyerRequest.acceptResponse.useMutation();
   const declineMutation = trpc.buyerRequest.declineResponse.useMutation();
 
-  const closeMutation = trpc.buyerRequest.close.useMutation({
-    onSuccess: () => {
-      toast.success("Request closed");
-      refetch();
-      utils.buyerRequest.getMyRequests.invalidate();
-    },
-    onError: () => toast.error("Failed to close request"),
-  });
-
-  const deleteMutation = trpc.buyerRequest.delete.useMutation({
-    onSuccess: () => {
-      toast.success("Request deleted");
-      utils.buyerRequest.getMyRequests.invalidate();
-      router.push("/buyer/requests");
-    },
-    onError: () => toast.error("Failed to delete request"),
-  });
-
-  const updateMutation = trpc.buyerRequest.update.useMutation({
-    onSuccess: () => {
-      toast.success("Request updated");
-      setEditOpen(false);
-      refetch();
-      utils.buyerRequest.getMyRequests.invalidate();
-    },
-    onError: () => toast.error("Failed to update request"),
-  });
-
-  const handleAccept = async (responseId: string) => {
-    setActingResponseId(responseId);
-    try {
-      const result = await acceptMutation.mutateAsync({ responseId });
-      toast.success("Response accepted. Other responses were closed.", {
-        action: result.conversationId
-          ? {
-              label: "Message seller",
-              onClick: () => router.push(`/messages/${result.conversationId}`),
-            }
-          : undefined,
-      });
-      refetch();
-    } catch {
-      toast.error("Failed to accept response.");
-    } finally {
-      setActingResponseId(null);
-    }
+  const closeMutation = trpc.buyerRequest.close.useMutation();
+  const deleteMutation = trpc.buyerRequest.delete.useMutation();
+  const updateMutation = trpc.buyerRequest.update.useMutation();
+  const refresh = async () => {
+    const result = await refetch();
+    if (isCurrent() && !result.error) setActionError(false);
   };
-
-  const handleDecline = async (responseId: string) => {
-    setActingResponseId(responseId);
+  const actionsDisabled = pending || isFetching || isError || actionError;
+  const runAction = async (
+    kind: "accept" | "decline" | "close" | "delete" | "update",
+    responseId?: string,
+  ) => {
+    if (pendingRef.current || actionsDisabled || !isCurrent()) return;
+    pendingRef.current = true;
+    setPending(true);
+    setNotice("");
+    setActingResponseId(responseId ?? null);
     try {
-      await declineMutation.mutateAsync({ responseId });
-      toast.success("Response declined.");
-      refetch();
+      if (kind === "accept" && responseId) {
+        const saved = await acceptMutation.mutateAsync({ responseId });
+        if (!isCurrent()) return;
+        setConfirmedMatch({ responseId, conversationId: saved.conversationId });
+        setAcceptTarget(null);
+        setNotice("Response selected. Other pending responses were declined.");
+      } else if (kind === "decline" && responseId) {
+        await declineMutation.mutateAsync({ responseId });
+        if (!isCurrent()) return;
+        setNotice("Response declined.");
+      } else if (kind === "close") {
+        await closeMutation.mutateAsync({ requestId });
+        if (!isCurrent()) return;
+        setNotice("Request closed.");
+      } else if (kind === "delete") {
+        await deleteMutation.mutateAsync({ requestId });
+        if (!isCurrent()) return;
+        void utils.buyerRequest.getMyRequests.invalidate().catch(() => {});
+        router.push("/buyer/requests");
+        return;
+      } else if (kind === "update") {
+        await updateMutation.mutateAsync({
+          id: requestId,
+          urgency: editUrgency as "asap" | "2_weeks" | "4_weeks" | "flexible",
+          notes: editNotes || undefined,
+        });
+        if (!isCurrent()) return;
+        setEditOpen(false);
+        editPreparedRef.current = false;
+        setNotice("Request updated.");
+      }
+      void utils.buyerRequest.getMyRequests.invalidate().catch(() => {});
+      void refresh();
     } catch {
-      toast.error("Failed to decline response.");
+      if (isCurrent()) {
+        setActionError(true);
+        setAcceptTarget(null);
+      }
     } finally {
-      setActingResponseId(null);
+      pendingRef.current = false;
+      if (isCurrent()) {
+        setPending(false);
+        setActingResponseId(null);
+      }
     }
   };
 
   const openEditDialog = () => {
     if (!req) return;
-    setEditNotes(req.notes ?? "");
-    setEditUrgency(req.urgency ?? "flexible");
+    if (!editPreparedRef.current) {
+      setEditNotes(req.notes ?? "");
+      setEditUrgency(req.urgency ?? "flexible");
+      editPreparedRef.current = true;
+    }
     setEditOpen(true);
   };
 
@@ -301,18 +361,46 @@ export default function BuyerRequestDetailPage({
     );
   }
 
+  if (isError && !req)
+    return (
+      <QueryErrorState
+        title="We couldn't load this request"
+        description="The request could not be checked. Try again; this does not mean it was deleted."
+        onRetry={() => void refresh()}
+        isRetrying={isFetching}
+        secondaryAction={{ label: "Back to requests", href: "/buyer/requests" }}
+      />
+    );
   if (!req) {
     return (
       <div className="text-center py-16">
-        <p className="text-muted-foreground">Request not found.</p>
-        <Link href="/buyer/requests" className="mt-4 inline-block">
-          <Button variant="outline">Back to Requests</Button>
-        </Link>
+        <p className="text-muted-foreground">
+          This request is unavailable to this account.
+        </p>
+        <Button asChild variant="outline" className="mt-4">
+          <Link href="/buyer/requests">Back to Requests</Link>
+        </Button>
       </div>
     );
   }
 
-  const responses: ResponseItem[] = req.responses ?? [];
+  const responses: ResponseItem[] = (req.responses ?? []).map((response) =>
+    confirmedMatch
+      ? {
+          ...response,
+          status:
+            response.id === confirmedMatch.responseId
+              ? ("accepted" as const)
+              : response.status === "sent" || response.status === "viewed"
+                ? ("declined" as const)
+                : response.status,
+          conversationId:
+            response.id === confirmedMatch.responseId
+              ? confirmedMatch.conversationId
+              : response.conversationId,
+        }
+      : response,
+  );
   const isEditable = req.status === "open" || req.status === "matched";
 
   // Access specs from the nested specs object
@@ -327,16 +415,21 @@ export default function BuyerRequestDetailPage({
     | undefined;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="min-w-0 max-w-2xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link href="/buyer/requests">
-          <Button variant="ghost" size="icon" aria-label="Back to requests">
+      <div className="flex items-start flex-wrap gap-3">
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 shrink-0"
+        >
+          <Link href="/buyer/requests" aria-label="Back to requests">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold truncate">
+          <h1 className="text-2xl font-bold break-words [overflow-wrap:anywhere]">
             {req.title || "Untitled Request"}
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
@@ -351,16 +444,76 @@ export default function BuyerRequestDetailPage({
         </Badge>
       </div>
 
+      {notice && <p role="status">{notice}</p>}
+      {(isError || actionError) && (
+        <QueryErrorState
+          title={
+            actionError
+              ? "Request update not confirmed"
+              : "We couldn't refresh this request"
+          }
+          description={
+            actionError
+              ? "Refresh the current request status before trying again. The previous action may have completed; your edits are still here."
+              : "Previously loaded details are shown. Refresh before changing this request."
+          }
+          onRetry={() => void refresh()}
+          isRetrying={isFetching}
+        />
+      )}
+      <AlertDialog
+        open={!!acceptTarget}
+        onOpenChange={(open) =>
+          !open && !pendingRef.current && setAcceptTarget(null)
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Select this seller response?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Selecting this response marks your request as matched and declines
+              the other pending responses. It opens a conversation with this
+              seller. This does not place an order, charge you or reserve
+              inventory.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>
+              Keep reviewing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actionsDisabled}
+              onClick={(event) => {
+                event.preventDefault();
+                if (acceptTarget) void runAction("accept", acceptTarget);
+              }}
+            >
+              Select response
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Action buttons */}
       {isEditable && (
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={openEditDialog}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11"
+            disabled={actionsDisabled}
+            onClick={openEditDialog}
+          >
             <Pencil className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
             Edit
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-h-11"
+                disabled={actionsDisabled}
+              >
                 <XOctagon className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
                 Close Request
               </Button>
@@ -369,16 +522,19 @@ export default function BuyerRequestDetailPage({
               <AlertDialogHeader>
                 <AlertDialogTitle>Close this request?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Sellers will no longer be able to respond. You can still view responses you&apos;ve already received.
+                  Sellers will no longer be able to respond. You can still view
+                  responses you&apos;ve already received.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => closeMutation.mutate({ requestId })}
-                  disabled={closeMutation.isPending}
+                  onClick={() => void runAction("close")}
+                  disabled={actionsDisabled}
                 >
-                  {closeMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  {closeMutation.isPending && (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  )}
                   Close Request
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -386,7 +542,12 @@ export default function BuyerRequestDetailPage({
           </AlertDialog>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="min-h-11"
+                disabled={actionsDisabled}
+              >
                 <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
                 Delete
               </Button>
@@ -395,17 +556,20 @@ export default function BuyerRequestDetailPage({
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete this request?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete the request and all seller responses. This action cannot be undone.
+                  This will permanently delete the request and all seller
+                  responses. This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => deleteMutation.mutate({ requestId })}
-                  disabled={deleteMutation.isPending}
+                  onClick={() => void runAction("delete")}
+                  disabled={actionsDisabled}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  {deleteMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  {deleteMutation.isPending && (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  )}
                   Delete
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -416,10 +580,15 @@ export default function BuyerRequestDetailPage({
 
       {/* Delete for closed/expired requests too */}
       {!isEditable && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm">
+              <Button
+                variant="destructive"
+                size="sm"
+                className="min-h-11"
+                disabled={actionsDisabled}
+              >
                 <Trash2 className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
                 Delete
               </Button>
@@ -428,17 +597,20 @@ export default function BuyerRequestDetailPage({
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete this request?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete the request and all seller responses. This action cannot be undone.
+                  This will permanently delete the request and all seller
+                  responses. This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => deleteMutation.mutate({ requestId })}
-                  disabled={deleteMutation.isPending}
+                  onClick={() => void runAction("delete")}
+                  disabled={actionsDisabled}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  {deleteMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  {deleteMutation.isPending && (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  )}
                   Delete
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -448,8 +620,11 @@ export default function BuyerRequestDetailPage({
       )}
 
       {/* Edit Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
+      <Dialog
+        open={editOpen}
+        onOpenChange={(open) => !pendingRef.current && setEditOpen(open)}
+      >
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Request</DialogTitle>
             <DialogDescription>
@@ -459,7 +634,11 @@ export default function BuyerRequestDetailPage({
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="edit-urgency">Urgency</Label>
-              <Select value={editUrgency} onValueChange={setEditUrgency}>
+              <Select
+                value={editUrgency}
+                onValueChange={setEditUrgency}
+                disabled={pending}
+              >
                 <SelectTrigger id="edit-urgency">
                   <SelectValue />
                 </SelectTrigger>
@@ -475,32 +654,51 @@ export default function BuyerRequestDetailPage({
               <Label htmlFor="edit-notes">Notes</Label>
               <Textarea
                 id="edit-notes"
+                disabled={pending}
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
                 placeholder="Additional notes for sellers..."
                 rows={4}
                 maxLength={1000}
               />
+              {actionError && (
+                <div role="alert" className="space-y-2 text-sm">
+                  <p>
+                    The update was not confirmed. Your edits are kept. Refresh
+                    request status before trying again.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending || isFetching}
+                    onClick={() => void refresh()}
+                  >
+                    Refresh request status
+                  </Button>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground text-right">
                 {editNotes.length}/1000
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>
+            <Button
+              variant="outline"
+              disabled={pending}
+              onClick={() => {
+                if (!pendingRef.current) setEditOpen(false);
+              }}
+            >
               Cancel
             </Button>
             <Button
-              onClick={() =>
-                updateMutation.mutate({
-                  id: requestId,
-                  urgency: editUrgency as "asap" | "2_weeks" | "4_weeks" | "flexible",
-                  notes: editNotes || undefined,
-                })
-              }
-              disabled={updateMutation.isPending}
+              onClick={() => void runAction("update")}
+              disabled={actionsDisabled}
             >
-              {updateMutation.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+              {updateMutation.isPending && (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              )}
               Save Changes
             </Button>
           </DialogFooter>
@@ -621,7 +819,9 @@ export default function BuyerRequestDetailPage({
             <CardTitle>Notes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm whitespace-pre-line">{req.notes}</p>
+            <p className="text-sm whitespace-pre-line [overflow-wrap:anywhere]">
+              {req.notes}
+            </p>
           </CardContent>
         </Card>
       )}
@@ -630,28 +830,34 @@ export default function BuyerRequestDetailPage({
       {req.media && req.media.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex flex-wrap items-center gap-2">
               <ImageIcon className="h-5 w-5" aria-hidden="true" />
               Reference Photos
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {req.media.map((img: { id: string; url: string; fileName?: string | null }) => (
-                <div
-                  key={img.id}
-                  className="relative aspect-square rounded-lg overflow-hidden border bg-muted"
-                >
-                  <Image
-                    src={img.url}
-                    alt={img.fileName || "Reference photo"}
-                    fill
-                    sizes="(max-width: 640px) 50vw, 33vw"
-                    className="object-cover"
-                    loading="lazy"
-                  />
-                </div>
-              ))}
+              {req.media.map(
+                (img: {
+                  id: string;
+                  url: string;
+                  fileName?: string | null;
+                }) => (
+                  <div
+                    key={img.id}
+                    className="relative aspect-square rounded-lg overflow-hidden border bg-muted"
+                  >
+                    <Image
+                      src={img.url}
+                      alt={img.fileName || "Reference photo"}
+                      fill
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                      className="object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                ),
+              )}
             </div>
           </CardContent>
         </Card>
@@ -673,7 +879,8 @@ export default function BuyerRequestDetailPage({
           <Card>
             <CardContent className="py-8 text-center">
               <CardDescription>
-                No responses yet. Sellers will be notified of your request.
+                No responses yet. Sellers can review your open request on the
+                request board.
               </CardDescription>
             </CardContent>
           </Card>
@@ -683,9 +890,18 @@ export default function BuyerRequestDetailPage({
               <ResponseCard
                 key={response.id}
                 response={response}
-                onAccept={handleAccept}
-                onDecline={handleDecline}
+                onAccept={setAcceptTarget}
+                onDecline={(id) => void runAction("decline", id)}
                 actingId={actingResponseId}
+                disabled={
+                  actionsDisabled ||
+                  req.status !== "open" ||
+                  Boolean(confirmedMatch) ||
+                  Boolean(
+                    req.expiresAt &&
+                    new Date(req.expiresAt).getTime() <= Date.now(),
+                  )
+                }
               />
             ))}
           </div>

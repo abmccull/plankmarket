@@ -1,8 +1,8 @@
 import { getOrderRecovery } from "@/lib/order-recovery";
 import {
   createTRPCRouter,
-  protectedProcedure,
-  strictProtectedProcedure,
+  assuredProtectedProcedure,
+  strictAssuredProtectedProcedure,
   strictBuyerProcedure,
 } from "../trpc";
 import {
@@ -11,7 +11,7 @@ import {
 } from "@/lib/validators/shipping";
 import { priority1 } from "@/server/services/priority1";
 import { listings, orders, shipments } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { redis } from "@/lib/redis/client";
@@ -66,6 +66,27 @@ function territoryFailureMessage(
   return territoryDecision.reason === "destination_blocked"
     ? `This seller is not currently selling to ${territoryDecision.normalizedDestinationState}.`
     : "This listing's territory settings are incomplete for the selected destination.";
+}
+
+function orderParticipantWhere(orderId: string, viewer: { id: string; role: string }) {
+  return and(
+    eq(orders.id, orderId),
+    viewer.role === "admin"
+      ? undefined
+      : or(eq(orders.buyerId, viewer.id), eq(orders.sellerId, viewer.id)),
+  );
+}
+
+// A business may buy and sell. The persisted transaction side determines
+// freight visibility; account navigation and global role cannot release it.
+function getOrderViewerRole(
+  order: { buyerId: string; sellerId: string },
+  viewer: { id: string; role: string },
+): "buyer" | "seller" | "admin" {
+  if (viewer.role === "admin") return "admin";
+  if (order.buyerId === viewer.id) return "buyer";
+  if (order.sellerId === viewer.id) return "seller";
+  throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
 }
 
 export const shippingRouter = createTRPCRouter({
@@ -500,35 +521,30 @@ export const shippingRouter = createTRPCRouter({
       return quotes;
     }),
 
-  getRecovery: protectedProcedure
+  getRecovery: assuredProtectedProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const order = await ctx.db.query.orders.findFirst({
-        where: and(eq(orders.id, input.orderId), ctx.user.role === "admin" ? undefined : ctx.user.role === "seller" ? eq(orders.sellerId, ctx.user.id) : eq(orders.buyerId, ctx.user.id)),
-        columns: { status: true, paymentStatus: true, escrowStatus: true, transferFailedAt: true },
+        where: orderParticipantWhere(input.orderId, ctx.user),
+        columns: { buyerId: true, sellerId: true, status: true, paymentStatus: true, escrowStatus: true, transferFailedAt: true },
       });
       if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+      const viewerRole = getOrderViewerRole(order, ctx.user);
       const shipment = await ctx.db.query.shipments.findFirst({ where: eq(shipments.orderId, input.orderId) });
-      return getOrderRecovery(order, shipment ?? null, ctx.user.role);
+      return getOrderRecovery(order, shipment ?? null, viewerRole);
     }),
 
   // Get tracking information for an order
-  getTracking: protectedProcedure
+  getTracking: assuredProtectedProcedure
     .input(z.object({ orderId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       // Fetch order to verify ownership
       const order = await ctx.db.query.orders.findFirst({
-        where: and(
-          eq(orders.id, input.orderId),
-          // Users can only see their own orders
-          ctx.user.role === "admin"
-            ? undefined
-            : ctx.user.role === "seller"
-              ? eq(orders.sellerId, ctx.user.id)
-              : eq(orders.buyerId, ctx.user.id)
-        ),
+        where: orderParticipantWhere(input.orderId, ctx.user),
         columns: {
           id: true,
+          buyerId: true,
+          sellerId: true,
           status: true,
           trackingNumber: true,
         },
@@ -541,6 +557,8 @@ export const shippingRouter = createTRPCRouter({
         });
       }
 
+      const viewerRole = getOrderViewerRole(order, ctx.user);
+
       // Fetch shipment by orderId
       const shipment = await ctx.db.query.shipments.findFirst({
         where: eq(shipments.orderId, input.orderId),
@@ -552,7 +570,7 @@ export const shippingRouter = createTRPCRouter({
       }
 
       const canSeeFreightDocuments = canViewFreightDocuments({
-        viewerRole: ctx.user.role,
+        viewerRole,
         orderStatus: order.status,
       });
 
@@ -564,7 +582,7 @@ export const shippingRouter = createTRPCRouter({
         carrierScac: shipment.carrierScac,
         proNumber: shipment.proNumber,
         priority1ShipmentId:
-          ctx.user.role === "admin" ? shipment.priority1ShipmentId : null,
+          viewerRole === "admin" ? shipment.priority1ShipmentId : null,
         bolUrl: canSeeFreightDocuments ? shipment.bolUrl : null,
         labelUrl: canSeeFreightDocuments ? shipment.labelUrl : null,
         deliveryReceiptUrl: canSeeFreightDocuments
@@ -578,7 +596,7 @@ export const shippingRouter = createTRPCRouter({
     }),
 
   // Get shipping documents (BOL, Delivery Receipt)
-  getDocuments: strictProtectedProcedure
+  getDocuments: strictAssuredProtectedProcedure
     .input(
       z.object({
         orderId: z.string().uuid(),
@@ -592,16 +610,11 @@ export const shippingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       // Verify order ownership
       const order = await ctx.db.query.orders.findFirst({
-        where: and(
-          eq(orders.id, input.orderId),
-          ctx.user.role === "admin"
-            ? undefined
-            : ctx.user.role === "seller"
-              ? eq(orders.sellerId, ctx.user.id)
-              : eq(orders.buyerId, ctx.user.id)
-        ),
+        where: orderParticipantWhere(input.orderId, ctx.user),
         columns: {
           id: true,
+          buyerId: true,
+          sellerId: true,
           status: true,
           trackingNumber: true,
         },
@@ -613,6 +626,8 @@ export const shippingRouter = createTRPCRouter({
           message: "Order not found",
         });
       }
+
+      const viewerRole = getOrderViewerRole(order, ctx.user);
 
       const shipment = await ctx.db.query.shipments.findFirst({
         where: eq(shipments.orderId, input.orderId),
@@ -626,7 +641,7 @@ export const shippingRouter = createTRPCRouter({
       }
 
       const canAccessDocument = canViewFreightDocuments({
-        viewerRole: ctx.user.role,
+        viewerRole,
         orderStatus: order.status,
       });
       if (!canAccessDocument) {

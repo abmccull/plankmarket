@@ -1,30 +1,63 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { trpc } from "@/lib/trpc/client";
 import { ChatBubble } from "@/components/messaging/chat-bubble";
 import { MessageInput } from "@/components/messaging/message-input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, ArrowLeft, ExternalLink, Shield } from "lucide-react";
+import { ArrowLeft, ExternalLink, Shield, MessageSquare } from "lucide-react";
+import {
+  QueryErrorState,
+  StatePanel,
+  StatePanelLoading,
+} from "@/components/ui/state-panel";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { BuyerCrmPanel } from "@/components/crm/buyer-crm-panel";
-import { toast } from "sonner";
-import { getErrorMessage } from "@/lib/utils";
+
+function mergeMessages<
+  T extends { id: string; createdAt: Date | string; historySortKey?: string },
+>(...groups: T[][]): T[] {
+  return [
+    ...new Map(groups.flat().map((message) => [message.id, message])).values(),
+  ].sort(
+    (a, b) =>
+      (a.historySortKey ?? new Date(a.createdAt).toISOString()).localeCompare(
+        b.historySortKey ?? new Date(b.createdAt).toISOString(),
+      ) || a.id.localeCompare(b.id),
+  );
+}
 
 export default function ConversationPage() {
-  const params = useParams();
-  const router = useRouter();
+  const params = useParams<{ conversationId: string }>();
   const { user } = useAuthStore();
-  const conversationId = params.conversationId as string;
+  return (
+    <ConversationThread
+      key={`${user?.id ?? "anonymous"}:${params.conversationId}`}
+      conversationId={params.conversationId}
+    />
+  );
+}
+
+function ConversationThread({ conversationId }: { conversationId: string }) {
+  const { user } = useAuthStore();
+  const historyRef = useRef<HTMLDivElement>(null);
+  const initialScrollRef = useRef(false);
+  const nearBottomRef = useRef(true);
+  const loadingOlderRef = useRef(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [historyExhausted, setHistoryExhausted] = useState(false);
+  const [olderError, setOlderError] = useState(false);
+  const [gapCursors, setGapCursors] = useState<string[]>([]);
+  const latestWindowRef = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingReadMessageIdRef = useRef<{
     conversationId: string;
     messageId: string;
   } | null>(null);
-  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
   const [isTabVisible, setIsTabVisible] = useState(true);
   const [optimisticLastReadAt, setOptimisticLastReadAt] = useState<{
     conversationId: string;
@@ -32,40 +65,77 @@ export default function ConversationPage() {
   } | null>(null);
 
   // Get conversation details (includes listing, buyer, seller info)
-  const { data: conversationData, isLoading: isLoadingConversation } =
-    trpc.message.getConversation.useQuery(
-      { conversationId },
-      {
-        enabled: !!conversationId,
-      },
-    );
+  const {
+    data: conversationData,
+    isLoading: isLoadingConversation,
+    isError: isConversationError,
+    isFetching: isFetchingConversation,
+    refetch: refetchConversation,
+  } = trpc.message.getConversation.useQuery(
+    { conversationId },
+    {
+      enabled: !!conversationId,
+    },
+  );
 
   // Get messages with visible-tab polling only.
-  const { data: messages, isLoading: isLoadingMessages } =
-    trpc.message.getMessages.useQuery(
-      {
-        conversationId,
-        limit: 100,
-      },
-      {
-        enabled: !!conversationId,
-        refetchInterval: isTabVisible ? 10000 : false,
-        refetchIntervalInBackground: false,
-        refetchOnWindowFocus: true,
-      },
-    );
+  const {
+    data: messages,
+    isLoading: isLoadingMessages,
+    isError: isMessagesError,
+    isFetching: isFetchingMessages,
+    refetch: refetchMessages,
+  } = trpc.message.getMessages.useQuery(
+    {
+      conversationId,
+      limit: 100,
+    },
+    {
+      enabled: !!conversationId,
+      refetchInterval: isTabVisible ? 10000 : false,
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
+    },
+  );
+
+  const [historyMessages, setHistoryMessages] = useState<
+    NonNullable<typeof messages>
+  >([]);
+  const allMessages = useMemo(
+    () => mergeMessages(historyMessages, messages ?? []),
+    [historyMessages, messages],
+  );
+  useEffect(() => {
+    if (!messages) return;
+    const previous = latestWindowRef.current;
+    if (
+      messages.length === 100 &&
+      previous.size > 0 &&
+      !messages.some((message) => previous.has(message.id))
+    ) {
+      const cursor = messages[0].id;
+      setGapCursors((current) => [
+        cursor,
+        ...current.filter((id) => id !== cursor),
+      ]);
+    }
+    latestWindowRef.current = new Set(messages.map((message) => message.id));
+    setHistoryMessages((previous) => mergeMessages(previous, messages));
+  }, [messages]);
 
   // Mark as read mutation
   const utils = trpc.useUtils();
   const { mutate: markAsRead } = trpc.message.markAsRead.useMutation({
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       if (result.lastReadAt) {
         setOptimisticLastReadAt({
-          conversationId,
+          conversationId: variables.conversationId,
           readAt: new Date(result.lastReadAt).toISOString(),
         });
       }
-      utils.message.getConversation.invalidate({ conversationId });
+      utils.message.getConversation.invalidate({
+        conversationId: variables.conversationId,
+      });
       utils.message.getMyConversations.invalidate();
       utils.message.getUnreadCount.invalidate();
     },
@@ -76,15 +146,16 @@ export default function ConversationPage() {
 
   // Send message mutation
   const { mutateAsync: sendMessage } = trpc.message.sendMessage.useMutation({
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       // Invalidate messages to refetch
-      utils.message.getMessages.invalidate({ conversationId });
-      utils.message.getConversation.invalidate({ conversationId });
+      utils.message.getMessages.invalidate({
+        conversationId: variables.conversationId,
+      });
+      utils.message.getConversation.invalidate({
+        conversationId: variables.conversationId,
+      });
       utils.message.getMyConversations.invalidate();
       utils.message.getUnreadCount.invalidate();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error, "Failed to send message"));
     },
   });
 
@@ -96,10 +167,7 @@ export default function ConversationPage() {
     handleVisibilityChange();
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibilityChange,
-      );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -114,22 +182,20 @@ export default function ConversationPage() {
       ? optimisticLastReadAt.readAt
       : (serverLastReadAt ?? null);
   const latestUnreadIncomingMessage = messages
-    ? [...messages]
-        .reverse()
-        .find((message) => {
-          if (message.senderId === user?.id) {
-            return false;
-          }
+    ? [...messages].reverse().find((message) => {
+        if (message.senderId === user?.id) {
+          return false;
+        }
 
-          if (!effectiveLastReadAt) {
-            return true;
-          }
+        if (!effectiveLastReadAt) {
+          return true;
+        }
 
-          return (
-            new Date(message.createdAt).getTime() >
-            new Date(effectiveLastReadAt).getTime()
-          );
-        })
+        return (
+          new Date(message.createdAt).getTime() >=
+          new Date(effectiveLastReadAt).getTime()
+        );
+      })
     : null;
 
   // Acknowledge only the newest unseen inbound message while the thread is visible.
@@ -137,6 +203,8 @@ export default function ConversationPage() {
     if (
       !conversationId ||
       !isTabVisible ||
+      isConversationError ||
+      isMessagesError ||
       !latestUnreadIncomingMessage ||
       !conversationData ||
       (pendingReadMessageIdRef.current?.conversationId === conversationId &&
@@ -158,31 +226,90 @@ export default function ConversationPage() {
     conversationData,
     conversationId,
     isTabVisible,
+    isConversationError,
+    isMessagesError,
     latestUnreadIncomingMessage,
     markAsRead,
   ]);
 
-  // Auto-scroll to bottom on new messages
+  // Scroll only the history region; never drag the whole document or a reader
+  // away from older messages when polling returns a new reply.
   useEffect(() => {
-    if (messages && messages.length > 0) {
-      if (!hasScrolledToBottom) {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        // Use a separate effect to update the state
-        Promise.resolve().then(() => setHasScrolledToBottom(true));
-      } else {
-        // Only auto-scroll if user is near bottom
-        const container = messagesEndRef.current?.parentElement;
-        if (container) {
-          const isNearBottom =
-            container.scrollHeight - container.scrollTop - container.clientHeight <
-            100;
-          if (isNearBottom) {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = historyRef.current;
+    if (!container || allMessages.length === 0 || loadingOlderRef.current)
+      return;
+    if (!initialScrollRef.current || nearBottomRef.current) {
+      container.scrollTop = container.scrollHeight;
+      initialScrollRef.current = true;
+    }
+  }, [allMessages]);
+
+  const loadOlder = async () => {
+    const gapCursor = gapCursors[0];
+    const cursor = gapCursor ?? allMessages[0]?.id;
+    const container = historyRef.current;
+    if (!cursor || loadingOlderRef.current || !container) return;
+    loadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+    setOlderError(false);
+    const beforeHeight = container.scrollHeight;
+    const beforeTop = container.scrollTop;
+    const regionTop = container.getBoundingClientRect().top;
+    const anchor = [
+      ...container.querySelectorAll<HTMLElement>("[data-message-id]"),
+    ].find((node) => node.getBoundingClientRect().bottom > regionTop);
+    const anchorId = anchor?.dataset.messageId;
+    const anchorOffset = anchor
+      ? anchor.getBoundingClientRect().top - regionTop
+      : null;
+    try {
+      const older = await utils.message.getMessages.fetch({
+        conversationId,
+        limit: 100,
+        cursor,
+      });
+      setHistoryMessages((previous) => mergeMessages(previous, older));
+      if (gapCursor) {
+        const knownIds = new Set(allMessages.map((message) => message.id));
+        const reconnected =
+          older.length < 100 ||
+          older.some((message) => knownIds.has(message.id));
+        setGapCursors((current) =>
+          reconnected
+            ? current.filter((id) => id !== gapCursor)
+            : current.map((id) => (id === gapCursor ? older[0].id : id)),
+        );
+      } else setHistoryExhausted(older.length < 100);
+      requestAnimationFrame(() => {
+        if (historyRef.current === container) {
+          const restoredAnchor = anchorId
+            ? [
+                ...container.querySelectorAll<HTMLElement>("[data-message-id]"),
+              ].find((node) => node.dataset.messageId === anchorId)
+            : null;
+          if (restoredAnchor && anchorOffset !== null) {
+            container.scrollTop +=
+              restoredAnchor.getBoundingClientRect().top -
+              container.getBoundingClientRect().top -
+              anchorOffset;
+          } else if (!gapCursor) {
+            container.scrollTop =
+              beforeTop + container.scrollHeight - beforeHeight;
           }
         }
-      }
+        loadingOlderRef.current = false;
+      });
+    } catch {
+      setOlderError(true);
+      loadingOlderRef.current = false;
+    } finally {
+      setIsLoadingOlder(false);
     }
-  }, [messages, hasScrolledToBottom]);
+  };
+  const refreshLatest = async () => {
+    const result = await refetchMessages();
+    if (result.error) throw result.error;
+  };
 
   const handleSendMessage = async (body: string) => {
     await sendMessage({
@@ -191,63 +318,63 @@ export default function ConversationPage() {
     });
   };
 
-  if (isLoadingConversation || isLoadingMessages) {
+  if (isLoadingConversation && !conversationData)
+    return <StatePanelLoading label="Loading conversation" rows={2} />;
+  if (isConversationError && !conversationData)
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
+      <QueryErrorState
+        title="We couldn't load this conversation"
+        description="The conversation could not be checked. Try again; this does not mean it was deleted."
+        onRetry={() => void refetchConversation()}
+        isRetrying={isFetchingConversation}
+        secondaryAction={{ label: "Back to messages", href: "/messages" }}
+      />
     );
-  }
-
-  if (!conversationData) {
+  if (!conversationData)
     return (
-      <div className="text-center py-12">
-        <h3 className="text-lg font-semibold">Conversation not found</h3>
-        <p className="text-muted-foreground mt-1">
-          This conversation may have been deleted.
-        </p>
-        <Button onClick={() => router.push("/messages")} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Messages
-        </Button>
-      </div>
+      <StatePanel
+        icon={MessageSquare}
+        title="Conversation unavailable"
+        description="This conversation is unavailable to this account. Return to your messages to continue."
+        primaryAction={{ label: "Back to messages", href: "/messages" }}
+      />
     );
-  }
 
   // Determine the other party
-  const otherParty = isBuyer
-    ? conversationData.seller
-    : conversationData.buyer;
+  const otherParty = isBuyer ? conversationData.seller : conversationData.buyer;
   const otherPartyName = otherParty?.displayName ?? "Unknown";
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-8rem)]">
+    <div className="flex min-w-0 flex-col">
       {/* Header */}
-      <Card elevation="flat" className="p-4 mb-4 border">
+      <Card elevation="flat" className="mb-4 border p-[min(1rem,16px)]">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="grid min-w-0 flex-1 basis-64 grid-cols-[44px_minmax(0,1fr)] items-center gap-[min(0.75rem,12px)]">
             <Button
+              asChild
               variant="ghost"
               size="icon"
-              onClick={() => router.push("/messages")}
-              aria-label="Back to messages"
-              className="shrink-0"
+              className="h-[44px] w-[44px] shrink-0"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <Link href="/messages" aria-label="Back to messages">
+                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              </Link>
             </Button>
             <div className="min-w-0 flex-1">
-              <h2 className="font-semibold text-lg truncate">
+              <h1 className="font-semibold text-lg break-words">
                 {conversationData.listing.title}
-              </h2>
-              <p className="text-sm text-muted-foreground truncate">{otherPartyName}</p>
+              </h1>
+              <p className="text-sm text-muted-foreground break-words">
+                {otherPartyName}
+              </p>
             </div>
           </div>
-          <Link href={`/listings/${conversationData.listing.id}`}>
-            <Button variant="outline" size="sm">
-              <ExternalLink className="mr-2 h-4 w-4" />
+          <Button asChild variant="outline" size="sm" className="min-h-11">
+            <Link href={`/listings/${conversationData.listing.id}`}>
+              <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
               View Listing
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </Card>
 
@@ -256,41 +383,114 @@ export default function ConversationPage() {
         <BuyerCrmPanel buyerId={conversationData.buyerId} compact />
       )}
 
+      {isConversationError && (
+        <QueryErrorState
+          title="We couldn't load this conversation"
+          description="The conversation could not be refreshed. Your draft is still here; retry before sending."
+          onRetry={() => void refetchConversation()}
+          isRetrying={isFetchingConversation}
+        />
+      )}
       {/* Messages container */}
-      <Card elevation="flat" className="flex-1 flex flex-col border overflow-hidden">
+      <Card
+        elevation="flat"
+        className="min-w-0 flex flex-col border overflow-hidden"
+      >
+        {(gapCursors.length > 0 ||
+          (!historyExhausted && messages?.length === 100) ||
+          olderError) && (
+          <div className="px-[min(1rem,16px)] pt-4">
+            {gapCursors.length > 0 && (
+              <p role="status" className="py-2 text-sm">
+                Some messages between loaded sections are missing. Load missing
+                messages to fill the gap.
+              </p>
+            )}
+            {!isMessagesError &&
+              (gapCursors.length > 0 ||
+                (!historyExhausted && messages?.length === 100)) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mb-3 h-auto min-h-11 max-w-full whitespace-normal px-3"
+                  disabled={isLoadingOlder}
+                  onClick={() => void loadOlder()}
+                >
+                  {isLoadingOlder
+                    ? "Loading older messages..."
+                    : gapCursors.length > 0
+                      ? "Load missing messages"
+                      : "Load older messages"}
+                </Button>
+              )}
+            {olderError && (
+              <p role="alert" className="py-2 text-sm text-destructive">
+                More messages could not be loaded. Use the history loading
+                action to try again.
+              </p>
+            )}
+          </div>
+        )}
         {/* Messages list */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+        <div
+          ref={historyRef}
+          role="region"
+          aria-label="Conversation history"
+          tabIndex={0}
+          className="min-h-[12rem] max-h-[55dvh] min-w-0 overflow-y-auto p-[min(1rem,16px)] space-y-1"
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            nearBottomRef.current =
+              node.scrollHeight - node.scrollTop - node.clientHeight < 100;
+            setShowJumpToLatest(!nearBottomRef.current);
+          }}
+        >
+          {isMessagesError && (
+            <QueryErrorState
+              title="We couldn't load the message history"
+              description="Previously loaded messages may appear below. Your draft is kept here; refresh before sending."
+              onRetry={() => void refetchMessages()}
+              isRetrying={isFetchingMessages}
+            />
+          )}
+          {isLoadingMessages && (
+            <StatePanelLoading label="Loading message history" rows={2} />
+          )}
           {/* Platform transaction workflow message */}
-          <div className="flex items-center gap-2 py-2 mb-2">
-            <div className="flex-1 border-t border-muted" />
-            <span className="text-xs text-muted-foreground flex items-center gap-1.5 shrink-0">
-              <Shield className="h-3 w-3" />
-              Stripe payment &middot; tracked shipping &middot; dispute reporting
+          <div className="flex items-center gap-[min(0.5rem,8px)] py-2 mb-2">
+            <div className="hidden sm:block flex-1 border-t border-muted" />
+            <span className="min-w-0 text-center text-xs text-muted-foreground">
+              <Shield className="inline-block h-[12px] w-[12px] mr-[6px]" aria-hidden="true" />
+              Stripe payment &middot; tracked shipping &middot; dispute
+              reporting
             </span>
-            <div className="flex-1 border-t border-muted" />
+            <div className="hidden sm:block flex-1 border-t border-muted" />
           </div>
 
-          {!messages || messages.length === 0 ? (
+          {!isLoadingMessages &&
+          !isMessagesError &&
+          allMessages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <p>No messages yet. Start the conversation!</p>
             </div>
           ) : (
             <>
-              {messages.map((message, index) => {
+              {allMessages.map((message, index) => {
                 const isCurrentUser = message.senderId === user?.id;
-                const prevMessage = index > 0 ? messages[index - 1] : null;
+                const prevMessage = index > 0 ? allMessages[index - 1] : null;
                 const showSenderInfo =
                   !prevMessage || prevMessage.senderId !== message.senderId;
 
                 return (
-                  <ChatBubble
-                    key={message.id}
-                    message={message.body}
-                    senderName={message.sender.displayName}
-                    timestamp={message.createdAt}
-                    isCurrentUser={isCurrentUser}
-                    showSenderInfo={showSenderInfo}
-                  />
+                  <div key={message.id} data-message-id={message.id}>
+                    <ChatBubble
+                      message={message.body}
+                      senderName={message.sender.displayName}
+                      timestamp={message.createdAt}
+                      isCurrentUser={isCurrentUser}
+                      showSenderInfo={showSenderInfo}
+                    />
+                  </div>
                 );
               })}
               <div ref={messagesEndRef} />
@@ -298,14 +498,32 @@ export default function ConversationPage() {
           )}
         </div>
 
+        {showJumpToLatest && (
+          <Button
+            type="button"
+            variant="outline"
+            className="m-2 h-auto min-h-11 whitespace-normal"
+            onClick={() => {
+              const node = historyRef.current;
+              if (node) node.scrollTop = node.scrollHeight;
+            }}
+          >
+            Jump to latest
+          </Button>
+        )}
         {/* Message input */}
-        <div className="border-t p-4 bg-background">
+        <div className="border-t p-[min(1rem,16px)] bg-background">
           <MessageInput
             onSendMessage={handleSendMessage}
+            onRefreshMessages={refreshLatest}
+            disabled={
+              isConversationError || isMessagesError || isLoadingMessages
+            }
             placeholder={`Message ${otherPartyName}...`}
           />
           <p className="text-xs text-muted-foreground text-center mt-2">
-            Keep transactions on PlankMarket for Stripe-processed payments, tracked shipping, and in-platform dispute reporting.
+            Keep transactions on PlankMarket for Stripe-processed payments,
+            tracked shipping, and in-platform dispute reporting.
           </p>
         </div>
       </Card>

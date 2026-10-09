@@ -26,8 +26,8 @@ export function AreaChart({
   data,
   dataKey,
   secondaryDataKey,
-  color = "hsl(var(--primary))",
-  secondaryColor = "hsl(var(--muted-foreground))",
+  color = "var(--primary)",
+  secondaryColor = "var(--muted-foreground)",
   height = 300,
   formatValue = (v) => v.toLocaleString(),
   formatDate,
@@ -80,8 +80,8 @@ export function AreaChart({
           formatter={(value) => [formatValue(Number(value ?? 0)), dataKey]}
           labelFormatter={(label) => fmtDate(String(label))}
           contentStyle={{
-            backgroundColor: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
             borderRadius: "8px",
             fontSize: "12px",
           }}

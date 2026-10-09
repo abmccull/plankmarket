@@ -81,11 +81,11 @@ const PROBLEM_CARDS = [
 export default function AboutPage() {
   return (
     <>
-      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-20">
+      <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background py-12 md:py-20">
         <div className="absolute top-20 left-10 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
         <div className="absolute bottom-10 right-10 h-96 w-96 rounded-full bg-accent/10 blur-3xl" />
 
-        <div className="container relative z-10 mx-auto px-4">
+        <div className="container relative z-10 mx-auto px-[min(1rem,16px)] sm:px-4">
           <div className="mx-auto max-w-3xl text-center">
             <Badge className="mb-4 border-transparent bg-amber-100 text-amber-800">
               Our Mission
@@ -102,18 +102,41 @@ export default function AboutPage() {
               reducing waste while helping businesses recover value from excess
               inventory.
             </p>
+            <div className="mt-6 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
+              <Button
+                asChild
+                size="lg"
+                className="h-auto min-h-11 max-w-full whitespace-normal px-[min(1rem,16px)] py-3 sm:px-8"
+              >
+                <Link href="/listings">Browse Listings</Link>
+              </Button>
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="h-auto min-h-11 max-w-full whitespace-normal px-[min(1rem,16px)] py-3 sm:px-8"
+              >
+                <Link href="/register?role=seller">
+                  Start Selling{" "}
+                  <ArrowRight
+                    className="ml-2 h-4 w-4 shrink-0"
+                    aria-hidden="true"
+                  />
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="py-20">
-        <div className="container mx-auto px-4">
+      <section className="py-12 md:py-20">
+        <div className="container mx-auto px-[min(1rem,16px)] sm:px-4">
           <div className="mx-auto grid max-w-5xl items-center gap-12 md:grid-cols-2">
             <div>
               <Badge variant="outline" className="mb-4">
                 The Problem
               </Badge>
-              <h2 className="mb-4 font-display text-3xl">
+              <h2 className="mb-4 font-display text-2xl sm:text-3xl">
                 Surplus Inventory Still Moves Through Fragmented Channels
               </h2>
               <p className="mb-4 text-muted-foreground">
@@ -138,10 +161,10 @@ export default function AboutPage() {
                 ))}
               </ul>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {PROBLEM_CARDS.map((stat) => (
                 <Card key={stat.label} className="text-center">
-                  <CardHeader className="pb-2">
+                  <CardHeader className="px-[min(1.5rem,24px)] pb-2 sm:px-6">
                     <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary/10 to-secondary/10">
                       <stat.icon className="h-4 w-4 text-primary" />
                     </div>
@@ -150,7 +173,7 @@ export default function AboutPage() {
                     </div>
                     <CardTitle className="text-sm">{stat.subtitle}</CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent className="px-[min(1.5rem,24px)] pt-0 sm:px-6">
                     <p className="text-xs text-muted-foreground">
                       {stat.description}
                     </p>
@@ -162,10 +185,10 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="bg-muted/30 py-20">
-        <div className="container mx-auto px-4">
+      <section className="bg-muted/30 py-12 md:py-20">
+        <div className="container mx-auto px-[min(1rem,16px)] sm:px-4">
           <div className="mb-12 text-center">
-            <h2 className="font-display text-3xl">Our Solution</h2>
+            <h2 className="font-display text-2xl sm:text-3xl">Our Solution</h2>
             <p className="mt-3 text-muted-foreground">
               A purpose-built B2B marketplace for surplus and closeout flooring
             </p>
@@ -180,8 +203,14 @@ export default function AboutPage() {
               </h3>
               <ul className="space-y-3">
                 {[
-                  { icon: Users, text: "Business marketplace built for qualified buyers and sellers" },
-                  { icon: Zap, text: "Simple listing tools with photos and detailed specs" },
+                  {
+                    icon: Users,
+                    text: "Business marketplace built for qualified buyers and sellers",
+                  },
+                  {
+                    icon: Zap,
+                    text: "Simple listing tools with photos and detailed specs",
+                  },
                   {
                     icon: CreditCard,
                     text: "Stripe-processed payments with seller transfer after carrier pickup",
@@ -192,7 +221,7 @@ export default function AboutPage() {
                   },
                   {
                     icon: DollarSign,
-                    text: "Projected seller transfer shown before acceptance",
+                    text: "Order details show fees and net payout",
                   },
                 ].map((item) => (
                   <li key={item.text} className="flex items-start gap-3">
@@ -260,9 +289,9 @@ export default function AboutPage() {
           aria-hidden="true"
           loading="lazy"
         />
-        <div className="container relative z-10 mx-auto px-4">
+        <div className="container relative z-10 mx-auto px-[min(1rem,16px)] sm:px-4">
           <div className="mb-12 text-center">
-            <h2 className="font-display text-3xl">Sustainability & Impact</h2>
+            <h2 className="font-display text-2xl sm:text-3xl">Sustainability & Impact</h2>
             <p className="mt-3 text-white/80">
               Every transaction represents materials saved from waste
             </p>
@@ -282,8 +311,7 @@ export default function AboutPage() {
               {
                 icon: Leaf,
                 title: "Cut Emissions",
-                description:
-                  "Reduce carbon from manufacturing and disposal",
+                description: "Reduce carbon from manufacturing and disposal",
               },
               {
                 icon: Heart,
@@ -306,10 +334,10 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="py-20">
-        <div className="container mx-auto px-4">
+      <section className="py-12 md:py-20">
+        <div className="container mx-auto px-[min(1rem,16px)] sm:px-4">
           <div className="mb-12 text-center">
-            <h2 className="font-display text-3xl">Who We Serve</h2>
+            <h2 className="font-display text-2xl sm:text-3xl">Who We Serve</h2>
             <p className="mt-3 text-muted-foreground">
               Designed for flooring professionals across the supply chain
             </p>
@@ -369,12 +397,12 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="bg-muted/30 py-20">
-        <div className="container mx-auto px-4">
+      <section className="bg-muted/30 py-12 md:py-20">
+        <div className="container mx-auto px-[min(1rem,16px)] sm:px-4">
           <div className="mb-12 text-center">
-            <h2 className="font-display text-3xl">Our Values</h2>
+            <h2 className="font-display text-2xl sm:text-3xl">Our Values</h2>
           </div>
-          <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4 md:grid-cols-5">
+          <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-5">
             {[
               {
                 icon: Eye,
@@ -404,7 +432,7 @@ export default function AboutPage() {
               },
             ].map((item) => (
               <Card key={item.title} className="card-hover-lift text-center">
-                <CardHeader className="items-center">
+                <CardHeader className="items-center px-[min(1.5rem,24px)] sm:px-6">
                   <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-secondary/20">
                     <item.icon className="h-5 w-5 text-primary" />
                   </div>
@@ -421,32 +449,42 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="py-20">
-        <div className="container mx-auto px-4">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-secondary p-12 text-white">
+      <section className="py-12 md:py-20">
+        <div className="container mx-auto px-[min(1rem,16px)] sm:px-4">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-secondary px-[min(1.5rem,24px)] py-6 sm:p-12 text-white">
             <div className="absolute right-0 top-0 h-64 w-64 rounded-full bg-accent/20 blur-3xl" />
             <div className="relative z-10 text-center">
-              <h2 className="mb-4 font-display text-3xl">Join the Marketplace</h2>
+              <h2 className="mb-4 font-display text-2xl sm:text-3xl">
+                Join the Marketplace
+              </h2>
               <p className="mx-auto mb-8 max-w-xl text-white/80">
                 Whether you have surplus flooring to sell or are looking for
                 affordable materials, PlankMarket is here to help. Together, we
                 can make the flooring industry more sustainable.
               </p>
-              <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
-                <Link href="/register?role=seller">
-                  <Button size="xl" variant="gold">
-                    Start Selling <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-                <Link href="/register?role=buyer">
-                  <Button
-                    size="xl"
-                    variant="secondary"
-                    className="border-2 border-white/70 bg-white/10 text-white hover:bg-white/20"
-                  >
-                    Browse Listings
-                  </Button>
-                </Link>
+              <div className="flex flex-col items-stretch justify-center gap-4 sm:flex-row sm:items-center">
+                <Button
+                  asChild
+                  size="xl"
+                  variant="gold"
+                  className="h-auto min-h-11 max-w-full whitespace-normal px-[min(1rem,16px)] py-3 sm:px-10"
+                >
+                  <Link href="/register?role=seller">
+                    Start Selling{" "}
+                    <ArrowRight
+                      className="ml-2 h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="xl"
+                  variant="secondary"
+                  className="h-auto min-h-11 max-w-full whitespace-normal border-2 border-white/70 bg-white/10 px-[min(1rem,16px)] py-3 text-white hover:bg-white/20 sm:px-10"
+                >
+                  <Link href="/listings">Browse Listings</Link>
+                </Button>
               </div>
             </div>
           </div>

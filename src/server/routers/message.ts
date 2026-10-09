@@ -1,13 +1,11 @@
+import { publicProductPhotoWhere } from "@/server/services/listing-media";
 import {
   buyerProcedure,
   createTRPCRouter,
   protectedProcedure,
   messagingProcedure,
 } from "../trpc";
-import {
-  sendMessageSchema,
-  getMessagesSchema,
-} from "@/lib/validators/message";
+import { sendMessageSchema, getMessagesSchema } from "@/lib/validators/message";
 import { conversations, messages, listings, media, orders } from "../db/schema";
 import { eq, and, or, desc, asc, gt, lt, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -65,12 +63,14 @@ async function getRevealableConversationKeys(
     return new Set<string>();
   }
 
-  const uniqueConversations = [...new Map(
-    conversationsList.map((conversation) => [
-      conversationIdentityKey(conversation),
-      conversation,
-    ]),
-  ).values()];
+  const uniqueConversations = [
+    ...new Map(
+      conversationsList.map((conversation) => [
+        conversationIdentityKey(conversation),
+        conversation,
+      ]),
+    ).values(),
+  ];
 
   const deliveredTriplets = uniqueConversations.map((conversation) =>
     and(
@@ -87,26 +87,23 @@ async function getRevealableConversationKeys(
       sellerId: orders.sellerId,
     })
     .from(orders)
-    .where(
-      and(
-        eq(orders.status, "delivered"),
-        or(...deliveredTriplets)!,
-      ),
-    );
+    .where(and(eq(orders.status, "delivered"), or(...deliveredTriplets)!));
 
   return new Set(deliveredOrders.map(conversationIdentityKey));
 }
 
 function shapeConversation<
   T extends {
+    buyerId: string;
+    sellerId: string;
     buyer: Parameters<typeof toConversationParty>[0];
     seller: Parameters<typeof toConversationParty>[0];
   },
 >(conversation: T, revealIdentity: boolean) {
   return {
     ...conversation,
-    buyer: toConversationParty(conversation.buyer, revealIdentity),
-    seller: toConversationParty(conversation.seller, revealIdentity),
+    buyer: toConversationParty(conversation.buyer, revealIdentity, conversation),
+    seller: toConversationParty(conversation.seller, revealIdentity, conversation),
   };
 }
 
@@ -139,7 +136,7 @@ export const messageRouter = createTRPCRouter({
       const existingConversation = await ctx.db.query.conversations.findFirst({
         where: and(
           eq(conversations.listingId, input.listingId),
-          eq(conversations.buyerId, ctx.user.id)
+          eq(conversations.buyerId, ctx.user.id),
         ),
         with: {
           listing: {
@@ -244,8 +241,12 @@ export const messageRouter = createTRPCRouter({
 
       // Check for self-referencing identity info (business name, full name)
       const selfRefDetections = detectSelfReference(input.body, ctx.user);
-      const highConfidence = selfRefDetections.filter(d => d.level === "high");
-      const mediumConfidence = selfRefDetections.filter(d => d.level === "medium");
+      const highConfidence = selfRefDetections.filter(
+        (d) => d.level === "high",
+      );
+      const mediumConfidence = selfRefDetections.filter(
+        (d) => d.level === "medium",
+      );
 
       if (highConfidence.length > 0) {
         await logContentViolation({
@@ -256,7 +257,8 @@ export const messageRouter = createTRPCRouter({
         });
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Your message appears to contain identifying business information. For your security, all communication must stay on PlankMarket.",
+          message:
+            "Your message appears to contain identifying business information. For your security, all communication must stay on PlankMarket.",
         });
       }
 
@@ -270,23 +272,25 @@ export const messageRouter = createTRPCRouter({
         });
       }
 
-      // Insert the message
-      const [message] = await ctx.db
-        .insert(messages)
-        .values({
-          conversationId: input.conversationId,
-          senderId: ctx.user.id,
-          body: input.body,
-        })
-        .returning();
-
-      // Update conversation lastMessageAt
-      await ctx.db
-        .update(conversations)
-        .set({ lastMessageAt: new Date() })
-        .where(eq(conversations.id, input.conversationId));
-
-      return message;
+      // Keep the stored message and inbox timestamp atomic. A lost response is
+      // still ambiguous to the client; this does not provide replay idempotency.
+      return ctx.db.transaction(async (tx) => {
+        const [message] = await tx
+          .insert(messages)
+          .values({
+            conversationId: input.conversationId,
+            senderId: ctx.user.id,
+            body: input.body,
+          })
+          .returning();
+        await tx
+          .update(conversations)
+          .set({
+            lastMessageAt: sql`greatest(${conversations.lastMessageAt}, (select created_at from messages where id = ${message.id} and conversation_id = ${input.conversationId}))`,
+          })
+          .where(eq(conversations.id, input.conversationId));
+        return message;
+      });
     }),
 
   getConversation: protectedProcedure
@@ -308,6 +312,7 @@ export const messageRouter = createTRPCRouter({
             },
             with: {
               media: {
+                where: publicProductPhotoWhere,
                 columns: {
                   id: true,
                   url: true,
@@ -327,7 +332,7 @@ export const messageRouter = createTRPCRouter({
           },
           messages: {
             limit: 1,
-            orderBy: [desc(messages.createdAt)],
+            orderBy: [desc(messages.createdAt), desc(messages.id)],
           },
         },
       });
@@ -353,7 +358,7 @@ export const messageRouter = createTRPCRouter({
       z.object({
         page: z.number().int().positive().default(1),
         limit: z.number().int().positive().max(100).default(20),
-      })
+      }),
     )
     .query(async ({ ctx, input }) => {
       const offset = (input.page - 1) * input.limit;
@@ -362,9 +367,9 @@ export const messageRouter = createTRPCRouter({
       const conversationsList = await ctx.db.query.conversations.findMany({
         where: or(
           eq(conversations.buyerId, ctx.user.id),
-          eq(conversations.sellerId, ctx.user.id)
+          eq(conversations.sellerId, ctx.user.id),
         ),
-        orderBy: [desc(conversations.lastMessageAt)],
+        orderBy: [desc(conversations.lastMessageAt), desc(conversations.id)],
         limit: input.limit,
         offset,
         with: {
@@ -375,6 +380,7 @@ export const messageRouter = createTRPCRouter({
             },
             with: {
               media: {
+                where: publicProductPhotoWhere,
                 columns: {
                   id: true,
                   url: true,
@@ -394,7 +400,7 @@ export const messageRouter = createTRPCRouter({
           },
           messages: {
             limit: 1,
-            orderBy: [desc(messages.createdAt)],
+            orderBy: [desc(messages.createdAt), desc(messages.id)],
           },
         },
       });
@@ -417,8 +423,8 @@ export const messageRouter = createTRPCRouter({
         .where(
           or(
             eq(conversations.buyerId, ctx.user.id),
-            eq(conversations.sellerId, ctx.user.id)
-          )
+            eq(conversations.sellerId, ctx.user.id),
+          ),
         );
 
       return {
@@ -457,33 +463,59 @@ export const messageRouter = createTRPCRouter({
         });
       }
 
-      // Build where clause for cursor-based pagination
-      const whereClause = input.cursor
+      // Scope the stable cursor to this authorized conversation. A UUID from
+      // another thread must not influence this thread's history boundary.
+      const cursor = input.cursor
+        ? await ctx.db.query.messages.findFirst({
+            where: and(
+              eq(messages.id, input.cursor),
+              eq(messages.conversationId, input.conversationId),
+            ),
+            columns: { id: true },
+          })
+        : null;
+      if (input.cursor && !cursor)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Message history cursor is unavailable. Reload the conversation.",
+        });
+      const cursorTimestamp = cursor
+        ? sql`(select created_at from messages where id = ${cursor.id} and conversation_id = ${input.conversationId})`
+        : null;
+      const whereClause = cursor
         ? and(
             eq(messages.conversationId, input.conversationId),
-            lt(messages.createdAt, sql`(SELECT created_at FROM messages WHERE id = ${input.cursor})`)
-          )!
+            or(
+              lt(messages.createdAt, cursorTimestamp!),
+              and(
+                eq(messages.createdAt, cursorTimestamp!),
+                lt(messages.id, cursor.id),
+              ),
+            ),
+          )
         : eq(messages.conversationId, input.conversationId);
-
-      // Get messages ordered by createdAt ASC
+      // Select the newest window first, then return it in reading order.
       const messagesList = await ctx.db.query.messages.findMany({
         where: whereClause,
-        orderBy: [asc(messages.createdAt)],
-        limit: input.limit,
-        with: {
-          sender: {
-            columns: conversationPartyColumns,
-          },
+        orderBy: [desc(messages.createdAt), desc(messages.id)],
+        extras: {
+          historySortKey:
+            sql<string>`to_char(${messages.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`.as(
+              "history_sort_key",
+            ),
         },
+        limit: input.limit,
+        with: { sender: { columns: conversationPartyColumns } },
       });
 
       const revealIdentity = await canRevealConversationIdentity(
         ctx.db,
         conversation,
       );
-      return messagesList.map((message) => ({
+      return messagesList.reverse().map((message) => ({
         ...message,
-        sender: toConversationParty(message.sender, revealIdentity),
+        sender: toConversationParty(message.sender, revealIdentity, conversation),
       }));
     }),
 
@@ -550,22 +582,14 @@ export const messageRouter = createTRPCRouter({
         };
       }
 
-      if (
-        currentLastReadAt &&
-        latestMessage.createdAt <= currentLastReadAt
-      ) {
-        return {
-          updated: false,
-          lastReadAt: currentLastReadAt,
-        };
-      }
+      const readTimestamp = sql`(select created_at from messages where id = ${latestMessage.id} and conversation_id = ${input.conversationId})`;
 
       const [updated] = await ctx.db
         .update(conversations)
         .set(
           isBuyer
-            ? { buyerLastReadAt: latestMessage.createdAt }
-            : { sellerLastReadAt: latestMessage.createdAt }
+            ? { buyerLastReadAt: readTimestamp }
+            : { sellerLastReadAt: readTimestamp },
         )
         .where(
           and(
@@ -573,11 +597,11 @@ export const messageRouter = createTRPCRouter({
             isBuyer
               ? or(
                   sql`${conversations.buyerLastReadAt} IS NULL`,
-                  lt(conversations.buyerLastReadAt, latestMessage.createdAt),
+                  lt(conversations.buyerLastReadAt, readTimestamp),
                 )
               : or(
                   sql`${conversations.sellerLastReadAt} IS NULL`,
-                  lt(conversations.sellerLastReadAt, latestMessage.createdAt),
+                  lt(conversations.sellerLastReadAt, readTimestamp),
                 ),
           ),
         )
@@ -599,38 +623,32 @@ export const messageRouter = createTRPCRouter({
     const [buyerResult] = await ctx.db
       .select({ count: sql<number>`cast(count(*) as integer)` })
       .from(messages)
-      .innerJoin(
-        conversations,
-        eq(messages.conversationId, conversations.id)
-      )
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
       .where(
         and(
           eq(conversations.buyerId, ctx.user.id),
           sql`${messages.senderId} != ${ctx.user.id}`,
           or(
             sql`${conversations.buyerLastReadAt} IS NULL`,
-            gt(messages.createdAt, conversations.buyerLastReadAt)
-          )
-        )
+            gt(messages.createdAt, conversations.buyerLastReadAt),
+          ),
+        ),
       );
 
     // Count unread messages for seller conversations
     const [sellerResult] = await ctx.db
       .select({ count: sql<number>`cast(count(*) as integer)` })
       .from(messages)
-      .innerJoin(
-        conversations,
-        eq(messages.conversationId, conversations.id)
-      )
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
       .where(
         and(
           eq(conversations.sellerId, ctx.user.id),
           sql`${messages.senderId} != ${ctx.user.id}`,
           or(
             sql`${conversations.sellerLastReadAt} IS NULL`,
-            gt(messages.createdAt, conversations.sellerLastReadAt)
-          )
-        )
+            gt(messages.createdAt, conversations.sellerLastReadAt),
+          ),
+        ),
       );
 
     const totalUnread = (buyerResult?.count ?? 0) + (sellerResult?.count ?? 0);

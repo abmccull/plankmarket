@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { withPurchaseIntent, type PurchaseIntent } from "@/lib/marketplace/purchase-intent";
+import { ListingImage as Image } from "@/components/listings/listing-image";
 import {
   Table,
   TableBody,
@@ -18,6 +19,9 @@ import {
 } from "@/components/listings/listing-evidence";
 import type { ListingFreshnessStatus } from "@/lib/listing-freshness";
 import { getDirectPurchaseUnitPrice } from "@/lib/listing-pricing";
+import { getPurchaseQuantityPreview, type PublicPurchaseTerms } from "@/lib/marketplace/purchase-quantity-preview";
+import { PurchaseQuantityPreview } from "@/components/listings/purchase-quantity-preview";
+import { SellerPaymentSetup, type SellerPaymentSetupStatus } from "@/components/listings/seller-payment-setup";
 
 const materialLabels: Record<string, string> = {
   hardwood: "Hardwood",
@@ -51,45 +55,59 @@ interface ListingItem {
   buyNowPrice?: number | null;
   moq?: number | null;
   moqUnit?: "pallets" | "sqft" | null;
+  purchaseTerms?: PublicPurchaseTerms;
   locationCity: string | null;
   locationState: string | null;
   freightEstimateStatus?: FreightEstimateStatus;
   freshnessStatus?: ListingFreshnessStatus;
   lastConfirmedAt?: Date | string | null;
   media?: { url: string }[];
-  seller?: { verified: boolean } | null;
+  seller?: { verified: boolean; paymentSetupStatus?: SellerPaymentSetupStatus } | null;
 }
 
 interface ListingTableViewProps {
   items: ListingItem[];
+  purchaseIntent?: PurchaseIntent;
 }
 
-export function ListingTableView({ items }: ListingTableViewProps) {
+export function ListingTableView({ items, purchaseIntent }: ListingTableViewProps) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-[60px]">Image</TableHead>
           <TableHead>Title</TableHead>
-          <TableHead className="hidden lg:table-cell w-[100px]">Material</TableHead>
-          <TableHead className="hidden lg:table-cell w-[120px]">Condition</TableHead>
-          <TableHead className="w-[90px] text-right">Sq Ft</TableHead>
-          <TableHead className="w-[90px] text-right">$/sq ft</TableHead>
-          <TableHead className="hidden lg:table-cell w-[100px] text-right">Lot Value</TableHead>
-          <TableHead className="hidden xl:table-cell min-w-[260px]">Evidence</TableHead>
+          <TableHead className="hidden lg:table-cell w-[100px]">
+            Material
+          </TableHead>
+          <TableHead className="hidden lg:table-cell w-[120px]">
+            Condition
+          </TableHead>
+          <TableHead className="hidden sm:table-cell w-[90px] text-right">Sq Ft</TableHead>
+          <TableHead className="hidden sm:table-cell w-[90px] text-right">Listed $/sq ft</TableHead>
+          {!purchaseIntent?.quantitySqFt && <TableHead className="hidden lg:table-cell w-[100px] text-right">
+            Lot Value
+          </TableHead>}
+          <TableHead className="hidden xl:table-cell min-w-[260px]">
+            Evidence
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {items.map((listing) => {
-          const directPurchaseUnitPrice =
-            getDirectPurchaseUnitPrice(listing);
+          const directPurchaseUnitPrice = getDirectPurchaseUnitPrice(listing);
           const lotValue = directPurchaseUnitPrice * listing.totalSqFt;
-          const href = `/listings/${listing.slug || listing.id}`;
+          const quantityPreview = getPurchaseQuantityPreview(listing, purchaseIntent?.quantitySqFt);
+          const href = withPurchaseIntent(`/listings/${listing.slug || listing.id}`, purchaseIntent);
 
           return (
             <TableRow key={listing.id} className="cursor-pointer">
               <TableCell className="p-1.5">
-                <Link href={href} className="block">
+                <Link
+                  href={href}
+                  className="block"
+                  aria-label={`View ${listing.title}`}
+                >
                   {listing.media?.[0] ? (
                     <Image
                       src={listing.media[0].url}
@@ -106,27 +124,33 @@ export function ListingTableView({ items }: ListingTableViewProps) {
                   )}
                 </Link>
               </TableCell>
-              <TableCell>
-                <Link href={href} className="hover:text-primary transition-colors font-medium text-sm line-clamp-1">
+              <TableCell className="min-w-[220px] max-w-md whitespace-normal">
+                <Link
+                  href={href}
+                  className="hover:text-primary transition-colors font-medium text-sm line-clamp-2"
+                >
                   {listing.title}
                 </Link>
+                <p className="mt-1 text-xs text-muted-foreground sm:hidden">{formatSqFt(listing.totalSqFt)} available · {formatCurrency(directPurchaseUnitPrice)}/sq ft listed</p>
+                {quantityPreview && <div className="mt-2"><PurchaseQuantityPreview preview={quantityPreview} /></div>}
+                <SellerPaymentSetup status={listing.seller?.paymentSetupStatus} className="mt-2" />
               </TableCell>
-              <TableCell className="hidden xl:table-cell py-3">
+              <TableCell className="hidden lg:table-cell py-3">
                 {materialLabels[listing.materialType] || listing.materialType}
               </TableCell>
               <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                 {conditionLabels[listing.condition] || listing.condition}
               </TableCell>
-              <TableCell className="text-right text-sm tabular-nums">
+              <TableCell className="hidden sm:table-cell text-right text-sm tabular-nums">
                 {formatSqFt(listing.totalSqFt)}
               </TableCell>
-              <TableCell className="text-right text-sm font-bold text-primary tabular-nums">
+              <TableCell className="hidden sm:table-cell text-right text-sm font-bold text-primary tabular-nums">
                 {formatCurrency(directPurchaseUnitPrice)}
               </TableCell>
-              <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground tabular-nums">
+              {!purchaseIntent?.quantitySqFt && <TableCell className="hidden lg:table-cell text-right text-sm text-muted-foreground tabular-nums">
                 {formatCurrency(lotValue)}
-              </TableCell>
-              <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
+              </TableCell>}
+              <TableCell className="hidden xl:table-cell text-sm text-muted-foreground">
                 <ListingEvidence
                   variant="compact"
                   listing={{
