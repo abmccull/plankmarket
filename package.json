@@ -97,7 +97,7 @@
     "libphonenumber-js": "^1.12.36",
     "lucide-react": "^0.563.0",
     "nanoid": "^5.1.16",
-    "next": "16.3.4",
+    "next": "16.3.8",
     "next-intl": "4.13.2",
     "next-themes": "^0.4.6",
     "papaparse": "^5.5.3",
@@ -118,7 +118,7 @@
     "remark-rehype": "^11.1.2",
     "resend": "6.17.2",
     "server-only": "^0.0.1",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "sonner": "^2.0.7",
     "stripe": "^20.3.1",
     "superjson": "^2.2.6",
@@ -149,7 +149,7 @@
     "dotenv": "^17.2.4",
     "drizzle-kit": "0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.3.8",
     "jsdom": "^28.1.0",
     "playwright": "1.61.1",
     "tailwindcss": "^4",
@@ -158,10 +158,10 @@
     "vitest": "4.1.11"
   },
   "overrides": {
-    "@grpc/grpc-js": "1.14.4",
+    "@grpc/grpc-js": "1.14.5",
     "@opentelemetry/auto-instrumentations-node": "0.78.0",
-    "brace-expansion@^2.0.2": "2.1.4",
-    "brace-expansion@^1.0.0": "1.1.18",
+    "brace-expansion@^2.0.2": "2.1.7",
+    "brace-expansion@^1.0.0": "1.1.21",
     "esbuild": "0.28.1",
     "gaxios": "7.3.0",
     "gcp-metadata": "8.1.2",
@@ -170,12 +170,12 @@
     "js-yaml": "3.15.2",
     "picomatch": "4.0.5",
     "postcss": "8.5.26",
-    "sharp": "0.35.4",
-    "undici": "7.29.0",
+    "sharp": "0.35.5",
+    "undici": "7.29.1",
     "ws": "8.21.0",
     "yaml": "2.9.0",
     "minimatch@^3.1.2": {
-      "brace-expansion": "1.1.18"
+      "brace-expansion": "1.1.21"
     },
     "@grpc/proto-loader": {
       "protobufjs": "7.6.5"
