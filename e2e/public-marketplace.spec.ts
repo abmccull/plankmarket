@@ -8,7 +8,7 @@ const publicRoutes = [
   },
   {
     path: "/listings",
-    heading: /Browse surplus flooring listings/i,
+    heading: /^Flooring listings$/i,
   },
   {
     path: "/seller-guide",

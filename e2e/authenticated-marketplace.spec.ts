@@ -14,7 +14,7 @@ test.describe("authenticated buyer journey", () => {
     const response = await page.goto("/buyer/requests");
     expect(response?.status()).toBeLessThan(400);
     await expect(page).not.toHaveURL(/\/login(?:[/?]|$)/);
-    await expect(page.getByRole("heading", { name: /buyer requests/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^My Requests$/i })).toBeVisible();
   });
 });
 
