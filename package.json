@@ -34,7 +34,8 @@
     "perf:staging": "tsx scripts/run-staging-load-test.ts",
     "test:e2e:release": "node scripts/check-release-prerequisites.mjs",
     "db:export:baseline": "node scripts/export-schema-baseline.mjs",
-    "db:bootstrap:local": "node scripts/bootstrap-local-database.mjs"
+    "db:bootstrap:local": "node scripts/bootstrap-local-database.mjs",
+    "test:dependency-guards": "node scripts/check-braces-hardening.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
@@ -182,6 +183,7 @@
     },
     "@opentelemetry/otlp-transformer": {
       "protobufjs": "8.7.0"
-    }
+    },
+    "braces": "npm:@dieub/braces-depth-guard@3.0.3-pn.3"
   }
 }

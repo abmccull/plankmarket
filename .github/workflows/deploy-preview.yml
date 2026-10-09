@@ -41,6 +41,7 @@ jobs:
           npm run typecheck:tests
           npm run test
           npm run test:shipping
+          npm run test:dependency-guards
           npm run audit:prod
           npm run db:check
           npm run build
