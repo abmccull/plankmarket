@@ -28,6 +28,9 @@ export const metadata: Metadata = {
   title: "PlankMarket — B2B Closeout Flooring Marketplace",
   description:
     "A purpose-built B2B marketplace for overstock, discontinued, and closeout flooring with verified transaction actions, transparent fees, seller-territory visibility, and integrated freight quotes.",
+  alternates: {
+    canonical: "https://www.plankmarket.com/",
+  },
 };
 
 export const revalidate = 3600;
