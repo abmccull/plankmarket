@@ -43,6 +43,11 @@ export const metadata: Metadata = {
     "discontinued flooring",
     "flooring wholesale",
   ],
+  // Self-referencing absolute canonical on www via metadataBase.
+  // Page-level alternates.canonical still wins when set deliberately.
+  alternates: {
+    canonical: "./",
+  },
   openGraph: {
     type: "website",
     siteName: "PlankMarket",

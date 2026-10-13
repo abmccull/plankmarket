@@ -93,6 +93,10 @@ function normalizeDatabaseUrl(value) {
   }
 }
 
+// Match src/env.ts: live-production-only secrets stay optional in preview.
+const productionRequired = (schema) =>
+  requestedMode === "production" ? schema : schema.optional();
+
 const schema = z.object({
   DATABASE_URL: z.string().refine(looksLikeHostedDatabaseUrl, {
     message: "must be a non-local postgres connection string",
@@ -138,11 +142,10 @@ const schema = z.object({
     .regex(/^txcd_\d+$/)
     .optional(),
   UPLOADTHING_TOKEN: z.string().min(16),
-  RESEND_API_KEY: z.string().startsWith("re_").min(10),
-  RESEND_WEBHOOK_SECRET: z
-    .string()
-    .startsWith("whsec_")
-    .min(16),
+  RESEND_API_KEY: productionRequired(z.string().startsWith("re_").min(10)),
+  RESEND_WEBHOOK_SECRET: productionRequired(
+    z.string().startsWith("whsec_").min(16),
+  ),
   EMAIL_FROM: z
     .string()
     .email()
@@ -154,20 +157,20 @@ const schema = z.object({
     .default("PlankMarket <noreply@plankmarket.com>"),
   UPSTASH_REDIS_REST_URL: z.string().url(),
   UPSTASH_REDIS_REST_TOKEN: z.string().min(16),
-  INNGEST_EVENT_KEY: z.string().min(16),
-  INNGEST_SIGNING_KEY: z.string().min(16),
+  INNGEST_EVENT_KEY: productionRequired(z.string().min(16)),
+  INNGEST_SIGNING_KEY: productionRequired(z.string().min(16)),
   ANTHROPIC_API_KEY: z.string().min(16).optional(),
   ANTHROPIC_VERIFICATION_ALLOW_DOCUMENT_EGRESS: z
     .enum(["true", "false"])
     .default("false"),
-  VERIFICATION_WEBHOOK_SECRET: z.string().min(32),
-  VERIFICATION_DOC_ALLOWED_HOSTS: z.string().min(1),
-  PRIORITY1_API_KEY: z.string().min(16),
-  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: z.string().min(1),
+  VERIFICATION_WEBHOOK_SECRET: productionRequired(z.string().min(32)),
+  VERIFICATION_DOC_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
+  PRIORITY1_API_KEY: productionRequired(z.string().min(16)),
+  PRIORITY1_DOCUMENT_ALLOWED_HOSTS: productionRequired(z.string().min(1)),
   PRIORITY1_DRY_RUN: z
     .enum(["true", "false"])
     .default(requestedMode === "production" ? "false" : "true"),
-  CRON_SECRET: z.string().min(32),
+  CRON_SECRET: productionRequired(z.string().min(32)),
   NODE_ENV: z.enum(["production", "preview", "staging"]).optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(32),
