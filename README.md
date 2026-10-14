@@ -391,6 +391,14 @@ Release candidates should go through the checked-in CI gates in
 shipping dry-run validation, production dependency audit, migration integrity,
 build, and post-deploy `/api/health` verification.
 
+**Pre-launch deploy gate:** Production env preflight treats a missing
+`RESEND_API_KEY` and `STRIPE_TAX_MODE=disabled` as warnings (not failures) when
+`PLANKMARKET_PRELAUNCH` is unset or `true` (default). All other preflight checks
+remain strict. Before launch, set the GitHub Actions repo variable
+`PLANKMARKET_PRELAUNCH=false` and the matching Vercel production env so those
+two checks fail closed again. Do not leave the relaxed flag enabled after
+launch.
+
 ---
 
 ## Documentation

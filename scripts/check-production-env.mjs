@@ -97,6 +97,19 @@ function normalizeDatabaseUrl(value) {
 const productionRequired = (schema) =>
   requestedMode === "production" ? schema : schema.optional();
 
+/**
+ * Pre-launch relaxes only RESEND_API_KEY + disabled STRIPE_TAX_MODE to warnings.
+ * Default is relaxed (unset/true). Set PLANKMARKET_PRELAUNCH=false before launch
+ * (repo variable and/or Vercel env) so those checks fail closed again.
+ */
+function isPrelaunchMode(env) {
+  const raw = process.env.PLANKMARKET_PRELAUNCH ?? env.PLANKMARKET_PRELAUNCH;
+  if (raw === undefined || raw === "") {
+    return true;
+  }
+  return !["false", "0", "no", "off"].includes(String(raw).trim().toLowerCase());
+}
+
 const schema = z.object({
   DATABASE_URL: z.string().refine(looksLikeHostedDatabaseUrl, {
     message: "must be a non-local postgres connection string",
@@ -192,11 +205,13 @@ const schema = z.object({
 
 try {
   const { sourceLabel, env } = loadEnvSource();
+  const prelaunch = isPrelaunchMode(env);
   const parsed = schema.safeParse(env);
 
   const missingKeys = [];
   const invalidValues = [];
   const conditionalIssues = [];
+  const warnings = [];
 
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
@@ -219,7 +234,15 @@ try {
   }
 
   if (requestedMode === "production" && (!env.STRIPE_TAX_MODE || env.STRIPE_TAX_MODE === "disabled")) {
-    conditionalIssues.push("STRIPE_TAX_MODE: production checkout requires an approved, supported tax policy; disabled tax blocks checkout");
+    const taxDisabledMessage =
+      "STRIPE_TAX_MODE: production checkout requires an approved, supported tax policy; disabled tax blocks checkout";
+    if (prelaunch) {
+      warnings.push(
+        `${taxDisabledMessage} (PLANKMARKET_PRELAUNCH warn-only; set false before launch)`,
+      );
+    } else {
+      conditionalIssues.push(taxDisabledMessage);
+    }
   }
   if (env.STRIPE_TAX_BUYER_FEE_TREATMENT === "taxable" && !env.STRIPE_TAX_BUYER_FEE_TAX_CODE) {
     conditionalIssues.push("STRIPE_TAX_BUYER_FEE_TAX_CODE: required when the buyer fee is taxable");
@@ -227,6 +250,19 @@ try {
 
   // Use parsed data with defaults applied for conditional checks
   const validatedEnv = parsed.success ? parsed.data : env;
+
+  // Pre-launch: missing Resend is a warning so deploys can proceed; email no-ops at runtime.
+  if (prelaunch && requestedMode === "production") {
+    const resendMissingIndex = missingKeys.findIndex((issue) =>
+      issue.startsWith("RESEND_API_KEY:"),
+    );
+    if (resendMissingIndex >= 0) {
+      const [resendIssue] = missingKeys.splice(resendMissingIndex, 1);
+      warnings.push(
+        `${resendIssue} (PLANKMARKET_PRELAUNCH warn-only; set false before launch)`,
+      );
+    }
+  }
 
   if (validatedEnv.VERIFICATION_DOC_ALLOWED_HOSTS) {
     const hostList = validatedEnv.VERIFICATION_DOC_ALLOWED_HOSTS.split(",")
@@ -336,7 +372,26 @@ try {
       }
     }
 
+    if (warnings.length > 0) {
+      console.error("\nPre-launch warnings (not failing alone):");
+      for (const issue of warnings) {
+        console.error(`  - ${issue}`);
+      }
+    }
+
     process.exit(1);
+  }
+
+  if (warnings.length > 0) {
+    console.warn(
+      `${requestedMode} env preflight passed with pre-launch warnings (${sourceLabel}; PLANKMARKET_PRELAUNCH=${prelaunch ? "true" : "false"}):`,
+    );
+    for (const issue of warnings) {
+      console.warn(`  - ${issue}`);
+    }
+    console.warn(
+      "Remove PLANKMARKET_PRELAUNCH or set it to false before launch so these checks fail closed again.",
+    );
   }
 
   console.log(
