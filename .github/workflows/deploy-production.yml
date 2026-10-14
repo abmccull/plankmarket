@@ -173,7 +173,11 @@ jobs:
           --environment=production
           --token="$VERCEL_TOKEN"
 
+      # Pre-launch: missing RESEND_API_KEY and disabled STRIPE_TAX_MODE warn only.
+      # Set repo variable PLANKMARKET_PRELAUNCH=false (and matching Vercel env) before launch.
       - name: Validate production environment
+        env:
+          PLANKMARKET_PRELAUNCH: ${{ vars.PLANKMARKET_PRELAUNCH }}
         run: npm run env:check:production -- --file .vercel/.env.production.local
 
       - name: Verify target database schema before deploy

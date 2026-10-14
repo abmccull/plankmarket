@@ -33,7 +33,7 @@ export interface SendEmailOrThrowInput {
 
 export interface AcceptedEmail {
   id: string;
-  status: "accepted";
+  status: "accepted" | "skipped";
 }
 
 function recipientsFor(message: CreateEmailOptions): string[] {
@@ -160,6 +160,18 @@ export async function sendEmailOrThrow(
   input: SendEmailOrThrowInput,
 ): Promise<AcceptedEmail> {
   assertValidEmailIdempotencyKey(input.idempotencyKey);
+
+  // Pre-launch / misconfig: do not throw (avoids Inngest retry storms). Log and skip.
+  if (!env.RESEND_API_KEY) {
+    console.warn(
+      "[email] RESEND_API_KEY is not configured; skipping transactional email send",
+      {
+        category: input.category,
+        idempotencyKey: input.idempotencyKey,
+      },
+    );
+    return { id: "resend_not_configured", status: "skipped" };
+  }
 
   const recipientEmails = recipientsFor(input.message);
   const payloadFingerprint = fingerprintFor(input);
@@ -307,12 +319,6 @@ export async function sendEmailOrThrow(
 
   let acceptedProviderMessageId: string | null = null;
   try {
-    if (!env.RESEND_API_KEY) {
-      throw new EmailDeliveryError(
-        "RESEND_API_KEY is not configured; transactional email is disabled",
-        { code: "resend_not_configured" },
-      );
-    }
     const providerResponse = await resend.emails.send(
       {
         ...input.message,

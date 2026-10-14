@@ -6,8 +6,22 @@ const isProduction = process.env.NODE_ENV === "production";
 // secrets are optional there (and in local/dev), matching env:check:preview.
 const isLiveProduction =
   isProduction && process.env.VERCEL_ENV !== "preview";
+/**
+ * Pre-launch gate: unset/true keeps RESEND_API_KEY optional so production
+ * builds can ship before Resend is configured. Set PLANKMARKET_PRELAUNCH=false
+ * (Vercel + deploy workflow) before launch so the key is required again.
+ */
+const isPrelaunch = (() => {
+  const raw = process.env.PLANKMARKET_PRELAUNCH;
+  if (raw === undefined || raw === "") {
+    return true;
+  }
+  return !["false", "0", "no", "off"].includes(raw.trim().toLowerCase());
+})();
 const productionRequired = (schema: z.ZodString) =>
   isLiveProduction ? schema : schema.optional();
+const productionRequiredExceptPrelaunch = (schema: z.ZodString) =>
+  isLiveProduction && !isPrelaunch ? schema : schema.optional();
 
 export const env = createEnv({
   server: {
@@ -41,7 +55,9 @@ export const env = createEnv({
       .regex(/^txcd_\d+$/)
       .optional(),
     UPLOADTHING_TOKEN: z.string().min(1),
-    RESEND_API_KEY: productionRequired(z.string().startsWith("re_")),
+    RESEND_API_KEY: productionRequiredExceptPrelaunch(
+      z.string().startsWith("re_"),
+    ),
     RESEND_WEBHOOK_SECRET: productionRequired(
       z.string().startsWith("whsec_"),
     ),
